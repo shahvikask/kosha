@@ -1,0 +1,6 @@
+{
+  "name": "Kosha",
+  "description": "Private, local-first portfolio and net worth tracker built for Indian families and investors with precise paise-level arithmetic and Indian asset classes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
