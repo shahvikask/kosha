@@ -66,7 +66,7 @@ export const EmergencySheetModal: React.FC<EmergencySheetModalProps> = ({ isOpen
                   CONFIDENTIAL FAMILY WEALTH & NOMINEE DOSSIER
                 </h1>
                 <p className="text-xs text-slate-400 print:text-slate-600 mt-1">
-                  Project Kosha · Prepared on {new Date().toLocaleDateString('en-IN', { dateStyle: 'full' })}
+                  GrowUrDhan · Prepared on {new Date().toLocaleDateString('en-IN', { dateStyle: 'full' })}
                 </p>
               </div>
               <div className="text-right">
