@@ -104,7 +104,9 @@ export interface FamilyMember {
   id: string;
   name: string;
   relation: FamilyRelation;
+  panCard?: string; // 10-digit PAN e.g. ABCPS1234K
   panMasked?: string;
+  dateOfBirth?: string; // ISO date YYYY-MM-DD
   color: string;
   notes?: string;
 }

@@ -33,9 +33,11 @@ interface KoshaContextType {
   updateHolding: (id: string, updates: Partial<Holding>) => void;
   deleteHolding: (id: string) => void;
   appendLedgerEvent: (event: Omit<LedgerEvent, 'id' | 'createdAt'>) => LedgerEvent;
-  addFamilyMember: (member: Omit<FamilyMember, 'id'>) => void;
+  addFamilyMember: (member: Omit<FamilyMember, 'id'>) => FamilyMember;
+  updateFamilyMember: (id: string, updates: Partial<FamilyMember>) => void;
+  deleteFamilyMember: (id: string) => { deletedHoldingsCount: number; deletedEventsCount: number };
   computeTaxSummary: (financialYear: string) => TaxSummary;
-  importStatementRecords: (records: StatementImportRecord[]) => { imported: number; skipped: number };
+  importStatementRecords: (records: StatementImportRecord[], targetOwnerId?: string) => { imported: number; skipped: number };
   exportBackupJson: () => string;
   importBackupJson: (jsonStr: string) => boolean;
   resetToSampleData: () => void;
@@ -268,12 +270,80 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return newEvent;
   };
 
-  const addFamilyMember = (memberData: Omit<FamilyMember, 'id'>) => {
+  const addFamilyMember = (memberData: Omit<FamilyMember, 'id'>): FamilyMember => {
+    const newId = `fam_${Date.now()}`;
+    let panCard = memberData.panCard?.trim().toUpperCase();
+    let panMasked = memberData.panMasked;
+    if (panCard) {
+      if (panCard.length === 10) {
+        panMasked = `${panCard.substring(0, 5)}****${panCard.substring(9)}`;
+      } else {
+        panMasked = panCard;
+      }
+    }
     const newMember: FamilyMember = {
       ...memberData,
-      id: `fam_${Date.now()}`,
+      id: newId,
+      panCard: panCard || undefined,
+      panMasked: panMasked || undefined,
+      dateOfBirth: memberData.dateOfBirth?.trim() || undefined,
     };
     setFamilyMembers(prev => [...prev, newMember]);
+    return newMember;
+  };
+
+  const updateFamilyMember = (id: string, updates: Partial<FamilyMember>) => {
+    setFamilyMembers(prev =>
+      prev.map(m => {
+        if (m.id === id) {
+          const updated = { ...m, ...updates };
+          if (updates.panCard !== undefined) {
+            const pan = updates.panCard.trim().toUpperCase();
+            if (pan.length === 10) {
+              updated.panCard = pan;
+              updated.panMasked = `${pan.substring(0, 5)}****${pan.substring(9)}`;
+            } else if (pan.length > 0) {
+              updated.panCard = pan;
+              updated.panMasked = pan;
+            } else {
+              updated.panCard = undefined;
+              updated.panMasked = undefined;
+            }
+          }
+          if (updates.dateOfBirth !== undefined) {
+            updated.dateOfBirth = updates.dateOfBirth.trim() || undefined;
+          }
+          return updated;
+        }
+        return m;
+      })
+    );
+  };
+
+  const deleteFamilyMember = (id: string): { deletedHoldingsCount: number; deletedEventsCount: number } => {
+    // 1. Identify all holdings owned by this family member
+    const memberHoldingIds = new Set(holdings.filter(h => h.ownerId === id).map(h => h.id));
+    const deletedHoldingsCount = memberHoldingIds.size;
+
+    // 2. Identify all ledger events owned by this member or tied to deleted holdings
+    const eventsToDelete = ledgerEvents.filter(e => e.ownerId === id || memberHoldingIds.has(e.holdingId));
+    const deletedEventsCount = eventsToDelete.length;
+
+    // 3. Cascade delete holdings
+    setHoldings(prev => prev.filter(h => h.ownerId !== id));
+
+    // 4. Cascade delete ledger events
+    setLedgerEvents(prev => prev.filter(e => e.ownerId !== id && !memberHoldingIds.has(e.holdingId)));
+
+    // 5. Remove family member entity
+    setFamilyMembers(prev => prev.filter(m => m.id !== id));
+
+    // 6. Reset selectedMemberId if user had filtered by this deleted member
+    if (selectedMemberId === id) {
+      setSelectedMemberId('ALL');
+    }
+
+    return { deletedHoldingsCount, deletedEventsCount };
   };
 
   const computeTaxSummary = (financialYear: string): TaxSummary => {
@@ -341,9 +411,10 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
   };
 
-  const importStatementRecords = (records: StatementImportRecord[]) => {
+  const importStatementRecords = (records: StatementImportRecord[], targetOwnerId?: string) => {
     let importedCount = 0;
     let skippedCount = 0;
+    const effectiveOwnerId = targetOwnerId || (selectedMemberId === 'ALL' ? 'fam_1' : selectedMemberId);
 
     records.forEach(rec => {
       if (!rec.selected) {
@@ -351,11 +422,20 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return;
       }
 
-      // Find if holding already exists
+      // Find if holding already exists for this owner
       let existingHolding = holdings.find(
-        h => h.name.toLowerCase() === rec.holdingName.toLowerCase() ||
-             h.symbolOrFolio.toLowerCase() === rec.holdingName.toLowerCase()
+        h => h.ownerId === effectiveOwnerId &&
+             (h.name.toLowerCase() === rec.holdingName.toLowerCase() ||
+              h.symbolOrFolio.toLowerCase() === rec.holdingName.toLowerCase())
       );
+
+      // Fallback: match by name if not found for specific owner
+      if (!existingHolding) {
+        existingHolding = holdings.find(
+          h => h.name.toLowerCase() === rec.holdingName.toLowerCase() ||
+               h.symbolOrFolio.toLowerCase() === rec.holdingName.toLowerCase()
+        );
+      }
 
       const qtyScaled = MoneyEngine.fromQty(rec.quantity).toString();
       const priceMinor = MoneyEngine.fromRupees(rec.pricePerUnit).toString();
@@ -365,15 +445,15 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         // Create new holding
         const newHolding = addHolding({
           name: rec.holdingName,
-          symbolOrFolio: rec.holdingName.substring(0, 10).toUpperCase(),
+          symbolOrFolio: rec.holdingName.substring(0, 12).toUpperCase(),
           category: rec.category,
           subCategory: 'Imported Asset',
-          ownerId: selectedMemberId === 'ALL' ? 'fam_1' : selectedMemberId,
+          ownerId: effectiveOwnerId,
           quantityScaled: qtyScaled,
           averageCostPerUnitMinor: priceMinor,
           currentPriceMinor: priceMinor,
-          priceSource: 'Imported Statement',
-          notes: 'Imported via statement parser',
+          priceSource: 'Imported CAS / Statement',
+          notes: 'Imported via CAS statement parser',
         });
         existingHolding = newHolding;
       } else if (existingHolding) {
@@ -381,13 +461,13 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         appendLedgerEvent({
           holdingId: existingHolding.id,
           holdingName: existingHolding.name,
-          ownerId: existingHolding.ownerId,
+          ownerId: effectiveOwnerId,
           eventType: rec.action,
           eventDate: rec.date,
           quantityScaled: qtyScaled,
           unitPriceMinor: priceMinor,
           totalAmountMinor: totalAmountMinor,
-          notes: 'Imported from broker/bank statement',
+          notes: 'Imported from CAS statement',
         });
       }
 
@@ -459,6 +539,8 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         deleteHolding,
         appendLedgerEvent,
         addFamilyMember,
+        updateFamilyMember,
+        deleteFamilyMember,
         computeTaxSummary,
         importStatementRecords,
         exportBackupJson,

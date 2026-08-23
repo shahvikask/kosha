@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useKosha } from '../../context/KoshaContext';
-import { MoneyEngine } from '../../lib/money';
-import { FamilyMember } from '../../types';
+import { MoneyEngine, QTY_SCALE } from '../../lib/money';
+import { FamilyMember, FamilyRelation } from '../../types';
 import {
   Shield,
   Download,
@@ -13,19 +13,36 @@ import {
   FileCheck,
   CheckCircle2,
   AlertTriangle,
-  KeyRound,
-  Lock,
-  Sparkles,
+  Edit2,
+  Trash2,
+  Calendar,
+  CreditCard,
+  X,
+  Building2,
+  UserCheck,
+  Info,
 } from 'lucide-react';
 
 interface SettingsScreenProps {
   onOpenEmergencySheet: () => void;
 }
 
+const COLOR_PALETTE = [
+  { label: 'Sky Blue', hex: '#0284c7' },
+  { label: 'Pink', hex: '#ec4899' },
+  { label: 'Emerald', hex: '#10b981' },
+  { label: 'Purple', hex: '#8b5cf6' },
+  { label: 'Amber', hex: '#f59e0b' },
+  { label: 'Cyan', hex: '#06b6d4' },
+  { label: 'Rose', hex: '#f43f5e' },
+];
+
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencySheet }) => {
   const {
     familyMembers,
     addFamilyMember,
+    updateFamilyMember,
+    deleteFamilyMember,
     exportBackupJson,
     importBackupJson,
     resetToSampleData,
@@ -33,11 +50,112 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
     ledgerEvents,
   } = useKosha();
 
-  const [notification, setNotification] = useState<string | null>(null);
-  const [newMemberName, setNewMemberName] = useState('');
-  const [newMemberRelation, setNewMemberRelation] = useState<'Spouse' | 'Child' | 'Parent' | 'HUF'>('Spouse');
-  const [newMemberPan, setNewMemberPan] = useState('');
-  const [isAddingMember, setIsAddingMember] = useState(false);
+  const [notification, setNotification] = useState<{ type: 'success' | 'error' | 'warning'; message: string } | null>(null);
+  
+  // Member modal / form state
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingMember, setEditingMember] = useState<FamilyMember | null>(null);
+  
+  // Form fields
+  const [formName, setFormName] = useState('');
+  const [formRelation, setFormRelation] = useState<FamilyRelation>('Spouse');
+  const [formPan, setFormPan] = useState('');
+  const [formDob, setFormDob] = useState('');
+  const [formColor, setFormColor] = useState('#0284c7');
+  const [formNotes, setFormNotes] = useState('');
+
+  // Delete confirmation modal state
+  const [deletingMember, setDeletingMember] = useState<FamilyMember | null>(null);
+
+  // Helper to calculate age from DOB
+  const calculateAge = (dobString?: string): number | null => {
+    if (!dobString) return null;
+    const dob = new Date(dobString);
+    if (isNaN(dob.getTime())) return null;
+    const diffMs = Date.now() - dob.getTime();
+    const ageDt = new Date(diffMs);
+    return Math.abs(ageDt.getUTCFullYear() - 1970);
+  };
+
+  // Open add member modal
+  const handleOpenAddModal = () => {
+    setEditingMember(null);
+    setFormName('');
+    setFormRelation('Spouse');
+    setFormPan('');
+    setFormDob('');
+    setFormColor(COLOR_PALETTE[familyMembers.length % COLOR_PALETTE.length].hex);
+    setFormNotes('');
+    setIsFormOpen(true);
+  };
+
+  // Open edit member modal
+  const handleOpenEditModal = (member: FamilyMember) => {
+    setEditingMember(member);
+    setFormName(member.name);
+    setFormRelation(member.relation);
+    setFormPan(member.panCard || member.panMasked || '');
+    setFormDob(member.dateOfBirth || '');
+    setFormColor(member.color || '#0284c7');
+    setFormNotes(member.notes || '');
+    setIsFormOpen(true);
+  };
+
+  // Save Add or Edit Member
+  const handleSaveMember = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formName.trim()) {
+      setNotification({ type: 'error', message: 'Member name is required.' });
+      return;
+    }
+
+    const cleanPan = formPan.trim().toUpperCase();
+
+    if (editingMember) {
+      // Update existing member
+      updateFamilyMember(editingMember.id, {
+        name: formName.trim(),
+        relation: formRelation,
+        panCard: cleanPan || undefined,
+        dateOfBirth: formDob.trim() || undefined,
+        color: formColor,
+        notes: formNotes.trim() || undefined,
+      });
+      setNotification({
+        type: 'success',
+        message: `Updated profile details for ${formName.trim()} (PAN & DOB updated).`,
+      });
+    } else {
+      // Add new member
+      addFamilyMember({
+        name: formName.trim(),
+        relation: formRelation,
+        panCard: cleanPan || undefined,
+        dateOfBirth: formDob.trim() || undefined,
+        color: formColor,
+        notes: formNotes.trim() || undefined,
+      });
+      setNotification({
+        type: 'success',
+        message: `Added ${formName.trim()} to family portfolio.`,
+      });
+    }
+
+    setIsFormOpen(false);
+    setEditingMember(null);
+  };
+
+  // Confirm and execute cascade deletion
+  const handleConfirmDelete = () => {
+    if (!deletingMember) return;
+    const memberName = deletingMember.name;
+    const { deletedHoldingsCount, deletedEventsCount } = deleteFamilyMember(deletingMember.id);
+    setDeletingMember(null);
+    setNotification({
+      type: 'warning',
+      message: `Deleted "${memberName}" and permanently removed ${deletedHoldingsCount} associated asset holdings and ${deletedEventsCount} ledger records.`,
+    });
+  };
 
   // Export local backup file
   const handleExportBackup = () => {
@@ -46,12 +164,15 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `kosha_vault_backup_${new Date().toISOString().split('T')[0]}.kosha`;
+    a.download = `growurdhan_vault_backup_${new Date().toISOString().split('T')[0]}.kosha`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    setNotification('Encrypted local backup file downloaded to your computer.');
+    setNotification({
+      type: 'success',
+      message: 'Encrypted local backup file downloaded to your computer.',
+    });
   };
 
   // Restore backup
@@ -64,33 +185,38 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
       const content = event.target?.result as string;
       const success = importBackupJson(content);
       if (success) {
-        setNotification('Vault successfully restored from local backup file.');
+        setNotification({
+          type: 'success',
+          message: 'Vault successfully restored from local backup file.',
+        });
       } else {
-        setNotification('Error: Failed to parse backup file. Please ensure it is a valid .kosha backup.');
+        setNotification({
+          type: 'error',
+          message: 'Error: Failed to parse backup file. Please ensure it is a valid backup file.',
+        });
       }
     };
     reader.readAsText(file);
   };
 
-  // Add new family member
-  const handleAddMember = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newMemberName.trim()) return;
-
-    const colors = ['#0284c7', '#ec4899', '#10b981', '#8b5cf6', '#f59e0b', '#06b6d4'];
-    const randomColor = colors[familyMembers.length % colors.length];
-
-    addFamilyMember({
-      name: newMemberName.trim(),
-      relation: newMemberRelation,
-      panMasked: newMemberPan.trim() ? newMemberPan.trim().toUpperCase() : undefined,
-      color: randomColor,
+  // Calculate member holdings summary
+  const getMemberAssetSummary = (memberId: string) => {
+    const memberHoldings = holdings.filter(h => h.ownerId === memberId);
+    let totalValuationMinor = 0n;
+    memberHoldings.forEach(h => {
+      const qtyScaled = BigInt(h.quantityScaled || '0');
+      const priceMinor = BigInt(h.currentPriceMinor || '0');
+      const val = (qtyScaled * priceMinor) / QTY_SCALE;
+      if (h.category === 'LIABILITY') {
+        totalValuationMinor -= val;
+      } else {
+        totalValuationMinor += val;
+      }
     });
-
-    setNewMemberName('');
-    setNewMemberPan('');
-    setIsAddingMember(false);
-    setNotification(`Added ${newMemberName} to family portfolio.`);
+    return {
+      count: memberHoldings.length,
+      valuationMinor: totalValuationMinor,
+    };
   };
 
   return (
@@ -104,19 +230,181 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
         </p>
       </div>
 
+      {/* Notification Toast */}
       {notification && (
-        <div className="p-4 rounded-2xl bg-emerald-950/80 border border-emerald-800/80 text-emerald-200 text-xs sm:text-sm flex items-center justify-between shadow-lg">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-            <span>{notification}</span>
+        <div
+          className={`p-4 rounded-2xl border text-xs sm:text-sm flex items-center justify-between shadow-lg animate-in fade-in slide-in-from-top-2 ${
+            notification.type === 'success'
+              ? 'bg-emerald-950/80 border-emerald-800/80 text-emerald-200'
+              : notification.type === 'warning'
+              ? 'bg-amber-950/80 border-amber-800/80 text-amber-200'
+              : 'bg-rose-950/80 border-rose-800/80 text-rose-200'
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            {notification.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+            ) : notification.type === 'warning' ? (
+              <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 text-rose-400 flex-shrink-0" />
+            )}
+            <span>{notification.message}</span>
           </div>
-          <button onClick={() => setNotification(null)} className="font-bold text-emerald-400 text-xs cursor-pointer">
+          <button
+            onClick={() => setNotification(null)}
+            className="font-bold text-xs cursor-pointer ml-3 opacity-80 hover:opacity-100"
+          >
             Dismiss
           </button>
         </div>
       )}
 
-      {/* EMERGENCY RECOVERY SHEET (SRS-SEC-015 / Annex B §B12.1) */}
+      {/* FAMILY MEMBERS & HUF ENTITIES BENTO CARD */}
+      <div className="bg-slate-900/80 rounded-3xl p-6 border border-slate-800 backdrop-blur-md shadow-lg space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
+          <div>
+            <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
+              <Users className="w-4 h-4 text-sky-400" />
+              <span>Family Members & HUF Entities</span>
+            </h2>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Manage family member profiles, PAN cards, Dates of Birth, and HUF tax entities
+            </p>
+          </div>
+
+          <button
+            id="add-family-member-btn"
+            onClick={handleOpenAddModal}
+            className="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-md shadow-amber-400/10"
+          >
+            <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+            <span>Add Member / HUF</span>
+          </button>
+        </div>
+
+        {/* Member Cards Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {familyMembers.map(member => {
+            const summaryData = getMemberAssetSummary(member.id);
+            const age = calculateAge(member.dateOfBirth);
+            const isHuf = member.relation === 'HUF';
+
+            return (
+              <div
+                key={member.id}
+                id={`member-card-${member.id}`}
+                className="p-5 rounded-2xl border border-slate-800/90 bg-slate-950/70 hover:border-slate-700 transition-all flex flex-col justify-between space-y-4 relative group"
+              >
+                <div>
+                  {/* Top Bar: Avatar, Name, Relation Badge, Actions */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-10 h-10 rounded-2xl text-white font-bold text-sm flex items-center justify-center ring-2 ring-slate-800 shadow-inner flex-shrink-0"
+                        style={{ backgroundColor: member.color }}
+                      >
+                        {isHuf ? <Building2 className="w-5 h-5" /> : member.name.charAt(0)}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-bold text-sm text-slate-100">{member.name}</h3>
+                          <span
+                            className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                              isHuf
+                                ? 'bg-purple-950/80 text-purple-300 border-purple-800/80'
+                                : member.relation === 'Self'
+                                ? 'bg-sky-950/80 text-sky-300 border-sky-800/80'
+                                : 'bg-slate-800 text-slate-300 border-slate-700'
+                            }`}
+                          >
+                            {member.relation === 'HUF' ? 'HUF Entity' : member.relation}
+                          </span>
+                        </div>
+                        {member.notes && (
+                          <p className="text-[11px] text-slate-400 mt-0.5 line-clamp-1">{member.notes}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <button
+                        onClick={() => handleOpenEditModal(member)}
+                        className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 transition-colors cursor-pointer text-xs flex items-center gap-1"
+                        title="Edit Member, PAN & DOB"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline text-[11px] font-medium">Edit</span>
+                      </button>
+
+                      <button
+                        onClick={() => setDeletingMember(member)}
+                        className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-rose-950/80 text-slate-400 hover:text-rose-300 border border-slate-700/80 hover:border-rose-800/80 transition-colors cursor-pointer text-xs flex items-center gap-1"
+                        title="Delete Member and associated investments"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline text-[11px] font-medium">Delete</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Attributes Grid (PAN, DOB, Age) */}
+                  <div className="mt-4 grid grid-cols-2 gap-2 pt-3 border-t border-slate-900 text-xs">
+                    <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800/70">
+                      <div className="flex items-center gap-1.5 text-slate-400 text-[11px]">
+                        <CreditCard className="w-3.5 h-3.5 text-amber-400" />
+                        <span>PAN Card</span>
+                      </div>
+                      <div className="font-mono font-semibold text-slate-200 mt-0.5">
+                        {member.panCard || member.panMasked || (
+                          <span className="text-slate-500 font-sans text-xs italic">Not set</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800/70">
+                      <div className="flex items-center gap-1.5 text-slate-400 text-[11px]">
+                        <Calendar className="w-3.5 h-3.5 text-sky-400" />
+                        <span>Date of Birth</span>
+                      </div>
+                      <div className="font-semibold text-slate-200 mt-0.5">
+                        {member.dateOfBirth ? (
+                          <span>
+                            {new Date(member.dateOfBirth).toLocaleDateString('en-IN', {
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric',
+                            })}{' '}
+                            {age !== null && (
+                              <span className="text-[11px] text-slate-400 font-normal">({age} yrs)</span>
+                            )}
+                          </span>
+                        ) : (
+                          <span className="text-slate-500 font-sans text-xs italic">Not set</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bottom Footer: Holdings count & Net Worth Owned */}
+                <div className="flex items-center justify-between pt-3 border-t border-slate-900 text-xs">
+                  <span className="text-slate-400">
+                    Portfolio Assets:{' '}
+                    <strong className="text-slate-200">{summaryData.count}</strong>
+                  </span>
+                  <span className="font-bold text-emerald-400">
+                    {MoneyEngine.formatRupees(summaryData.valuationMinor, false)}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* EMERGENCY RECOVERY SHEET BANNER */}
       <div className="bg-slate-900/90 rounded-3xl p-6 sm:p-7 border border-amber-500/30 shadow-xl backdrop-blur-md space-y-4 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-80 h-80 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
         
@@ -204,7 +492,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
               onClick={() => {
                 if (window.confirm('Reset all holdings and ledger events to initial sample data?')) {
                   resetToSampleData();
-                  setNotification('Vault reset to authentic Indian sample portfolio.');
+                  setNotification({
+                    type: 'success',
+                    message: 'Vault reset to authentic Indian sample portfolio.',
+                  });
                 }
               }}
               className="w-full py-2.5 bg-slate-800/80 border border-rose-900/60 hover:bg-rose-950 hover:text-rose-300 hover:border-rose-700 text-rose-400 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
@@ -216,109 +507,229 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
         </div>
       </div>
 
-      {/* Family Members & HUF Tax Entities Bento Tile */}
-      <div className="bg-slate-900/80 rounded-3xl p-6 border border-slate-800 backdrop-blur-md shadow-lg space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
-          <div>
-            <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
-              <Users className="w-4 h-4 text-sky-400" />
-              <span>Family Members & HUF Entities</span>
-            </h2>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Organize holdings by individual family owners and Hindu Undivided Family tax units
-            </p>
-          </div>
+      {/* ADD / EDIT FAMILY MEMBER MODAL */}
+      {isFormOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-5 my-8">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3.5">
+              <div className="flex items-center gap-2">
+                <UserCheck className="w-5 h-5 text-amber-400" />
+                <h3 className="font-serif font-bold text-lg text-white">
+                  {editingMember ? `Edit ${editingMember.name}` : 'Add Family Member / HUF'}
+                </h3>
+              </div>
+              <button
+                onClick={() => {
+                  setIsFormOpen(false);
+                  setEditingMember(null);
+                }}
+                className="p-1 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-          <button
-            onClick={() => setIsAddingMember(!isAddingMember)}
-            className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>{isAddingMember ? 'Cancel' : 'Add Family Member'}</span>
-          </button>
-        </div>
-
-        {/* Add Member Form */}
-        {isAddingMember && (
-          <form onSubmit={handleAddMember} className="p-5 rounded-2xl bg-slate-950 border border-slate-800 space-y-4 animate-in fade-in">
-            <div className="font-bold text-sm text-slate-100">Add New Family Member / Entity</div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <form onSubmit={handleSaveMember} className="space-y-4">
+              {/* Full Legal Name */}
               <div>
-                <label className="text-xs text-slate-400 block mb-1">Full Name *</label>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">
+                  Full Name / Legal Entity Name *
+                </label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Ramesh Shah"
-                  value={newMemberName}
-                  onChange={e => setNewMemberName(e.target.value)}
-                  className="w-full px-3.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-400/50"
+                  placeholder="e.g. Vikas Shah or Vikas Shah (HUF)"
+                  value={formName}
+                  onChange={e => setFormName(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-400/50"
                 />
               </div>
 
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">Relation</label>
-                <select
-                  value={newMemberRelation}
-                  onChange={e => setNewMemberRelation(e.target.value as any)}
-                  className="w-full px-3.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-400/50"
-                >
-                  <option value="Spouse">Spouse</option>
-                  <option value="Child">Child</option>
-                  <option value="Parent">Parent</option>
-                  <option value="HUF">HUF Entity</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">Masked PAN (Optional)</label>
-                <input
-                  type="text"
-                  placeholder="e.g. ABCPS****K"
-                  value={newMemberPan}
-                  onChange={e => setNewMemberPan(e.target.value)}
-                  className="w-full px-3.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs font-mono text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-400/50"
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 rounded-xl text-xs font-bold cursor-pointer"
-            >
-              Save Member
-            </button>
-          </form>
-        )}
-
-        {/* Members List */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {familyMembers.map(member => (
-            <div
-              key={member.id}
-              className="p-4 rounded-2xl border border-slate-800 bg-slate-950/60 flex items-center justify-between"
-            >
-              <div className="flex items-center gap-3">
-                <div
-                  className="w-8 h-8 rounded-full text-white font-bold text-xs flex items-center justify-center ring-2 ring-slate-800"
-                  style={{ backgroundColor: member.color }}
-                >
-                  {member.name.charAt(0)}
-                </div>
+              {/* Relation / Entity Type */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <div className="font-semibold text-sm text-slate-100">{member.name}</div>
-                  <div className="text-xs text-slate-400">
-                    {member.relation} {member.panMasked && `• PAN: ${member.panMasked}`}
+                  <label className="text-xs font-semibold text-slate-300 block mb-1">
+                    Relationship / Entity Type *
+                  </label>
+                  <select
+                    value={formRelation}
+                    onChange={e => setFormRelation(e.target.value as FamilyRelation)}
+                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-400/50 cursor-pointer"
+                  >
+                    <option value="Self">Self (Primary)</option>
+                    <option value="Spouse">Spouse</option>
+                    <option value="Child">Child</option>
+                    <option value="Parent">Parent</option>
+                    <option value="HUF">HUF (Hindu Undivided Family)</option>
+                    <option value="Joint">Joint Holding Unit</option>
+                  </select>
+                </div>
+
+                {/* Avatar Color */}
+                <div>
+                  <label className="text-xs font-semibold text-slate-300 block mb-1">
+                    Theme Color
+                  </label>
+                  <div className="flex items-center gap-2 h-[42px] px-2 bg-slate-950 border border-slate-700 rounded-xl">
+                    {COLOR_PALETTE.map(c => (
+                      <button
+                        key={c.hex}
+                        type="button"
+                        onClick={() => setFormColor(c.hex)}
+                        className={`w-6 h-6 rounded-full transition-transform cursor-pointer ${
+                          formColor === c.hex ? 'scale-125 ring-2 ring-white' : 'opacity-70 hover:opacity-100'
+                        }`}
+                        style={{ backgroundColor: c.hex }}
+                        title={c.label}
+                      />
+                    ))}
                   </div>
                 </div>
               </div>
 
-              <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
-                {holdings.filter(h => h.ownerId === member.id).length} assets
-              </span>
-            </div>
-          ))}
+              {/* PAN Card & Date of Birth */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-300 block mb-1 flex items-center justify-between">
+                    <span>PAN Card Number</span>
+                    <span className="text-[10px] text-slate-500 font-normal">10-digits</span>
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={10}
+                    placeholder="e.g. ABCPS1234K"
+                    value={formPan}
+                    onChange={e => setFormPan(e.target.value.toUpperCase())}
+                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-sm font-mono uppercase text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-400/50"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Used to decrypt CAS statements & compute tax limits
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-slate-300 block mb-1 flex items-center justify-between">
+                    <span>Date of Birth / Incorp</span>
+                    {formDob && calculateAge(formDob) !== null && (
+                      <span className="text-[10px] text-amber-400 font-semibold">
+                        Age: {calculateAge(formDob)} yrs
+                      </span>
+                    )}
+                  </label>
+                  <input
+                    type="date"
+                    value={formDob}
+                    onChange={e => setFormDob(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-400/50"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Senior citizen slab rules applied if 60+
+                  </p>
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">
+                  Private Notes & Demat/Bank Remarks
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Primary earner, Demat with Zerodha, Nominee on HDFC"
+                  value={formNotes}
+                  onChange={e => setFormNotes(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-400/50"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsFormOpen(false);
+                    setEditingMember(null);
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold cursor-pointer transition-all shadow-md shadow-amber-400/10"
+                >
+                  {editingMember ? 'Save Changes' : 'Add Family Member'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* CASCADE DELETE CONFIRMATION MODAL */}
+      {deletingMember && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="bg-slate-900 border border-rose-800/80 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="p-3 rounded-2xl bg-rose-950 text-rose-400 border border-rose-800/60 flex-shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-serif font-bold text-lg text-white">
+                  Delete "{deletingMember.name}"?
+                </h3>
+                <p className="text-xs text-rose-300 font-semibold">
+                  Cascade Deletion: All investments will be permanently removed!
+                </p>
+              </div>
+            </div>
+
+            {/* Impact summary */}
+            <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2 text-xs text-slate-300">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Associated Asset Holdings:</span>
+                <strong className="text-rose-400">
+                  {holdings.filter(h => h.ownerId === deletingMember.id).length} holdings
+                </strong>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Associated Ledger Records:</span>
+                <strong className="text-rose-400">
+                  {ledgerEvents.filter(e => e.ownerId === deletingMember.id).length} transactions
+                </strong>
+              </div>
+              <div className="flex items-center justify-between pt-2 border-t border-slate-900">
+                <span className="text-slate-400">Total Valuation Removed:</span>
+                <strong className="text-white">
+                  {MoneyEngine.formatRupees(getMemberAssetSummary(deletingMember.id).valuationMinor, false)}
+                </strong>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-400 leading-relaxed">
+              This action cannot be undone. All holdings, folios, and historical trades belonging to{' '}
+              <strong className="text-slate-200">{deletingMember.name}</strong> will be erased from your local vault.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeletingMember(null)}
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer transition-colors"
+              >
+                Keep Member
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold cursor-pointer transition-all shadow-md shadow-rose-600/20"
+              >
+                Delete Member & All Investments
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

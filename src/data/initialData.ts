@@ -6,7 +6,9 @@ export const INITIAL_FAMILY_MEMBERS: FamilyMember[] = [
     id: 'fam_1',
     name: 'Vikas Shah',
     relation: 'Self',
+    panCard: 'ABCPS1234K',
     panMasked: 'ABCPS****K',
+    dateOfBirth: '1986-04-12',
     color: '#0284c7', // Blue
     notes: 'Primary earner & investor',
   },
@@ -14,7 +16,9 @@ export const INITIAL_FAMILY_MEMBERS: FamilyMember[] = [
     id: 'fam_2',
     name: 'Ananya Shah',
     relation: 'Spouse',
+    panCard: 'ABTPS5678M',
     panMasked: 'ABTPS****M',
+    dateOfBirth: '1989-09-24',
     color: '#ec4899', // Pink
     notes: 'Co-investor & Nominee',
   },
@@ -22,7 +26,9 @@ export const INITIAL_FAMILY_MEMBERS: FamilyMember[] = [
     id: 'fam_3',
     name: 'Ramakant Shah',
     relation: 'Parent',
+    panCard: 'ABUPS9012H',
     panMasked: 'ABUPS****H',
+    dateOfBirth: '1958-11-05',
     color: '#10b981', // Green
     notes: 'Father (Senior Citizen accounts)',
   },
@@ -30,7 +36,9 @@ export const INITIAL_FAMILY_MEMBERS: FamilyMember[] = [
     id: 'fam_4',
     name: 'Vikas Shah (HUF)',
     relation: 'HUF',
+    panCard: 'AAAPS3456R',
     panMasked: 'AAAPS****R',
+    dateOfBirth: '2015-04-01',
     color: '#8b5cf6', // Purple
     notes: 'Hindu Undivided Family tax entity',
   },
