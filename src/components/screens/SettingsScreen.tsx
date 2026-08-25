@@ -3,6 +3,14 @@ import { useKosha } from '../../context/KoshaContext';
 import { MoneyEngine, QTY_SCALE } from '../../lib/money';
 import { FamilyMember, FamilyRelation } from '../../types';
 import {
+  encryptJson,
+  decryptJson,
+  isEncryptedBlob,
+  generateRecoveryKey,
+  maskPan,
+  WrongPassphraseError,
+} from '../../lib/vault';
+import {
   Shield,
   Download,
   Upload,
@@ -21,6 +29,7 @@ import {
   Building2,
   UserCheck,
   Info,
+  Lock,
 } from 'lucide-react';
 
 interface SettingsScreenProps {
@@ -94,7 +103,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
     setEditingMember(member);
     setFormName(member.name);
     setFormRelation(member.relation);
-    setFormPan(member.panCard || member.panMasked || '');
+    setFormPan(member.panMasked || '');
     setFormDob(member.dateOfBirth || '');
     setFormColor(member.color || '#0284c7');
     setFormNotes(member.notes || '');
@@ -116,7 +125,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
       updateFamilyMember(editingMember.id, {
         name: formName.trim(),
         relation: formRelation,
-        panCard: cleanPan || undefined,
+        panMasked: cleanPan ? maskPan(cleanPan) : undefined,
         dateOfBirth: formDob.trim() || undefined,
         color: formColor,
         notes: formNotes.trim() || undefined,
@@ -130,7 +139,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
       addFamilyMember({
         name: formName.trim(),
         relation: formRelation,
-        panCard: cleanPan || undefined,
+        panMasked: cleanPan ? maskPan(cleanPan) : undefined,
         dateOfBirth: formDob.trim() || undefined,
         color: formColor,
         notes: formNotes.trim() || undefined,
@@ -157,39 +166,77 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
     });
   };
 
-  // Export local backup file
-  const handleExportBackup = () => {
-    const jsonStr = exportBackupJson();
-    const blob = new Blob([jsonStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `growurdhan_vault_backup_${new Date().toISOString().split('T')[0]}.kosha`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    setNotification({
-      type: 'success',
-      message: 'Encrypted local backup file downloaded to your computer.',
-    });
+  // Export local backup file (Encrypted)
+  const handleExportBackup = async () => {
+    const password = window.prompt('Enter a password to encrypt your .kosha backup file:');
+    if (!password) return;
+
+    try {
+      const backupData = {
+        koshaVersion: '1.0.0',
+        exportedAt: new Date().toISOString(),
+        familyMembers,
+        holdings,
+        ledgerEvents,
+      };
+      const encryptedBlob = await encryptJson(backupData, password);
+      const jsonStr = JSON.stringify(encryptedBlob, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `growurdhan_vault_backup_${new Date().toISOString().split('T')[0]}.kosha`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setNotification({
+        type: 'success',
+        message: 'Encrypted backup exported successfully.',
+      });
+    } catch (err: any) {
+      setNotification({
+        type: 'error',
+        message: err?.message || 'Failed to export backup.',
+      });
+    }
   };
 
-  // Restore backup
+  // Restore backup (Encrypted or Legacy Unencrypted)
   const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = event => {
+    reader.onload = async event => {
       const content = event.target?.result as string;
-      const success = importBackupJson(content);
-      if (success) {
-        setNotification({
-          type: 'success',
-          message: 'Vault successfully restored from local backup file.',
-        });
-      } else {
+      try {
+        const parsed = JSON.parse(content);
+        if (isEncryptedBlob(parsed)) {
+          const password = window.prompt('Enter password to decrypt this .kosha backup:');
+          if (!password) return;
+
+          try {
+            const decrypted = await decryptJson<any>(parsed, password);
+            importBackupJson(decrypted);
+            setNotification({
+              type: 'success',
+              message: 'Vault successfully restored from encrypted backup.',
+            });
+          } catch (err) {
+            setNotification({
+              type: 'error',
+              message: 'Wrong password, or this file has been altered. Nothing was changed.',
+            });
+          }
+        } else {
+          importBackupJson(parsed);
+          setNotification({
+            type: 'warning',
+            message: 'This is an older unencrypted backup. Your next export will be encrypted.',
+          });
+        }
+      } catch (err) {
         setNotification({
           type: 'error',
           message: 'Error: Failed to parse backup file. Please ensure it is a valid backup file.',
@@ -197,6 +244,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
       }
     };
     reader.readAsText(file);
+    e.target.value = '';
   };
 
   // Calculate member holdings summary
@@ -357,7 +405,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
                         <span>PAN Card</span>
                       </div>
                       <div className="font-mono font-semibold text-slate-200 mt-0.5">
-                        {member.panCard || member.panMasked || (
+                        {member.panMasked || (
                           <span className="text-slate-500 font-sans text-xs italic">Not set</span>
                         )}
                       </div>
@@ -503,6 +551,33 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
               <RefreshCw className="w-3.5 h-3.5" />
               <span>Reset to Sample Data</span>
             </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Privacy Section */}
+      <div className="bg-slate-900/80 rounded-3xl p-6 border border-slate-800 backdrop-blur-md shadow-lg space-y-4">
+        <div className="border-b border-slate-800 pb-3">
+          <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
+            <Lock className="w-4 h-4 text-emerald-400" />
+            <span>Privacy</span>
+          </h2>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+          <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-1.5">
+            <div className="font-bold text-slate-200">Local Device Storage</div>
+            <div className="text-slate-400 leading-relaxed">Your data is stored on this computer only</div>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-1.5">
+            <div className="font-bold text-slate-200">Passphrase Protection</div>
+            <div className="text-slate-400 leading-relaxed">Backups you export are encrypted with your password</div>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-1.5">
+            <div className="font-bold text-rose-400">Zero-Knowledge Key</div>
+            <div className="text-slate-400 leading-relaxed">We cannot recover your password. If you lose it and lose your recovery sheet, your backups cannot be opened.</div>
           </div>
         </div>
       </div>

@@ -1,14 +1,4 @@
-import * as pdfjsLib from 'pdfjs-dist';
 import { AssetCategory, StatementImportRecord, StatementImportStatus } from '../types';
-
-// Configure pdfjs worker for Vite browser environment
-if (typeof window !== 'undefined') {
-  try {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '4.10.38'}/pdf.worker.min.mjs`;
-  } catch (e) {
-    console.warn('PDF.js worker initialization warning:', e);
-  }
-}
 
 export interface ParsedCASScheme {
   amc?: string;
@@ -122,6 +112,15 @@ export async function extractPdfTextInBrowser(
   arrayBuffer: ArrayBuffer,
   password?: string
 ): Promise<{ fullText: string; pageLines: string[][]; pagesCount: number }> {
+  const pdfjsLib = await import('pdfjs-dist');
+  if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
+    try {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '4.10.38'}/pdf.worker.min.mjs`;
+    } catch (e) {
+      console.warn('PDF.js worker initialization warning:', e);
+    }
+  }
+
   // Build candidate password variations (exact, uppercase, lowercase, no spaces)
   const candidatePasswords: string[] = [];
   const raw = (password || '').trim();

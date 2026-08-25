@@ -39,6 +39,7 @@ export const DocumentsScreen: React.FC = () => {
     importStatementRecords,
     cleanDuplicatesAndHeal,
     filteredHoldings,
+    derived,
   } = useKosha();
 
   const [activeTab, setActiveTab] = useState<'IMPORTER' | 'TAXES' | 'RECORD_BOOK'>('IMPORTER');
@@ -57,22 +58,11 @@ export const DocumentsScreen: React.FC = () => {
 
   // File & Password state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [pdfPassword, setPdfPassword] = useState<string>(activeTargetMember?.panCard ? activeTargetMember.panCard.toUpperCase() : '');
+  const [pdfPassword, setPdfPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [isParsing, setIsParsing] = useState<boolean>(false);
   const [parseError, setParseError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
-
-  // Auto-fill PAN password when target member changes
-  useEffect(() => {
-    if (activeTargetMember?.panCard) {
-      setPdfPassword(activeTargetMember.panCard.toUpperCase());
-    } else if (activeTargetMember?.panMasked && !activeTargetMember.panMasked.includes('*')) {
-      setPdfPassword(activeTargetMember.panMasked.toUpperCase());
-    } else {
-      setPdfPassword('');
-    }
-  }, [activeTargetMember]);
 
   // Clear staged file & results when changing member or clearing manually
   const handleTargetMemberChange = (newMemberId: string) => {
@@ -82,15 +72,7 @@ export const DocumentsScreen: React.FC = () => {
     setImportRecords([]);
     setParseError(null);
     setImportNotification(null);
-    
-    const newMember = familyMembers.find(m => m.id === newMemberId);
-    if (newMember?.panCard) {
-      setPdfPassword(newMember.panCard.toUpperCase());
-    } else if (newMember?.panMasked && !newMember.panMasked.includes('*')) {
-      setPdfPassword(newMember.panMasked.toUpperCase());
-    } else {
-      setPdfPassword('');
-    }
+    setPdfPassword('');
   };
 
   const handleClearFile = () => {
@@ -99,11 +81,7 @@ export const DocumentsScreen: React.FC = () => {
     setImportRecords([]);
     setParseError(null);
     setImportNotification(null);
-    if (activeTargetMember?.panCard) {
-      setPdfPassword(activeTargetMember.panCard.toUpperCase());
-    } else {
-      setPdfPassword('');
-    }
+    setPdfPassword('');
   };
 
   // When selectedMemberId changes in header filter, sync if not 'ALL'
@@ -314,6 +292,18 @@ export const DocumentsScreen: React.FC = () => {
     return computeTaxSummary(selectedFY);
   }, [selectedFY, computeTaxSummary]);
 
+  // Derived or Tax computation unmatched / conflict errors
+  const matchErrors = useMemo(() => {
+    const list: string[] = [];
+    if (derived?.errors && derived.errors.length > 0) {
+      list.push(...derived.errors);
+    }
+    if (taxSummary?.errors && taxSummary.errors.length > 0) {
+      list.push(...taxSummary.errors);
+    }
+    return Array.from(new Set(list));
+  }, [derived?.errors, taxSummary?.errors]);
+
   // Record book filter
   const filteredRecordBook = useMemo(() => {
     return ledgerEvents.filter(ev => {
@@ -370,6 +360,23 @@ export const DocumentsScreen: React.FC = () => {
         </div>
       </div>
 
+      {/* Amber Panel for Unmatched Records / Errors */}
+      {matchErrors.length > 0 && (
+        <div className="p-4 sm:p-5 rounded-2xl bg-amber-950/40 border border-amber-500/40 text-amber-200 space-y-2">
+          <div className="flex items-center gap-2 font-bold text-sm text-amber-300">
+            <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+            <span>Some records could not be matched</span>
+          </div>
+          <ul className="list-disc list-inside text-xs text-amber-200/90 space-y-1 pl-1 font-mono">
+            {matchErrors.map((errMsg, idx) => (
+              <li key={idx} className="leading-relaxed">
+                {errMsg}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* TAB 1: STATEMENT IMPORTER */}
       {activeTab === 'IMPORTER' && (
         <div className="space-y-6">
@@ -398,7 +405,7 @@ export const DocumentsScreen: React.FC = () => {
                 >
                   {familyMembers.map(member => (
                     <option key={member.id} value={member.id}>
-                      {member.name} ({member.relation}) {member.panCard ? `• PAN: ${member.panCard}` : ''}
+                      {member.name} ({member.relation}) {member.panMasked ? `• PAN: ${member.panMasked}` : ''}
                     </option>
                   ))}
                 </select>
@@ -515,7 +522,7 @@ export const DocumentsScreen: React.FC = () => {
                     </span>
                   </div>
                   <span className="text-[11px] text-slate-400">
-                    {activeTargetMember?.panCard ? `Active: ${activeTargetMember.name} (${activeTargetMember.panCard})` : 'Enter 10-digit PAN or custom password'}
+                    {activeTargetMember?.panMasked ? `Active: ${activeTargetMember.name} (${activeTargetMember.panMasked})` : 'Enter 10-digit PAN or custom password'}
                   </span>
                 </div>
 
@@ -555,34 +562,6 @@ export const DocumentsScreen: React.FC = () => {
                       </>
                     )}
                   </button>
-                </div>
-
-                {/* Quick-fill Family PAN Chips */}
-                <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                  <span className="text-[11px] text-slate-400 font-medium">Quick PAN:</span>
-                  {familyMembers.map(m => {
-                    const pan = m.panCard || (m.panMasked && !m.panMasked.includes('*') ? m.panMasked : '');
-                    if (!pan) return null;
-                    return (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => {
-                          setPdfPassword(pan);
-                          if (selectedFile) {
-                            processFile(selectedFile, pan, false);
-                          }
-                        }}
-                        className={`px-2 py-0.5 rounded-md text-[11px] font-mono border transition-colors cursor-pointer ${
-                          pdfPassword.toUpperCase() === pan.toUpperCase()
-                            ? 'bg-amber-400/20 border-amber-400/60 text-amber-300 font-bold'
-                            : 'bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-300'
-                        }`}
-                      >
-                        {m.name.split(' ')[0]}: {pan}
-                      </button>
-                    );
-                  })}
                 </div>
 
                 <p className="text-[11px] text-slate-400">
@@ -657,7 +636,7 @@ export const DocumentsScreen: React.FC = () => {
                     <div>
                       <span className="text-slate-500 block">Extracted PAN</span>
                       <span className="font-mono font-bold text-slate-200 mt-0.5 block">
-                        {parseResult.investorPan || activeTargetMember?.panCard || 'N/A'}
+                        {parseResult.investorPan || activeTargetMember?.panMasked || 'N/A'}
                       </span>
                     </div>
 

@@ -113,7 +113,7 @@ export const EmergencySheetModal: React.FC<EmergencySheetModalProps> = ({ isOpen
               <div className="text-xs font-bold text-slate-200 print:text-slate-900 mt-1 space-y-0.5">
                 {familyMembers.map(m => (
                   <div key={m.id} className="truncate">
-                    {m.name} ({m.relation}){m.panCard || m.panMasked ? ` · PAN: ${m.panCard || m.panMasked}` : ''}
+                    {m.name} ({m.relation}){m.panMasked ? ` · PAN: ${m.panMasked}` : ''}
                   </div>
                 ))}
               </div>

@@ -104,7 +104,6 @@ export interface FamilyMember {
   id: string;
   name: string;
   relation: FamilyRelation;
-  panCard?: string; // 10-digit PAN e.g. ABCPS1234K
   panMasked?: string;
   dateOfBirth?: string; // ISO date YYYY-MM-DD
   color: string;
@@ -112,6 +111,7 @@ export interface FamilyMember {
 }
 
 export type EventType =
+  | 'OPENING_BALANCE'
   | 'BUY'
   | 'SELL'
   | 'BONUS'
@@ -203,6 +203,7 @@ export interface PortfolioSummary {
 
 export interface TaxGainItem {
   id: string;
+  holdingId?: string;
   holdingName: string;
   category: AssetCategory;
   saleDate: string;

@@ -43,11 +43,23 @@ export function longTermDays(category: AssetCategory): number {
   }
 }
 
-function daysBetween(fromIso: string, toIso: string): number {
-  const a = Date.parse(fromIso);
-  const b = Date.parse(toIso);
-  if (isNaN(a) || isNaN(b)) return 0;
-  return Math.floor((b - a) / 86400000);
+/**
+ * Days between two ISO dates, parsed as calendar dates.
+ * Deliberately avoids Date.parse on bare YYYY-MM-DD, which is UTC-anchored
+ * and shifts by a day in negative-offset timezones.
+ */
+export function calendarDays(fromIso: string, toIso: string): number {
+  const a = toUTCDays(fromIso);
+  const b = toUTCDays(toIso);
+  if (a === null || b === null) return 0;
+  return b - a;
+}
+
+function toUTCDays(iso: string): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!m) return null;
+  const ms = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return Math.floor(ms / 86400000);
 }
 
 /**
@@ -65,7 +77,7 @@ export function foldHolding(
   );
 
   const precedence: Record<string, number> = {
-    BUY: 1, BONUS: 2, SPLIT: 3, CORRECTION: 4,
+    OPENING_BALANCE: 0, BUY: 1, BONUS: 2, SPLIT: 3, CORRECTION: 4,
     SELL: 5, DIVIDEND: 6, INTEREST: 7,
     VALUATION_UPDATE: 8, REPAYMENT: 9,
   };
@@ -89,8 +101,8 @@ export function foldHolding(
     const unit = BigInt(ev.unitPriceMinor || '0');
     const charges = BigInt(ev.chargesMinor || '0');
 
-    if (ev.eventType === 'BUY') {
-      if (qty <= 0n) { errors.push(`BUY ${ev.id} has no quantity`); continue; }
+    if (ev.eventType === 'BUY' || ev.eventType === 'OPENING_BALANCE') {
+      if (qty <= 0n) { errors.push(`${ev.eventType} ${ev.id} has no quantity`); continue; }
       parcels.push({
         eventId: ev.id,
         purchaseDate: ev.eventDate,
@@ -100,8 +112,6 @@ export function foldHolding(
         totalCostMinor: (qty * unit) / QTY_SCALE + charges,
       });
     } else if (ev.eventType === 'BONUS') {
-      // Bonus units carry nil cost and KEEP the original acquisition date
-      // of the parcel they attach to (SRS-COR-003).
       if (qty <= 0n) continue;
       const earliest = parcels.find(p => p.remainingQtyScaled > 0n);
       parcels.push({
@@ -113,7 +123,6 @@ export function foldHolding(
         totalCostMinor: 0n,
       });
     } else if (ev.eventType === 'SPLIT') {
-      // quantityScaled carries the ratio numerator, unitPriceMinor the denominator.
       const num = qty;
       const den = unit;
       if (num <= 0n || den <= 0n) { errors.push(`SPLIT ${ev.id} has a bad ratio`); continue; }
@@ -136,7 +145,7 @@ export function foldHolding(
         const take = p.remainingQtyScaled < toSell ? p.remainingQtyScaled : toSell;
         const cost = (take * p.purchasePriceMinor) / QTY_SCALE;
         const proceeds = (take * proceedsPerUnit) / QTY_SCALE;
-        const days = daysBetween(p.purchaseDate, ev.eventDate);
+        const days = calendarDays(p.purchaseDate, ev.eventDate);
 
         disposals.push({
           saleEventId: ev.id,
@@ -175,12 +184,23 @@ export function foldHolding(
   return { openParcels: open, totalQtyScaled: totalQty, totalCostMinor: totalCost, disposals, errors };
 }
 
-/** Indian financial year label for a date: '2025-26'. */
+/**
+ * Indian financial year label for an ISO date: '2025-26'.
+ * Parsed as a calendar date, not via Date.parse, so it is timezone-safe.
+ */
 export function financialYearOf(iso: string): string {
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return '';
-  const y = d.getFullYear();
-  const m = d.getMonth(); // 0 = Jan
-  const start = m >= 3 ? y : y - 1;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!m) return '';
+  const y = Number(m[1]);
+  const mo = Number(m[2]); // 1 = Jan
+  const start = mo >= 4 ? y : y - 1;
   return `${start}-${String((start + 1) % 100).padStart(2, '0')}`;
+}
+
+/** Assessment year for a financial year: FY 2025-26 -> AY26-27. */
+export function assessmentYearOf(iso: string): string {
+  const fy = financialYearOf(iso);
+  if (!fy) return '';
+  const start = Number(fy.split('-')[0]);
+  return `AY${String((start + 1) % 100).padStart(2, '0')}-${String((start + 2) % 100).padStart(2, '0')}`;
 }
