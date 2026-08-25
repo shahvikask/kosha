@@ -179,6 +179,7 @@ export interface Holding {
   lastPriceUpdated: string;
   isPriceStale: boolean;
   priceSource: string; // e.g. "NSE Live Close", "AMFI NAV", "RBI Gold Rate", "Self Valuation"
+  fmv31Jan2018Minor?: string;
   notes?: string;
   location?: string; // for Real Estate
   tag?: string; // e.g. "Retirement", "Child Higher Education", "Emergency", "Tax Saving", or Family Member tag

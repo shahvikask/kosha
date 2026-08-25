@@ -12,9 +12,10 @@ import {
 import { INITIAL_FAMILY_MEMBERS, INITIAL_HOLDINGS, INITIAL_LEDGER_EVENTS } from '../data/initialData';
 import { MoneyEngine, MONEY_SCALE, QTY_SCALE } from '../lib/money';
 import { xirr, buildCashFlows, totalGainPercent } from '../lib/returns';
-import { foldHolding, financialYearOf } from '../lib/lots';
+import { foldHolding, financialYearOf, assessmentYearOf } from '../lib/lots';
 import { derivePositions, marketValueMinor, DerivedState } from '../lib/positions';
 import { encryptJson, decryptJson, isEncryptedBlob, generateRecoveryKey, maskPan, WrongPassphraseError } from '../lib/vault';
+import { ruleSetFor, classifyGain, grandfatheredCostMinor, applyRateMinor } from '../lib/taxRules';
 
 interface KoshaContextType {
   familyMembers: FamilyMember[];
@@ -512,6 +513,28 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const computeTaxSummary = (financialYear: string): TaxSummary => {
+    const sampleDate = `${financialYear.split('-')[0]}-06-01`;
+    const assessmentYear = assessmentYearOf(sampleDate);
+    const rules = ruleSetFor(assessmentYear);
+    if (!rules) {
+      return {
+        financialYear,
+        ltcgEquityTotalMinor: 0n,
+        ltcgEquityExemptionMinor: 0n,
+        ltcgEquityTaxableMinor: 0n,
+        ltcgEquityTaxMinor: 0n,
+        stcgEquityTotalMinor: 0n,
+        stcgEquityTaxMinor: 0n,
+        debtSlabGainsMinor: 0n,
+        sgbExemptGainsMinor: 0n,
+        dividendIncomeMinor: 0n,
+        interestIncomeMinor: 0n,
+        totalEstimatedTaxMinor: 0n,
+        records: [],
+        errors: [`Tax rules for ${assessmentYear} are not available. This year cannot be computed.`],
+      };
+    }
+
     // 1. Group filteredEvents by holdingId
     const eventsByHolding = new Map<string, LedgerEvent[]>();
     for (const ev of filteredEvents) {
@@ -549,32 +572,28 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const holding = holdingMap.get(disposal.holdingId);
       const category: AssetCategory = holding ? holding.category : 'EQUITY';
 
-      let taxType: TaxGainItem['taxType'] = 'DEBT_SLAB';
-      let applicableRate = 'Slab rate';
+      const taxType = classifyGain(category, holding?.subCategory, disposal.isLongTerm);
 
-      if (category === 'EQUITY' || category === 'MUTUAL_FUND') {
-        if (disposal.isLongTerm) {
-          taxType = 'LTCG_EQUITY';
-          applicableRate = '12.5% (above ₹1.25L exemption)';
-        } else {
-          taxType = 'STCG_EQUITY';
-          applicableRate = '20% under Sec 111A';
-        }
-      } else if (category === 'GOLD_SGB') {
-        taxType = 'SGB_EXEMPT';
+      let applicableRate = 'Your slab rate — we cannot compute this';
+      if (taxType === 'LTCG_EQUITY') {
+        applicableRate = '12.5% (above ₹1.25L exemption)';
+      } else if (taxType === 'STCG_EQUITY') {
+        applicableRate = '20% under Sec 111A';
+      } else if (taxType === 'SGB_EXEMPT') {
         applicableRate = 'Exempt Sec 47(ix)';
-      } else if (category === 'REAL_ESTATE') {
-        taxType = 'REAL_ESTATE_LTCG';
+      } else if (taxType === 'REAL_ESTATE_LTCG') {
         applicableRate = '12.5% / 20%';
       } else {
-        taxType = 'DEBT_SLAB';
-        applicableRate = 'Slab rate';
+        applicableRate = 'Your slab rate — we cannot compute this';
       }
 
-      let estimatedTaxMinor = 0n;
-      if (taxType === 'STCG_EQUITY') {
-        estimatedTaxMinor = disposal.gainMinor > 0n ? (disposal.gainMinor * 20n) / 100n : 0n;
-      }
+      const fmv = holding?.fmv31Jan2018Minor ? BigInt(holding.fmv31Jan2018Minor) : null;
+      const effectiveCost = grandfatheredCostMinor(
+        rules, disposal.purchaseDate, disposal.costMinor, disposal.proceedsMinor, fmv);
+      const gainMinor = disposal.proceedsMinor - effectiveCost;
+
+      const estimatedTaxMinor = taxType === 'STCG_EQUITY'
+        ? applyRateMinor(gainMinor, rules.stcgEquityRateBasisPoints) : 0n;
 
       return {
         id: `${disposal.saleEventId}_${disposal.purchaseEventId}_${idx}`,
@@ -587,8 +606,8 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         holdingDays: disposal.holdingDays,
         saleQuantity: Number(disposal.qtyScaled) / 100000000,
         saleAmountMinor: disposal.proceedsMinor,
-        buyCostMinor: disposal.costMinor,
-        gainMinor: disposal.gainMinor,
+        buyCostMinor: effectiveCost,
+        gainMinor,
         estimatedTaxMinor,
         applicableRate,
       };
@@ -612,14 +631,14 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     }
 
-    const ltcgEquityExemptionMinor = 1250000000n; // ₹1,25,000 * 10,000 minor units
+    const ltcgEquityExemptionMinor = BigInt(rules.ltcgEquityExemptionRupees) * 10000n;
     const ltcgEquityTaxableMinor = ltcgEquityTotalMinor > ltcgEquityExemptionMinor
       ? ltcgEquityTotalMinor - ltcgEquityExemptionMinor
       : 0n;
-    const ltcgEquityTaxMinor = (ltcgEquityTaxableMinor * 125n) / 1000n;
+    const ltcgEquityTaxMinor = applyRateMinor(ltcgEquityTaxableMinor, rules.ltcgEquityRateBasisPoints);
 
     const stcgEquityTaxableBase = stcgEquityTotalMinor > 0n ? stcgEquityTotalMinor : 0n;
-    const stcgEquityTaxMinor = (stcgEquityTaxableBase * 20n) / 100n;
+    const stcgEquityTaxMinor = applyRateMinor(stcgEquityTaxableBase, rules.stcgEquityRateBasisPoints);
 
     // Sum actual DIVIDEND and INTEREST events in this financial year
     let dividendIncomeMinor = 0n;
