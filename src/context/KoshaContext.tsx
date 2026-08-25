@@ -16,6 +16,8 @@ import { foldHolding, financialYearOf, assessmentYearOf } from '../lib/lots';
 import { derivePositions, marketValueMinor, DerivedState } from '../lib/positions';
 import { encryptJson, decryptJson, isEncryptedBlob, generateRecoveryKey, maskPan, WrongPassphraseError } from '../lib/vault';
 import { ruleSetFor, classifyGain, grandfatheredCostMinor, applyRateMinor } from '../lib/taxRules';
+import { buildTree, TreeL1, HoldingPlacement } from '../lib/lookthrough';
+import { ExposureNode } from '../lib/taxonomy';
 
 interface KoshaContextType {
   familyMembers: FamilyMember[];
@@ -26,6 +28,7 @@ interface KoshaContextType {
   ledgerEvents: LedgerEvent[];
   filteredEvents: LedgerEvent[];
   derived: DerivedState;
+  taxonomy: { tree: TreeL1[]; exposureTotals: Map<ExposureNode, bigint>; placements: HoldingPlacement[] };
   isPrivacyMasked: boolean;
   setIsPrivacyMasked: (val: boolean | ((prev: boolean) => boolean)) => void;
   sgbValuationMode: 'MARKET_TRADED' | 'RBI_BENCHMARK';
@@ -279,6 +282,16 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     () => derivePositions(filteredEvents, filteredHoldings),
     [filteredEvents, filteredHoldings]
   );
+
+  const taxonomy = useMemo(() => {
+    const valueOf = (h: Holding): bigint => {
+      const qty = derived.positions.get(h.id)?.quantityScaled ?? 0n;
+      const price = BigInt(h.currentPriceMinor || '0');
+      const val = (qty * price) / QTY_SCALE;
+      return val < 0n ? -val : val;
+    };
+    return buildTree(filteredHoldings, valueOf);
+  }, [filteredHoldings, derived]);
 
   // Computed Portfolio Summary using scaled integer arithmetic
   const summary = useMemo<PortfolioSummary>(() => {
@@ -863,6 +876,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         ledgerEvents,
         filteredEvents,
         derived,
+        taxonomy,
         isPrivacyMasked,
         setIsPrivacyMasked,
         sgbValuationMode,

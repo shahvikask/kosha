@@ -180,6 +180,12 @@ export interface Holding {
   isPriceStale: boolean;
   priceSource: string; // e.g. "NSE Live Close", "AMFI NAV", "RBI Gold Rate", "Self Valuation"
   fmv31Jan2018Minor?: string;
+  // Annex C two-axis taxonomy. Optional: inferred when absent.
+  exposureNode?: string;   // ExposureNode
+  l2Node?: string;
+  wrapper?: string;        // Wrapper
+  /** Hybrid look-through. Percentages must sum to 100. */
+  allocationSplit?: { exposure: string; percent: number }[];
   notes?: string;
   location?: string; // for Real Estate
   tag?: string; // e.g. "Retirement", "Child Higher Education", "Emergency", "Tax Saving", or Family Member tag

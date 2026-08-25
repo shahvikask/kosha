@@ -3,6 +3,8 @@ import { derivePositions, openingBalanceFor, marketValueMinor } from './position
 import { ruleSetFor, classifyGain, isEquityOriented, grandfatheredCostMinor, applyRateMinor } from './taxRules';
 import { encryptJson, decryptJson, isEncryptedBlob, generateRecoveryKey, maskPan, WrongPassphraseError } from './vault';
 import { xirr } from './returns';
+import { classifyHolding, EXPOSURES, WRAPPERS, exposureLabel, l2Label } from './taxonomy';
+import { resolveSplit, apportion, buildTree, isHybrid, activeWrappers } from './lookthrough';
 import { LedgerEvent, Holding } from '../types';
 
 let pass=0, fail=0;
@@ -80,6 +82,102 @@ eq('loss included', Number(rl.disposals[0].gainMinor)/1e4, -2000);
 const ro=foldHolding([ev('o1','BUY','2024-01-01',10,100),ev('o2','SELL','2024-06-01',50,120)],'EQUITY');
 eq('oversell flagged', ro.errors.length>0, true);
 eq('xirr null on no outflow', xirr([{date:'2024-01-01',amount:100},{date:'2025-01-01',amount:100}]), null);
+
+
+const H=(name:string,cat:any,sub:string,val=100000,extra:Partial<Holding>={}):Holding=>({
+  id:'h'+name.slice(0,6),name,symbolOrFolio:'X',category:cat,subCategory:sub,ownerId:'f1',
+  quantityScaled:'100000000',averageCostPerUnitMinor:String(val*10000),
+  currentPriceMinor:String(val*10000),lastPriceUpdated:'2026-08-01T00:00:00Z',
+  isPriceStale:false,priceSource:'t',...extra});
+
+const P=(h:Holding)=>classifyHolding(h);
+const place=(h:Holding)=>`${P(h).exposure}/${P(h).l2}/${P(h).wrapper}`;
+
+console.log('--- A. Two axes are orthogonal (the whole point) ---');
+eq('equity direct',    place(H('Reliance Industries','EQUITY','Large Cap Conglomerate')), 'EQUITY/LARGE_CAP/DIRECT');
+eq('equity via MF',    place(H('HDFC Flexi Cap Fund','MUTUAL_FUND','Flexi Cap Fund')),    'EQUITY/MULTI_FLEXI/MF');
+eq('equity via index', place(H('Nifty 50 Index Fund','MUTUAL_FUND','Index Fund')),        'EQUITY/LARGE_CAP/INDEX_ETF');
+eq('equity via SIF',   place(H('Quant SIF Equity Long-Short','SPECIALISED','SIF Strategy')), 'EQUITY/LARGE_CAP/SIF');
+eq('DEBT via MF',      place(H('SBI Gilt Fund','MUTUAL_FUND','Gilt Fund')),               'DEBT/GOVERNMENT/MF');
+eq('DEBT via SIF',     place(H('Edelweiss SIF Debt Long-Short','SPECIALISED','SIF')),     'DEBT/DURATION/SIF');
+eq('DEBT via deposit', place(H('HDFC Bank FD','FIXED_INCOME','Bank Term Deposit')),       'DEBT/DEPOSITS/DEPOSIT');
+console.log('   ^ gilt fund and debt SIF now HAVE a home. This was impossible before.');
+
+console.log('\n--- B. Annex C placement rules ---');
+eq('SGB -> GOLD not DEBT', P(H('SGB 2019-20 Series V','GOLD_SGB','RBI Sovereign Gold Bond')).exposure, 'GOLD');
+eq('SGB wrapper DIRECT',   P(H('SGB 2019-20 Series V','GOLD_SGB','RBI Sovereign Gold Bond')).wrapper, 'DIRECT');
+eq('REIT -> PROPERTY not EQUITY', P(H('Embassy Office Parks REIT','EQUITY','REIT')).exposure, 'PROPERTY');
+eq('InvIT -> PROPERTY',    P(H('IndiGrid InvIT','EQUITY','InvIT')).exposure, 'PROPERTY');
+eq('bullion physical',     place(H('Physical Gold Bars','GOLD_SGB','Physical 24 Karat Bullion')), 'GOLD/GOLD/PHYSICAL');
+eq('PPF -> DEBT/small savings', place(H('PPF Account','FIXED_INCOME','Govt Small Savings (EEE)')), 'DEBT/SMALL_SAVINGS/SMALL_SAVINGS');
+eq('EPF wrapper RETIREMENT', P(H('EPF Balance','FIXED_INCOME','Retirement Provident Fund')).wrapper, 'RETIREMENT');
+eq('liquid fund -> CASH',  P(H('Liquid Contingency','CASH_BANK','Liquid Contingency Fund')).exposure, 'CASH');
+eq('home loan',            place(H('SBI Home Loan','LIABILITY','Home Loan Overdraft')), 'LIABILITY/HOME_LOAN/DIRECT');
+eq('term plan -> PURE',    place(H('HDFC Click 2 Protect Term Plan','SPECIALISED','Term Insurance')), 'PROTECTION/PURE/INSURANCE');
+eq('ESOP',                 place(H('Employer ESOP Grant','SPECIALISED','ESOP')), 'PRIVATE/ESOP/DIRECT');
+
+console.log('\n--- C. Look-through: listed once, counted proportionally ---');
+const bal = H('HDFC Balanced Advantage Fund','MUTUAL_FUND','Balanced Advantage',142000);
+const s = resolveSplit(bal, P(bal));
+eq('is hybrid', isHybrid(s), true);
+eq('estimated flag', s.estimated, true);
+const ap = apportion(1420000000n, s);   // Rs 1,42,000
+eq('equity slice Rs', Number(ap.get('EQUITY'))/1e4, 92300);
+eq('debt slice Rs',   Number(ap.get('DEBT'))/1e4, 49700);
+eq('sums exactly',    Number((ap.get('EQUITY')!)+(ap.get('DEBT')!))/1e4, 142000);
+
+console.log('\n--- D. No paisa lost on awkward splits ---');
+const ma = H('Multi Asset Fund','MUTUAL_FUND','Multi Asset Allocation');
+const ms = resolveSplit(ma, P(ma));
+const odd = 1000000000000n + 7n;  // deliberately indivisible
+const mp = apportion(odd, ms);
+let tot=0n; mp.forEach(v=>tot+=v);
+eq('3-way split exact', tot === odd, true);
+eq('3 slices', mp.size, 3);
+
+console.log('\n--- E. User split overrides the estimate ---');
+const custom = H('My Hybrid','MUTUAL_FUND','Balanced Advantage',100000,
+  {allocationSplit:[{exposure:'EQUITY',percent:70},{exposure:'DEBT',percent:30}]});
+const cs = resolveSplit(custom, P(custom));
+eq('not estimated', cs.estimated, false);
+const cap = apportion(1000000000n, cs);
+eq('user 70%', Number(cap.get('EQUITY'))/1e4, 70000);
+
+console.log('\n--- F. Explicit placement beats inference ---');
+const forced = H('Weird Name','EQUITY','',100000,{exposureNode:'GOLD',l2Node:'SILVER',wrapper:'PHYSICAL'});
+eq('explicit wins', place(forced), 'GOLD/SILVER/PHYSICAL');
+eq('flagged not inferred', P(forced).inferred, false);
+eq('inference flagged', P(H('Reliance','EQUITY','Large Cap')).inferred, true);
+
+console.log('\n--- G. Tree building ---');
+const portfolio = [
+  H('Reliance Industries','EQUITY','Large Cap Conglomerate',389000),
+  H('HDFC Balanced Advantage Fund','MUTUAL_FUND','Balanced Advantage',142000),
+  H('SGB 2019-20 Series V','GOLD_SGB','RBI Sovereign Gold Bond',412000),
+  H('SBI Gilt Fund','MUTUAL_FUND','Gilt Fund',200000),
+  H('Nifty 50 Index Fund','MUTUAL_FUND','Index Fund',112000),
+];
+const { tree, exposureTotals } = buildTree(portfolio, h => BigInt(h.currentPriceMinor));
+const eqNode = tree.find(t=>t.id==='EQUITY')!;
+eq('EQUITY total incl 65% of hybrid', Number(exposureTotals.get('EQUITY'))/1e4, 389000+112000+92300);
+eq('DEBT total incl 35% of hybrid',   Number(exposureTotals.get('DEBT'))/1e4, 200000+49700);
+eq('GOLD total', Number(exposureTotals.get('GOLD'))/1e4, 412000);
+eq('hybrid listed ONCE under EQUITY',
+   tree.flatMap(t=>t.l2).flatMap(l=>l.rows).filter(r=>r.holding.name.includes('Balanced')).length, 1);
+eq('empty nodes flagged', tree.find(t=>t.id==='PROTECTION')!.hasHoldings, false);
+
+console.log('\n--- H. Empty wrappers hidden ---');
+const lc = eqNode.l2.find(n=>n.id==='LARGE_CAP')!;
+const order = WRAPPERS.map(w=>w.id);
+const active = activeWrappers(lc.rows, order);
+eq('only wrappers in use', active.join(','), 'DIRECT,INDEX_ETF');
+eq('not all 11 shown', active.length < 11, true);
+
+console.log('\n--- I. Structure sanity ---');
+eq('8 exposure nodes', EXPOSURES.length, 8);
+eq('11 wrappers', WRAPPERS.length, 11);
+eq('labels resolve', `${exposureLabel('DEBT')} / ${l2Label('DEBT','GOVERNMENT')}`, 'Debt & fixed income / Government');
+
 
 console.log('\n--- H. Encryption ---');
 (async()=>{

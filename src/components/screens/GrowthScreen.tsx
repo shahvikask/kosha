@@ -1,7 +1,9 @@
+// FILE: src/components/screens/GrowthScreen.tsx
 import React, { useState, useMemo } from 'react';
 import { useKosha } from '../../context/KoshaContext';
 import { MoneyEngine } from '../../lib/money';
 import { PrivacyValue } from '../common/PrivacyValue';
+import { ExposureNode, exposureLabel } from '../../lib/taxonomy';
 import {
   TrendingUp,
   HelpCircle,
@@ -27,7 +29,7 @@ import {
 } from 'recharts';
 
 export const GrowthScreen: React.FC = () => {
-  const { summary, filteredHoldings, sgbValuationMode } = useKosha();
+  const { summary, filteredHoldings, sgbValuationMode, taxonomy } = useKosha();
   const [isExplainerOpen, setIsExplainerOpen] = useState(false);
   const [selectedTimeline, setSelectedTimeline] = useState<'3Y' | '5Y' | 'ALL'>('ALL');
 
@@ -90,91 +92,43 @@ export const GrowthScreen: React.FC = () => {
     ];
   }, [hasHoldings, totalInvestedNum, totalAssetsNum]);
 
-  // Asset class performance dynamically computed from actual filtered holdings
-  const assetPerformance = useMemo(() => {
-    const categoriesMap: Record<string, { name: string; color: string; riskNote: string; holdings: typeof filteredHoldings }> = {
-      EQUITY: {
-        name: 'Indian Equities (Direct)',
-        color: '#38bdf8',
-        riskNote: 'High Growth · Volatile',
-        holdings: [],
-      },
-      MUTUAL_FUND: {
-        name: 'Mutual Funds & ETFs',
-        color: '#2dd4bf',
-        riskNote: 'Core Systematic Compounding',
-        holdings: [],
-      },
-      GOLD_SGB: {
-        name: 'Gold & Sovereign Gold Bonds (SGB)',
-        color: '#fbbf24',
-        riskNote: 'Inflation Hedge + 2.5% Tax-free Coupon',
-        holdings: [],
-      },
-      FIXED_INCOME: {
-        name: 'Govt Schemes & Fixed Income (PPF/EPF/FD)',
-        color: '#4ade80',
-        riskNote: 'Guaranteed Sovereign Safety',
-        holdings: [],
-      },
-      REAL_ESTATE: {
-        name: 'Real Estate & Properties',
-        color: '#a855f7',
-        riskNote: 'Tangible Physical Assets & Rental Yield',
-        holdings: [],
-      },
-      SPECIALISED: {
-        name: 'Specialised & Alternative (AIF/PMS)',
-        color: '#818cf8',
-        riskNote: 'Private Equity & Alternative Strategies',
-        holdings: [],
-      },
-    };
+  // Two-axis apportioned allocation calculation (TASK 6A)
+  const { nonZeroAllocations, hasEstimatedSplit, totalApportionedMinor } = useMemo(() => {
+    let totalMinor = 0n;
+    const items: { node: ExposureNode; label: string; valueMinor: bigint; percent: number }[] = [];
 
-    filteredHoldings.forEach(h => {
-      if (categoriesMap[h.category]) {
-        categoriesMap[h.category].holdings.push(h);
+    // Exclude LIABILITY from positive allocation breakdown
+    taxonomy.exposureTotals.forEach((valMinor, node) => {
+      if (node !== 'LIABILITY' && valMinor > 0n) {
+        totalMinor += valMinor;
       }
     });
 
-    return Object.entries(categoriesMap)
-      .map(([catKey, catData]) => {
-        let catVal = 0;
-        let catCost = 0;
-        const topHoldingsNames = catData.holdings.slice(0, 3).map(h => h.name);
-
-        catData.holdings.forEach(h => {
-          const qty = Number(h.quantityScaled || '0') / 10000;
-          let price = Number(h.currentPriceMinor || '0') / 100;
-          if (h.category === 'GOLD_SGB' && sgbValuationMode === 'RBI_BENCHMARK' && h.benchmarkPriceMinor) {
-            price = Number(h.benchmarkPriceMinor) / 100;
-          }
-          const cost = Number(h.averageCostPerUnitMinor || '0') / 100;
-          catVal += qty * price;
-          catCost += qty * (cost > 0 ? cost : price);
-        });
-
-        const count = catData.holdings.length;
-        const gainPct = catCost > 0 ? ((catVal - catCost) / catCost) * 100 : 0;
-
-        let comment = 'No active holdings in this category';
-        if (count > 0) {
-          comment = `${count} holding${count > 1 ? 's' : ''}: ${topHoldingsNames.join(', ')}`;
+    if (totalMinor > 0n) {
+      taxonomy.exposureTotals.forEach((valMinor, node) => {
+        if (node !== 'LIABILITY' && valMinor > 0n) {
+          const percent = (Number(valMinor) / Number(totalMinor)) * 100;
+          items.push({
+            node,
+            label: exposureLabel(node),
+            valueMinor: valMinor,
+            percent,
+          });
         }
+      });
+    }
 
-        return {
-          name: catData.name,
-          annualizedReturn: Math.round(gainPct * 10) / 10,
-          riskNote: catData.riskNote,
-          color: catData.color,
-          comment,
-          count,
-          valuation: catVal,
-        };
-      })
-      .filter(item => hasHoldings ? item.count > 0 : true)
-      .slice(0, 4);
-  }, [filteredHoldings, sgbValuationMode, hasHoldings]);
+    // Sort descending by value
+    items.sort((a, b) => Number(b.valueMinor - a.valueMinor));
+
+    const estimated = taxonomy.placements.some(p => p.split.estimated && p.split.slices.length > 1);
+
+    return {
+      nonZeroAllocations: items,
+      hasEstimatedSplit: estimated,
+      totalApportionedMinor: totalMinor,
+    };
+  }, [taxonomy]);
 
   const totalDividendsMinor = summary.totalDividendsInterestMinor;
   const realisedGainsMinor = summary.totalRealisedGainsMinor || 0n;
@@ -402,42 +356,59 @@ export const GrowthScreen: React.FC = () => {
         </div>
       </div>
 
-      {/* Asset Class Performance Matrix Bento Tile */}
-      <div className="bg-slate-900/80 rounded-3xl p-6 border border-slate-800 backdrop-blur-md shadow-lg space-y-4">
+      {/* Allocation Breakdown Bento Tile (TASK 6A) */}
+      <div className="bg-slate-900/80 rounded-3xl p-6 border border-slate-800 backdrop-blur-md shadow-lg space-y-5">
         <div>
-          <h2 className="text-base font-bold text-slate-100">Asset Class Returns</h2>
-          <p className="text-xs text-slate-400">Annualized return contribution by each investment pillar</p>
+          <h2 className="text-base font-bold text-slate-100">Asset Allocation</h2>
+          <p className="text-xs text-slate-400">
+            Proportionally apportioned asset distribution
+          </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {assetPerformance.map(item => (
-            <div
-              key={item.name}
-              className="p-4 rounded-2xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition-all space-y-2"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div
-                    className="w-3 h-3 rounded-full flex-shrink-0 ring-2 ring-slate-800"
-                    style={{ backgroundColor: item.color }}
+        {nonZeroAllocations.length === 0 ? (
+          <div className="p-8 text-center text-xs text-slate-500">
+            No active investments to display.
+          </div>
+        ) : nonZeroAllocations.length === 1 ? (
+          /* Single Non-Zero Exposure Rule */
+          <div className="p-6 rounded-2xl bg-slate-950/60 border border-slate-800/80 text-sm font-medium text-slate-200">
+            All of your money is in shares and funds.
+          </div>
+        ) : (
+          /* Horizontal Bar Chart for 2+ Exposures */
+          <div className="space-y-4">
+            {nonZeroAllocations.map(item => (
+              <div key={item.node} className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs sm:text-sm">
+                  <div className="font-semibold text-slate-200 flex items-center gap-2">
+                    <span>{item.label}</span>
+                    <span className="text-slate-400 font-normal">({item.percent.toFixed(1)}%)</span>
+                  </div>
+                  <PrivacyValue
+                    minor={item.valueMinor}
+                    className="font-bold text-slate-100"
+                    includePaise={false}
                   />
-                  <span className="font-bold text-sm text-slate-100">{item.name}</span>
                 </div>
-                <span className={`font-bold text-base ${item.annualizedReturn >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {item.annualizedReturn > 0 ? `+${item.annualizedReturn}%` : `${item.annualizedReturn}%`} p.a.
-                </span>
-              </div>
 
-              <div className="flex items-center justify-between text-xs text-slate-400">
-                <span>{item.riskNote}</span>
+                {/* Bar */}
+                <div className="h-3 w-full bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+                  <div
+                    className="h-full bg-amber-400 rounded-full transition-all"
+                    style={{ width: `${Math.max(item.percent, 1)}%` }}
+                  />
+                </div>
               </div>
+            ))}
+          </div>
+        )}
 
-              <div className="text-xs text-slate-300 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800/80">
-                {item.comment}
-              </div>
-            </div>
-          ))}
-        </div>
+        {/* Footnote if estimated split present */}
+        {hasEstimatedSplit && (
+          <div className="pt-2 border-t border-slate-800/80 text-xs text-slate-400 leading-relaxed">
+            Some funds hold a mix. We have estimated the split where the fund has not published its holdings.
+          </div>
+        )}
       </div>
 
     </div>
