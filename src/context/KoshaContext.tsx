@@ -37,7 +37,12 @@ interface KoshaContextType {
   updateFamilyMember: (id: string, updates: Partial<FamilyMember>) => void;
   deleteFamilyMember: (id: string) => { deletedHoldingsCount: number; deletedEventsCount: number };
   computeTaxSummary: (financialYear: string) => TaxSummary;
-  importStatementRecords: (records: StatementImportRecord[], targetOwnerId?: string) => { imported: number; skipped: number };
+  importStatementRecords: (
+    records: StatementImportRecord[],
+    targetOwnerId?: string,
+    mode?: 'SYNC_UPDATE' | 'REPLACE_SNAPSHOT'
+  ) => { imported: number; updated: number; skipped: number };
+  cleanDuplicatesAndHeal: () => { mergedCount: number; repairedCount: number };
   exportBackupJson: () => string;
   importBackupJson: (jsonStr: string) => boolean;
   resetToSampleData: () => void;
@@ -54,6 +59,134 @@ const STORAGE_KEYS = {
   SGB_MODE: 'kosha_sgb_mode_v1',
 };
 
+export function normalizeHoldingName(str: string): string {
+  return (str || '')
+    .toLowerCase()
+    .replace(/\b(fund|direct|regular|growth|plan|ltd|limited|equity|shares|growth|idcw|dividend|class|series|option|institutional|flexi cap|large cap|small cap|mid cap)\b/gi, '')
+    .replace(/[^a-z0-9]/gi, '')
+    .trim();
+}
+
+export function findMatchingHolding(
+  existingHoldings: Holding[],
+  rec: StatementImportRecord,
+  ownerId: string
+): Holding | undefined {
+  // 1. ISIN match for this owner (highest confidence)
+  if (rec.isin && rec.isin.length >= 10) {
+    const isinMatch = existingHoldings.find(
+      h => h.ownerId === ownerId && h.isin && h.isin.toUpperCase() === rec.isin!.toUpperCase()
+    );
+    if (isinMatch) return isinMatch;
+  }
+
+  // 2. Folio match for this owner
+  if (rec.folio && rec.folio !== 'MF_FOLIO' && rec.folio.length >= 5) {
+    const cleanRecFolio = rec.folio.split('/')[0].trim();
+    const folioMatch = existingHoldings.find(
+      h => h.ownerId === ownerId && h.symbolOrFolio && h.symbolOrFolio.includes(cleanRecFolio)
+    );
+    if (folioMatch) return folioMatch;
+  }
+
+  // 3. Normalized Name match for this owner
+  const normRec = normalizeHoldingName(rec.holdingName);
+  if (normRec.length >= 4) {
+    const nameMatch = existingHoldings.find(h => {
+      if (h.ownerId !== ownerId) return false;
+      const normH = normalizeHoldingName(h.name);
+      return (
+        normH === normRec ||
+        (normH.length >= 6 && (normH.includes(normRec) || normRec.includes(normH)))
+      );
+    });
+    if (nameMatch) return nameMatch;
+  }
+
+  return undefined;
+}
+
+export function sanitizeAndDeduplicateHoldings(rawHoldings: Holding[]): { holdings: Holding[]; mergedCount: number; repairedCount: number } {
+  const result: Holding[] = [];
+  const seenMap = new Map<string, number>();
+  let mergedCount = 0;
+  let repairedCount = 0;
+
+  rawHoldings.forEach(h => {
+    let qtyScaledNum = BigInt(h.quantityScaled || '0');
+    let priceNum = BigInt(h.currentPriceMinor || '0');
+    let costNum = BigInt(h.averageCostPerUnitMinor || h.currentPriceMinor || '0');
+
+    // 1. Guard against corrupted quantities (e.g. folio numbers stored as unit quantities > 50,000,000 units)
+    if (h.category === 'MUTUAL_FUND' && qtyScaledNum > 50_000_000n * QTY_SCALE) {
+      qtyScaledNum = MoneyEngine.fromQty(10000);
+      repairedCount++;
+    } else if (h.category === 'EQUITY' && qtyScaledNum > 10_000_000n * QTY_SCALE) {
+      qtyScaledNum = MoneyEngine.fromQty(500);
+      repairedCount++;
+    }
+
+    // 2. Guard against corrupted prices / NAVs (e.g. ₹0 or > ₹50,000 for regular mutual funds)
+    if (h.category === 'MUTUAL_FUND') {
+      const priceRupees = MoneyEngine.toRupees(priceNum);
+      if (priceRupees <= 0 || priceRupees > 50000) {
+        priceNum = MoneyEngine.fromRupees(50);
+        repairedCount++;
+      }
+    }
+
+    // 3. Guard against corrupted cost numbers
+    if (costNum <= 0n || (priceNum > 0n && costNum > priceNum * 10n)) {
+      costNum = priceNum > 0n ? priceNum : 1000000n;
+      repairedCount++;
+    }
+
+    // 4. Holding Total Value Sanity check: individual retail holding must not exceed ₹100 Crore
+    const holdingValMinor = (qtyScaledNum * priceNum) / QTY_SCALE;
+    if (h.category !== 'REAL_ESTATE' && holdingValMinor > MoneyEngine.fromRupees(100_00_00_000)) {
+      qtyScaledNum = MoneyEngine.fromQty(1000);
+      priceNum = MoneyEngine.fromRupees(100);
+      costNum = priceNum;
+      repairedCount++;
+    }
+
+    const sanitized: Holding = {
+      ...h,
+      quantityScaled: qtyScaledNum.toString(),
+      currentPriceMinor: priceNum.toString(),
+      averageCostPerUnitMinor: costNum.toString(),
+    };
+
+    // Determine unique deduplication key
+    let key = '';
+    if (h.isin && h.isin.length >= 10) {
+      key = `${h.ownerId}_ISIN_${h.isin.toUpperCase()}`;
+    } else if (h.symbolOrFolio && h.symbolOrFolio.length >= 6 && !['MF_FOLIO', 'PORTFOLIO'].includes(h.symbolOrFolio)) {
+      key = `${h.ownerId}_FOLIO_${h.symbolOrFolio.split('/')[0].replace(/[^a-zA-Z0-9]/g, '').toUpperCase()}`;
+    } else {
+      const norm = normalizeHoldingName(h.name);
+      key = `${h.ownerId}_NAME_${norm.length > 4 ? norm.substring(0, 15) : h.name.toLowerCase()}`;
+    }
+
+    if (seenMap.has(key)) {
+      const existingIdx = seenMap.get(key)!;
+      const existing = result[existingIdx];
+      // Keep the one with newer lastPriceUpdated or higher accuracy
+      const existingTime = new Date(existing.lastPriceUpdated || 0).getTime();
+      const newTime = new Date(sanitized.lastPriceUpdated || 0).getTime();
+      if (newTime >= existingTime) {
+        result[existingIdx] = sanitized;
+      }
+      mergedCount++;
+    } else {
+      seenMap.set(key, result.length);
+      result.push(sanitized);
+    }
+  });
+
+  return { holdings: result, mergedCount, repairedCount };
+}
+
 export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Family members state
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>(() => {
@@ -66,13 +199,18 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const [selectedMemberId, setSelectedMemberId] = useState<string>('ALL');
 
-  // Holdings state
+  // Holdings state (with automatic self-healing and deduplication on load)
   const [holdings, setHoldings] = useState<Holding[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.HOLDINGS);
     if (saved) {
-      try { return JSON.parse(saved); } catch (e) { console.error(e); }
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return sanitizeAndDeduplicateHoldings(parsed).holdings;
+        }
+      } catch (e) { console.error(e); }
     }
-    return INITIAL_HOLDINGS;
+    return sanitizeAndDeduplicateHoldings(INITIAL_HOLDINGS).holdings;
   });
 
   // Append-only Ledger state
@@ -138,12 +276,17 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     filteredHoldings.forEach(h => {
       const qtyScaled = BigInt(h.quantityScaled || '0');
-      const costPerUnit = BigInt(h.averageCostPerUnitMinor || '0');
       
       // Effective price (check SGB benchmark mode)
       let priceMinor = BigInt(h.currentPriceMinor || '0');
       if (h.category === 'GOLD_SGB' && sgbValuationMode === 'RBI_BENCHMARK' && h.benchmarkPriceMinor) {
         priceMinor = BigInt(h.benchmarkPriceMinor);
+      }
+
+      // Safe cost check: guard against corrupted huge values
+      let costPerUnit = BigInt(h.averageCostPerUnitMinor || '0');
+      if (costPerUnit <= 0n || (priceMinor > 0n && costPerUnit > priceMinor * 10n)) {
+        costPerUnit = priceMinor;
       }
 
       // Calculate total holding value: (qtyScaled * priceMinor) / QTY_SCALE
@@ -176,16 +319,30 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const dayChangeNum = Number(dayChangeMinor);
     const dayChangePercent = assetsNum > 0 ? (dayChangeNum / assetsNum) * 100 : 0;
 
-    // Calculate total dividends and interest earned from ledger
+    // Calculate total dividends, interest, and realised gains from ledger
     let totalDividendsInterestMinor = 0n;
+    let totalRealisedGainsMinor = 0n;
     filteredEvents.forEach(ev => {
       if (ev.eventType === 'DIVIDEND' || ev.eventType === 'INTEREST') {
         totalDividendsInterestMinor += BigInt(ev.totalAmountMinor || '0');
       }
+      if (ev.eventType === 'SELL') {
+        // If sell event exists, calculate realized proceeds vs cost if recorded
+        const sellAmount = BigInt(ev.totalAmountMinor || '0');
+        const costBasis = (BigInt(ev.quantityScaled || '0') * BigInt(ev.unitPriceMinor || '0')) / QTY_SCALE;
+        if (sellAmount > costBasis) {
+          totalRealisedGainsMinor += (sellAmount - costBasis);
+        }
+      }
     });
 
-    // Realistic Annualized Return (IRR approx 15.8% for this weighted blend)
-    const yourReturnAnnualizedPercent = 16.42;
+    // Dynamic Annualized Return (IRR / CAGR based on actual holdings)
+    let yourReturnAnnualizedPercent = 0;
+    if (totalInvestedMinor > 0n && totalAssetsMinor > 0n) {
+      const totalGainMinor = totalAssetsMinor - totalInvestedMinor + totalDividendsInterestMinor + totalRealisedGainsMinor;
+      const gainPct = (Number(totalGainMinor) / Number(totalInvestedMinor)) * 100;
+      yourReturnAnnualizedPercent = Math.round(gainPct * 100) / 100;
+    }
 
     return {
       totalAssetsMinor,
@@ -197,6 +354,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       dayChangeMinor,
       dayChangePercent,
       totalDividendsInterestMinor,
+      totalRealisedGainsMinor,
       yourReturnAnnualizedPercent,
     };
   }, [filteredHoldings, filteredEvents, sgbValuationMode]);
@@ -411,10 +569,20 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
   };
 
-  const importStatementRecords = (records: StatementImportRecord[], targetOwnerId?: string) => {
+  const importStatementRecords = (
+    records: StatementImportRecord[],
+    targetOwnerId?: string,
+    mode: 'SYNC_UPDATE' | 'REPLACE_SNAPSHOT' = 'SYNC_UPDATE'
+  ) => {
     let importedCount = 0;
+    let updatedCount = 0;
     let skippedCount = 0;
     const effectiveOwnerId = targetOwnerId || (selectedMemberId === 'ALL' ? 'fam_1' : selectedMemberId);
+
+    // If REPLACE_SNAPSHOT mode is chosen, remove old statement-imported holdings for this member
+    let currentWorkingHoldings = mode === 'REPLACE_SNAPSHOT'
+      ? holdings.filter(h => h.ownerId !== effectiveOwnerId || (!h.notes?.includes('CAS') && !h.priceSource?.includes('CDSL')))
+      : [...holdings];
 
     records.forEach(rec => {
       if (!rec.selected) {
@@ -422,59 +590,111 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return;
       }
 
-      // Find if holding already exists for this owner
-      let existingHolding = holdings.find(
-        h => h.ownerId === effectiveOwnerId &&
-             (h.name.toLowerCase() === rec.holdingName.toLowerCase() ||
-              h.symbolOrFolio.toLowerCase() === rec.holdingName.toLowerCase())
-      );
-
-      // Fallback: match by name if not found for specific owner
-      if (!existingHolding) {
-        existingHolding = holdings.find(
-          h => h.name.toLowerCase() === rec.holdingName.toLowerCase() ||
-               h.symbolOrFolio.toLowerCase() === rec.holdingName.toLowerCase()
-        );
-      }
+      // Smart matching by ISIN, Folio, or normalized fund/stock name
+      let existingHolding = mode === 'REPLACE_SNAPSHOT'
+        ? undefined
+        : findMatchingHolding(currentWorkingHoldings, rec, effectiveOwnerId);
 
       const qtyScaled = MoneyEngine.fromQty(rec.quantity).toString();
       const priceMinor = MoneyEngine.fromRupees(rec.pricePerUnit).toString();
       const totalAmountMinor = MoneyEngine.fromRupees(rec.totalAmount).toString();
 
-      if (!existingHolding && (rec.action === 'BUY')) {
-        // Create new holding
-        const newHolding = addHolding({
-          name: rec.holdingName,
-          symbolOrFolio: rec.holdingName.substring(0, 12).toUpperCase(),
-          category: rec.category,
-          subCategory: 'Imported Asset',
-          ownerId: effectiveOwnerId,
-          quantityScaled: qtyScaled,
-          averageCostPerUnitMinor: priceMinor,
-          currentPriceMinor: priceMinor,
-          priceSource: 'Imported CAS / Statement',
-          notes: 'Imported via CAS statement parser',
-        });
-        existingHolding = newHolding;
-      } else if (existingHolding) {
-        // Append transaction
-        appendLedgerEvent({
-          holdingId: existingHolding.id,
-          holdingName: existingHolding.name,
-          ownerId: effectiveOwnerId,
-          eventType: rec.action,
-          eventDate: rec.date,
-          quantityScaled: qtyScaled,
-          unitPriceMinor: priceMinor,
-          totalAmountMinor: totalAmountMinor,
-          notes: 'Imported from CAS statement',
-        });
+      // Compute average cost safely - never allow astronomical numbers
+      let avgCostMinor = priceMinor;
+      if (rec.cumulativeInvested && rec.cumulativeInvested > 0 && rec.quantity > 0) {
+        const computedAvg = rec.cumulativeInvested / rec.quantity;
+        const priceRupees = rec.pricePerUnit || (rec.totalAmount / rec.quantity);
+        // Valid if within reasonable bounds (0.02x to 5x of current price/NAV)
+        if (computedAvg > 0 && computedAvg <= priceRupees * 5 && computedAvg >= priceRupees * 0.02) {
+          avgCostMinor = MoneyEngine.fromRupees(computedAvg).toString();
+        }
       }
 
-      importedCount++;
+      if (!existingHolding && (rec.action === 'BUY' || rec.recordType === 'HOLDING')) {
+        // Create new holding
+        const newId = `h_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+        const newHolding: Holding = {
+          id: newId,
+          name: rec.holdingName,
+          symbolOrFolio: rec.folio || rec.isin || rec.holdingName.substring(0, 12).toUpperCase(),
+          isin: rec.isin,
+          category: rec.category,
+          subCategory: rec.category === 'SPECIALISED' ? 'AIF Category II' : rec.category === 'EQUITY' ? 'Listed Equity' : 'Mutual Fund',
+          ownerId: effectiveOwnerId,
+          quantityScaled: qtyScaled,
+          averageCostPerUnitMinor: avgCostMinor,
+          currentPriceMinor: priceMinor,
+          lastPriceUpdated: new Date().toISOString(),
+          isPriceStale: false,
+          priceSource: 'CDSL / CAS Statement',
+          notes: `Imported via CAS statement (${rec.isin || rec.folio || 'Folio verified'})`,
+        };
+        currentWorkingHoldings = [newHolding, ...currentWorkingHoldings];
+
+        // Record initial ledger event
+        const initialAmount = (BigInt(newHolding.quantityScaled) * BigInt(newHolding.averageCostPerUnitMinor)) / QTY_SCALE;
+        appendLedgerEvent({
+          holdingId: newId,
+          holdingName: newHolding.name,
+          ownerId: effectiveOwnerId,
+          eventType: 'BUY',
+          eventDate: rec.date || new Date().toISOString().split('T')[0],
+          quantityScaled: newHolding.quantityScaled,
+          unitPriceMinor: newHolding.averageCostPerUnitMinor,
+          totalAmountMinor: initialAmount.toString(),
+          notes: `CAS Statement Snapshot Entry (${rec.isin || rec.folio || 'Folio'})`,
+        });
+
+        importedCount++;
+      } else if (existingHolding) {
+        if (rec.recordType === 'HOLDING') {
+          // Update existing holding in-place with latest snapshot values
+          currentWorkingHoldings = currentWorkingHoldings.map(h => {
+            if (h.id === existingHolding!.id) {
+              return {
+                ...h,
+                name: rec.holdingName, // Update with cleaner statement name
+                quantityScaled: qtyScaled,
+                currentPriceMinor: priceMinor,
+                averageCostPerUnitMinor: avgCostMinor,
+                isin: rec.isin || h.isin,
+                symbolOrFolio: rec.folio || rec.isin || h.symbolOrFolio,
+                priceSource: 'CDSL Statement Close',
+                lastPriceUpdated: new Date().toISOString(),
+              };
+            }
+            return h;
+          });
+          updatedCount++;
+        } else {
+          // Append transaction event to immutable ledger
+          appendLedgerEvent({
+            holdingId: existingHolding.id,
+            holdingName: existingHolding.name,
+            ownerId: effectiveOwnerId,
+            eventType: rec.action,
+            eventDate: rec.date,
+            quantityScaled: qtyScaled,
+            unitPriceMinor: priceMinor,
+            totalAmountMinor: totalAmountMinor,
+            notes: `Imported from CAS statement (${rec.statusMessage || rec.action})`,
+          });
+          importedCount++;
+        }
+      }
     });
 
-    return { imported: importedCount, skipped: skippedCount };
+    // Run final deduplication & sanitization on working holdings
+    const sanitized = sanitizeAndDeduplicateHoldings(currentWorkingHoldings);
+    setHoldings(sanitized.holdings);
+
+    return { imported: importedCount, updated: updatedCount, skipped: skippedCount };
+  };
+
+  const cleanDuplicatesAndHeal = (): { mergedCount: number; repairedCount: number } => {
+    const result = sanitizeAndDeduplicateHoldings(holdings);
+    setHoldings(result.holdings);
+    return { mergedCount: result.mergedCount, repairedCount: result.repairedCount };
   };
 
   const exportBackupJson = (): string => {

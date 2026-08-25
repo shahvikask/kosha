@@ -179,6 +179,8 @@ export interface Holding {
   priceSource: string; // e.g. "NSE Live Close", "AMFI NAV", "RBI Gold Rate", "Self Valuation"
   notes?: string;
   location?: string; // for Real Estate
+  tag?: string; // e.g. "Retirement", "Child Higher Education", "Emergency", "Tax Saving", or Family Member tag
+  tags?: string[]; // Array of tags for multi-tagging and goal filtering
 }
 
 export interface PortfolioSummary {
@@ -191,6 +193,7 @@ export interface PortfolioSummary {
   dayChangeMinor: bigint;
   dayChangePercent: number;
   totalDividendsInterestMinor: bigint;
+  totalRealisedGainsMinor?: bigint;
   yourReturnAnnualizedPercent: number; // The user return / IRR
 }
 
@@ -240,6 +243,12 @@ export interface StatementImportRecord {
   status: StatementImportStatus;
   statusMessage: string;
   selected: boolean;
+  isin?: string;
+  folio?: string;
+  recordType?: 'HOLDING' | 'TRANSACTION';
+  currentValuation?: number;
+  cumulativeInvested?: number;
+  dematAccount?: string;
 }
 
 export interface EmergencyDossierItem {

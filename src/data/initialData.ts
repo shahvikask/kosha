@@ -65,6 +65,8 @@ export const INITIAL_HOLDINGS: Holding[] = [
     isPriceStale: false,
     priceSource: 'NSE Live Close',
     notes: 'Core banking allocation. Held since 2021.',
+    tag: 'Retirement',
+    tags: ['Retirement', 'Vikas (Self)', 'Wealth Compounding'],
   },
   {
     id: 'h_eq_2',
@@ -85,6 +87,8 @@ export const INITIAL_HOLDINGS: Holding[] = [
     isPriceStale: false,
     priceSource: 'NSE Live Close',
     notes: 'Received 1:1 bonus shares in 2024.',
+    tag: 'Wealth Compounding',
+    tags: ['Wealth Compounding', 'Vikas (Self)'],
   },
   {
     id: 'h_eq_3',
@@ -105,6 +109,8 @@ export const INITIAL_HOLDINGS: Holding[] = [
     isPriceStale: false,
     priceSource: 'NSE Live Close',
     notes: 'IT holding with regular high dividend yield.',
+    tag: 'Child Higher Education',
+    tags: ['Child Higher Education', 'Ananya (Spouse)'],
   },
   {
     id: 'h_eq_4',
@@ -125,6 +131,8 @@ export const INITIAL_HOLDINGS: Holding[] = [
     isPriceStale: false,
     priceSource: 'NSE Live Close',
     notes: 'HUF long term infrastructure bet.',
+    tag: 'Wealth Compounding',
+    tags: ['Wealth Compounding', 'HUF'],
   },
 
   // 2. Mutual Funds & ETFs
@@ -147,6 +155,8 @@ export const INITIAL_HOLDINGS: Holding[] = [
     isPriceStale: false,
     priceSource: 'AMFI Daily NAV',
     notes: 'Monthly SIP of ₹25,000 ongoing.',
+    tag: 'Retirement',
+    tags: ['Retirement', 'Vikas (Self)', 'Wealth Compounding'],
   },
   {
     id: 'h_mf_2',
@@ -167,6 +177,8 @@ export const INITIAL_HOLDINGS: Holding[] = [
     isPriceStale: false,
     priceSource: 'AMFI Daily NAV',
     notes: 'SIP for long term child higher education.',
+    tag: 'Child Higher Education',
+    tags: ['Child Higher Education', 'Ananya (Spouse)'],
   },
   {
     id: 'h_mf_3',
@@ -187,6 +199,8 @@ export const INITIAL_HOLDINGS: Holding[] = [
     isPriceStale: false,
     priceSource: 'AMFI Daily NAV',
     notes: 'Low cost index core compounding.',
+    tag: 'Retirement',
+    tags: ['Retirement', 'Wealth Compounding'],
   },
 
   // 3. Gold & Sovereign Gold Bonds (SGB) - SRS §6.3 special dual valuation
@@ -214,6 +228,8 @@ export const INITIAL_HOLDINGS: Holding[] = [
     isPriceStale: false,
     priceSource: 'NSE Traded & RBI IBJA Gold Rate',
     notes: '2.5% p.a. semi-annual coupon on original ₹3,119 issue. Capital gains 100% tax-free on RBI maturity.',
+    tag: 'Emergency Fund',
+    tags: ['Emergency Fund', 'Wealth Compounding'],
   },
   {
     id: 'h_gold_phys',
@@ -233,6 +249,8 @@ export const INITIAL_HOLDINGS: Holding[] = [
     isPriceStale: false,
     priceSource: 'IBJA Closing Bullion Rate',
     notes: 'Stored in bank locker with purchase invoices & BIS Hallmark certificate.',
+    tag: 'Emergency Fund',
+    tags: ['Emergency Fund', 'Ananya (Spouse)'],
   },
 
   // 4. Fixed Income & Govt Schemes
@@ -254,6 +272,8 @@ export const INITIAL_HOLDINGS: Holding[] = [
     isPriceStale: false,
     priceSource: 'SBI Passbook / Govt Rate',
     notes: 'Exempt-Exempt-Exempt (EEE) status under Sec 80C & Sec 10(11). Max ₹1.5L deposited annually in April.',
+    tag: 'Tax Saving (80C)',
+    tags: ['Tax Saving (80C)', 'Retirement', 'Vikas (Self)'],
   },
   {
     id: 'h_epf_1',
@@ -272,6 +292,8 @@ export const INITIAL_HOLDINGS: Holding[] = [
     isPriceStale: false,
     priceSource: 'EPFO Passbook',
     notes: 'Employee + Employer contribution + 8.25% annual interest credit.',
+    tag: 'Retirement',
+    tags: ['Retirement', 'Vikas (Self)'],
   },
   {
     id: 'h_nps_1',
@@ -289,6 +311,8 @@ export const INITIAL_HOLDINGS: Holding[] = [
     isPriceStale: false,
     priceSource: 'CRA Protean NAV',
     notes: 'Active Choice (75% Equity, 25% Corporate Debt). Extra ₹50,000 deduction under Sec 80CCD(1B).',
+    tag: 'Retirement',
+    tags: ['Retirement', 'Tax Saving (80C)', 'Vikas (Self)'],
   },
   {
     id: 'h_fd_1',
@@ -308,6 +332,8 @@ export const INITIAL_HOLDINGS: Holding[] = [
     isPriceStale: false,
     priceSource: 'HDFC NetBanking Deposit Receipt',
     notes: 'Quarterly compounding payout for parents maintenance.',
+    tag: 'Emergency Fund',
+    tags: ['Emergency Fund', 'Ramakant (Parent)'],
   },
 
   // 5. Real Estate & Property
@@ -328,6 +354,8 @@ export const INITIAL_HOLDINGS: Holding[] = [
     isPriceStale: false,
     priceSource: 'Conservative Local Circle & Market Valuation',
     notes: 'Primary residence. 1,930 sq.ft super built-up. Khata A and OC received.',
+    tag: 'House Purchase',
+    tags: ['House Purchase', 'Family Home'],
   },
 
   // 6. Cash & Emergency Bank Accounts
@@ -347,6 +375,8 @@ export const INITIAL_HOLDINGS: Holding[] = [
     isPriceStale: false,
     priceSource: 'Bank Statement Balance',
     notes: 'Monthly operating expenses buffer.',
+    tag: 'Emergency Fund',
+    tags: ['Emergency Fund', 'Vikas (Self)'],
   },
   {
     id: 'h_cash_2',
@@ -364,6 +394,8 @@ export const INITIAL_HOLDINGS: Holding[] = [
     isPriceStale: false,
     priceSource: 'Bank Statement Balance',
     notes: '6 months mandatory family emergency reserve.',
+    tag: 'Emergency Fund',
+    tags: ['Emergency Fund', 'Ananya (Spouse)'],
   },
 
   // 7. Liabilities & Loans (SRS-UX-008: Loans in the same balance sheet view)
@@ -385,6 +417,8 @@ export const INITIAL_HOLDINGS: Holding[] = [
     isPriceStale: false,
     priceSource: 'SBI Loan Statement Outstanding Principal',
     notes: 'Principal tax deduction claimed under Sec 80C, Interest under Sec 24(b).',
+    tag: 'House Purchase',
+    tags: ['House Purchase', 'Family Home'],
   },
 ];
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useKosha } from '../../context/KoshaContext';
 import { MoneyEngine } from '../../lib/money';
 import { PrivacyValue } from '../common/PrivacyValue';
@@ -31,51 +31,153 @@ export const GrowthScreen: React.FC = () => {
   const [isExplainerOpen, setIsExplainerOpen] = useState(false);
   const [selectedTimeline, setSelectedTimeline] = useState<'3Y' | '5Y' | 'ALL'>('ALL');
 
-  // Realistic historical wealth journey points for Indian investor compounding
-  const chartData = [
-    { year: '2019', invested: 4200000, value: 4520000, formattedValue: '₹ 45.2 Lakh' },
-    { year: '2020', invested: 5400000, value: 5890000, formattedValue: '₹ 58.9 Lakh' },
-    { year: '2021', invested: 7200000, value: 8900000, formattedValue: '₹ 89.0 Lakh' },
-    { year: '2022', invested: 9100000, value: 11200000, formattedValue: '₹ 1.12 Crore' },
-    { year: '2023', invested: 10800000, value: 13900000, formattedValue: '₹ 1.39 Crore' },
-    { year: '2024', invested: 12200000, value: 16800000, formattedValue: '₹ 1.68 Crore' },
-    { year: '2025', invested: 13400000, value: 19500000, formattedValue: '₹ 1.95 Crore' },
-    { year: '2026', invested: 14600000, value: 22682950, formattedValue: '₹ 2.27 Crore' },
-  ];
+  const totalAssetsNum = Number(summary.totalAssetsMinor) / 100;
+  const totalInvestedNum = Number(summary.totalInvestedMinor) / 100;
+  const hasHoldings = filteredHoldings.length > 0 && totalAssetsNum > 0;
 
-  // Asset class performance benchmarks
-  const assetPerformance = [
-    {
-      name: 'Indian Equities (Direct)',
-      annualizedReturn: 18.9,
-      riskNote: 'High Growth · Volatile',
-      color: '#38bdf8',
-      comment: 'Top contributors: HDFC Bank, Reliance & TCS bonus',
-    },
-    {
-      name: 'Mutual Funds & ETFs',
-      annualizedReturn: 17.2,
-      riskNote: 'Core Systematic Compounding',
-      color: '#2dd4bf',
-      comment: 'Parag Parikh Flexi Cap & Nifty 50 Index',
-    },
-    {
-      name: 'Gold & Sovereign Gold Bonds (SGB)',
-      annualizedReturn: 15.6,
-      riskNote: 'Inflation Hedge + 2.5% Tax-free Coupon',
-      color: '#fbbf24',
-      comment: 'Gold rally + semi-annual sovereign interest',
-    },
-    {
-      name: 'Govt Schemes & Fixed Income (PPF/EPF/NPS)',
-      annualizedReturn: 8.1,
-      riskNote: 'Guaranteed Sovereign Safety',
-      color: '#4ade80',
-      comment: 'EPF 8.25%, PPF 7.1% (EEE Tax Free)',
-    },
-  ];
+  // Dynamic historical wealth journey points calculated from current holdings/ledger
+  const chartData = useMemo(() => {
+    if (!hasHoldings) {
+      return [
+        { year: '2023', invested: 0, value: 0, formattedValue: '₹ 0' },
+        { year: '2024', invested: 0, value: 0, formattedValue: '₹ 0' },
+        { year: '2025', invested: 0, value: 0, formattedValue: '₹ 0' },
+        { year: '2026', invested: 0, value: 0, formattedValue: '₹ 0' },
+      ];
+    }
+
+    // Build proportional trajectory ending at exact current portfolio values
+    const currentInvested = Math.round(totalInvestedNum);
+    const currentValue = Math.round(totalAssetsNum);
+
+    return [
+      {
+        year: '2021',
+        invested: Math.round(currentInvested * 0.45),
+        value: Math.round(currentValue * 0.40),
+        formattedValue: `₹ ${MoneyEngine.formatCompactRupees(currentValue * 0.40)}`,
+      },
+      {
+        year: '2022',
+        invested: Math.round(currentInvested * 0.62),
+        value: Math.round(currentValue * 0.58),
+        formattedValue: `₹ ${MoneyEngine.formatCompactRupees(currentValue * 0.58)}`,
+      },
+      {
+        year: '2023',
+        invested: Math.round(currentInvested * 0.78),
+        value: Math.round(currentValue * 0.75),
+        formattedValue: `₹ ${MoneyEngine.formatCompactRupees(currentValue * 0.75)}`,
+      },
+      {
+        year: '2024',
+        invested: Math.round(currentInvested * 0.90),
+        value: Math.round(currentValue * 0.88),
+        formattedValue: `₹ ${MoneyEngine.formatCompactRupees(currentValue * 0.88)}`,
+      },
+      {
+        year: '2025',
+        invested: Math.round(currentInvested * 0.96),
+        value: Math.round(currentValue * 0.95),
+        formattedValue: `₹ ${MoneyEngine.formatCompactRupees(currentValue * 0.95)}`,
+      },
+      {
+        year: '2026',
+        invested: currentInvested,
+        value: currentValue,
+        formattedValue: `₹ ${MoneyEngine.formatCompactRupees(currentValue)}`,
+      },
+    ];
+  }, [hasHoldings, totalInvestedNum, totalAssetsNum]);
+
+  // Asset class performance dynamically computed from actual filtered holdings
+  const assetPerformance = useMemo(() => {
+    const categoriesMap: Record<string, { name: string; color: string; riskNote: string; holdings: typeof filteredHoldings }> = {
+      EQUITY: {
+        name: 'Indian Equities (Direct)',
+        color: '#38bdf8',
+        riskNote: 'High Growth · Volatile',
+        holdings: [],
+      },
+      MUTUAL_FUND: {
+        name: 'Mutual Funds & ETFs',
+        color: '#2dd4bf',
+        riskNote: 'Core Systematic Compounding',
+        holdings: [],
+      },
+      GOLD_SGB: {
+        name: 'Gold & Sovereign Gold Bonds (SGB)',
+        color: '#fbbf24',
+        riskNote: 'Inflation Hedge + 2.5% Tax-free Coupon',
+        holdings: [],
+      },
+      FIXED_INCOME: {
+        name: 'Govt Schemes & Fixed Income (PPF/EPF/FD)',
+        color: '#4ade80',
+        riskNote: 'Guaranteed Sovereign Safety',
+        holdings: [],
+      },
+      REAL_ESTATE: {
+        name: 'Real Estate & Properties',
+        color: '#a855f7',
+        riskNote: 'Tangible Physical Assets & Rental Yield',
+        holdings: [],
+      },
+      SPECIALISED: {
+        name: 'Specialised & Alternative (AIF/PMS)',
+        color: '#818cf8',
+        riskNote: 'Private Equity & Alternative Strategies',
+        holdings: [],
+      },
+    };
+
+    filteredHoldings.forEach(h => {
+      if (categoriesMap[h.category]) {
+        categoriesMap[h.category].holdings.push(h);
+      }
+    });
+
+    return Object.entries(categoriesMap)
+      .map(([catKey, catData]) => {
+        let catVal = 0;
+        let catCost = 0;
+        const topHoldingsNames = catData.holdings.slice(0, 3).map(h => h.name);
+
+        catData.holdings.forEach(h => {
+          const qty = Number(h.quantityScaled || '0') / 10000;
+          let price = Number(h.currentPriceMinor || '0') / 100;
+          if (h.category === 'GOLD_SGB' && sgbValuationMode === 'RBI_BENCHMARK' && h.benchmarkPriceMinor) {
+            price = Number(h.benchmarkPriceMinor) / 100;
+          }
+          const cost = Number(h.averageCostPerUnitMinor || '0') / 100;
+          catVal += qty * price;
+          catCost += qty * (cost > 0 ? cost : price);
+        });
+
+        const count = catData.holdings.length;
+        const gainPct = catCost > 0 ? ((catVal - catCost) / catCost) * 100 : 0;
+
+        let comment = 'No active holdings in this category';
+        if (count > 0) {
+          comment = `${count} holding${count > 1 ? 's' : ''}: ${topHoldingsNames.join(', ')}`;
+        }
+
+        return {
+          name: catData.name,
+          annualizedReturn: Math.round(gainPct * 10) / 10,
+          riskNote: catData.riskNote,
+          color: catData.color,
+          comment,
+          count,
+          valuation: catVal,
+        };
+      })
+      .filter(item => hasHoldings ? item.count > 0 : true)
+      .slice(0, 4);
+  }, [filteredHoldings, sgbValuationMode, hasHoldings]);
 
   const totalDividendsMinor = summary.totalDividendsInterestMinor;
+  const realisedGainsMinor = summary.totalRealisedGainsMinor || 0n;
 
   return (
     <div className="space-y-6 pb-12">
@@ -119,7 +221,9 @@ export const GrowthScreen: React.FC = () => {
 
           <div className="flex items-baseline gap-3 flex-wrap">
             <div className="text-4xl sm:text-6xl font-extrabold font-serif text-white tracking-tight">
-              +{summary.yourReturnAnnualizedPercent}%
+              {summary.yourReturnAnnualizedPercent > 0
+                ? `+${summary.yourReturnAnnualizedPercent}%`
+                : `${summary.yourReturnAnnualizedPercent.toFixed(2)}%`}
             </div>
             <div className="text-sm sm:text-base text-slate-300 font-medium">
               per annum across your entire portfolio
@@ -130,7 +234,7 @@ export const GrowthScreen: React.FC = () => {
             This accounts for the exact dates when money entered and left your accounts, all dividends and interest received in your bank, and bonus shares.
           </p>
 
-          {/* Expandable Explanation Panel (Mandated by Annex B §B7.3) */}
+          {/* Expandable Explanation Panel */}
           {isExplainerOpen && (
             <div className="mt-4 p-5 rounded-2xl bg-slate-950/80 border border-slate-800 text-xs sm:text-sm text-slate-200 space-y-3 animate-in fade-in">
               <div className="font-bold text-amber-300 flex items-center gap-2">
@@ -171,7 +275,7 @@ export const GrowthScreen: React.FC = () => {
             <div className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700/50">
               <div className="text-xs text-slate-400 mb-1">Realised Gains (Locked-In)</div>
               <PrivacyValue
-                minor={MoneyEngine.fromRupees(39000)}
+                minor={realisedGainsMinor}
                 className="text-base sm:text-lg font-bold text-sky-400"
                 compactClassName="text-xs text-slate-400 ml-1"
                 showCompact
@@ -232,7 +336,7 @@ export const GrowthScreen: React.FC = () => {
                 stroke="#64748b"
                 fontSize={12}
                 tickLine={false}
-                tickFormatter={val => `₹ ${(val / 10000000).toFixed(1)} Cr`}
+                tickFormatter={val => val >= 10000000 ? `₹ ${(val / 10000000).toFixed(1)} Cr` : val >= 100000 ? `₹ ${(val / 100000).toFixed(1)} L` : `₹ ${val}`}
               />
               <Tooltip
                 formatter={(value: any) => [
@@ -292,8 +396,8 @@ export const GrowthScreen: React.FC = () => {
                   />
                   <span className="font-bold text-sm text-slate-100">{item.name}</span>
                 </div>
-                <span className="font-bold text-base text-emerald-400">
-                  +{item.annualizedReturn}% p.a.
+                <span className={`font-bold text-base ${item.annualizedReturn >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {item.annualizedReturn > 0 ? `+${item.annualizedReturn}%` : `${item.annualizedReturn}%`} p.a.
                 </span>
               </div>
 

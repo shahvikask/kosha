@@ -16,6 +16,8 @@ import {
   CheckCircle2,
   Trash2,
   Plus,
+  Tag,
+  Target,
 } from 'lucide-react';
 
 interface HoldingDetailModalProps {
@@ -33,6 +35,7 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
     holdings,
     ledgerEvents,
     familyMembers,
+    updateHolding,
     updateHoldingPrice,
     deleteHolding,
     sgbValuationMode,
@@ -40,6 +43,13 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
 
   const [isEditingPrice, setIsEditingPrice] = useState(false);
   const [newPriceInput, setNewPriceInput] = useState('');
+
+  const [isEditingAll, setIsEditingAll] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editSymbol, setEditSymbol] = useState('');
+  const [editQty, setEditQty] = useState('');
+  const [editPrice, setEditPrice] = useState('');
+  const [editAvgCost, setEditAvgCost] = useState('');
 
   if (!holdingId) return null;
 
@@ -66,6 +76,47 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
 
   // Associated ledger events
   const holdingEvents = ledgerEvents.filter(ev => ev.holdingId === holding.id);
+
+  const handleStartEditAll = () => {
+    setEditName(holding.name);
+    setEditSymbol(holding.symbolOrFolio);
+    setEditQty(MoneyEngine.toQty(holding.quantityScaled).toString());
+    setEditPrice(MoneyEngine.toRupees(BigInt(holding.currentPriceMinor || '0')).toString());
+    setEditAvgCost(MoneyEngine.toRupees(BigInt(holding.averageCostPerUnitMinor || '0')).toString());
+    setIsEditingAll(true);
+  };
+
+  const handleSaveEditAll = () => {
+    const qtyVal = parseFloat(editQty);
+    const priceVal = parseFloat(editPrice);
+    const costVal = parseFloat(editAvgCost);
+
+    if (!editName.trim()) {
+      alert('Holding name is required');
+      return;
+    }
+    if (isNaN(qtyVal) || qtyVal < 0) {
+      alert('Please enter a valid quantity');
+      return;
+    }
+    if (isNaN(priceVal) || priceVal < 0) {
+      alert('Please enter a valid price');
+      return;
+    }
+
+    const updates: Partial<Holding> = {
+      name: editName.trim(),
+      symbolOrFolio: editSymbol.trim() || holding.symbolOrFolio,
+      quantityScaled: MoneyEngine.fromQty(qtyVal).toString(),
+      currentPriceMinor: MoneyEngine.fromRupees(priceVal).toString(),
+      averageCostPerUnitMinor: !isNaN(costVal) && costVal >= 0 ? MoneyEngine.fromRupees(costVal).toString() : holding.averageCostPerUnitMinor,
+      lastPriceUpdated: new Date().toISOString(),
+      priceSource: 'Manual Verified Entry',
+    };
+
+    updateHolding(holding.id, updates);
+    setIsEditingAll(false);
+  };
 
   const handleSavePrice = () => {
     const p = parseFloat(newPriceInput);
@@ -99,6 +150,14 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
                   {owner.name} ({owner.relation})
                 </span>
               )}
+              <button
+                onClick={handleStartEditAll}
+                className="ml-2 px-2.5 py-0.5 text-xs bg-slate-800 hover:bg-slate-700 text-amber-300 rounded-lg border border-slate-700 flex items-center gap-1 font-medium transition-colors cursor-pointer"
+                title="Edit holding name, units, price, cost"
+              >
+                <Edit3 className="w-3 h-3 text-amber-400" />
+                <span>Edit</span>
+              </button>
             </div>
             <div className="text-xs text-slate-400 flex items-center gap-2 flex-wrap">
               <span className="font-mono font-medium text-slate-300">{holding.symbolOrFolio}</span>
@@ -111,6 +170,21 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
                 </>
               )}
             </div>
+
+            {/* Display Tags */}
+            {([holding.tag, ...(holding.tags || [])].filter(Boolean) as string[]).length > 0 && (
+              <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                {Array.from(new Set([holding.tag, ...(holding.tags || [])].filter(Boolean) as string[])).map(t => (
+                  <span
+                    key={t}
+                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-amber-400/15 text-amber-300 border border-amber-500/30"
+                  >
+                    <Tag className="w-3 h-3 text-amber-400" />
+                    <span>{t}</span>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           <button
@@ -120,6 +194,89 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Inline Edit Form */}
+        {isEditingAll && (
+          <div className="bg-slate-950 p-5 rounded-2xl border border-amber-500/40 space-y-4 animate-in fade-in">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-amber-300 flex items-center gap-1.5">
+                <Edit3 className="w-4 h-4 text-amber-400" />
+                <span>Edit Holding Details</span>
+              </h3>
+              <span className="text-[11px] text-slate-400">Updates will recalculate valuation immediately</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div>
+                <label className="block text-slate-400 mb-1">Holding / Scheme Name</label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={e => setEditName(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-slate-100 focus:outline-none focus:border-amber-400 text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1">Folio / Ticker / ISIN</label>
+                <input
+                  type="text"
+                  value={editSymbol}
+                  onChange={e => setEditSymbol(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-slate-100 focus:outline-none focus:border-amber-400 text-xs font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1">Units Quantity</label>
+                <input
+                  type="number"
+                  step="any"
+                  value={editQty}
+                  onChange={e => setEditQty(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-slate-100 focus:outline-none focus:border-amber-400 text-xs font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1">Current Unit Price (₹)</label>
+                <input
+                  type="number"
+                  step="any"
+                  value={editPrice}
+                  onChange={e => setEditPrice(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-slate-100 focus:outline-none focus:border-amber-400 text-xs font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1">Average Buy Cost / Unit (₹)</label>
+                <input
+                  type="number"
+                  step="any"
+                  value={editAvgCost}
+                  onChange={e => setEditAvgCost(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-slate-100 focus:outline-none focus:border-amber-400 text-xs font-mono"
+                />
+              </div>
+
+              <div className="flex items-end gap-2 pt-1">
+                <button
+                  onClick={handleSaveEditAll}
+                  className="flex-1 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold rounded-xl text-xs cursor-pointer transition-colors shadow-md"
+                >
+                  Save Changes
+                </button>
+                <button
+                  onClick={() => setIsEditingAll(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs cursor-pointer transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Current Valuation & Gain Bento Card */}
         <div className="bg-slate-950/80 rounded-2xl p-5 border border-slate-800 grid grid-cols-1 sm:grid-cols-3 gap-4">

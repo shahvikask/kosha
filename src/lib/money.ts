@@ -23,14 +23,34 @@ export class MoneyEngine {
     return BigInt(Math.round(rupees * 10_000));
   }
 
-  /** Convert scaled bigint to floating Rupee number for charts or calculations */
-  static toRupees(scaled: bigint | number): number {
+  /** Convert scaled bigint, number, or string to floating Rupee number for charts or calculations */
+  static toRupees(scaled: bigint | number | string): number {
+    if (typeof scaled === 'string') {
+      const clean = scaled.replace(/,/g, '').trim();
+      if (!clean) return 0;
+      try {
+        return Number(BigInt(clean)) / 10_000;
+      } catch {
+        const num = parseFloat(clean);
+        return isNaN(num) ? 0 : num / 10_000;
+      }
+    }
     const val = typeof scaled === 'bigint' ? Number(scaled) : scaled;
     return val / 10_000;
   }
 
-  /** Convert scaled quantity bigint to normal number */
-  static toQty(scaled: bigint | number): number {
+  /** Convert scaled quantity (bigint, string, or number scaled by 10^8) to normal number */
+  static toQty(scaled: bigint | number | string): number {
+    if (typeof scaled === 'string') {
+      const clean = scaled.replace(/,/g, '').trim();
+      if (!clean) return 0;
+      try {
+        return Number(BigInt(clean)) / 100_000_000;
+      } catch {
+        const num = parseFloat(clean);
+        return isNaN(num) ? 0 : (num > 10_000_000 ? num / 100_000_000 : num);
+      }
+    }
     const val = typeof scaled === 'bigint' ? Number(scaled) : scaled;
     return val / 100_000_000;
   }
@@ -74,8 +94,21 @@ export class MoneyEngine {
   /**
    * Full standard Indian Rupee display string: "₹ 1,23,45,678.00"
    */
-  static formatRupees(scaled: bigint | number, includePaise = true): string {
-    const minor = typeof scaled === 'bigint' ? scaled : BigInt(Math.round(scaled));
+  static formatRupees(scaled: bigint | number | string, includePaise = true): string {
+    let minor: bigint;
+    if (typeof scaled === 'string') {
+      const clean = scaled.replace(/,/g, '').trim();
+      try {
+        minor = BigInt(clean || '0');
+      } catch {
+        minor = BigInt(Math.round(parseFloat(clean || '0')));
+      }
+    } else if (typeof scaled === 'bigint') {
+      minor = scaled;
+    } else {
+      minor = BigInt(Math.round(scaled));
+    }
+
     const isNeg = minor < 0n;
     const absMinor = isNeg ? -minor : minor;
 
@@ -97,8 +130,21 @@ export class MoneyEngine {
   /**
    * Compact Indian format: "2.47 crore", "18.60 lakh", "75,200"
    */
-  static formatCompact(scaled: bigint | number): string {
-    const minor = typeof scaled === 'bigint' ? scaled : BigInt(Math.round(scaled));
+  static formatCompact(scaled: bigint | number | string): string {
+    let minor: bigint;
+    if (typeof scaled === 'string') {
+      const clean = scaled.replace(/,/g, '').trim();
+      try {
+        minor = BigInt(clean || '0');
+      } catch {
+        minor = BigInt(Math.round(parseFloat(clean || '0')));
+      }
+    } else if (typeof scaled === 'bigint') {
+      minor = scaled;
+    } else {
+      minor = BigInt(Math.round(scaled));
+    }
+
     const rupees = Number(minor / MONEY_SCALE);
     const isNeg = rupees < 0;
     const abs = Math.abs(rupees);
@@ -119,7 +165,7 @@ export class MoneyEngine {
    * Accessible Change formatting with Arrow + Word + Amount + %
    * e.g., "▲ Up ₹ 45,200 (+1.25%)" or "▼ Down ₹ 12,300 (-0.45%)"
    */
-  static formatChange(changeMinor: bigint | number, percent: number): {
+  static formatChange(changeMinor: bigint | number | string, percent: number): {
     arrow: string;
     word: string;
     amountStr: string;
@@ -129,7 +175,20 @@ export class MoneyEngine {
     isNegative: boolean;
     isZero: boolean;
   } {
-    const minor = typeof changeMinor === 'bigint' ? changeMinor : BigInt(Math.round(changeMinor));
+    let minor: bigint;
+    if (typeof changeMinor === 'string') {
+      const clean = changeMinor.replace(/,/g, '').trim();
+      try {
+        minor = BigInt(clean || '0');
+      } catch {
+        minor = BigInt(Math.round(parseFloat(clean || '0')));
+      }
+    } else if (typeof changeMinor === 'bigint') {
+      minor = changeMinor;
+    } else {
+      minor = BigInt(Math.round(changeMinor));
+    }
+
     const isZero = minor === 0n;
     const isPositive = minor > 0n;
     const isNegative = minor < 0n;
@@ -166,10 +225,10 @@ export class MoneyEngine {
   }
 
   /**
-   * Format Quantity nicely (e.g. 100 shares, 14.520 grams, 324.891 units)
+   * Format Quantity nicely (e.g. 139 shares, 14.520 grams, 324.891 units)
    */
-  static formatQty(scaled: bigint | number, decimals = 3): string {
-    const raw = typeof scaled === 'bigint' ? Number(scaled) / 100_000_000 : scaled;
+  static formatQty(scaled: bigint | number | string, decimals = 3): string {
+    const raw = this.toQty(scaled);
     if (Number.isInteger(raw)) {
       return raw.toLocaleString('en-IN');
     }

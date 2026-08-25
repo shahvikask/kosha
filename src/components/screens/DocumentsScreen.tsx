@@ -3,7 +3,7 @@ import { useKosha } from '../../context/KoshaContext';
 import { MoneyEngine } from '../../lib/money';
 import { PrivacyValue } from '../common/PrivacyValue';
 import { StatementImportRecord, EventType } from '../../types';
-import { parseStatementFile, CASParseResult } from '../../lib/casParser';
+import { parseStatementFile, CASParseResult, getSampleCdslJune2026, getSampleCdslJuly2026, getSampleCdslSep2024 } from '../../lib/casParser';
 import {
   FileSpreadsheet,
   UploadCloud,
@@ -37,23 +37,18 @@ export const DocumentsScreen: React.FC = () => {
     ledgerEvents,
     computeTaxSummary,
     importStatementRecords,
+    cleanDuplicatesAndHeal,
     filteredHoldings,
   } = useKosha();
 
   const [activeTab, setActiveTab] = useState<'IMPORTER' | 'TAXES' | 'RECORD_BOOK'>('IMPORTER');
   const [selectedFY, setSelectedFY] = useState<string>('FY 2025-26');
+  const [importMode, setImportMode] = useState<'SYNC_UPDATE' | 'REPLACE_SNAPSHOT'>('SYNC_UPDATE');
 
   // Member selection for import (defaults to active filter or first member)
   const [targetMemberId, setTargetMemberId] = useState<string>(
     selectedMemberId === 'ALL' ? (familyMembers[0]?.id || 'fam_1') : selectedMemberId
   );
-
-  // When selectedMemberId changes in header filter, sync if not 'ALL'
-  useEffect(() => {
-    if (selectedMemberId !== 'ALL') {
-      setTargetMemberId(selectedMemberId);
-    }
-  }, [selectedMemberId]);
 
   // Selected member object
   const activeTargetMember = useMemo(() => {
@@ -62,24 +57,67 @@ export const DocumentsScreen: React.FC = () => {
 
   // File & Password state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [pdfPassword, setPdfPassword] = useState<string>('');
+  const [pdfPassword, setPdfPassword] = useState<string>(activeTargetMember?.panCard ? activeTargetMember.panCard.toUpperCase() : '');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [isParsing, setIsParsing] = useState<boolean>(false);
   const [parseError, setParseError] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState<boolean>(false);
 
-  // Auto-fill PAN password when target member changes or file selected
+  // Auto-fill PAN password when target member changes
   useEffect(() => {
     if (activeTargetMember?.panCard) {
       setPdfPassword(activeTargetMember.panCard.toUpperCase());
     } else if (activeTargetMember?.panMasked && !activeTargetMember.panMasked.includes('*')) {
       setPdfPassword(activeTargetMember.panMasked.toUpperCase());
+    } else {
+      setPdfPassword('');
     }
   }, [activeTargetMember]);
+
+  // Clear staged file & results when changing member or clearing manually
+  const handleTargetMemberChange = (newMemberId: string) => {
+    setTargetMemberId(newMemberId);
+    setSelectedFile(null);
+    setParseResult(null);
+    setImportRecords([]);
+    setParseError(null);
+    setImportNotification(null);
+    
+    const newMember = familyMembers.find(m => m.id === newMemberId);
+    if (newMember?.panCard) {
+      setPdfPassword(newMember.panCard.toUpperCase());
+    } else if (newMember?.panMasked && !newMember.panMasked.includes('*')) {
+      setPdfPassword(newMember.panMasked.toUpperCase());
+    } else {
+      setPdfPassword('');
+    }
+  };
+
+  const handleClearFile = () => {
+    setSelectedFile(null);
+    setParseResult(null);
+    setImportRecords([]);
+    setParseError(null);
+    setImportNotification(null);
+    if (activeTargetMember?.panCard) {
+      setPdfPassword(activeTargetMember.panCard.toUpperCase());
+    } else {
+      setPdfPassword('');
+    }
+  };
+
+  // When selectedMemberId changes in header filter, sync if not 'ALL'
+  useEffect(() => {
+    if (selectedMemberId !== 'ALL' && selectedMemberId !== targetMemberId) {
+      handleTargetMemberChange(selectedMemberId);
+    }
+  }, [selectedMemberId]);
 
   // Statement Importer Results State
   const [parseResult, setParseResult] = useState<CASParseResult | null>(null);
   const [importRecords, setImportRecords] = useState<StatementImportRecord[]>([]);
   const [importNotification, setImportNotification] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
+  const [reviewCategoryFilter, setReviewCategoryFilter] = useState<'ALL' | 'MUTUAL_FUND' | 'EQUITY' | 'SPECIALISED' | 'TRANSACTION'>('ALL');
   
   // Record Book filter & search
   const [recordBookSearch, setRecordBookSearch] = useState<string>('');
@@ -93,30 +131,31 @@ export const DocumentsScreen: React.FC = () => {
     setSelectedFile(file);
     setParseError(null);
     setImportNotification(null);
+    setParseResult(null);
+    setImportRecords([]);
 
     const isPdf = file.name.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf';
 
     // If it's a CSV or text file, we can parse immediately
     if (!isPdf) {
-      processFile(file, '');
+      processFile(file, '', false);
     } else {
       // For PDF, check if we have a pre-filled PAN password
-      const initialPass = (activeTargetMember?.panCard || '').trim().toUpperCase();
+      const initialPass = (pdfPassword || activeTargetMember?.panCard || '').trim();
       if (initialPass) {
-        setPdfPassword(initialPass);
-        processFile(file, initialPass);
+        processFile(file, initialPass, true /* auto-attempt */);
       } else {
         // Prompt for password
         setImportNotification({
           type: 'info',
-          message: 'PDF file selected. If password-protected, enter your 10-character PAN in uppercase below and click "Decrypt & Parse".',
+          message: 'PDF file selected. If password-protected, enter your 10-character PAN in uppercase below and click "Decrypt & Parse Statement".',
         });
       }
     }
   };
 
   // Process statement file (PDF or CSV)
-  const processFile = async (file: File, passwordToUse: string) => {
+  const processFile = async (file: File, passwordToUse: string, isAutoAttempt = false) => {
     setIsParsing(true);
     setParseError(null);
     setImportNotification(null);
@@ -134,7 +173,7 @@ export const DocumentsScreen: React.FC = () => {
       const result = await parseStatementFile(file, passwordToUse, memberLedger, targetMemberId);
 
       if (result.importRecords.length === 0) {
-        setParseError('No portfolio holdings or transactions found in the statement. Please check if the statement is valid.');
+        setParseError('No portfolio holdings or transactions found in the statement. Please check if the statement format is supported.');
         setIsParsing(false);
         return;
       }
@@ -148,15 +187,29 @@ export const DocumentsScreen: React.FC = () => {
 
       setImportNotification({
         type: 'success',
-        message: `Statement parsed: ${result.importRecords.length} records identified (${newCount} new to import, ${dupCount} already in ledger).`,
+        message: `Statement parsed successfully: ${result.importRecords.length} items identified (${newCount} new to import, ${dupCount} already in ledger).`,
       });
     } catch (err: any) {
-      console.error('Error parsing CAS:', err);
+      console.error('CAS Parse Attempt:', err);
       setIsParsing(false);
       
       const errString = err?.message || String(err);
-      if (errString.includes('Password') || errString.includes('password') || errString.includes('Incorrect')) {
-        setParseError('Incorrect PDF password or password required. For CAS statements from CAMS/KFintech/NSDL/CDSL, enter your 10-character PAN in capital letters (e.g. ABCDE1234F).');
+      const isPasswordIssue =
+        errString.includes('Password') ||
+        errString.includes('password') ||
+        errString.includes('Incorrect') ||
+        err?.name === 'PasswordException';
+
+      if (isPasswordIssue) {
+        if (isAutoAttempt) {
+          // Soft notification asking for the password without showing a red crash/error
+          setImportNotification({
+            type: 'info',
+            message: `"${file.name}" is password-protected. Please enter or select the primary holder's PAN / password below and click "Decrypt & Parse Statement".`,
+          });
+        } else {
+          setParseError('Incorrect PDF password. For CAS statements from CAMS, KFintech, CDSL, or NSDL, enter the primary holder’s 10-character PAN in capital letters (e.g. ABCDE1234F). If you set a custom password when requesting CAS, enter that.');
+        }
       } else {
         setParseError(`Failed to parse statement: ${errString || 'Unsupported file format or corrupted stream.'}`);
       }
@@ -167,97 +220,54 @@ export const DocumentsScreen: React.FC = () => {
   const handleDecryptAndParse = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedFile) return;
-    processFile(selectedFile, pdfPassword.trim().toUpperCase());
+    processFile(selectedFile, pdfPassword.trim(), false);
   };
 
-  // Load sample statement for instant testing
-  const handleLoadSampleStatement = () => {
-    const samples: StatementImportRecord[] = [
-      {
-        id: 'imp_1',
-        date: '2026-08-18',
-        holdingName: 'Parag Parikh Flexi Cap Fund - Direct Growth',
-        category: 'MUTUAL_FUND',
-        action: 'BUY',
-        quantity: 85.42,
-        pricePerUnit: 78.45,
-        totalAmount: 85.42 * 78.45,
-        status: 'NEW',
-        statusMessage: 'Folio: 124890/22 • SIP Purchase Instalment',
-        selected: true,
-      },
-      {
-        id: 'imp_2',
-        date: '2026-08-10',
-        holdingName: 'HDFC Balanced Advantage Fund - Direct Growth',
-        category: 'MUTUAL_FUND',
-        action: 'BUY',
-        quantity: 210.15,
-        pricePerUnit: 490.20,
-        totalAmount: 210.15 * 490.20,
-        status: 'NEW',
-        statusMessage: 'Folio: 874312/01 • Lump sum Purchase',
-        selected: true,
-      },
-      {
-        id: 'imp_3',
-        date: '2021-04-12',
-        holdingName: 'HDFC Bank Ltd',
-        category: 'EQUITY',
-        action: 'BUY',
-        quantity: 250,
-        pricePerUnit: 1420,
-        totalAmount: 1420 * 250,
-        status: 'ALREADY_EXISTS',
-        statusMessage: 'Duplicate: already recorded in ledger on 2021-04-12',
-        selected: false,
-      },
-      {
-        id: 'imp_4',
-        date: '2026-07-25',
-        holdingName: 'Nippon India Small Cap Fund - Direct Growth',
-        category: 'MUTUAL_FUND',
-        action: 'BUY',
-        quantity: 140.60,
-        pricePerUnit: 165.30,
-        totalAmount: 140.60 * 165.30,
-        status: 'NEW',
-        statusMessage: 'Folio: 549012/88 • SIP Purchase Instalment',
-        selected: true,
-      },
-      {
-        id: 'imp_5',
-        date: '2026-06-25',
-        holdingName: 'TCS Ltd',
-        category: 'EQUITY',
-        action: 'DIVIDEND',
-        quantity: 120,
-        pricePerUnit: 28,
-        totalAmount: 28 * 120,
-        status: 'NEW',
-        statusMessage: 'Dividend payout credit ₹3,360',
-        selected: true,
-      },
-    ];
-
-    setParseResult({
-      statementType: 'CAMS_KFIN_MF',
-      investorName: activeTargetMember?.name || 'Vikas Shah',
-      investorPan: activeTargetMember?.panCard || 'ABCPS1234K',
-      schemes: [],
-      dematHoldings: [],
-      importRecords: samples,
-      summary: {
-        totalFolios: 3,
-        totalTransactions: samples.length,
-        totalValuation: samples.reduce((s, r) => s + r.totalAmount, 0),
-      },
-      warnings: [],
-    });
-    setImportRecords(samples);
+  // Load CDSL June 2026 CAS dataset
+  const handleLoadCdslJune2026 = () => {
+    const result = getSampleCdslJune2026();
+    setSelectedFile(new File([''], 'JUNE2026_CDSL_CAS_Consolidated.pdf', { type: 'application/pdf' }));
+    if (result.investorPan) {
+      setPdfPassword(result.investorPan);
+    }
+    setParseError(null);
+    setParseResult(result);
+    setImportRecords(result.importRecords);
     setImportNotification({
       type: 'success',
-      message: 'Sample CAS Statement loaded with 5 parsed transactions ready for review.',
+      message: `CDSL Consolidated Statement (June 2026, ₹3.09 Cr Portfolio) loaded for ${activeTargetMember?.name}. Ready to review and credit.`,
+    });
+  };
+
+  // Load CDSL July 2026 CAS dataset
+  const handleLoadCdslJuly2026 = () => {
+    const result = getSampleCdslJuly2026();
+    setSelectedFile(new File([''], 'JUL2026_CDSL_CAS_Consolidated.pdf', { type: 'application/pdf' }));
+    if (result.investorPan) {
+      setPdfPassword(result.investorPan);
+    }
+    setParseError(null);
+    setParseResult(result);
+    setImportRecords(result.importRecords);
+    setImportNotification({
+      type: 'success',
+      message: `CDSL Consolidated Statement (July 2026, ₹3.09 Cr Portfolio) loaded for ${activeTargetMember?.name}. Ready to review and credit.`,
+    });
+  };
+
+  // Load CDSL Sept 2024 CAS dataset
+  const handleLoadCdslSep2024 = () => {
+    const result = getSampleCdslSep2024();
+    setSelectedFile(new File([''], 'SEP2024_CDSL_CAS_Consolidated.pdf', { type: 'application/pdf' }));
+    if (result.investorPan) {
+      setPdfPassword(result.investorPan);
+    }
+    setParseError(null);
+    setParseResult(result);
+    setImportRecords(result.importRecords);
+    setImportNotification({
+      type: 'success',
+      message: `CDSL Consolidated Statement (September 2024, ₹1.51 Cr Portfolio) loaded for ${activeTargetMember?.name}. Ready to review and credit.`,
     });
   };
 
@@ -265,6 +275,15 @@ export const DocumentsScreen: React.FC = () => {
   const handleToggleSelectAll = () => {
     const allSelected = importRecords.every(r => r.selected);
     setImportRecords(prev => prev.map(r => ({ ...r, selected: !allSelected })));
+  };
+
+  // Clean Duplicates and Heal State
+  const handleCleanDuplicates = () => {
+    const { mergedCount, repairedCount } = cleanDuplicatesAndHeal();
+    setImportNotification({
+      type: 'success',
+      message: `Portfolio Health Check: Re-merged ${mergedCount} duplicate items and repaired ${repairedCount} cost valuations across all accounts.`,
+    });
   };
 
   // Execute Import
@@ -278,10 +297,12 @@ export const DocumentsScreen: React.FC = () => {
       return;
     }
 
-    const res = importStatementRecords(selected, targetMemberId);
+    const res = importStatementRecords(selected, targetMemberId, importMode);
+    const updatedMsg = res.updated > 0 ? `${res.updated} existing holdings updated, ` : '';
+    const importedMsg = `${res.imported} new records added`;
     setImportNotification({
       type: 'success',
-      message: `Import complete: ${res.imported} records successfully appended to ${activeTargetMember?.name}'s portfolio & ledger.`,
+      message: `Portfolio Synchronized: ${updatedMsg}${importedMsg} for ${activeTargetMember?.name}.`,
     });
     setImportRecords([]);
     setParseResult(null);
@@ -372,7 +393,7 @@ export const DocumentsScreen: React.FC = () => {
                 <select
                   id="target-family-member-select"
                   value={targetMemberId}
-                  onChange={e => setTargetMemberId(e.target.value)}
+                  onChange={e => handleTargetMemberChange(e.target.value)}
                   className="px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm font-bold text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-400/50 cursor-pointer min-w-[220px]"
                 >
                   {familyMembers.map(member => (
@@ -385,7 +406,31 @@ export const DocumentsScreen: React.FC = () => {
             </div>
 
             {/* Upload Drop Zone */}
-            <div className="border border-dashed border-slate-700 hover:border-amber-400/60 rounded-2xl p-6 sm:p-8 text-center space-y-4 bg-slate-950/50 transition-colors">
+            <div
+              onDragOver={e => {
+                e.preventDefault();
+                setIsDragging(true);
+              }}
+              onDragLeave={e => {
+                e.preventDefault();
+                setIsDragging(false);
+              }}
+              onDrop={e => {
+                e.preventDefault();
+                setIsDragging(false);
+                if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                  const fakeEvent = {
+                    target: { files: e.dataTransfer.files },
+                  } as unknown as React.ChangeEvent<HTMLInputElement>;
+                  handleFileChange(fakeEvent);
+                }
+              }}
+              className={`border border-dashed rounded-2xl p-6 sm:p-8 text-center space-y-4 transition-colors ${
+                isDragging
+                  ? 'border-amber-400 bg-amber-400/10'
+                  : 'border-slate-700 hover:border-amber-400/60 bg-slate-950/50'
+              }`}
+            >
               <div className="w-12 h-12 rounded-2xl bg-amber-400/10 border border-amber-400/30 text-amber-400 flex items-center justify-center mx-auto shadow-inner">
                 <UploadCloud className="w-6 h-6" />
               </div>
@@ -408,24 +453,53 @@ export const DocumentsScreen: React.FC = () => {
                     type="file"
                     accept=".pdf,.csv,.txt"
                     className="hidden"
+                    onClick={e => {
+                      (e.target as HTMLInputElement).value = '';
+                    }}
                     onChange={handleFileChange}
                   />
                 </label>
 
                 <button
-                  onClick={handleLoadSampleStatement}
+                  onClick={handleLoadCdslJune2026}
+                  className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs sm:text-sm font-semibold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <Sparkles className="w-4 h-4 text-emerald-400" />
+                  <span>Test CDSL June 2026 (₹3.09 Cr)</span>
+                </button>
+
+                <button
+                  onClick={handleLoadCdslJuly2026}
                   className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs sm:text-sm font-semibold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
                 >
                   <Sparkles className="w-4 h-4 text-amber-400" />
-                  <span>Try Sample CAS Statement</span>
+                  <span>Test CDSL July 2026 (₹3.09 Cr)</span>
+                </button>
+
+                <button
+                  onClick={handleLoadCdslSep2024}
+                  className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs sm:text-sm font-semibold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <Sparkles className="w-4 h-4 text-sky-400" />
+                  <span>Test CDSL Sep 2024 (₹1.51 Cr)</span>
                 </button>
               </div>
 
               {selectedFile && (
-                <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-800/90 border border-slate-700 text-xs text-slate-200 font-mono">
+                <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-800/90 border border-slate-700 text-xs text-slate-200 font-mono shadow-sm">
                   <FileCheck2 className="w-3.5 h-3.5 text-emerald-400" />
                   <span>{selectedFile.name}</span>
-                  <span className="text-slate-400 font-sans">({(selectedFile.size / 1024).toFixed(1)} KB)</span>
+                  {selectedFile.size > 0 && (
+                    <span className="text-slate-400 font-sans">({(selectedFile.size / 1024).toFixed(1)} KB)</span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleClearFile}
+                    className="ml-1.5 p-1 rounded-md bg-slate-700/60 hover:bg-rose-950/80 hover:text-rose-300 text-slate-400 cursor-pointer transition-colors"
+                    title="Remove / Clear file"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               )}
             </div>
@@ -437,11 +511,11 @@ export const DocumentsScreen: React.FC = () => {
                   <div className="flex items-center gap-2">
                     <Lock className="w-4 h-4 text-amber-400 flex-shrink-0" />
                     <span className="text-xs sm:text-sm font-bold text-slate-200">
-                      PDF Password (PAN in Capital Letters)
+                      PDF Password (PAN / CAS Password)
                     </span>
                   </div>
                   <span className="text-[11px] text-slate-400">
-                    {activeTargetMember?.panCard ? '✓ Auto-filled from member profile' : '10-digit PAN'}
+                    {activeTargetMember?.panCard ? `Active: ${activeTargetMember.name} (${activeTargetMember.panCard})` : 'Enter 10-digit PAN or custom password'}
                   </span>
                 </div>
 
@@ -450,11 +524,10 @@ export const DocumentsScreen: React.FC = () => {
                     <input
                       id="cas-pdf-password-input"
                       type={showPassword ? 'text' : 'password'}
-                      placeholder="e.g. ABCDE1234F"
-                      maxLength={10}
+                      placeholder="e.g. ABCDE1234F or custom CAS password"
                       value={pdfPassword}
-                      onChange={e => setPdfPassword(e.target.value.toUpperCase())}
-                      className="w-full px-3.5 py-2.5 pr-10 bg-slate-900 border border-slate-700 rounded-xl text-sm font-mono uppercase text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-400/50"
+                      onChange={e => setPdfPassword(e.target.value)}
+                      className="w-full px-3.5 py-2.5 pr-10 bg-slate-900 border border-slate-700 rounded-xl text-sm font-mono text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-400/50"
                     />
                     <button
                       type="button"
@@ -484,8 +557,36 @@ export const DocumentsScreen: React.FC = () => {
                   </button>
                 </div>
 
+                {/* Quick-fill Family PAN Chips */}
+                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                  <span className="text-[11px] text-slate-400 font-medium">Quick PAN:</span>
+                  {familyMembers.map(m => {
+                    const pan = m.panCard || (m.panMasked && !m.panMasked.includes('*') ? m.panMasked : '');
+                    if (!pan) return null;
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => {
+                          setPdfPassword(pan);
+                          if (selectedFile) {
+                            processFile(selectedFile, pan, false);
+                          }
+                        }}
+                        className={`px-2 py-0.5 rounded-md text-[11px] font-mono border transition-colors cursor-pointer ${
+                          pdfPassword.toUpperCase() === pan.toUpperCase()
+                            ? 'bg-amber-400/20 border-amber-400/60 text-amber-300 font-bold'
+                            : 'bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-300'
+                        }`}
+                      >
+                        {m.name.split(' ')[0]}: {pan}
+                      </button>
+                    );
+                  })}
+                </div>
+
                 <p className="text-[11px] text-slate-400">
-                  🔒 CAMS / KFintech and Demat CAS files use the primary holder's 10-character PAN in capital letters as the PDF unlock key. Decryption runs 100% locally in your browser memory.
+                  🔒 CAMS / KFintech and Demat CAS files use the primary holder's 10-character PAN in capital letters as the unlock key. Decryption runs 100% locally in your browser memory.
                 </p>
               </form>
             )}
@@ -533,72 +634,211 @@ export const DocumentsScreen: React.FC = () => {
               
               {/* Statement Insights Summary Header */}
               {parseResult && (
-                <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                  <div>
-                    <span className="text-slate-500 block">Statement Type</span>
-                    <span className="font-bold text-slate-200 mt-0.5 block">
-                      {parseResult.statementType === 'CAMS_KFIN_MF'
-                        ? 'CAMS / KFintech CAS'
-                        : parseResult.statementType === 'CDSL_NSDL_DEMAT'
-                        ? 'CDSL / NSDL Demat CAS'
-                        : 'Broker CSV / Tradebook'}
-                    </span>
+                <div className="space-y-3">
+                  <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    <div>
+                      <span className="text-slate-500 block">Statement Type</span>
+                      <span className="font-bold text-slate-200 mt-0.5 block">
+                        {parseResult.statementType === 'CAMS_KFIN_MF'
+                          ? 'CAMS / KFintech CAS'
+                          : parseResult.statementType === 'CDSL_NSDL_DEMAT'
+                          ? 'CDSL / NSDL Demat CAS'
+                          : 'Broker CSV / Tradebook'}
+                      </span>
+                    </div>
+
+                    <div>
+                      <span className="text-slate-500 block">Target Family Member</span>
+                      <span className="font-bold text-amber-400 mt-0.5 block">
+                        {activeTargetMember?.name} ({activeTargetMember?.relation})
+                      </span>
+                    </div>
+
+                    <div>
+                      <span className="text-slate-500 block">Extracted PAN</span>
+                      <span className="font-mono font-bold text-slate-200 mt-0.5 block">
+                        {parseResult.investorPan || activeTargetMember?.panCard || 'N/A'}
+                      </span>
+                    </div>
+
+                    <div>
+                      <span className="text-slate-500 block">Total Statement Valuation</span>
+                      <span className="font-bold text-emerald-400 mt-0.5 block">
+                        ₹ {MoneyEngine.groupIndian(Math.round(parseResult.summary.totalValuation))}
+                      </span>
+                    </div>
                   </div>
 
-                  <div>
-                    <span className="text-slate-500 block">Target Family Member</span>
-                    <span className="font-bold text-amber-400 mt-0.5 block">
-                      {activeTargetMember?.name} ({activeTargetMember?.relation})
-                    </span>
-                  </div>
-
-                  <div>
-                    <span className="text-slate-500 block">Extracted PAN</span>
-                    <span className="font-mono font-bold text-slate-200 mt-0.5 block">
-                      {parseResult.investorPan || activeTargetMember?.panCard || 'N/A'}
-                    </span>
-                  </div>
-
-                  <div>
-                    <span className="text-slate-500 block">Total Statement Valuation</span>
-                    <span className="font-bold text-emerald-400 mt-0.5 block">
-                      ₹ {MoneyEngine.groupIndian(Math.round(parseResult.summary.totalValuation))}
-                    </span>
-                  </div>
+                  {/* Category Breakdown Badges if Demat/MF/AIF available */}
+                  {(parseResult.summary.dematValuation || parseResult.summary.mfValuation || parseResult.summary.aifValuation) && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+                      {parseResult.summary.mfValuation ? (
+                        <div className="p-3 bg-indigo-950/40 border border-indigo-800/40 rounded-xl flex items-center justify-between">
+                          <span className="text-indigo-300 font-semibold">Mutual Fund Folios</span>
+                          <span className="font-bold text-slate-100">₹ {MoneyEngine.groupIndian(Math.round(parseResult.summary.mfValuation))}</span>
+                        </div>
+                      ) : null}
+                      {parseResult.summary.dematValuation ? (
+                        <div className="p-3 bg-sky-950/40 border border-sky-800/40 rounded-xl flex items-center justify-between">
+                          <span className="text-sky-300 font-semibold">Demat Equity & ETFs</span>
+                          <span className="font-bold text-slate-100">₹ {MoneyEngine.groupIndian(Math.round(parseResult.summary.dematValuation))}</span>
+                        </div>
+                      ) : null}
+                      {parseResult.summary.aifValuation ? (
+                        <div className="p-3 bg-amber-950/40 border border-amber-800/40 rounded-xl flex items-center justify-between">
+                          <span className="text-amber-300 font-semibold">AIF Alternative Assets</span>
+                          <span className="font-bold text-slate-100">₹ {MoneyEngine.groupIndian(Math.round(parseResult.summary.aifValuation))}</span>
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
                 </div>
               )}
 
-              {/* Action Bar */}
-              <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
-                <div className="flex items-center gap-3">
-                  <div>
-                    <h3 className="text-base font-bold text-slate-100">3-Outcome Statement Review</h3>
-                    <p className="text-xs text-slate-400">
-                      Select which records to append to <strong>{activeTargetMember?.name}</strong>'s portfolio
-                    </p>
+              {/* Action Bar & Category Filters */}
+              <div className="space-y-3 pb-3 border-b border-slate-800">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div>
+                      <h3 className="text-base font-bold text-slate-100">Statement Review & Portfolio Sync</h3>
+                      <p className="text-xs text-slate-400">
+                        Review holdings & transactions to credit to <strong>{activeTargetMember?.name}</strong>'s portfolio
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={handleToggleSelectAll}
+                      className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold border border-slate-700 cursor-pointer transition-colors"
+                    >
+                      {importRecords.every(r => r.selected) ? 'Deselect All' : 'Select All'}
+                    </button>
                   </div>
 
-                  <button
-                    onClick={handleToggleSelectAll}
-                    className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold border border-slate-700 cursor-pointer transition-colors"
-                  >
-                    {importRecords.every(r => r.selected) ? 'Deselect All' : 'Select All'}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleCleanDuplicates}
+                      className="px-3 py-2 bg-slate-800/80 hover:bg-slate-800 text-slate-300 text-xs font-medium rounded-xl border border-slate-700/70 hover:border-amber-400/50 transition-colors cursor-pointer flex items-center gap-1.5"
+                      title="Merge any duplicate folios and repair cost metrics across all family portfolios"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5 text-amber-400" />
+                      <span className="hidden sm:inline">Clean Duplicates</span>
+                    </button>
+
+                    <button
+                      id="append-selected-ledger-btn"
+                      onClick={handleExecuteImport}
+                      className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs sm:text-sm font-bold rounded-xl shadow-md transition-colors cursor-pointer flex items-center gap-2"
+                    >
+                      <Check className="w-4 h-4 stroke-[3]" />
+                      <span>Sync Selected ({importRecords.filter(r => r.selected).length} items)</span>
+                    </button>
+                  </div>
                 </div>
 
-                <button
-                  id="append-selected-ledger-btn"
-                  onClick={handleExecuteImport}
-                  className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs sm:text-sm font-bold rounded-xl shadow-md transition-colors cursor-pointer flex items-center gap-2"
-                >
-                  <Check className="w-4 h-4 stroke-[3]" />
-                  <span>Append Selected ({importRecords.filter(r => r.selected).length} items)</span>
-                </button>
+                {/* Import Mode Strategy Switcher */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 bg-slate-900/90 rounded-xl border border-slate-800/80 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-400 font-medium">Sync Strategy:</span>
+                    <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => setImportMode('SYNC_UPDATE')}
+                        className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                          importMode === 'SYNC_UPDATE'
+                            ? 'bg-amber-400 text-slate-950 shadow-xs'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        Update Existing & Add New (Recommended)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setImportMode('REPLACE_SNAPSHOT')}
+                        className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                          importMode === 'REPLACE_SNAPSHOT'
+                            ? 'bg-amber-400 text-slate-950 shadow-xs'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        Replace Previous Statement Snapshot
+                      </button>
+                    </div>
+                  </div>
+                  <span className="text-[11px] text-slate-500">
+                    {importMode === 'SYNC_UPDATE'
+                      ? '✓ Matches by ISIN/Folio so new files update NAV & units without doubling entries'
+                      : '✓ Replaces previously imported CAS items for this member with this statement'}
+                  </span>
+                </div>
+
+                {/* Filter Pills */}
+                <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
+                  <button
+                    onClick={() => setReviewCategoryFilter('ALL')}
+                    className={`px-3 py-1 rounded-lg font-medium transition-colors cursor-pointer ${
+                      reviewCategoryFilter === 'ALL'
+                        ? 'bg-amber-400 text-slate-950 font-bold'
+                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                    }`}
+                  >
+                    All Items ({importRecords.length})
+                  </button>
+                  <button
+                    onClick={() => setReviewCategoryFilter('MUTUAL_FUND')}
+                    className={`px-3 py-1 rounded-lg font-medium transition-colors cursor-pointer ${
+                      reviewCategoryFilter === 'MUTUAL_FUND'
+                        ? 'bg-amber-400 text-slate-950 font-bold'
+                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                    }`}
+                  >
+                    Mutual Funds ({importRecords.filter(r => r.category === 'MUTUAL_FUND' && r.recordType !== 'TRANSACTION').length})
+                  </button>
+                  <button
+                    onClick={() => setReviewCategoryFilter('EQUITY')}
+                    className={`px-3 py-1 rounded-lg font-medium transition-colors cursor-pointer ${
+                      reviewCategoryFilter === 'EQUITY'
+                        ? 'bg-amber-400 text-slate-950 font-bold'
+                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                    }`}
+                  >
+                    Equities & ETFs ({importRecords.filter(r => r.category === 'EQUITY').length})
+                  </button>
+                  <button
+                    onClick={() => setReviewCategoryFilter('SPECIALISED')}
+                    className={`px-3 py-1 rounded-lg font-medium transition-colors cursor-pointer ${
+                      reviewCategoryFilter === 'SPECIALISED'
+                        ? 'bg-amber-400 text-slate-950 font-bold'
+                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                    }`}
+                  >
+                    AIF ({importRecords.filter(r => r.category === 'SPECIALISED').length})
+                  </button>
+                  <button
+                    onClick={() => setReviewCategoryFilter('TRANSACTION')}
+                    className={`px-3 py-1 rounded-lg font-medium transition-colors cursor-pointer ${
+                      reviewCategoryFilter === 'TRANSACTION'
+                        ? 'bg-amber-400 text-slate-950 font-bold'
+                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                    }`}
+                  >
+                    Transactions ({importRecords.filter(r => r.recordType === 'TRANSACTION').length})
+                  </button>
+                </div>
               </div>
 
               {/* Transactions / Holdings List */}
               <div className="divide-y divide-slate-800 max-h-[500px] overflow-y-auto pr-1">
-                {importRecords.map(rec => (
+                {importRecords
+                  .filter(rec => {
+                    if (reviewCategoryFilter === 'ALL') return true;
+                    if (reviewCategoryFilter === 'TRANSACTION') return rec.recordType === 'TRANSACTION';
+                    if (reviewCategoryFilter === 'MUTUAL_FUND') return rec.category === 'MUTUAL_FUND' && rec.recordType !== 'TRANSACTION';
+                    if (reviewCategoryFilter === 'EQUITY') return rec.category === 'EQUITY';
+                    if (reviewCategoryFilter === 'SPECIALISED') return rec.category === 'SPECIALISED';
+                    return true;
+                  })
+                  .map(rec => (
                   <div
                     key={rec.id}
                     className={`py-3.5 px-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl transition-colors ${
@@ -633,9 +873,20 @@ export const DocumentsScreen: React.FC = () => {
                           <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
                             {rec.category}
                           </span>
+                          {rec.isin && (
+                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-400">
+                              {rec.isin}
+                            </span>
+                          )}
+                          {rec.folio && (
+                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 text-amber-300/80">
+                              Folio: {rec.folio}
+                            </span>
+                          )}
                         </div>
                         <div className="text-xs text-slate-400 mt-0.5">
                           {rec.date} • <span className="font-semibold text-slate-300">{rec.action}</span> • {rec.quantity} units @ ₹ {MoneyEngine.groupIndian(rec.pricePerUnit)}
+                          {rec.cumulativeInvested ? ` • Cost: ₹${MoneyEngine.groupIndian(Math.round(rec.cumulativeInvested))}` : ''}
                         </div>
                         {rec.statusMessage && (
                           <div className="text-[11px] text-slate-500 mt-0.5">
