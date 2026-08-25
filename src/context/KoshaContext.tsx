@@ -11,6 +11,8 @@ import {
 } from '../types';
 import { INITIAL_FAMILY_MEMBERS, INITIAL_HOLDINGS, INITIAL_LEDGER_EVENTS } from '../data/initialData';
 import { MoneyEngine, MONEY_SCALE, QTY_SCALE } from '../lib/money';
+import { xirr, buildCashFlows, totalGainPercent } from '../lib/returns';
+import { foldHolding, financialYearOf } from '../lib/lots';
 
 interface KoshaContextType {
   familyMembers: FamilyMember[];
@@ -42,7 +44,7 @@ interface KoshaContextType {
     targetOwnerId?: string,
     mode?: 'SYNC_UPDATE' | 'REPLACE_SNAPSHOT'
   ) => { imported: number; updated: number; skipped: number };
-  cleanDuplicatesAndHeal: () => { mergedCount: number; repairedCount: number };
+  cleanDuplicatesAndHeal: () => { mergedCount: number; flaggedCount: number };
   exportBackupJson: () => string;
   importBackupJson: (jsonStr: string) => boolean;
   resetToSampleData: () => void;
@@ -106,48 +108,46 @@ export function findMatchingHolding(
   return undefined;
 }
 
-export function sanitizeAndDeduplicateHoldings(rawHoldings: Holding[]): { holdings: Holding[]; mergedCount: number; repairedCount: number } {
+export function sanitizeAndDeduplicateHoldings(rawHoldings: Holding[]): { holdings: Holding[]; mergedCount: number; flaggedCount: number } {
   const result: Holding[] = [];
   const seenMap = new Map<string, number>();
   let mergedCount = 0;
-  let repairedCount = 0;
+  let flaggedCount = 0;
 
   rawHoldings.forEach(h => {
     let qtyScaledNum = BigInt(h.quantityScaled || '0');
     let priceNum = BigInt(h.currentPriceMinor || '0');
     let costNum = BigInt(h.averageCostPerUnitMinor || h.currentPriceMinor || '0');
+    const reviewReasons: string[] = [];
 
     // 1. Guard against corrupted quantities (e.g. folio numbers stored as unit quantities > 50,000,000 units)
     if (h.category === 'MUTUAL_FUND' && qtyScaledNum > 50_000_000n * QTY_SCALE) {
-      qtyScaledNum = MoneyEngine.fromQty(10000);
-      repairedCount++;
+      reviewReasons.push('Quantity looks wrong - may be a folio number read as units');
     } else if (h.category === 'EQUITY' && qtyScaledNum > 10_000_000n * QTY_SCALE) {
-      qtyScaledNum = MoneyEngine.fromQty(500);
-      repairedCount++;
+      reviewReasons.push('Quantity looks wrong - unusually high share quantity');
     }
 
     // 2. Guard against corrupted prices / NAVs (e.g. ₹0 or > ₹50,000 for regular mutual funds)
     if (h.category === 'MUTUAL_FUND') {
       const priceRupees = MoneyEngine.toRupees(priceNum);
       if (priceRupees <= 0 || priceRupees > 50000) {
-        priceNum = MoneyEngine.fromRupees(50);
-        repairedCount++;
+        reviewReasons.push('NAV/Price looks wrong - zero or unusually high NAV for mutual fund');
       }
     }
 
     // 3. Guard against corrupted cost numbers
     if (costNum <= 0n || (priceNum > 0n && costNum > priceNum * 10n)) {
-      costNum = priceNum > 0n ? priceNum : 1000000n;
-      repairedCount++;
+      reviewReasons.push('Average cost looks wrong - zero or unusually high average cost per unit');
     }
 
     // 4. Holding Total Value Sanity check: individual retail holding must not exceed ₹100 Crore
     const holdingValMinor = (qtyScaledNum * priceNum) / QTY_SCALE;
     if (h.category !== 'REAL_ESTATE' && holdingValMinor > MoneyEngine.fromRupees(100_00_00_000)) {
-      qtyScaledNum = MoneyEngine.fromQty(1000);
-      priceNum = MoneyEngine.fromRupees(100);
-      costNum = priceNum;
-      repairedCount++;
+      reviewReasons.push('Holding valuation exceeds sanity limit of ₹100 Crore');
+    }
+
+    if (reviewReasons.length > 0) {
+      flaggedCount++;
     }
 
     const sanitized: Holding = {
@@ -155,6 +155,9 @@ export function sanitizeAndDeduplicateHoldings(rawHoldings: Holding[]): { holdin
       quantityScaled: qtyScaledNum.toString(),
       currentPriceMinor: priceNum.toString(),
       averageCostPerUnitMinor: costNum.toString(),
+      ...(reviewReasons.length > 0
+        ? { needsReview: true, reviewReasons }
+        : { needsReview: h.needsReview, reviewReasons: h.reviewReasons }),
     };
 
     // Determine unique deduplication key
@@ -184,7 +187,7 @@ export function sanitizeAndDeduplicateHoldings(rawHoldings: Holding[]): { holdin
     }
   });
 
-  return { holdings: result, mergedCount, repairedCount };
+  return { holdings: result, mergedCount, flaggedCount };
 }
 
 export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -319,30 +322,53 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const dayChangeNum = Number(dayChangeMinor);
     const dayChangePercent = assetsNum > 0 ? (dayChangeNum / assetsNum) * 100 : 0;
 
-    // Calculate total dividends, interest, and realised gains from ledger
+    // Calculate total dividends and interest from ledger
     let totalDividendsInterestMinor = 0n;
-    let totalRealisedGainsMinor = 0n;
     filteredEvents.forEach(ev => {
       if (ev.eventType === 'DIVIDEND' || ev.eventType === 'INTEREST') {
         totalDividendsInterestMinor += BigInt(ev.totalAmountMinor || '0');
       }
-      if (ev.eventType === 'SELL') {
-        // If sell event exists, calculate realized proceeds vs cost if recorded
-        const sellAmount = BigInt(ev.totalAmountMinor || '0');
-        const costBasis = (BigInt(ev.quantityScaled || '0') * BigInt(ev.unitPriceMinor || '0')) / QTY_SCALE;
-        if (sellAmount > costBasis) {
-          totalRealisedGainsMinor += (sellAmount - costBasis);
-        }
+    });
+
+    // Compute realised gains from matched purchase lots using foldHolding
+    const eventsByHoldingForGains = new Map<string, LedgerEvent[]>();
+    for (const ev of filteredEvents) {
+      const list = eventsByHoldingForGains.get(ev.holdingId) || [];
+      list.push(ev);
+      eventsByHoldingForGains.set(ev.holdingId, list);
+    }
+
+    const holdingMapForGains = new Map<string, Holding>();
+    for (const h of holdings) {
+      holdingMapForGains.set(h.id, h);
+    }
+
+    let totalRealisedGainsMinor = 0n;
+    const realisedGainErrors: string[] = [];
+
+    eventsByHoldingForGains.forEach((events, holdingId) => {
+      const holding = holdingMapForGains.get(holdingId);
+      const category: AssetCategory = holding ? holding.category : 'EQUITY';
+      const foldRes = foldHolding(events, category);
+      if (foldRes.errors && foldRes.errors.length > 0) {
+        realisedGainErrors.push(...foldRes.errors);
+      }
+      for (const d of foldRes.disposals) {
+        totalRealisedGainsMinor += d.gainMinor;
       }
     });
 
-    // Dynamic Annualized Return (IRR / CAGR based on actual holdings)
-    let yourReturnAnnualizedPercent = 0;
-    if (totalInvestedMinor > 0n && totalAssetsMinor > 0n) {
-      const totalGainMinor = totalAssetsMinor - totalInvestedMinor + totalDividendsInterestMinor + totalRealisedGainsMinor;
-      const gainPct = (Number(totalGainMinor) / Number(totalInvestedMinor)) * 100;
-      yourReturnAnnualizedPercent = Math.round(gainPct * 100) / 100;
-    }
+    const currentValueRupees = Number(totalAssetsMinor) / 10000;
+    const flows = buildCashFlows(
+      filteredEvents,
+      currentValueRupees,
+      new Date().toISOString().split('T')[0]
+    );
+    const xirrPercent = xirr(flows);
+    const totalGainPct = totalGainPercent(
+      Number(totalInvestedMinor) / 10000,
+      Number(totalAssetsMinor - totalInvestedMinor) / 10000
+    );
 
     return {
       totalAssetsMinor,
@@ -355,9 +381,11 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       dayChangePercent,
       totalDividendsInterestMinor,
       totalRealisedGainsMinor,
-      yourReturnAnnualizedPercent,
+      realisedGainErrors,
+      xirrPercent,
+      totalGainPercent: totalGainPct,
     };
-  }, [filteredHoldings, filteredEvents, sgbValuationMode]);
+  }, [filteredHoldings, filteredEvents, holdings, sgbValuationMode]);
 
   // Actions
   const addHolding = (holdingData: Omit<Holding, 'id' | 'lastPriceUpdated' | 'isPriceStale'>): Holding => {
@@ -505,52 +533,135 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const computeTaxSummary = (financialYear: string): TaxSummary => {
-    // Generate tax items based on ledger sales & distributions
-    const records: TaxGainItem[] = [
-      {
-        id: 'tax_1',
-        holdingName: 'Tata Consultancy Services Ltd',
-        category: 'EQUITY',
-        saleDate: '2025-11-14',
-        purchaseDate: '2022-03-10',
-        holdingDays: 980,
-        saleQuantity: 30,
-        saleAmountMinor: MoneyEngine.fromRupees(4150 * 30),
-        buyCostMinor: MoneyEngine.fromRupees(3350 * 30),
-        gainMinor: MoneyEngine.fromRupees(800 * 30), // ₹24,000 LTCG
-        taxType: 'LTCG_EQUITY',
-        applicableRate: '12.5% (after ₹1.25L exemption under Sec 112A)',
-        estimatedTaxMinor: 0n, // Covered under 1.25L exemption
-      },
-      {
-        id: 'tax_2',
-        holdingName: 'Nippon India Small Cap Fund',
-        category: 'MUTUAL_FUND',
-        saleDate: '2025-08-20',
-        purchaseDate: '2025-01-15',
-        holdingDays: 217,
-        saleQuantity: 500,
-        saleAmountMinor: MoneyEngine.fromRupees(180 * 500),
-        buyCostMinor: MoneyEngine.fromRupees(150 * 500),
-        gainMinor: MoneyEngine.fromRupees(30 * 500), // ₹15,000 STCG
-        taxType: 'STCG_EQUITY',
-        applicableRate: '20% under Sec 111A',
-        estimatedTaxMinor: MoneyEngine.fromRupees(15000 * 0.20), // ₹3,000
-      },
-    ];
+    // 1. Group filteredEvents by holdingId
+    const eventsByHolding = new Map<string, LedgerEvent[]>();
+    for (const ev of filteredEvents) {
+      const list = eventsByHolding.get(ev.holdingId) || [];
+      list.push(ev);
+      eventsByHolding.set(ev.holdingId, list);
+    }
 
-    const ltcgEquityTotalMinor = MoneyEngine.fromRupees(24000);
-    const ltcgEquityExemptionMinor = MoneyEngine.fromRupees(125000); // FY 2024-25+ ₹1.25 Lakh limit
-    const ltcgEquityTaxableMinor = 0n;
-    const ltcgEquityTaxMinor = 0n;
+    // Map of holdings for category lookup
+    const holdingMap = new Map<string, Holding>();
+    for (const h of holdings) {
+      holdingMap.set(h.id, h);
+    }
 
-    const stcgEquityTotalMinor = MoneyEngine.fromRupees(15000);
-    const stcgEquityTaxMinor = MoneyEngine.fromRupees(3000);
+    const allDisposals: ReturnType<typeof foldHolding>['disposals'] = [];
+    const collectedErrors: string[] = [];
 
-    const dividendIncomeMinor = summary.totalDividendsInterestMinor;
-    const interestIncomeMinor = MoneyEngine.fromRupees(48000);
+    // 2 & 3. For each group, look up holding category, then call foldHolding
+    eventsByHolding.forEach((events, holdingId) => {
+      const holding = holdingMap.get(holdingId);
+      const category: AssetCategory = holding ? holding.category : 'EQUITY';
+      const foldRes = foldHolding(events, category);
+      if (foldRes.errors && foldRes.errors.length > 0) {
+        collectedErrors.push(...foldRes.errors);
+      }
+      for (const d of foldRes.disposals) {
+        if (financialYearOf(d.saleDate) === financialYear) {
+          allDisposals.push(d);
+        }
+      }
+    });
 
-    const totalEstimatedTaxMinor = stcgEquityTaxMinor;
+    // 4 & 5. Map disposals to TaxGainItem
+    const records: TaxGainItem[] = allDisposals.map((disposal, idx) => {
+      const holding = holdingMap.get(disposal.holdingId);
+      const category: AssetCategory = holding ? holding.category : 'EQUITY';
+
+      let taxType: TaxGainItem['taxType'] = 'DEBT_SLAB';
+      let applicableRate = 'Slab rate';
+
+      if (category === 'EQUITY' || category === 'MUTUAL_FUND') {
+        if (disposal.isLongTerm) {
+          taxType = 'LTCG_EQUITY';
+          applicableRate = '12.5% (above ₹1.25L exemption)';
+        } else {
+          taxType = 'STCG_EQUITY';
+          applicableRate = '20% under Sec 111A';
+        }
+      } else if (category === 'GOLD_SGB') {
+        taxType = 'SGB_EXEMPT';
+        applicableRate = 'Exempt Sec 47(ix)';
+      } else if (category === 'REAL_ESTATE') {
+        taxType = 'REAL_ESTATE_LTCG';
+        applicableRate = '12.5% / 20%';
+      } else {
+        taxType = 'DEBT_SLAB';
+        applicableRate = 'Slab rate';
+      }
+
+      let estimatedTaxMinor = 0n;
+      if (taxType === 'STCG_EQUITY') {
+        estimatedTaxMinor = disposal.gainMinor > 0n ? (disposal.gainMinor * 20n) / 100n : 0n;
+      }
+
+      return {
+        id: `${disposal.saleEventId}_${disposal.purchaseEventId}_${idx}`,
+        holdingId: disposal.holdingId,
+        holdingName: disposal.holdingName,
+        taxType,
+        saleDate: disposal.saleDate,
+        purchaseDate: disposal.purchaseDate,
+        holdingDays: disposal.holdingDays,
+        saleQuantity: Number(disposal.qtyScaled) / 100000000,
+        saleAmountMinor: disposal.proceedsMinor,
+        buyCostMinor: disposal.costMinor,
+        gainMinor: disposal.gainMinor,
+        estimatedTaxMinor,
+        applicableRate,
+      };
+    });
+
+    // 6. Totals in BigInt
+    let ltcgEquityTotalMinor = 0n;
+    let stcgEquityTotalMinor = 0n;
+    let sgbExemptGainsMinor = 0n;
+    let debtSlabGainsMinor = 0n;
+
+    for (const r of records) {
+      if (r.taxType === 'LTCG_EQUITY') {
+        ltcgEquityTotalMinor += r.gainMinor;
+      } else if (r.taxType === 'STCG_EQUITY') {
+        stcgEquityTotalMinor += r.gainMinor;
+      } else if (r.taxType === 'SGB_EXEMPT') {
+        sgbExemptGainsMinor += r.gainMinor;
+      } else if (r.taxType === 'DEBT_SLAB') {
+        debtSlabGainsMinor += r.gainMinor;
+      }
+    }
+
+    const ltcgEquityExemptionMinor = 1250000000n; // ₹1,25,000 * 10,000 minor units
+    const ltcgEquityTaxableMinor = ltcgEquityTotalMinor > ltcgEquityExemptionMinor
+      ? ltcgEquityTotalMinor - ltcgEquityExemptionMinor
+      : 0n;
+    const ltcgEquityTaxMinor = (ltcgEquityTaxableMinor * 125n) / 1000n;
+
+    const stcgEquityTaxableBase = stcgEquityTotalMinor > 0n ? stcgEquityTotalMinor : 0n;
+    const stcgEquityTaxMinor = (stcgEquityTaxableBase * 20n) / 100n;
+
+    // Sum actual DIVIDEND and INTEREST events in this financial year
+    let dividendIncomeMinor = 0n;
+    let interestIncomeMinor = 0n;
+
+    for (const ev of filteredEvents) {
+      if (financialYearOf(ev.eventDate) === financialYear) {
+        let amt = BigInt(ev.totalAmountMinor || '0');
+        if (amt === 0n) {
+          const qty = BigInt(ev.quantityScaled || '0');
+          const unit = BigInt(ev.unitPriceMinor || '0');
+          amt = (qty * unit) / QTY_SCALE;
+        }
+        if (ev.eventType === 'DIVIDEND') {
+          dividendIncomeMinor += amt;
+        } else if (ev.eventType === 'INTEREST') {
+          interestIncomeMinor += amt;
+        }
+      }
+    }
+
+    const totalEstimatedTaxMinor = ltcgEquityTaxMinor + stcgEquityTaxMinor;
 
     return {
       financialYear,
@@ -560,12 +671,13 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       ltcgEquityTaxMinor,
       stcgEquityTotalMinor,
       stcgEquityTaxMinor,
-      debtSlabGainsMinor: 0n,
-      sgbExemptGainsMinor: MoneyEngine.fromRupees(433100), // 100g SGB maturity capital gains (100% Tax Free!)
+      debtSlabGainsMinor,
+      sgbExemptGainsMinor,
       dividendIncomeMinor,
       interestIncomeMinor,
       totalEstimatedTaxMinor,
       records,
+      errors: collectedErrors.length > 0 ? collectedErrors : undefined,
     };
   };
 
@@ -691,10 +803,10 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return { imported: importedCount, updated: updatedCount, skipped: skippedCount };
   };
 
-  const cleanDuplicatesAndHeal = (): { mergedCount: number; repairedCount: number } => {
+  const cleanDuplicatesAndHeal = (): { mergedCount: number; flaggedCount: number } => {
     const result = sanitizeAndDeduplicateHoldings(holdings);
     setHoldings(result.holdings);
-    return { mergedCount: result.mergedCount, repairedCount: result.repairedCount };
+    return { mergedCount: result.mergedCount, flaggedCount: result.flaggedCount };
   };
 
   const exportBackupJson = (): string => {

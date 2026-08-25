@@ -55,37 +55,37 @@ export const GrowthScreen: React.FC = () => {
         year: '2021',
         invested: Math.round(currentInvested * 0.45),
         value: Math.round(currentValue * 0.40),
-        formattedValue: `₹ ${MoneyEngine.formatCompactRupees(currentValue * 0.40)}`,
+        formattedValue: `₹ ${MoneyEngine.formatCompact(BigInt(Math.round(currentValue * 0.40)) * 100n)}`,
       },
       {
         year: '2022',
         invested: Math.round(currentInvested * 0.62),
         value: Math.round(currentValue * 0.58),
-        formattedValue: `₹ ${MoneyEngine.formatCompactRupees(currentValue * 0.58)}`,
+        formattedValue: `₹ ${MoneyEngine.formatCompact(BigInt(Math.round(currentValue * 0.58)) * 100n)}`,
       },
       {
         year: '2023',
         invested: Math.round(currentInvested * 0.78),
         value: Math.round(currentValue * 0.75),
-        formattedValue: `₹ ${MoneyEngine.formatCompactRupees(currentValue * 0.75)}`,
+        formattedValue: `₹ ${MoneyEngine.formatCompact(BigInt(Math.round(currentValue * 0.75)) * 100n)}`,
       },
       {
         year: '2024',
         invested: Math.round(currentInvested * 0.90),
         value: Math.round(currentValue * 0.88),
-        formattedValue: `₹ ${MoneyEngine.formatCompactRupees(currentValue * 0.88)}`,
+        formattedValue: `₹ ${MoneyEngine.formatCompact(BigInt(Math.round(currentValue * 0.88)) * 100n)}`,
       },
       {
         year: '2025',
         invested: Math.round(currentInvested * 0.96),
         value: Math.round(currentValue * 0.95),
-        formattedValue: `₹ ${MoneyEngine.formatCompactRupees(currentValue * 0.95)}`,
+        formattedValue: `₹ ${MoneyEngine.formatCompact(BigInt(Math.round(currentValue * 0.95)) * 100n)}`,
       },
       {
         year: '2026',
         invested: currentInvested,
         value: currentValue,
-        formattedValue: `₹ ${MoneyEngine.formatCompactRupees(currentValue)}`,
+        formattedValue: `₹ ${MoneyEngine.formatCompact(BigInt(currentValue) * 100n)}`,
       },
     ];
   }, [hasHoldings, totalInvestedNum, totalAssetsNum]);
@@ -197,16 +197,11 @@ export const GrowthScreen: React.FC = () => {
         <div className="absolute top-0 right-0 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 left-1/4 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="relative z-10 space-y-4">
+        <div className="relative z-10 space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <span className="text-xs uppercase tracking-wider font-bold text-amber-400">
-                Your Annualized Return
-              </span>
-              <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-slate-800/90 text-slate-300 border border-slate-700">
-                Personal IRR / Money-Weighted Return
-              </span>
-            </div>
+            <span className="text-xs uppercase tracking-wider font-bold text-amber-400">
+              Personal Portfolio Returns
+            </span>
             
             <button
               id="explainer-toggle-btn"
@@ -214,19 +209,51 @@ export const GrowthScreen: React.FC = () => {
               className="text-xs font-semibold text-slate-300 hover:text-white flex items-center gap-1.5 bg-slate-800/80 hover:bg-slate-700/80 px-3 py-1.5 rounded-xl border border-slate-700 transition-all cursor-pointer"
             >
               <HelpCircle className="w-3.5 h-3.5 text-amber-400" />
-              <span>Why is this different from fund company numbers?</span>
+              <span>Why is this different from what my fund company shows?</span>
               {isExplainerOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
             </button>
           </div>
 
-          <div className="flex items-baseline gap-3 flex-wrap">
-            <div className="text-4xl sm:text-6xl font-extrabold font-serif text-white tracking-tight">
-              {summary.yourReturnAnnualizedPercent > 0
-                ? `+${summary.yourReturnAnnualizedPercent}%`
-                : `${summary.yourReturnAnnualizedPercent.toFixed(2)}%`}
+          {/* TWO FIGURES GRID */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+            {/* Figure 1: Your return */}
+            <div className="bg-slate-800/40 p-5 rounded-2xl border border-slate-800/80">
+              <div className="text-xs uppercase tracking-wider font-bold text-amber-400 mb-2">
+                Your return
+              </div>
+              {summary.xirrPercent !== null ? (
+                <div>
+                  <div className="flex items-baseline gap-2 flex-wrap">
+                    <span className="text-3xl sm:text-4xl font-extrabold font-serif text-white tracking-tight">
+                      {summary.xirrPercent > 0 ? `+${summary.xirrPercent}%` : `${summary.xirrPercent.toFixed(2)}%`} per year
+                    </span>
+                  </div>
+                  <div className="text-xs font-semibold text-emerald-400 font-mono mt-1">
+                    {summary.unrealisedGainMinor >= 0n ? '+' : ''}₹ {MoneyEngine.formatCompact(summary.unrealisedGainMinor)} total gain
+                  </div>
+                </div>
+              ) : (
+                <div className="text-xs text-slate-400 italic py-2">
+                  We need at least one purchase and one date to work out your yearly return.
+                </div>
+              )}
             </div>
-            <div className="text-sm sm:text-base text-slate-300 font-medium">
-              per annum across your entire portfolio
+
+            {/* Figure 2: Total gain so far */}
+            <div className="bg-slate-800/40 p-5 rounded-2xl border border-slate-800/80">
+              <div className="text-xs uppercase tracking-wider font-bold text-amber-400 mb-2">
+                Total gain so far
+              </div>
+              <div>
+                <div className="flex items-baseline gap-2 flex-wrap">
+                  <span className="text-3xl sm:text-4xl font-extrabold font-serif text-white tracking-tight">
+                    {summary.totalGainPercent > 0 ? `+${summary.totalGainPercent}%` : `${summary.totalGainPercent.toFixed(2)}%`}
+                  </span>
+                </div>
+                <div className="text-xs font-semibold text-emerald-400 font-mono mt-1">
+                  {summary.unrealisedGainMinor >= 0n ? '+' : ''}₹ {MoneyEngine.formatCompact(summary.unrealisedGainMinor)} total gain
+                </div>
+              </div>
             </div>
           </div>
 
@@ -242,18 +269,18 @@ export const GrowthScreen: React.FC = () => {
                 <span>The Difference Between Fund Returns and Your Return</span>
               </div>
               <p className="leading-relaxed text-slate-300">
-                A mutual fund company or broker shows <strong>Scheme Point-to-Point CAGR</strong> or <strong>Time-Weighted Return (TWR)</strong>. That calculation assumes someone invested all their money on day one and never added or withdrew a single rupee.
+                A mutual fund company or broker shows <strong>Scheme Point-to-Point CAGR</strong> or <strong>Time-Weighted Return</strong>. That calculation assumes someone invested all their money on day one and never added or withdrew a single rupee.
               </p>
               <p className="leading-relaxed text-slate-300">
-                <strong>Your Return (Internal Rate of Return / IRR)</strong> is your true individual financial experience. If you added more money via monthly SIPs when the market was lower in 2022, your actual personal return is higher than the fund’s advertised benchmark.
+                <strong>Your Return</strong> is your true individual financial experience. If you added more money via monthly SIPs when the market was lower, your actual personal return is higher than the fund’s advertised benchmark.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 text-xs">
                 <div className="p-3.5 bg-slate-900 rounded-xl border border-slate-800">
-                  <div className="font-semibold text-slate-300">Fund Adverts (TWR/CAGR)</div>
+                  <div className="font-semibold text-slate-300">Fund Adverts (CAGR)</div>
                   <div className="text-slate-400 mt-1">Measures fund manager performance ignoring cashflow timing.</div>
                 </div>
                 <div className="p-3.5 bg-slate-900 rounded-xl border border-emerald-900/50">
-                  <div className="font-semibold text-emerald-400">Kosha "Your Return" (IRR)</div>
+                  <div className="font-semibold text-emerald-400">Kosha "Your Return"</div>
                   <div className="text-slate-400 mt-1">Measures what actually went into your family's pocket.</div>
                 </div>
               </div>

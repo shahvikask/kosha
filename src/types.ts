@@ -160,6 +160,8 @@ export interface Holding {
   currentPriceMinor: string; // bigint string
   dayChangePercent?: number; // % day move e.g. +1.4%
   dayChangeMinor?: string; // bigint string
+  needsReview?: boolean;
+  reviewReasons?: string[];
   
   // Specific attributes for SGB / Gold (Annex A / SRS §6.3)
   benchmarkPriceMinor?: string; // e.g. RBI gold 999 purity redemption benchmark
@@ -194,7 +196,9 @@ export interface PortfolioSummary {
   dayChangePercent: number;
   totalDividendsInterestMinor: bigint;
   totalRealisedGainsMinor?: bigint;
-  yourReturnAnnualizedPercent: number; // The user return / IRR
+  realisedGainErrors?: string[];
+  xirrPercent: number | null;
+  totalGainPercent: number;
 }
 
 export interface TaxGainItem {
@@ -227,6 +231,7 @@ export interface TaxSummary {
   interestIncomeMinor: bigint;
   totalEstimatedTaxMinor: bigint;
   records: TaxGainItem[];
+  errors?: string[];
 }
 
 export type StatementImportStatus = 'NEW' | 'ALREADY_EXISTS' | 'CONFLICT_OR_NEEDS_REVIEW';

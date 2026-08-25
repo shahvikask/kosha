@@ -279,10 +279,10 @@ export const DocumentsScreen: React.FC = () => {
 
   // Clean Duplicates and Heal State
   const handleCleanDuplicates = () => {
-    const { mergedCount, repairedCount } = cleanDuplicatesAndHeal();
+    const { mergedCount, flaggedCount } = cleanDuplicatesAndHeal();
     setImportNotification({
       type: 'success',
-      message: `Portfolio Health Check: Re-merged ${mergedCount} duplicate items and repaired ${repairedCount} cost valuations across all accounts.`,
+      message: `Portfolio Health Check: Re-merged ${mergedCount} duplicate items and flagged ${flaggedCount} items for review across all accounts.`,
     });
   };
 

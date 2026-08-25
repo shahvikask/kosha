@@ -114,10 +114,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             </div>
 
             <div className="text-xs text-slate-400 bg-slate-800/80 px-3 py-1 rounded-xl border border-slate-700/60">
-              Annualized Return: <span className="font-bold text-amber-400">
-                {summary.yourReturnAnnualizedPercent > 0
-                  ? `+${summary.yourReturnAnnualizedPercent}%`
-                  : `${summary.yourReturnAnnualizedPercent.toFixed(2)}%`}
+              Total Gain: <span className="font-bold text-amber-400">
+                {summary.totalGainPercent > 0
+                  ? `+${summary.totalGainPercent}%`
+                  : `${summary.totalGainPercent.toFixed(2)}%`}
               </span>
             </div>
           </div>
