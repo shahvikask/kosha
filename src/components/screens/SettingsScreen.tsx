@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useKosha } from '../../context/KoshaContext';
 import { MoneyEngine, QTY_SCALE } from '../../lib/money';
 import { FamilyMember, FamilyRelation } from '../../types';
@@ -30,7 +30,10 @@ import {
   UserCheck,
   Info,
   Lock,
+  Database,
+  RotateCcw,
 } from 'lucide-react';
+import { LS_KEYS } from '../../db/migrate';
 
 interface SettingsScreenProps {
   onOpenEmergencySheet: () => void;
@@ -57,6 +60,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
     resetToSampleData,
     holdings,
     ledgerEvents,
+    repo,
   } = useKosha();
 
   const [notification, setNotification] = useState<{ type: 'success' | 'error' | 'warning'; message: string } | null>(null);
@@ -75,6 +79,55 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
 
   // Delete confirmation modal state
   const [deletingMember, setDeletingMember] = useState<FamilyMember | null>(null);
+
+  // Check if any localStorage backup keys exist
+  const [hasBackupCopy, setHasBackupCopy] = useState(false);
+
+  useEffect(() => {
+    const keys = Object.values(LS_KEYS);
+    const found = keys.some(k => localStorage.getItem(`${k}__pre_sqlite_backup`) !== null);
+    setHasBackupCopy(found);
+  }, []);
+
+  // Rebuild from backup handler
+  const handleRebuildFromBackup = async () => {
+    const confirmed = window.confirm(
+      'This will rebuild your records from the backup copy kept in browser storage. Nothing will be deleted.'
+    );
+    if (!confirmed) return;
+
+    try {
+      // 1. Read the localStorage keys ending in __pre_sqlite_backup
+      // 2. Write them back to their original key names
+      for (const k of Object.values(LS_KEYS)) {
+        const backupVal = localStorage.getItem(`${k}__pre_sqlite_backup`);
+        if (backupVal !== null) {
+          localStorage.setItem(k, backupVal);
+        }
+      }
+
+      // 3. Clear the migrated_from_localstorage flag:
+      if (repo) {
+        await repo.setMeta('migrated_from_localstorage', 'false');
+      }
+
+      // 4. Delete the IndexedDB database 'kosha-store'
+      await new Promise<void>((resolve, reject) => {
+        const req = indexedDB.deleteDatabase('kosha-store');
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+        req.onblocked = () => resolve();
+      });
+
+      // 5. Reload the page
+      window.location.reload();
+    } catch (e: any) {
+      setNotification({
+        type: 'error',
+        message: e?.message || 'Failed to rebuild from backup copy.',
+      });
+    }
+  };
 
   // Helper to calculate age from DOB
   const calculateAge = (dobString?: string): number | null => {
@@ -266,6 +319,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
       valuationMinor: totalValuationMinor,
     };
   };
+
+  const totalRecordsCount = familyMembers.length + holdings.length + ledgerEvents.length;
 
   return (
     <div className="space-y-6 pb-12">
@@ -478,19 +533,52 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
         </div>
       </div>
 
-      {/* Local Vault & Backup Storage Bento Tile */}
+      {/* YOUR DATA / LOCAL VAULT & BACKUP STORAGE BENTO TILE */}
       <div className="bg-slate-900/80 rounded-3xl p-6 border border-slate-800 backdrop-blur-md shadow-lg space-y-6">
         <div className="border-b border-slate-800 pb-4">
           <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
             <Shield className="w-4 h-4 text-emerald-400" />
-            <span>Local Vault & Data Backup</span>
+            <span>Your Data & Local Vault</span>
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            Your financial data is stored locally in your browser storage. You can download an encrypted backup anytime.
+            Your financial records are stored securely in a local SQLite database file on your device.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* Database info details */}
+        <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+          <div className="space-y-1">
+            <div className="text-slate-400 flex items-center gap-1.5">
+              <Database className="w-3.5 h-3.5 text-sky-400" />
+              <span>Database Location</span>
+            </div>
+            <div className="font-mono text-slate-200 font-semibold">
+              kosha.db (Origin Private File System / IDB)
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <div className="text-slate-400 flex items-center gap-1.5">
+              <FileCheck className="w-3.5 h-3.5 text-amber-400" />
+              <span>Total Database Records</span>
+            </div>
+            <div className="font-semibold text-slate-200">
+              {totalRecordsCount} records ({familyMembers.length} entities, {holdings.length} holdings, {ledgerEvents.length} ledger events)
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <div className="text-slate-400 flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Storage Backup Note</span>
+            </div>
+            <div className="text-slate-300 leading-tight">
+              Old browser-storage copy is safely retained as a backup key.
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Download Backup */}
           <div className="p-5 rounded-2xl border border-slate-800 bg-slate-950/60 space-y-3 flex flex-col justify-between">
             <div>
@@ -526,6 +614,30 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
                 onChange={handleImportBackup}
               />
             </label>
+          </div>
+
+          {/* Rebuild from backup */}
+          <div className="p-5 rounded-2xl border border-slate-800 bg-slate-950/60 space-y-3 flex flex-col justify-between">
+            <div>
+              <div className="font-bold text-sm text-slate-100">Rebuild from backup</div>
+              <div className="text-xs text-slate-400 mt-1">
+                {hasBackupCopy
+                  ? 'Replay the one-time migration from the safety copy preserved in browser storage.'
+                  : 'No backup copy found. Your records are already in the database.'}
+              </div>
+            </div>
+            <button
+              disabled={!hasBackupCopy}
+              onClick={handleRebuildFromBackup}
+              className={`w-full py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors ${
+                hasBackupCopy
+                  ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 cursor-pointer'
+                  : 'bg-slate-900 text-slate-600 border border-slate-800 cursor-not-allowed'
+              }`}
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Rebuild from backup</span>
+            </button>
           </div>
 
           {/* Reset Data */}

@@ -18,6 +18,9 @@ import { encryptJson, decryptJson, isEncryptedBlob, generateRecoveryKey, maskPan
 import { ruleSetFor, classifyGain, grandfatheredCostMinor, applyRateMinor } from '../lib/taxRules';
 import { buildTree, TreeL1, HoldingPlacement } from '../lib/lookthrough';
 import { ExposureNode } from '../lib/taxonomy';
+import { SqliteWasmDriver } from '../db/sqliteWasmDriver';
+import { Repository } from '../db/repository';
+import { migrateFromLocalStorage, MigrationReport } from '../db/migrate';
 
 interface KoshaContextType {
   familyMembers: FamilyMember[];
@@ -37,37 +40,36 @@ interface KoshaContextType {
   activeScreen: 'HOME' | 'MY_MONEY' | 'GROWTH' | 'DOCUMENTS' | 'SETTINGS' | 'SIMPLE_VIEW';
   setActiveScreen: (screen: 'HOME' | 'MY_MONEY' | 'GROWTH' | 'DOCUMENTS' | 'SETTINGS' | 'SIMPLE_VIEW') => void;
   
+  // Database status
+  repo: Repository | null;
+  dbReady: boolean;
+  dbError: string | null;
+  migration: MigrationReport | null;
+
   // Actions
-  addHolding: (holding: Omit<Holding, 'id' | 'lastPriceUpdated' | 'isPriceStale'>) => Holding;
-  updateHolding: (id: string, updates: Partial<Holding>) => void;
-  deleteHolding: (id: string) => void;
-  appendLedgerEvent: (event: Omit<LedgerEvent, 'id' | 'createdAt'>) => LedgerEvent;
-  correctEvent: (eventId: string, corrected: Partial<LedgerEvent>) => void;
-  addFamilyMember: (member: Omit<FamilyMember, 'id'> & { pan?: string }) => FamilyMember;
-  updateFamilyMember: (id: string, updates: Partial<FamilyMember> & { pan?: string }) => void;
-  deleteFamilyMember: (id: string) => { deletedHoldingsCount: number; deletedEventsCount: number };
+  addHolding: (holding: Omit<Holding, 'id' | 'lastPriceUpdated' | 'isPriceStale'>) => Promise<Holding>;
+  updateHolding: (id: string, updates: Partial<Holding>) => Promise<void>;
+  deleteHolding: (id: string) => Promise<void>;
+  appendLedgerEvent: (event: Omit<LedgerEvent, 'id' | 'createdAt'>) => Promise<LedgerEvent>;
+  addLedgerEvent?: (e: LedgerEvent) => Promise<void>;
+  correctEvent: (eventId: string, corrected: Partial<LedgerEvent>) => Promise<void>;
+  addFamilyMember: (member: Omit<FamilyMember, 'id'> & { pan?: string }) => Promise<FamilyMember>;
+  updateFamilyMember: (id: string, updates: Partial<FamilyMember> & { pan?: string }) => Promise<void>;
+  deleteFamilyMember: (id: string) => Promise<{ deletedHoldingsCount: number; deletedEventsCount: number }>;
   computeTaxSummary: (financialYear: string) => TaxSummary;
   importStatementRecords: (
     records: StatementImportRecord[],
     targetOwnerId?: string,
     mode?: 'SYNC_UPDATE' | 'REPLACE_SNAPSHOT'
-  ) => { imported: number; updated: number; skipped: number };
-  cleanDuplicatesAndHeal: () => { mergedCount: number; flaggedCount: number };
+  ) => Promise<{ imported: number; updated: number; skipped: number }>;
+  cleanDuplicatesAndHeal: () => Promise<{ mergedCount: number; flaggedCount: number }>;
   exportBackupJson: (passphrase?: string) => Promise<string>;
-  importBackupJson: (dataOrJsonStr: string | any) => boolean;
-  resetToSampleData: () => void;
-  updateHoldingPrice: (id: string, newPriceRupees: number) => void;
+  importBackupJson: (dataOrJsonStr: string | any) => Promise<boolean>;
+  resetToSampleData: () => Promise<void>;
+  updateHoldingPrice: (id: string, newPriceRupees: number) => Promise<void>;
 }
 
 const KoshaContext = createContext<KoshaContextType | null>(null);
-
-const STORAGE_KEYS = {
-  FAMILY: 'kosha_family_v1',
-  HOLDINGS: 'kosha_holdings_v1',
-  LEDGER: 'kosha_ledger_v1',
-  PRIVACY: 'kosha_privacy_v1',
-  SGB_MODE: 'kosha_sgb_mode_v1',
-};
 
 export function normalizeHoldingName(str: string): string {
   return (str || '')
@@ -121,7 +123,6 @@ export function sanitizeAndDeduplicateHoldings(rawHoldings: Holding[]): { holdin
   const seenMap = new Map<string, number>();
   let mergedCount = 0;
   let flaggedCount = 0;
-
   rawHoldings.forEach(h => {
     let qtyScaledNum = BigInt(h.quantityScaled || '0');
     let priceNum = BigInt(h.currentPriceMinor || '0');
@@ -199,72 +200,71 @@ export function sanitizeAndDeduplicateHoldings(rawHoldings: Holding[]): { holdin
 }
 
 export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Family members state
-  const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.FAMILY);
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) { console.error(e); }
-    }
-    return INITIAL_FAMILY_MEMBERS;
-  });
+  const [repo, setRepo] = useState<Repository | null>(null);
+  const [dbDriver, setDbDriver] = useState<SqliteWasmDriver | null>(null);
+  const [dbReady, setDbReady] = useState(false);
+  const [dbError, setDbError] = useState<string | null>(null);
+  const [migration, setMigration] = useState<MigrationReport | null>(null);
+
+  // State loaded from SQLite
+  const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
+  const [holdings, setHoldings] = useState<Holding[]>([]);
+  const [ledgerEvents, setLedgerEvents] = useState<LedgerEvent[]>([]);
 
   const [selectedMemberId, setSelectedMemberId] = useState<string>('ALL');
-
-  // Holdings state (with automatic self-healing and deduplication on load)
-  const [holdings, setHoldings] = useState<Holding[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.HOLDINGS);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          return sanitizeAndDeduplicateHoldings(parsed).holdings;
-        }
-      } catch (e) { console.error(e); }
-    }
-    return sanitizeAndDeduplicateHoldings(INITIAL_HOLDINGS).holdings;
-  });
-
-  // Append-only Ledger state
-  const [ledgerEvents, setLedgerEvents] = useState<LedgerEvent[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.LEDGER);
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) { console.error(e); }
-    }
-    return INITIAL_LEDGER_EVENTS;
-  });
-
-  // Privacy & UI settings
-  const [isPrivacyMasked, setIsPrivacyMasked] = useState<boolean>(() => {
-    return localStorage.getItem(STORAGE_KEYS.PRIVACY) === 'true';
-  });
-
-  const [sgbValuationMode, setSgbValuationMode] = useState<'MARKET_TRADED' | 'RBI_BENCHMARK'>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.SGB_MODE);
-    return saved === 'RBI_BENCHMARK' ? 'RBI_BENCHMARK' : 'MARKET_TRADED';
-  });
-
+  const [isPrivacyMasked, setIsPrivacyMasked] = useState<boolean>(false);
+  const [sgbValuationMode, setSgbValuationMode] = useState<'MARKET_TRADED' | 'RBI_BENCHMARK'>('MARKET_TRADED');
   const [activeScreen, setActiveScreen] = useState<'HOME' | 'MY_MONEY' | 'GROWTH' | 'DOCUMENTS' | 'SETTINGS' | 'SIMPLE_VIEW'>('HOME');
 
-  // Save to localStorage
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.FAMILY, JSON.stringify(familyMembers));
-  }, [familyMembers]);
+    (async () => {
+      try {
+        const driver = new SqliteWasmDriver('kosha.db');
+        await driver.open();
+        const r = new Repository(driver);
+        await r.initialise();
+        const report = await migrateFromLocalStorage(r, window.localStorage);
+        setMigration(report.ran ? report : null);
+        
+        let entities = await r.allEntities();
+        let currentHoldings = await r.allHoldings();
+        let currentEvents = await r.allEvents();
+
+        // Seed initial sample data if SQLite is completely empty on fresh install
+        if (entities.length === 0 && currentHoldings.length === 0 && currentEvents.length === 0) {
+          for (const m of INITIAL_FAMILY_MEMBERS) {
+            await r.upsertEntity(m);
+          }
+          for (const h of INITIAL_HOLDINGS) {
+            await r.upsertHolding(h);
+          }
+          await r.appendEvents(INITIAL_LEDGER_EVENTS);
+          entities = await r.allEntities();
+          currentHoldings = await r.allHoldings();
+          currentEvents = await r.allEvents();
+        }
+
+        setFamilyMembers(entities);
+        setHoldings(currentHoldings);
+        setLedgerEvents(currentEvents);
+        setRepo(r);
+        setDbDriver(driver);
+        setDbReady(true);
+      } catch (e) {
+        setDbError(e instanceof Error ? e.message : String(e));
+      }
+    })();
+  }, []);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.HOLDINGS, JSON.stringify(holdings));
-  }, [holdings]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.LEDGER, JSON.stringify(ledgerEvents));
-  }, [ledgerEvents]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.PRIVACY, isPrivacyMasked ? 'true' : 'false');
-  }, [isPrivacyMasked]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.SGB_MODE, sgbValuationMode);
-  }, [sgbValuationMode]);
+    if (!dbDriver) return;
+    const flush = () => { void dbDriver.persist(); };
+    window.addEventListener('beforeunload', flush);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') flush();
+    });
+    return () => window.removeEventListener('beforeunload', flush);
+  }, [dbDriver]);
 
   // Filtered holdings by selected family member
   const filteredHoldings = useMemo(() => {
@@ -379,8 +379,28 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
   }, [filteredHoldings, filteredEvents, holdings, sgbValuationMode, derived]);
 
-  // Actions
-  const addHolding = (holdingData: Omit<Holding, 'id' | 'lastPriceUpdated' | 'isPriceStale'>): Holding => {
+  // Actions writing through SQLite Repository first
+  const addLedgerEvent = async (e: LedgerEvent) => {
+    if (!repo) return;
+    await repo.appendEvent(e);
+    setLedgerEvents(prev => [e, ...prev]);
+  };
+
+  const appendLedgerEvent = async (eventData: Omit<LedgerEvent, 'id' | 'createdAt'>): Promise<LedgerEvent> => {
+    const newEvent: LedgerEvent = {
+      ...eventData,
+      id: `ev_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      createdAt: new Date().toISOString(),
+    };
+
+    if (repo) {
+      await repo.appendEvent(newEvent);
+    }
+    setLedgerEvents(prev => [newEvent, ...prev]);
+    return newEvent;
+  };
+
+  const addHolding = async (holdingData: Omit<Holding, 'id' | 'lastPriceUpdated' | 'isPriceStale'>): Promise<Holding> => {
     const newId = `h_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const newHolding: Holding = {
       ...holdingData,
@@ -389,11 +409,14 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       isPriceStale: false,
     };
 
+    if (repo) {
+      await repo.upsertHolding(newHolding);
+    }
     setHoldings(prev => [newHolding, ...prev]);
 
     // Append initial BUY or opening event into append-only ledger
     const initialAmount = (BigInt(holdingData.quantityScaled) * BigInt(holdingData.averageCostPerUnitMinor)) / QTY_SCALE;
-    appendLedgerEvent({
+    await appendLedgerEvent({
       holdingId: newId,
       holdingName: holdingData.name,
       ownerId: holdingData.ownerId,
@@ -408,26 +431,26 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return newHolding;
   };
 
-  const updateHolding = (id: string, updates: Partial<Holding>) => {
-    // quantityScaled and averageCostPerUnitMinor are derived from the ledger and cannot be updated directly here.
+  const updateHolding = async (id: string, updates: Partial<Holding>): Promise<void> => {
     const { quantityScaled, averageCostPerUnitMinor, ...allowedUpdates } = updates;
-    setHoldings(prev =>
-      prev.map(h => {
-        if (h.id === id) {
-          return {
-            ...h,
-            ...allowedUpdates,
-            lastPriceUpdated: allowedUpdates.currentPriceMinor ? new Date().toISOString() : h.lastPriceUpdated,
-          };
-        }
-        return h;
-      })
-    );
+    const existing = holdings.find(h => h.id === id);
+    if (!existing) return;
+
+    const updatedHolding: Holding = {
+      ...existing,
+      ...allowedUpdates,
+      lastPriceUpdated: allowedUpdates.currentPriceMinor ? new Date().toISOString() : existing.lastPriceUpdated,
+    };
+
+    if (repo) {
+      await repo.upsertHolding(updatedHolding);
+    }
+    setHoldings(prev => prev.map(h => (h.id === id ? updatedHolding : h)));
   };
 
-  const updateHoldingPrice = (id: string, newPriceRupees: number) => {
+  const updateHoldingPrice = async (id: string, newPriceRupees: number): Promise<void> => {
     const newPriceMinor = MoneyEngine.fromRupees(newPriceRupees).toString();
-    updateHolding(id, {
+    await updateHolding(id, {
       currentPriceMinor: newPriceMinor,
       lastPriceUpdated: new Date().toISOString(),
       isPriceStale: false,
@@ -435,24 +458,15 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   };
 
-  const deleteHolding = (id: string) => {
-    // Confirmation / log notice: The records of what you bought and sold will be kept. Only the holding is removed.
+  const deleteHolding = async (id: string): Promise<void> => {
     console.info('The records of what you bought and sold will be kept. Only the holding is removed.');
+    if (repo) {
+      await repo.deleteHolding(id);
+    }
     setHoldings(prev => prev.filter(h => h.id !== id));
   };
 
-  const appendLedgerEvent = (eventData: Omit<LedgerEvent, 'id' | 'createdAt'>): LedgerEvent => {
-    const newEvent: LedgerEvent = {
-      ...eventData,
-      id: `ev_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      createdAt: new Date().toISOString(),
-    };
-
-    setLedgerEvents(prev => [newEvent, ...prev]);
-    return newEvent;
-  };
-
-  const correctEvent = (eventId: string, corrected: Partial<LedgerEvent>) => {
+  const correctEvent = async (eventId: string, corrected: Partial<LedgerEvent>): Promise<void> => {
     const original = ledgerEvents.find(e => e.id === eventId);
     if (!original) return;
     const correction: LedgerEvent = {
@@ -463,10 +477,13 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       supersedesEventId: eventId,
       createdAt: new Date().toISOString(),
     };
+    if (repo) {
+      await repo.appendEvent(correction);
+    }
     setLedgerEvents(prev => [correction, ...prev]);
   };
 
-  const addFamilyMember = (memberData: Omit<FamilyMember, 'id'> & { pan?: string; panCard?: string }): FamilyMember => {
+  const addFamilyMember = async (memberData: Omit<FamilyMember, 'id'> & { pan?: string; panCard?: string }): Promise<FamilyMember> => {
     const newId = `fam_${Date.now()}`;
     const rawPan = (memberData as any).pan || (memberData as any).panCard || memberData.panMasked || '';
     const masked = rawPan ? maskPan(rawPan) : undefined;
@@ -479,50 +496,48 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       color: memberData.color,
       notes: memberData.notes?.trim() || undefined,
     };
+    if (repo) {
+      await repo.upsertEntity(newMember);
+    }
     setFamilyMembers(prev => [...prev, newMember]);
     return newMember;
   };
 
-  const updateFamilyMember = (id: string, updates: Partial<FamilyMember> & { pan?: string; panCard?: string }) => {
-    setFamilyMembers(prev =>
-      prev.map(m => {
-        if (m.id === id) {
-          const rawPan = updates.panMasked ?? (updates as any).panCard ?? (updates as any).pan;
-          const updated: FamilyMember = { ...m, ...updates };
-          if (rawPan !== undefined) {
-            updated.panMasked = rawPan ? maskPan(rawPan) : undefined;
-          }
-          if (updates.dateOfBirth !== undefined) {
-            updated.dateOfBirth = updates.dateOfBirth.trim() || undefined;
-          }
-          return updated;
-        }
-        return m;
-      })
-    );
+  const updateFamilyMember = async (id: string, updates: Partial<FamilyMember> & { pan?: string; panCard?: string }): Promise<void> => {
+    const existing = familyMembers.find(m => m.id === id);
+    if (!existing) return;
+
+    const rawPan = updates.panMasked ?? (updates as any).panCard ?? (updates as any).pan;
+    const updated: FamilyMember = { ...existing, ...updates };
+    if (rawPan !== undefined) {
+      updated.panMasked = rawPan ? maskPan(rawPan) : undefined;
+    }
+    if (updates.dateOfBirth !== undefined) {
+      updated.dateOfBirth = updates.dateOfBirth.trim() || undefined;
+    }
+
+    if (repo) {
+      await repo.upsertEntity(updated);
+    }
+    setFamilyMembers(prev => prev.map(m => (m.id === id ? updated : m)));
   };
 
-  const deleteFamilyMember = (id: string): { deletedHoldingsCount: number; deletedEventsCount: number } => {
-    // 1. Identify all holdings owned by this family member
+  const deleteFamilyMember = async (id: string): Promise<{ deletedHoldingsCount: number; deletedEventsCount: number }> => {
     const memberHoldingIds = new Set(holdings.filter(h => h.ownerId === id).map(h => h.id));
     const deletedHoldingsCount = memberHoldingIds.size;
 
-    // 2. Cascade delete holdings
+    if (repo) {
+      await repo.deleteEntity(id);
+    }
+
     setHoldings(prev => prev.filter(h => h.ownerId !== id));
-
-    // 3. NEVER delete ledger events. Events must be kept append-only.
-    // Orphaned events will be reported by derivePositions.
-    const deletedEventsCount = 0;
-
-    // 4. Remove family member entity
     setFamilyMembers(prev => prev.filter(m => m.id !== id));
 
-    // 5. Reset selectedMemberId if user had filtered by this deleted member
     if (selectedMemberId === id) {
       setSelectedMemberId('ALL');
     }
 
-    return { deletedHoldingsCount, deletedEventsCount };
+    return { deletedHoldingsCount, deletedEventsCount: 0 };
   };
 
   const computeTaxSummary = (financialYear: string): TaxSummary => {
@@ -548,7 +563,6 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       };
     }
 
-    // 1. Group filteredEvents by holdingId
     const eventsByHolding = new Map<string, LedgerEvent[]>();
     for (const ev of filteredEvents) {
       const list = eventsByHolding.get(ev.holdingId) || [];
@@ -556,7 +570,6 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       eventsByHolding.set(ev.holdingId, list);
     }
 
-    // Map of holdings for category lookup
     const holdingMap = new Map<string, Holding>();
     for (const h of holdings) {
       holdingMap.set(h.id, h);
@@ -565,7 +578,6 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const allDisposals: ReturnType<typeof foldHolding>['disposals'] = [];
     const collectedErrors: string[] = [];
 
-    // 2 & 3. For each group, look up holding category, then call foldHolding
     eventsByHolding.forEach((events, holdingId) => {
       const holding = holdingMap.get(holdingId);
       const category: AssetCategory = holding ? holding.category : 'EQUITY';
@@ -580,7 +592,6 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     });
 
-    // 4 & 5. Map disposals to TaxGainItem
     const records: TaxGainItem[] = allDisposals.map((disposal, idx) => {
       const holding = holdingMap.get(disposal.holdingId);
       const category: AssetCategory = holding ? holding.category : 'EQUITY';
@@ -626,7 +637,6 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       };
     });
 
-    // 6. Totals in BigInt
     let ltcgEquityTotalMinor = 0n;
     let stcgEquityTotalMinor = 0n;
     let sgbExemptGainsMinor = 0n;
@@ -653,7 +663,6 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const stcgEquityTaxableBase = stcgEquityTotalMinor > 0n ? stcgEquityTotalMinor : 0n;
     const stcgEquityTaxMinor = applyRateMinor(stcgEquityTaxableBase, rules.stcgEquityRateBasisPoints);
 
-    // Sum actual DIVIDEND and INTEREST events in this financial year
     let dividendIncomeMinor = 0n;
     let interestIncomeMinor = 0n;
 
@@ -693,28 +702,26 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
   };
 
-  const importStatementRecords = (
+  const importStatementRecords = async (
     records: StatementImportRecord[],
     targetOwnerId?: string,
     mode: 'SYNC_UPDATE' | 'REPLACE_SNAPSHOT' = 'SYNC_UPDATE'
-  ) => {
+  ): Promise<{ imported: number; updated: number; skipped: number }> => {
     let importedCount = 0;
     let updatedCount = 0;
     let skippedCount = 0;
     const effectiveOwnerId = targetOwnerId || (selectedMemberId === 'ALL' ? 'fam_1' : selectedMemberId);
 
-    // If REPLACE_SNAPSHOT mode is chosen, remove old statement-imported holdings for this member
     let currentWorkingHoldings = mode === 'REPLACE_SNAPSHOT'
       ? holdings.filter(h => h.ownerId !== effectiveOwnerId || (!h.notes?.includes('CAS') && !h.priceSource?.includes('CDSL')))
       : [...holdings];
 
-    records.forEach(rec => {
+    for (const rec of records) {
       if (!rec.selected) {
         skippedCount++;
-        return;
+        continue;
       }
 
-      // Smart matching by ISIN, Folio, or normalized fund/stock name
       let existingHolding = mode === 'REPLACE_SNAPSHOT'
         ? undefined
         : findMatchingHolding(currentWorkingHoldings, rec, effectiveOwnerId);
@@ -723,19 +730,16 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const priceMinor = MoneyEngine.fromRupees(rec.pricePerUnit).toString();
       const totalAmountMinor = MoneyEngine.fromRupees(rec.totalAmount).toString();
 
-      // Compute average cost safely - never allow astronomical numbers
       let avgCostMinor = priceMinor;
       if (rec.cumulativeInvested && rec.cumulativeInvested > 0 && rec.quantity > 0) {
         const computedAvg = rec.cumulativeInvested / rec.quantity;
         const priceRupees = rec.pricePerUnit || (rec.totalAmount / rec.quantity);
-        // Valid if within reasonable bounds (0.02x to 5x of current price/NAV)
         if (computedAvg > 0 && computedAvg <= priceRupees * 5 && computedAvg >= priceRupees * 0.02) {
           avgCostMinor = MoneyEngine.fromRupees(computedAvg).toString();
         }
       }
 
       if (!existingHolding && (rec.action === 'BUY' || rec.recordType === 'HOLDING')) {
-        // Create new holding
         const newId = `h_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
         const newHolding: Holding = {
           id: newId,
@@ -754,10 +758,12 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           notes: `Imported via CAS statement (${rec.isin || rec.folio || 'Folio verified'})`,
         };
         currentWorkingHoldings = [newHolding, ...currentWorkingHoldings];
+        if (repo) {
+          await repo.upsertHolding(newHolding);
+        }
 
-        // Record initial ledger event
         const initialAmount = (BigInt(newHolding.quantityScaled) * BigInt(newHolding.averageCostPerUnitMinor)) / QTY_SCALE;
-        appendLedgerEvent({
+        await appendLedgerEvent({
           holdingId: newId,
           holdingName: newHolding.name,
           ownerId: effectiveOwnerId,
@@ -772,27 +778,24 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         importedCount++;
       } else if (existingHolding) {
         if (rec.recordType === 'HOLDING') {
-          // Update existing holding in-place with latest snapshot values
-          currentWorkingHoldings = currentWorkingHoldings.map(h => {
-            if (h.id === existingHolding!.id) {
-              return {
-                ...h,
-                name: rec.holdingName, // Update with cleaner statement name
-                quantityScaled: qtyScaled,
-                currentPriceMinor: priceMinor,
-                averageCostPerUnitMinor: avgCostMinor,
-                isin: rec.isin || h.isin,
-                symbolOrFolio: rec.folio || rec.isin || h.symbolOrFolio,
-                priceSource: 'CDSL Statement Close',
-                lastPriceUpdated: new Date().toISOString(),
-              };
-            }
-            return h;
-          });
+          const updatedH: Holding = {
+            ...existingHolding,
+            name: rec.holdingName,
+            quantityScaled: qtyScaled,
+            currentPriceMinor: priceMinor,
+            averageCostPerUnitMinor: avgCostMinor,
+            isin: rec.isin || existingHolding.isin,
+            symbolOrFolio: rec.folio || rec.isin || existingHolding.symbolOrFolio,
+            priceSource: 'CDSL Statement Close',
+            lastPriceUpdated: new Date().toISOString(),
+          };
+          if (repo) {
+            await repo.upsertHolding(updatedH);
+          }
+          currentWorkingHoldings = currentWorkingHoldings.map(h => (h.id === existingHolding!.id ? updatedH : h));
           updatedCount++;
         } else {
-          // Append transaction event to immutable ledger
-          appendLedgerEvent({
+          await appendLedgerEvent({
             holdingId: existingHolding.id,
             holdingName: existingHolding.name,
             ownerId: effectiveOwnerId,
@@ -806,17 +809,21 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           importedCount++;
         }
       }
-    });
+    }
 
-    // Run final deduplication & sanitization on working holdings
     const sanitized = sanitizeAndDeduplicateHoldings(currentWorkingHoldings);
     setHoldings(sanitized.holdings);
 
     return { imported: importedCount, updated: updatedCount, skipped: skippedCount };
   };
 
-  const cleanDuplicatesAndHeal = (): { mergedCount: number; flaggedCount: number } => {
+  const cleanDuplicatesAndHeal = async (): Promise<{ mergedCount: number; flaggedCount: number }> => {
     const result = sanitizeAndDeduplicateHoldings(holdings);
+    if (repo) {
+      for (const h of result.holdings) {
+        await repo.upsertHolding(h);
+      }
+    }
     setHoldings(result.holdings);
     return { mergedCount: result.mergedCount, flaggedCount: result.flaggedCount };
   };
@@ -836,16 +843,25 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return JSON.stringify(backupData, null, 2);
   };
 
-  const importBackupJson = (dataOrJsonStr: string | any): boolean => {
+  const importBackupJson = async (dataOrJsonStr: string | any): Promise<boolean> => {
     try {
       const data = typeof dataOrJsonStr === 'string' ? JSON.parse(dataOrJsonStr) : dataOrJsonStr;
-      if (data.holdings && Array.isArray(data.holdings)) {
-        setHoldings(data.holdings);
-      }
       if (data.familyMembers && Array.isArray(data.familyMembers)) {
+        if (repo) {
+          for (const m of data.familyMembers) await repo.upsertEntity(m);
+        }
         setFamilyMembers(data.familyMembers);
       }
+      if (data.holdings && Array.isArray(data.holdings)) {
+        if (repo) {
+          for (const h of data.holdings) await repo.upsertHolding(h);
+        }
+        setHoldings(data.holdings);
+      }
       if (data.ledgerEvents && Array.isArray(data.ledgerEvents)) {
+        if (repo) {
+          await repo.appendEvents(data.ledgerEvents);
+        }
         setLedgerEvents(data.ledgerEvents);
       }
       return true;
@@ -855,14 +871,16 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  const resetToSampleData = () => {
+  const resetToSampleData = async (): Promise<void> => {
+    if (repo) {
+      for (const m of INITIAL_FAMILY_MEMBERS) await repo.upsertEntity(m);
+      for (const h of INITIAL_HOLDINGS) await repo.upsertHolding(h);
+      await repo.appendEvents(INITIAL_LEDGER_EVENTS);
+    }
     setFamilyMembers(INITIAL_FAMILY_MEMBERS);
     setHoldings(INITIAL_HOLDINGS);
     setLedgerEvents(INITIAL_LEDGER_EVENTS);
     setSelectedMemberId('ALL');
-    localStorage.removeItem(STORAGE_KEYS.FAMILY);
-    localStorage.removeItem(STORAGE_KEYS.HOLDINGS);
-    localStorage.removeItem(STORAGE_KEYS.LEDGER);
   };
 
   return (
@@ -884,16 +902,22 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         summary,
         activeScreen,
         setActiveScreen,
+        repo,
+        dbReady,
+        dbError,
+        migration,
         addHolding,
         updateHolding,
         deleteHolding,
         appendLedgerEvent,
+        addLedgerEvent,
         correctEvent,
         addFamilyMember,
         updateFamilyMember,
         deleteFamilyMember,
         computeTaxSummary,
         importStatementRecords,
+        cleanDuplicatesAndHeal,
         exportBackupJson,
         importBackupJson,
         resetToSampleData,
