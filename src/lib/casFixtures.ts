@@ -17,7 +17,8 @@
  * Shape follows codereverser/casparser (MIT) so it can be validated against
  * that project's published JSON Schema.
  */
-import { CASParseResult, StatementImportRecord } from './casParser';
+import { CASParseResult } from './casParser';
+import { StatementImportRecord } from '../types';
 
 const INVESTOR = 'ANJALI RAMESH IYER';
 const PAN = 'AAAPZ1234C';
