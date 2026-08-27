@@ -467,7 +467,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setLedgerEvents(prev => [correction, ...prev]);
   };
 
-  const addFamilyMember = async (memberData: Omit<FamilyMember, 'id'> & { pan?: string; panCard?: string }): Promise<FamilyMember> => {
+  const addFamilyMember = async (memberData: Omit<FamilyMember, 'id'> & { pan?: string; panCard?: string; panForStatements?: string }): Promise<FamilyMember> => {
     const newId = `fam_${Date.now()}`;
     const rawPan = (memberData as any).pan || (memberData as any).panCard || memberData.panMasked || '';
     const masked = rawPan ? maskPan(rawPan) : undefined;
@@ -476,6 +476,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       relation: memberData.relation,
       id: newId,
       panMasked: masked,
+      panForStatements: memberData.panForStatements?.trim().toUpperCase() || undefined,
       dateOfBirth: memberData.dateOfBirth?.trim() || undefined,
       color: memberData.color,
       notes: memberData.notes?.trim() || undefined,
@@ -487,7 +488,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return newMember;
   };
 
-  const updateFamilyMember = async (id: string, updates: Partial<FamilyMember> & { pan?: string; panCard?: string }): Promise<void> => {
+  const updateFamilyMember = async (id: string, updates: Partial<FamilyMember> & { pan?: string; panCard?: string; panForStatements?: string }): Promise<void> => {
     const existing = familyMembers.find(m => m.id === id);
     if (!existing) return;
 
@@ -495,6 +496,9 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const updated: FamilyMember = { ...existing, ...updates };
     if (rawPan !== undefined) {
       updated.panMasked = rawPan ? maskPan(rawPan) : undefined;
+    }
+    if ('panForStatements' in updates) {
+      updated.panForStatements = updates.panForStatements ? updates.panForStatements.trim().toUpperCase() : undefined;
     }
     if (updates.dateOfBirth !== undefined) {
       updated.dateOfBirth = updates.dateOfBirth.trim() || undefined;
@@ -898,10 +902,13 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const exportBackupJson = async (passphrase?: string): Promise<string> => {
+    const sanitizedFamilyMembers = passphrase
+      ? familyMembers
+      : familyMembers.map(({ panForStatements, ...rest }) => rest);
     const backupData = {
       koshaVersion: '1.0.0',
       exportedAt: new Date().toISOString(),
-      familyMembers,
+      familyMembers: sanitizedFamilyMembers,
       holdings,
       ledgerEvents,
     };

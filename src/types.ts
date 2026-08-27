@@ -105,6 +105,9 @@ export interface FamilyMember {
   name: string;
   relation: FamilyRelation;
   panMasked?: string;
+  /** Full PAN, stored ONLY with explicit consent, used to unlock
+   *  statement PDFs. Never displayed unmasked. */
+  panForStatements?: string;
   dateOfBirth?: string; // ISO date YYYY-MM-DD
   color: string;
   notes?: string;

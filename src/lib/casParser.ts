@@ -1,3 +1,4 @@
+// FILE: src/lib/casParser.ts
 import { AssetCategory, StatementImportRecord, StatementImportStatus } from '../types';
 
 export interface ParsedCASScheme {
@@ -112,13 +113,19 @@ export async function extractPdfTextInBrowser(
   arrayBuffer: ArrayBuffer,
   password?: string
 ): Promise<{ fullText: string; pageLines: string[][]; pagesCount: number }> {
-  const pdfjsLib = await import('pdfjs-dist');
-  if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
-    try {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '4.10.38'}/pdf.worker.min.mjs`;
-    } catch (e) {
-      console.warn('PDF.js worker initialization warning:', e);
+  try {
+    const pdfjsLib = await import('pdfjs-dist');
+    if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
+      // @ts-ignore
+      const workerUrl = (await import(
+        'pdfjs-dist/build/pdf.worker.min.mjs?url'
+      )).default;
+      pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
     }
+  } catch (e) {
+    throw new Error(
+      'The PDF reader could not start. Please reload the page and try again.'
+    );
   }
 
   // Build candidate password variations (exact, uppercase, lowercase, no spaces)
@@ -144,11 +151,10 @@ export async function extractPdfTextInBrowser(
 
   for (const pwd of candidatePasswords) {
     try {
+      const pdfjsLib = await import('pdfjs-dist');
       const loadingTask = pdfjsLib.getDocument({
         data: arrayBuffer.slice(0), // copy buffer so repeated attempts don't fail on detached ArrayBuffer
         password: pwd,
-        cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/cmaps/',
-        cMapPacked: true,
       });
 
       pdfDoc = await loadingTask.promise;

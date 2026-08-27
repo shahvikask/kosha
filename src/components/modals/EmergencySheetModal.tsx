@@ -2,6 +2,7 @@ import React from 'react';
 import { useKosha } from '../../context/KoshaContext';
 import { ASSET_CATEGORIES } from '../../types';
 import { MoneyEngine } from '../../lib/money';
+import { BrandLogo } from '../common/BrandLogo';
 import {
   X,
   Printer,
@@ -65,9 +66,12 @@ export const EmergencySheetModal: React.FC<EmergencySheetModalProps> = ({ isOpen
                 <h1 className="text-2xl sm:text-3xl font-black font-serif text-white print:text-black tracking-tight">
                   CONFIDENTIAL FAMILY WEALTH & NOMINEE DOSSIER
                 </h1>
-                <p className="text-xs text-slate-400 print:text-slate-600 mt-1">
-                  GrowUrDhan · Prepared on {new Date().toLocaleDateString('en-IN', { dateStyle: 'full' })}
-                </p>
+                <div className="text-xs text-slate-400 print:text-slate-600 mt-1 flex items-center gap-2">
+                  <span className="inline-flex items-center font-semibold text-white">
+                    Grow<span className="text-amber-400 inline-flex items-center mx-0.5">Ur</span>Dhan
+                  </span> 
+                  <span>· Prepared on {new Date().toLocaleDateString('en-IN', { dateStyle: 'full' })}</span>
+                </div>
               </div>
               <div className="text-right">
                 <span className="text-xs font-bold uppercase tracking-wider bg-slate-800 print:bg-slate-100 text-amber-400 print:text-black px-3 py-1 rounded-md border border-slate-700 print:border-slate-300">

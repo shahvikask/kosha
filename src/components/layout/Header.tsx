@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useKosha } from '../../context/KoshaContext';
+import { BrandLogo } from '../common/BrandLogo';
 import {
   Users,
   Eye,
@@ -44,47 +45,8 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddHolding, onOpenAddRecor
           <div
             id="brand-logo"
             onClick={() => setActiveScreen('HOME')}
-            className="flex items-center gap-3 cursor-pointer group"
           >
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500/20 via-slate-900 to-amber-500/20 border border-emerald-500/30 flex items-center justify-center shadow-md group-hover:border-emerald-400/60 group-hover:shadow-emerald-500/10 transition-all">
-              <svg
-                className="w-6 h-6"
-                viewBox="0 0 24 24"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  d="M3 17L9 11L13 15L21 7"
-                  stroke="url(#growGradient)"
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <path
-                  d="M16 7H21V12"
-                  stroke="url(#growGradient)"
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <circle cx="8" cy="18" r="2.5" fill="#F59E0B" fillOpacity="0.9" />
-                <circle cx="15" cy="19" r="2" fill="#10B981" fillOpacity="0.9" />
-                <defs>
-                  <linearGradient id="growGradient" x1="3" y1="17" x2="21" y2="7" gradientUnits="userSpaceOnUse">
-                    <stop stopColor="#10B981" />
-                    <stop offset="1" stopColor="#F59E0B" />
-                  </linearGradient>
-                </defs>
-              </svg>
-            </div>
-            <div>
-              <div className="flex items-center">
-                <span className="font-bold text-xl tracking-tight text-white font-serif">
-                  Grow<span className="text-amber-400">Ur</span><span className="text-emerald-400">Dhan</span>
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-400 hidden sm:block">Private Indian Family Wealth & Records</p>
-            </div>
+            <BrandLogo />
           </div>
         </div>
 

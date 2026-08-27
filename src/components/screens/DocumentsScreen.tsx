@@ -3,6 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useKosha, findMatchingHolding } from '../../context/KoshaContext';
 import { MoneyEngine, QTY_SCALE } from '../../lib/money';
 import { PrivacyValue } from '../common/PrivacyValue';
+import { ErrorBoundary } from '../common/ErrorBoundary';
 import { StatementImportRecord } from '../../types';
 import { parseStatementFile, CASParseResult, getSampleCdslJune2026, getSampleCdslJuly2026, getSampleCdslSep2024 } from '../../lib/casParser';
 import {
@@ -92,8 +93,15 @@ export const DocumentsScreen: React.FC = () => {
     setAcceptedHoldingIds(new Set());
     setParseError(null);
     setImportNotification(null);
-    setPdfPassword('');
+    const m = familyMembers.find(fm => fm.id === newMemberId);
+    setPdfPassword(m?.panForStatements || '');
   };
+
+  useEffect(() => {
+    if (activeTargetMember?.panForStatements) {
+      setPdfPassword(activeTargetMember.panForStatements);
+    }
+  }, [targetMemberId]);
 
   const handleClearFile = () => {
     setSelectedFile(null);
@@ -185,14 +193,14 @@ export const DocumentsScreen: React.FC = () => {
     if (!isPdf) {
       processFile(file, '', false);
     } else {
-      const initialPass = (pdfPassword || activeTargetMember?.panCard || '').trim();
+      const initialPass = (pdfPassword || activeTargetMember?.panForStatements || '').trim();
       if (initialPass) {
         processFile(file, initialPass, true);
       } else {
+        const memberName = activeTargetMember?.name || 'the primary holder';
         setImportNotification({
           type: 'info',
-          message:
-            'PDF file selected. If password-protected, enter your 10-character PAN in uppercase below and click "Decrypt & Parse Statement".',
+          message: `PDF file selected. If password-protected, enter the 10-character PAN of ${memberName} in capitals below and click "Read Statement".`,
         });
       }
     }
@@ -219,17 +227,14 @@ export const DocumentsScreen: React.FC = () => {
         setParseError(
           'No portfolio holdings or transactions found in the statement. Please check if the statement format is supported.'
         );
-        setIsParsing(false);
         return;
       }
 
       setParseResult(result);
       setRawRecords(result.importRecords);
       buildReconciliation(result, result.importRecords, targetMemberId);
-      setIsParsing(false);
     } catch (err: any) {
       console.error('Statement Parse Attempt:', err);
-      setIsParsing(false);
 
       const errString = err?.message || String(err);
       const isPasswordIssue =
@@ -240,18 +245,21 @@ export const DocumentsScreen: React.FC = () => {
 
       if (isPasswordIssue) {
         if (isAutoAttempt) {
+          const memberName = activeTargetMember?.name || 'the primary holder';
           setImportNotification({
             type: 'info',
-            message: `"${file.name}" is password-protected. Please enter or select the primary holder's PAN / password below and click "Decrypt & Parse Statement".`,
+            message: `"${file.name}" is password-protected. Enter the 10-character PAN of ${memberName} in capitals below and click "Read Statement".`,
           });
         } else {
           setParseError(
-            'Incorrect PDF password. For CAS statements from CAMS, KFintech, CDSL, or NSDL, enter the primary holder’s 10-character PAN in capital letters (e.g. ABCDE1234F). If you set a custom password when requesting CAS, enter that.'
+            "That password did not open the file. CAS statements use the primary holder's PAN in capital letters."
           );
         }
       } else {
         setParseError(`Failed to parse statement: ${errString || 'Unsupported file format or corrupted stream.'}`);
       }
+    } finally {
+      setIsParsing(false);
     }
   };
 
@@ -466,7 +474,8 @@ export const DocumentsScreen: React.FC = () => {
 
       {/* TAB 1: STATEMENT IMPORTER & RECONCILIATION */}
       {activeTab === 'IMPORTER' && (
-        <div className="space-y-6">
+        <ErrorBoundary>
+          <div className="space-y-6">
           {/* STEP 1: ENTITY SELECTION & FILE UPLOAD BENTO CARD */}
           <div className="bg-slate-900/80 rounded-3xl p-6 sm:p-7 border border-slate-800 backdrop-blur-md shadow-lg space-y-6">
             {/* Top Bar: Family Member Target Selector */}
@@ -554,29 +563,38 @@ export const DocumentsScreen: React.FC = () => {
                   />
                 </label>
 
-                <button
-                  onClick={handleLoadCdslJune2026}
-                  className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs sm:text-sm font-semibold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
-                >
-                  <Sparkles className="w-4 h-4 text-emerald-400" />
-                  <span>Test June 2026 Statement</span>
-                </button>
+                {import.meta.env.DEV && (
+                  <div className="flex flex-col items-center gap-2 pt-2 w-full">
+                    <p className="text-xs opacity-60 text-slate-400">
+                      Development only — synthetic sample statements
+                    </p>
+                    <div className="flex flex-wrap items-center justify-center gap-3">
+                      <button
+                        onClick={handleLoadCdslJune2026}
+                        className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs sm:text-sm font-semibold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Sparkles className="w-4 h-4 text-emerald-400" />
+                        <span>Test June 2026 Statement</span>
+                      </button>
 
-                <button
-                  onClick={handleLoadCdslJuly2026}
-                  className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs sm:text-sm font-semibold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
-                >
-                  <Sparkles className="w-4 h-4 text-amber-400" />
-                  <span>Test July 2026 Statement</span>
-                </button>
+                      <button
+                        onClick={handleLoadCdslJuly2026}
+                        className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs sm:text-sm font-semibold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Sparkles className="w-4 h-4 text-amber-400" />
+                        <span>Test July 2026 Statement</span>
+                      </button>
 
-                <button
-                  onClick={handleLoadCdslSep2024}
-                  className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs sm:text-sm font-semibold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
-                >
-                  <Sparkles className="w-4 h-4 text-sky-400" />
-                  <span>Test Sep 2024 Statement</span>
-                </button>
+                      <button
+                        onClick={handleLoadCdslSep2024}
+                        className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs sm:text-sm font-semibold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Sparkles className="w-4 h-4 text-sky-400" />
+                        <span>Test Sep 2024 Statement</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {selectedFile && (
@@ -625,7 +643,11 @@ export const DocumentsScreen: React.FC = () => {
                     <input
                       id="cas-pdf-password-input"
                       type={showPassword ? 'text' : 'password'}
-                      placeholder="e.g. ABCDE1234F or custom statement password"
+                      placeholder={
+                        activeTargetMember?.name
+                          ? `Enter the 10-character PAN of ${activeTargetMember.name} in capitals`
+                          : 'Enter the 10-character PAN in capitals'
+                      }
                       value={pdfPassword}
                       onChange={e => setPdfPassword(e.target.value)}
                       className="w-full px-3.5 py-2.5 pr-10 bg-slate-900 border border-slate-700 rounded-xl text-sm font-mono text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-400/50"
@@ -659,7 +681,10 @@ export const DocumentsScreen: React.FC = () => {
                 </div>
 
                 <p className="text-[11px] text-slate-400">
-                  🔒 Statement files use the primary holder's 10-character PAN in capital letters as the unlock key. Reading runs 100% locally in your browser memory.
+                  🔒 {activeTargetMember?.name
+                    ? `Enter the 10-character PAN of ${activeTargetMember.name} in capitals.`
+                    : 'Enter the 10-character PAN of the primary holder in capitals.'}{' '}
+                  Reading runs 100% locally in your browser memory.
                 </p>
               </form>
             )}
@@ -1132,6 +1157,7 @@ export const DocumentsScreen: React.FC = () => {
             </div>
           )}
         </div>
+        </ErrorBoundary>
       )}
 
       {/* TAB 2: TAX SUMMARY (LTCG / STCG / SGB EXEMPTION) */}

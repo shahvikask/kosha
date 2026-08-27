@@ -73,6 +73,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
   const [formName, setFormName] = useState('');
   const [formRelation, setFormRelation] = useState<FamilyRelation>('Spouse');
   const [formPan, setFormPan] = useState('');
+  const [formPanForStatements, setFormPanForStatements] = useState('');
+  const [rememberPan, setRememberPan] = useState(false);
   const [formDob, setFormDob] = useState('');
   const [formColor, setFormColor] = useState('#0284c7');
   const [formNotes, setFormNotes] = useState('');
@@ -145,6 +147,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
     setFormName('');
     setFormRelation('Spouse');
     setFormPan('');
+    setFormPanForStatements('');
+    setRememberPan(false);
     setFormDob('');
     setFormColor(COLOR_PALETTE[familyMembers.length % COLOR_PALETTE.length].hex);
     setFormNotes('');
@@ -157,6 +161,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
     setFormName(member.name);
     setFormRelation(member.relation);
     setFormPan(member.panMasked || '');
+    setFormPanForStatements(member.panForStatements || '');
+    setRememberPan(Boolean(member.panForStatements));
     setFormDob(member.dateOfBirth || '');
     setFormColor(member.color || '#0284c7');
     setFormNotes(member.notes || '');
@@ -172,6 +178,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
     }
 
     const cleanPan = formPan.trim().toUpperCase();
+    const panForStatementsVal = rememberPan
+      ? (formPanForStatements.trim().toUpperCase() || (cleanPan && !cleanPan.includes('*') ? cleanPan : undefined))
+      : undefined;
 
     if (editingMember) {
       // Update existing member
@@ -179,6 +188,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
         name: formName.trim(),
         relation: formRelation,
         panMasked: cleanPan ? maskPan(cleanPan) : undefined,
+        panForStatements: panForStatementsVal,
         dateOfBirth: formDob.trim() || undefined,
         color: formColor,
         notes: formNotes.trim() || undefined,
@@ -193,6 +203,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
         name: formName.trim(),
         relation: formRelation,
         panMasked: cleanPan ? maskPan(cleanPan) : undefined,
+        panForStatements: panForStatementsVal,
         dateOfBirth: formDob.trim() || undefined,
         color: formColor,
         notes: formNotes.trim() || undefined,
@@ -208,10 +219,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
   };
 
   // Confirm and execute cascade deletion
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!deletingMember) return;
     const memberName = deletingMember.name;
-    const { deletedHoldingsCount, deletedEventsCount } = deleteFamilyMember(deletingMember.id);
+    const { deletedHoldingsCount, deletedEventsCount } = await deleteFamilyMember(deletingMember.id);
     setDeletingMember(null);
     setNotification({
       type: 'warning',
@@ -785,13 +796,40 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
                     type="text"
                     maxLength={10}
                     placeholder="e.g. ABCPS1234K"
-                    value={formPan}
-                    onChange={e => setFormPan(e.target.value.toUpperCase())}
+                    value={rememberPan ? formPanForStatements : formPan}
+                    onChange={e => {
+                      const val = e.target.value.toUpperCase();
+                      if (rememberPan) {
+                        setFormPanForStatements(val);
+                        setFormPan(val ? maskPan(val) : '');
+                      } else {
+                        setFormPan(val);
+                      }
+                    }}
                     className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-sm font-mono uppercase text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-400/50"
                   />
-                  <p className="text-[10px] text-slate-500 mt-1">
-                    Used to decrypt CAS statements & compute tax limits
-                  </p>
+                  <div className="mt-2 space-y-1">
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={rememberPan}
+                        onChange={e => {
+                          const checked = e.target.checked;
+                          setRememberPan(checked);
+                          if (checked && !formPanForStatements && formPan && !formPan.includes('*')) {
+                            setFormPanForStatements(formPan);
+                          } else if (!checked) {
+                            setFormPanForStatements('');
+                          }
+                        }}
+                        className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-amber-500 focus:ring-amber-400/50 cursor-pointer"
+                      />
+                      <span className="text-xs font-medium text-slate-200">Remember my PAN so statements unlock automatically</span>
+                    </label>
+                    <p className="text-[10px] text-slate-400 pl-6 leading-relaxed">
+                      Stored on this device only. On the desktop and Android versions it is encrypted. In this browser version it is not.
+                    </p>
+                  </div>
                 </div>
 
                 <div>
