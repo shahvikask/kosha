@@ -216,18 +216,45 @@ export class Repository {
     };
   }
 
-  // ---------- import batches ----------
+  // ---------- import batches & statement positions ----------
 
   async recordBatch(b: {
-    id: string; filename: string; kind: string; sha256?: string;
-    statementDate?: string; rowsNew: number; rowsDuplicate: number; rowsConflict: number;
+    id: string;
+    filename: string;
+    kind: string;
+    sha256?: string;
+    statementDate?: string;
+    periodFrom?: string;
+    periodTo?: string;
+    investorName?: string;
+    statementType?: string;
+    rowsNew: number;
+    rowsDuplicate: number;
+    rowsConflict: number;
   }): Promise<void> {
     await this.db.exec(
       `INSERT INTO import_batch (import_batch_id, source_filename, document_kind,
-         sha256, statement_date, rows_new, rows_duplicate, rows_conflict, committed_at)
-       VALUES (?,?,?,?,?,?,?,?,?)`,
+         sha256, statement_date, period_from, period_to, investor_name, statement_type,
+         rows_new, rows_duplicate, rows_conflict, committed_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [b.id, b.filename, b.kind, b.sha256 ?? null, b.statementDate ?? null,
+       b.periodFrom ?? null, b.periodTo ?? null, b.investorName ?? null, b.statementType ?? null,
        b.rowsNew, b.rowsDuplicate, b.rowsConflict, new Date().toISOString()]);
+  }
+
+  async recordStatementPosition(p: {
+    importBatchId: string;
+    holdingId: string;
+    statementDate: string;
+    quantityScaled: string;
+    unitPriceMinor: string;
+    investedMinor?: string;
+  }): Promise<void> {
+    await this.db.exec(
+      `INSERT OR REPLACE INTO statement_position
+       (import_batch_id, holding_id, statement_date, quantity_scaled, unit_price_minor, invested_minor)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [p.importBatchId, p.holdingId, p.statementDate, p.quantityScaled, p.unitPriceMinor, p.investedMinor ?? null]);
   }
 
   /** Has this exact file been imported before? Prevents re-import double counting. */

@@ -10,6 +10,7 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "test": "tsx src/lib/kosha.test.ts",
+    "test:snap": "tsx src/lib/snapshot.test.ts",
     "test:db": "tsx src/db/db.test.ts"
   },
   "dependencies": {

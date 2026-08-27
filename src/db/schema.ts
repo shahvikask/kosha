@@ -10,7 +10,7 @@
  * No REAL columns anywhere — floating point is prohibited (SRS-LED-007).
  */
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export const SCHEMA_V1 = `
 PRAGMA foreign_keys = ON;
@@ -61,6 +61,10 @@ CREATE TABLE IF NOT EXISTS instrument (
   wrapper           TEXT,
   allocation_split  TEXT,
   fmv_31jan2018_minor TEXT,
+  amc               TEXT,
+  rta               TEXT,
+  amfi_code         TEXT,
+  advisor           TEXT,
   is_user_created   INTEGER NOT NULL DEFAULT 1,
   created_at        TEXT NOT NULL
 );
@@ -101,12 +105,14 @@ CREATE TABLE IF NOT EXISTS ledger_event (
   supersedes_event_id TEXT,
   import_batch_id     TEXT,
   source_ref          TEXT,
+  unit_balance_after  INTEGER,
+  description         TEXT,
   notes               TEXT,
   entered_at          TEXT NOT NULL,
   entered_by          TEXT NOT NULL DEFAULT 'owner',
   CONSTRAINT ck_event__type CHECK (event_type IN (
-    'OPENING_BALANCE','BUY','SELL','BONUS','SPLIT','DIVIDEND','INTEREST',
-    'VALUATION_UPDATE','REPAYMENT','CORRECTION','SNAPSHOT_ADJUSTMENT')),
+    'OPENING_BALANCE','SNAPSHOT_ADJUSTMENT','BUY','SELL','BONUS','SPLIT','DIVIDEND','INTEREST',
+    'VALUATION_UPDATE','REPAYMENT','CORRECTION')),
   CONSTRAINT ck_event__correction CHECK (
     (event_type = 'CORRECTION') = (supersedes_event_id IS NOT NULL)),
   CONSTRAINT ck_event__dates CHECK (
@@ -155,10 +161,37 @@ CREATE TABLE IF NOT EXISTS import_batch (
   document_kind       TEXT NOT NULL,
   sha256              TEXT,
   statement_date      TEXT,
+  period_from         TEXT,
+  period_to           TEXT,
+  investor_name       TEXT,
+  statement_type      TEXT,
   rows_new            INTEGER NOT NULL DEFAULT 0,
   rows_duplicate      INTEGER NOT NULL DEFAULT 0,
   rows_conflict       INTEGER NOT NULL DEFAULT 0,
   committed_at        TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS source_document (
+  source_document_id TEXT PRIMARY KEY,
+  import_batch_id    TEXT NOT NULL,
+  original_filename  TEXT NOT NULL,
+  document_kind      TEXT NOT NULL,
+  sha256             TEXT NOT NULL,
+  byte_length        INTEGER NOT NULL,
+  page_count         INTEGER,
+  imported_at        TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_source_document__sha
+  ON source_document(sha256);
+
+CREATE TABLE IF NOT EXISTS statement_position (
+  import_batch_id  TEXT NOT NULL,
+  holding_id       TEXT NOT NULL,
+  statement_date   TEXT NOT NULL,
+  quantity_scaled  INTEGER NOT NULL,
+  unit_price_minor INTEGER NOT NULL,
+  invested_minor   INTEGER,
+  PRIMARY KEY (import_batch_id, holding_id)
 );
 
 CREATE TABLE IF NOT EXISTS tax_rule_set (

@@ -78,6 +78,7 @@ export function foldHolding(
 
   const precedence: Record<string, number> = {
     OPENING_BALANCE: 0, BUY: 1, BONUS: 2, SPLIT: 3, CORRECTION: 4,
+    SNAPSHOT_ADJUSTMENT: 4.5,
     SELL: 5, DIVIDEND: 6, INTEREST: 7,
     VALUATION_UPDATE: 8, REPAYMENT: 9,
   };
@@ -131,6 +132,40 @@ export function foldHolding(
         p.remainingQtyScaled = (p.remainingQtyScaled * num) / den;
         if (p.remainingQtyScaled > 0n) {
           p.purchasePriceMinor = (p.totalCostMinor * QTY_SCALE) / p.remainingQtyScaled;
+        }
+      }
+    } else if (ev.eventType === 'SNAPSHOT_ADJUSTMENT') {
+      // A statement said we hold more or less than the ledger knew.
+      // Upward: open a parcel at the statement price, dated to the statement.
+      // Downward: reduce parcels FIFO WITHOUT recording a taxable disposal —
+      // we know units left, not what they sold for. The gains report is told.
+      if (qty > 0n) {
+        parcels.push({
+          eventId: ev.id,
+          purchaseDate: ev.eventDate,
+          originalQtyScaled: qty,
+          remainingQtyScaled: qty,
+          purchasePriceMinor: unit,
+          totalCostMinor: (qty * unit) / QTY_SCALE,
+        });
+      } else if (qty < 0n) {
+        let toRemove = -qty;
+        for (const p of parcels) {
+          if (toRemove <= 0n) break;
+          if (p.remainingQtyScaled <= 0n) continue;
+          const take = p.remainingQtyScaled < toRemove ? p.remainingQtyScaled : toRemove;
+          const cost = (take * p.purchasePriceMinor) / QTY_SCALE;
+          p.remainingQtyScaled -= take;
+          p.totalCostMinor -= cost;
+          toRemove -= take;
+        }
+        errors.push(
+          `Units were removed on ${ev.eventDate} to match a statement. ` +
+          `We do not know the sale price, so this is NOT counted in your ` +
+          `capital gains. Add the actual sale if you have it.`
+        );
+        if (toRemove > 0n) {
+          errors.push(`Statement adjustment on ${ev.eventDate} exceeds units held.`);
         }
       }
     } else if (ev.eventType === 'SELL') {

@@ -24,7 +24,7 @@ const fam:FamilyMember = {id:'f1',name:'Self',relation:'SELF' as any,color:'#000
   const drv = new NodeSqlDriver();
   const repo = new Repository(drv);
   await repo.initialise();
-  eq('schema version', await repo.schemaVersion(), 1);
+  eq('schema version', await repo.schemaVersion(), 2);
   const tables = await drv.query<{name:string}>(
     `SELECT name FROM sqlite_master WHERE type='table' ORDER BY name`);
   eq('tables created', tables.length >= 13, true);

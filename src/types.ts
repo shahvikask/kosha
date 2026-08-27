@@ -112,6 +112,7 @@ export interface FamilyMember {
 
 export type EventType =
   | 'OPENING_BALANCE'
+  | 'SNAPSHOT_ADJUSTMENT'
   | 'BUY'
   | 'SELL'
   | 'BONUS'
