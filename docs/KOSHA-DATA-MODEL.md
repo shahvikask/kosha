@@ -32,7 +32,7 @@ A source-reported snapshot from a CAS or other statement. A statement position m
 
 ### Import Batch
 
-One document ingestion operation. It records source, document period, parser version, status, and provenance.
+One document ingestion operation. It records source, document identity, statement period, parser version, status, and provenance.
 
 ### Source Document
 

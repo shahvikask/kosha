@@ -7,10 +7,10 @@ Kosha handles highly sensitive financial information. Privacy is a core product 
 ## Default data boundary
 
 - Financial portfolio data remains on-device.
-- CAS PDFs are processed locally whenever possible.
+- CAS PDFs are processed locally whenever technically possible.
 - Raw CAS documents are not uploaded by default.
 - No cloud database is required for normal operation.
-- No financial data is sent to analytics, crash reporting, AI services, or third parties without explicit consent and a documented privacy decision.
+- No financial data is sent to analytics, crash reporting, AI services, or third parties without explicit user consent and a documented privacy decision.
 
 ## Sensitive information
 
@@ -22,13 +22,15 @@ PDF passwords/PAN values used to unlock a document should remain in memory only 
 
 ## Local storage
 
-The canonical local database should support encryption at rest, with SQLCipher or an equivalent platform-appropriate encrypted SQLite implementation as the production target.
+The canonical local database should support encryption at rest, with SQLCipher or an equivalent platform-appropriate encrypted SQLite implementation as the target for production.
 
 Encryption keys must not be hard-coded in source code, committed to Git, or stored as ordinary application preferences.
 
-For Android, key-encryption material should be protected by Android Keystore. Equivalent secure platform facilities should be used on other clients.
+For Android, key-encryption material should be protected by the Android Keystore. Equivalent secure platform facilities should be used on other clients.
 
 ## Document lifecycle
+
+Default lifecycle:
 
 ```text
 User selects CAS PDF
