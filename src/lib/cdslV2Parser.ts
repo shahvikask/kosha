@@ -1,7 +1,8 @@
-import { CanonicalCASDocument, CASHolding, CASSecurity, CASSource, CASTransaction, money, normalizeDecimal, normalizeISIN, normalizePan } from './casV2Model';
+import { CanonicalCASDocument, CASHolding, CASSecurity, CASSource, money, normalizeISIN, normalizePan } from './casV2Model';
 import { validateCanonicalCAS, CASValidationResult } from './casV2Validation';
 
-const ISIN_RE = /\b([A-Z]{2}[A-Z0-9]{9})\b/i;
+// Indian ISIN = 12 characters.
+const ISIN_RE = /\b([A-Z]{2}[A-Z0-9]{10})\b/i;
 const DATE_RE = /(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})/;
 const ALPHA_DATE_RE = /(\d{1,2})[-/]([A-Za-z]{3,9})[-/](\d{2,4})/;
 const MONTHS: Record<string, string> = {
@@ -30,8 +31,8 @@ function indianDate(value: string | undefined): string | undefined {
 
 function numbers(text: string): string[] {
   return (text.match(/-?[0-9]+(?:,[0-9]{2,3})*(?:\.[0-9]+)?/g) || [])
-    .map(v => normalizeDecimal(v))
-    .filter((v): v is string => Boolean(v));
+    .map(v => v.replace(/,/g, ''))
+    .filter(v => /^-?\d+(?:\.\d+)?$/.test(v));
 }
 
 function valueFromLabel(lines: string[], label: RegExp): string | undefined {
@@ -96,13 +97,15 @@ function parseDematHoldings(lines: string[], ownerId: string, periodTo?: string)
 
     const afterIsin = line.slice((isinMatch.index || 0) + isinMatch[0].length);
     const vals = numbers(afterIsin);
-    if (vals.length < 2) continue;
+    if (vals.length < 4) continue;
 
-    // CDSL demat table repeats the free balance after pledge/frozen columns.
-    // The final two numeric columns are market price/face value and valuation.
-    const quantity = vals[0];
+    // Security descriptions can contain numbers (for example FV RS.2/-).
+    // Therefore quantity is NOT the first numeric token. The final four
+    // numeric columns in CDSL's holding table are Current Bal, Free Bal,
+    // Market Price/Face Value and Market Value.
+    const quantity = vals[vals.length - 4];
+    const marketPrice = vals[vals.length - 2];
     const marketValue = vals[vals.length - 1];
-    const marketPrice = vals.length >= 3 ? vals[vals.length - 2] : undefined;
     if (!marketValue || !quantity) continue;
 
     const security: CASSecurity = { isin, name: nearestName(lines, i) };
@@ -130,7 +133,7 @@ function parseMutualFundHoldings(lines: string[], ownerId: string, periodTo?: st
     if (active && (/NOTES TO CAS|ABOUT CDSL|Load Structures|Grand Total/i.test(line))) active = false;
     if (!active) continue;
 
-    const isinMatch = line.match(/\b(INF[A-Z0-9]{9})\b/i);
+    const isinMatch = line.match(/\b(INF[A-Z0-9]{10})\b/i);
     if (!isinMatch) continue;
     const isin = normalizeISIN(isinMatch[1]);
     if (!isin) continue;
@@ -147,8 +150,8 @@ function parseMutualFundHoldings(lines: string[], ownerId: string, periodTo?: st
     if (vals.length < 4) continue;
     const quantity = vals[0];
     const nav = vals[1];
-    const marketValue = vals[3];
     const costValue = vals[2];
+    const marketValue = vals[3];
     if (!quantity || !nav || !marketValue) continue;
 
     const security: CASSecurity = {
