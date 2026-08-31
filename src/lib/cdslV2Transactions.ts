@@ -77,16 +77,12 @@ function parseDematTransactions(lines: string[], ownerId: string): CASTransactio
 
     // Preserve '--' so blank credit/debit columns cannot be mistaken for the closing balance.
     // Layout: Opening, Credit, Debit, Closing, Stamp Duty (last column can be absent).
-    const opening = decimalToken(tokens[0]);
     const credit = tokens[1];
     const debit = tokens[2];
     const closingIndex = tokens.length >= 5 ? 3 : tokens.length - 1;
     const closing = decimalToken(tokens[closingIndex]);
-    const action = actionFromDemat(
-      lines.slice(Math.max(0, i - 4), i).join(' ').replace(/\s+/g, ' '),
-      credit,
-      debit
-    );
+    const description = lines.slice(Math.max(0, i - 4), i).join(' ').replace(/\s+/g, ' ').trim();
+    const action = actionFromDemat(description, credit, debit);
     if (!action) continue;
 
     const quantity = action === 'BUY'
@@ -96,7 +92,6 @@ function parseDematTransactions(lines: string[], ownerId: string): CASTransactio
         : decimalToken(credit) || decimalToken(debit);
     if (!quantity || quantity === '0') continue;
 
-    const description = lines.slice(Math.max(0, i - 4), i).join(' ').replace(/\s+/g, ' ').trim();
     const security: CASSecurity = { isin: currentIsin, name: cleanName(lines, i) };
     const signedUnits = action === 'SELL' ? `-${quantity}` : quantity;
 
@@ -170,10 +165,10 @@ function parseMfTransactions(lines: string[], ownerId: string): CASTransaction[]
     const nums = statementTokens(descriptionAndValues).filter(v => v !== '--');
     if (nums.length < 4) continue;
 
-    // Columns: Amount, NAV, Price, Units, Stamp Duty, Distribution, Withdrawal.
-    // A transaction reference (e.g. 68723) may precede Amount.
+    // CDSL MF/RTA rows contain a transaction reference before Amount. It is an
+    // integer token; Amount may itself be an integer, so do not require a decimal.
     let offset = 0;
-    if (nums.length >= 7 && /^\d+$/.test(nums[0]) && nums[1].includes('.')) offset = 1;
+    if (nums.length >= 7 && /^\d+$/.test(nums[0])) offset = 1;
     if (nums.length - offset < 4) continue;
 
     const amount = decimalToken(nums[offset]);
