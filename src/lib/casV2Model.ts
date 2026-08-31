@@ -1,7 +1,7 @@
 /**
  * Canonical CAS V2 model.
  *
- * This layer deliberately keeps source values as decimal strings.  A CAS is
+ * This layer deliberately keeps source values as decimal strings. A CAS is
  * evidence, not the accounting database, and financial values must not be
  * silently rounded or fabricated while moving between parser stages.
  */
@@ -90,10 +90,11 @@ export function normalizeDecimal(value: string | number | undefined | null): str
   return negative && result !== '0' ? `-${result}` : result;
 }
 
+/** Indian ISINs are 12 characters: 2-letter country + 10 alphanumeric characters. */
 export function normalizeISIN(isin: string | undefined): string | undefined {
   if (!isin) return undefined;
   const value = isin.replace(/[-\s]/g, '').toUpperCase();
-  return /^[A-Z]{2}[A-Z0-9]{9}$/.test(value) ? value : undefined;
+  return /^[A-Z]{2}[A-Z0-9]{10}$/.test(value) ? value : undefined;
 }
 
 export function normalizePan(pan: string | undefined): string | undefined {
