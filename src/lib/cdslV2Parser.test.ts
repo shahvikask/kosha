@@ -43,14 +43,14 @@ const a = parseCdslCasV2Text(standard, 'owner-test');
 assert.equal(a.periodTo, '2022-03-31');
 assert.equal(a.summary?.grandTotal?.value, '1523376.36');
 assert.equal(a.holdings.length, 2);
-assert.equal(a.holdings[0].quantity, '39');
+assert.equal(a.holdings[0].quantity, '39.000');
 assert.equal(a.holdings[0].marketValue?.value, '155978.55');
 assert.equal(a.holdings[1].quantity, '28243.224');
 assert.equal(a.holdings[1].marketValue?.value, '1069288.46');
 
 const b = parseCdslCasV2Text(pledged, 'owner-test');
 assert.equal(b.holdings.length, 1);
-assert.equal(b.holdings[0].quantity, '33');
+assert.equal(b.holdings[0].quantity, '33.000');
 assert.equal(b.holdings[0].marketPrice?.value, '3554.55');
 assert.equal(b.holdings[0].marketValue?.value, '117300.15');
 
