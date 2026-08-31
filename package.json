@@ -13,7 +13,8 @@
     "test:snap": "tsx src/lib/snapshot.test.ts",
     "test:db": "tsx src/db/db.test.ts",
     "test:cas-v2": "tsx src/lib/casV2Validation.test.ts",
-    "test:cas-v2-parser": "tsx src/lib/cdslV2Parser.test.ts"
+    "test:cas-v2-parser": "tsx src/lib/cdslV2Parser.test.ts",
+    "test:cas-v2-transactions": "tsx src/lib/cdslV2Transactions.test.ts"
   },
   "dependencies": {
     "@sqlite.org/sqlite-wasm": "^3.53.0-build1",
@@ -36,7 +37,7 @@
     "@types/react-dom": "^19.2.5",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.25.0",
-    "tailwindcss": "^4.1.14",
+    "tailwindcss": "^4.0.0",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2"
   }
