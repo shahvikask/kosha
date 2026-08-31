@@ -100,10 +100,10 @@ function parseDematHoldings(lines: string[], ownerId: string, periodTo?: string)
     if (vals.length < 4) continue;
 
     // Security descriptions can contain numbers (for example FV RS.2/-).
-    // Therefore quantity is NOT the first numeric token. The final four
-    // numeric columns in CDSL's holding table are Current Bal, Free Bal,
-    // Market Price/Face Value and Market Value.
-    const quantity = vals[vals.length - 4];
+    // CDSL's valuation uses Current Balance × Market Price. When pledge/frozen
+    // balances are numeric, Current Balance is the fifth-from-last value;
+    // otherwise it is the fourth-from-last value.
+    const quantity = vals.length >= 5 ? vals[vals.length - 5] : vals[vals.length - 4];
     const marketPrice = vals[vals.length - 2];
     const marketValue = vals[vals.length - 1];
     if (!marketValue || !quantity) continue;
@@ -133,8 +133,8 @@ function parseMutualFundHoldings(lines: string[], ownerId: string, periodTo?: st
     if (active && (/NOTES TO CAS|ABOUT CDSL|Load Structures|Grand Total/i.test(line))) active = false;
     if (!active) continue;
 
-    const isinMatch = line.match(/\b(INF[A-Z0-9]{10})\b/i);
-    if (!isinMatch) continue;
+    const isinMatch = line.match(ISIN_RE);
+    if (!isinMatch || !isinMatch[1].toUpperCase().startsWith('INF')) continue;
     const isin = normalizeISIN(isinMatch[1]);
     if (!isin) continue;
 
