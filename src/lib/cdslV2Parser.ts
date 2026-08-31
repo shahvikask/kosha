@@ -30,9 +30,9 @@ function indianDate(value: string | undefined): string | undefined {
 }
 
 function numbers(text: string): string[] {
-  return (text.match(/-?[0-9]+(?:,[0-9]{2,3})*(?:\.[0-9]+)?/g) || [])
+  return (text.match(/-?(?:[0-9]+(?:,[0-9]{2,3})*(?:\.[0-9]+)?|\.[0-9]+)/g) || [])
     .map(v => v.replace(/,/g, ''))
-    .filter(v => /^-?\d+(?:\.\d+)?$/.test(v));
+    .filter(v => /^-?(?:\d+(?:\.\d+)?|\.\d+)$/.test(v));
 }
 
 function valueFromLabel(lines: string[], label: RegExp): string | undefined {
@@ -97,16 +97,30 @@ function parseDematHoldings(lines: string[], ownerId: string, periodTo?: string)
 
     const afterIsin = line.slice((isinMatch.index || 0) + isinMatch[0].length);
     const vals = numbers(afterIsin);
-    if (vals.length < 4) continue;
+    if (vals.length < 3) continue;
 
-    // Security descriptions can contain numbers (for example FV RS.2/-).
-    // CDSL's valuation uses Current Balance × Market Price. When pledge/frozen
-    // balances are numeric, Current Balance is the fifth-from-last value;
-    // otherwise it is the fourth-from-last value.
-    const quantity = vals.length >= 5 ? vals[vals.length - 5] : vals[vals.length - 4];
     const marketPrice = vals[vals.length - 2];
     const marketValue = vals[vals.length - 1];
-    if (!marketValue || !quantity) continue;
+    const candidates = vals.slice(0, -2);
+
+    // Select the CDSL Current Balance only when it mathematically reconciles
+    // to the stated market value. This prevents security-description numbers
+    // such as FV RS.2/- from becoming the holding quantity.
+    let quantity: string | undefined;
+    if (Number(marketValue) === 0) {
+      quantity = candidates[candidates.length - 1];
+    } else {
+      let bestError = Number.POSITIVE_INFINITY;
+      for (const candidate of candidates) {
+        const error = Math.abs(Number(candidate) * Number(marketPrice) - Number(marketValue));
+        if (error < bestError) {
+          bestError = error;
+          quantity = candidate;
+        }
+      }
+      if (bestError > Math.max(2, Number(marketValue) * 0.002)) continue;
+    }
+    if (!quantity) continue;
 
     const security: CASSecurity = { isin, name: nearestName(lines, i) };
     holdings.push({
@@ -138,12 +152,15 @@ function parseMutualFundHoldings(lines: string[], ownerId: string, periodTo?: st
     const isin = normalizeISIN(isinMatch[1]);
     if (!isin) continue;
 
-    const afterIsin = line.slice((isinMatch.index || 0) + isinMatch[0].length);
-    const folioMatch = afterIsin.match(/\b\d{5,14}(?:\/\d+)?\b/);
+    let afterIsin = line.slice((isinMatch.index || 0) + isinMatch[0].length);
+    // Remove distributor/ARN tokens before locating the folio. In older
+    // layouts the folio may be "1/0", so slash-bearing folios are supported.
+    afterIsin = afterIsin.replace(/\bARN[-:]?\s*[A-Z0-9-]+/gi, ' ');
+    const folioMatch = afterIsin.match(/\b\d{1,14}\/\d+\b/) || afterIsin.match(/\b\d{5,14}\b/);
     const folio = folioMatch?.[0];
-    const withoutFolio = folio ? afterIsin.replace(folio, ' ') : afterIsin;
-    const vals = numbers(withoutFolio);
+    if (folio) afterIsin = afterIsin.replace(folio, ' ');
 
+    const vals = numbers(afterIsin);
     // CDSL MF holding columns: Closing units, NAV, cumulative invested,
     // valuation, unrealised P/L, annualised return. We only accept the
     // deterministic first/second/fourth values; no estimation is allowed.
