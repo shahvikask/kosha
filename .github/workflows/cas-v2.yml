@@ -32,3 +32,6 @@ jobs:
 
       - name: CDSL V2 parser regression tests
         run: npm run test:cas-v2-parser
+
+      - name: CDSL V2 transaction regression tests
+        run: npm run test:cas-v2-transactions
