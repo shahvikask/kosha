@@ -2,10 +2,6 @@ import { CASTransaction, CanonicalCASDocument, CASSecurity, normalizeDecimal, no
 
 const ISIN_RE = /\b([A-Z]{2}[A-Z0-9]{10})\b/i;
 const DATE_RE = /^(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})\b/;
-const MONTHS: Record<string, string> = {
-  jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
-  jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
-};
 
 function toIsoDate(value: string): string | undefined {
   const m = value.trim().match(DATE_RE);
@@ -15,10 +11,13 @@ function toIsoDate(value: string): string | undefined {
   return `${year}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
 }
 
-function numericTokens(text: string): string[] {
-  return (text.match(/-?(?:\d{1,3}(?:,\d{2,3})+|\d+)(?:\.\d+)?/g) || [])
-    .map(v => normalizeDecimal(v))
-    .filter((v): v is string => Boolean(v));
+function statementTokens(text: string): string[] {
+  return text.match(/--|-?(?:\d{1,3}(?:,\d{2,3})+|\d+)(?:\.\d+)?/g) || [];
+}
+
+function decimalToken(value: string | undefined): string | undefined {
+  if (!value || value === '--') return undefined;
+  return normalizeDecimal(value);
 }
 
 function cleanName(lines: string[], index: number): string {
@@ -33,14 +32,14 @@ function cleanName(lines: string[], index: number): string {
   return out.join(' ').trim() || 'Unnamed Security';
 }
 
-function actionFromDemat(description: string, credit: string | undefined, debit: string | undefined): string {
+function actionFromDemat(description: string, credit?: string, debit?: string): 'BUY' | 'SELL' | 'BONUS' | undefined {
   const d = description.toUpperCase();
   if (/CA[- ]?SPLIT|BONUS/.test(d)) return 'BONUS';
   if (/ON-CR|IN-CR|CREDIT|RECEIPT/.test(d)) return 'BUY';
   if (/EP-DR|OUT-DR|DEBIT|DELIVERY/.test(d)) return 'SELL';
-  if (credit && credit !== '0') return 'BUY';
-  if (debit && debit !== '0') return 'SELL';
-  return 'UNKNOWN';
+  if (credit && credit !== '--' && decimalToken(credit) !== '0') return 'BUY';
+  if (debit && debit !== '--' && decimalToken(debit) !== '0') return 'SELL';
+  return undefined;
 }
 
 function parseDematTransactions(lines: string[], ownerId: string): CASTransaction[] {
@@ -73,27 +72,34 @@ function parseDematTransactions(lines: string[], ownerId: string): CASTransactio
     const date = toIsoDate(dateMatch[0]);
     if (!date) continue;
 
-    const tail = line.slice(dateMatch[0].length);
-    const nums = numericTokens(tail);
-    if (nums.length < 3) continue;
+    const tokens = statementTokens(line.slice(dateMatch[0].length));
+    if (tokens.length < 3) continue;
 
-    // CDSL demat transaction columns are: Opening, Credit, Debit, Closing, Stamp Duty.
-    // Some columns are blank/"--", so we use the final four numeric values when
-    // five are not present and never infer a rupee amount from them.
-    const closing = nums[nums.length - 2] || nums[nums.length - 1];
-    const bodyNums = nums.slice(0, Math.max(0, nums.length - 1));
-    const opening = bodyNums.length >= 4 ? bodyNums[0] : undefined;
-    const credit = bodyNums.length >= 4 ? bodyNums[1] : undefined;
-    const debit = bodyNums.length >= 4 ? bodyNums[2] : undefined;
-    const quantity = credit && credit !== '0' ? credit : debit && debit !== '0' ? debit : undefined;
+    // Preserve '--' so blank credit/debit columns cannot be mistaken for the closing balance.
+    // Layout: Opening, Credit, Debit, Closing, Stamp Duty (last column can be absent).
+    const opening = decimalToken(tokens[0]);
+    const credit = tokens[1];
+    const debit = tokens[2];
+    const closingIndex = tokens.length >= 5 ? 3 : tokens.length - 1;
+    const closing = decimalToken(tokens[closingIndex]);
+    const action = actionFromDemat(
+      lines.slice(Math.max(0, i - 4), i).join(' ').replace(/\s+/g, ' '),
+      credit,
+      debit
+    );
+    if (!action) continue;
+
+    const quantity = action === 'BUY'
+      ? decimalToken(credit)
+      : action === 'SELL'
+        ? decimalToken(debit)
+        : decimalToken(credit) || decimalToken(debit);
     if (!quantity || quantity === '0') continue;
 
     const description = lines.slice(Math.max(0, i - 4), i).join(' ').replace(/\s+/g, ' ').trim();
-    const action = actionFromDemat(description, credit, debit);
-    if (action === 'UNKNOWN') continue;
-
     const security: CASSecurity = { isin: currentIsin, name: cleanName(lines, i) };
     const signedUnits = action === 'SELL' ? `-${quantity}` : quantity;
+
     out.push({
       kind: 'TRANSACTION',
       source: 'CDSL',
@@ -102,7 +108,7 @@ function parseDematTransactions(lines: string[], ownerId: string): CASTransactio
       security,
       action,
       units: normalizeDecimal(signedUnits),
-      balance: normalizeDecimal(closing),
+      balance: closing,
       rawDescription: description,
       rawSourceId: currentIsin,
     });
@@ -131,13 +137,14 @@ function parseMfTransactions(lines: string[], ownerId: string): CASTransaction[]
       continue;
     }
     if (/STATEMENT OF TRANSACTIONS FOR THE PERIOD/i.test(line)) {
-      // The MF section is identified by the presence of an ISIN: line before the first dated row.
       inMfTransactions = true;
       currentIsin = undefined;
       continue;
     }
-    if (/HOLDING STATEMENT AS ON|MUTUAL FUND UNITS HELD AS ON|Page \d+/i.test(line)) {
-      if (/HOLDING STATEMENT AS ON|MUTUAL FUND UNITS HELD AS ON/i.test(line)) inMfTransactions = false;
+    if (/HOLDING STATEMENT AS ON|MUTUAL FUND UNITS HELD AS ON/i.test(line)) {
+      inMfTransactions = false;
+      currentIsin = undefined;
+      continue;
     }
     if (!inMfTransactions) continue;
 
@@ -160,19 +167,18 @@ function parseMfTransactions(lines: string[], ownerId: string): CASTransaction[]
     const action = mfAction(descriptionAndValues);
     if (!action) continue;
 
-    const nums = numericTokens(descriptionAndValues);
+    const nums = statementTokens(descriptionAndValues).filter(v => v !== '--');
     if (nums.length < 4) continue;
 
-    // MF/RTA columns: Amount, NAV, Price, Units, Stamp Duty, Distribution, Withdrawal.
-    // A transaction reference (e.g. 68723) can precede Amount. It is an integer token
-    // immediately before a decimal amount; do not treat it as money.
+    // Columns: Amount, NAV, Price, Units, Stamp Duty, Distribution, Withdrawal.
+    // A transaction reference (e.g. 68723) may precede Amount.
     let offset = 0;
     if (nums.length >= 7 && /^\d+$/.test(nums[0]) && nums[1].includes('.')) offset = 1;
     if (nums.length - offset < 4) continue;
 
-    const amount = nums[offset];
-    const nav = nums[offset + 1];
-    const units = nums[offset + 3];
+    const amount = decimalToken(nums[offset]);
+    const nav = decimalToken(nums[offset + 1]);
+    const units = decimalToken(nums[offset + 3]);
     if (!amount || !nav || !units) continue;
 
     const security: CASSecurity = { isin: currentIsin, name: currentScheme };
@@ -183,7 +189,7 @@ function parseMfTransactions(lines: string[], ownerId: string): CASTransaction[]
       date,
       security,
       action,
-      amount: amount.startsWith('-') ? { value: amount.slice(1), currency: 'INR' } : { value: amount, currency: 'INR' },
+      amount: { value: amount.replace(/^-/, ''), currency: 'INR' },
       units: normalizeDecimal(units),
       nav: { value: nav, currency: 'INR' },
       rawDescription: descriptionAndValues.replace(/\s+/g, ' ').trim(),
