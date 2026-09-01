@@ -85,6 +85,7 @@ const d = parseCdslCasV2Text(sep2024, 'owner-test');
 assert.equal(d.summary?.dematValue?.value, '87891.15');
 assert.equal(d.summary?.mutualFundValue?.value, '15046788.14');
 assert.equal(d.summary?.grandTotal?.value, '15134679.29');
+assert.equal(d.holdings.length, 4);
 assert.equal(d.holdings[0].security.name, 'BHARAT ELECTRONICS LIMITED#EQ SH WITH FACE');
 assert.equal(d.holdings[1].security.name, 'CG POWER AND INDUSTRIAL SOLUTIONS LIMITED - NEW');
 assert.equal(d.holdings[2].security.name, 'MURG - Edelweiss Multi Cap Fund - Regular Plan Growth');
