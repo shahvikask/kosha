@@ -1,9 +1,7 @@
-import { CanonicalCASDocument, CASHolding, CASSecurity, CASSource, money, normalizeISIN, normalizePan } from './casV2Model';
+import { CanonicalCASDocument, CASHolding, CASSecurity, CASSource, money, normalizeDecimal, normalizeISIN, normalizePan } from './casV2Model';
 import { validateCanonicalCAS, CASValidationResult } from './casV2Validation';
 
 // Indian ISIN: 12 characters with a numeric check digit at the end.
-// Requiring the final digit prevents header words such as TRANSACTIONS or
-// CONSOLIDATED from being mistaken for securities.
 const ISIN_RE = /\b([A-Z]{2}[A-Z0-9]{9}[0-9])\b/i;
 const DATE_RE = /(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})/;
 const ALPHA_DATE_RE = /(\d{1,2})[-/]([A-Za-z]{3,9})[-/](\d{2,4})/;
@@ -35,6 +33,25 @@ function numbers(text: string): string[] {
   return (text.match(/-?(?:[0-9]+(?:,[0-9]{2,3})*(?:\.[0-9]+)?|\.[0-9]+)/g) || [])
     .map(v => v.replace(/,/g, ''))
     .filter(v => /^-?(?:\d+(?:\.\d+)?|\.\d+)$/.test(v));
+}
+
+function addDecimals(a: string, b: string): string {
+  const na = normalizeDecimal(a) || '0';
+  const nb = normalizeDecimal(b) || '0';
+  const [ai, af = ''] = na.split('.');
+  const [bi, bf = ''] = nb.split('.');
+  const scale = Math.max(af.length, bf.length);
+  const factor = 10n ** BigInt(scale);
+  const av = BigInt(ai) * factor + BigInt((af + '0'.repeat(scale)).slice(0, scale) || '0');
+  const bv = BigInt(bi) * factor + BigInt((bf + '0'.repeat(scale)).slice(0, scale) || '0');
+  const sum = av + bv;
+  if (scale === 0) return sum.toString();
+  const negative = sum < 0n;
+  const abs = negative ? -sum : sum;
+  const raw = abs.toString().padStart(scale + 1, '0');
+  const whole = raw.slice(0, -scale) || '0';
+  const fraction = raw.slice(-scale).replace(/0+$/, '');
+  return `${negative ? '-' : ''}${whole}${fraction ? `.${fraction}` : ''}`;
 }
 
 function valueFromLabel(lines: string[], label: RegExp): string | undefined {
@@ -113,8 +130,6 @@ function parseDematHoldings(lines: string[], ownerId: string, periodTo?: string)
       sectionStart = i + 1;
       continue;
     }
-    // A new holding statement can start later for another CDSL account, so
-    // stopping here does not lose later accounts; the next heading reactivates.
     if (active && (/MUTUAL FUND UNITS HELD/i.test(line) || /STATEMENT OF TRANSACTIONS/i.test(line) || /For any queries/i.test(line))) active = false;
     if (!active) continue;
 
@@ -127,7 +142,7 @@ function parseDematHoldings(lines: string[], ownerId: string, periodTo?: string)
     const vals = numbers(afterIsin);
     if (vals.length < 4) continue;
 
-    const quantity = vals[0];
+    const quantity = normalizeDecimal(vals[0]);
     const marketPrice = vals[vals.length - 2];
     const marketValue = vals[vals.length - 1];
     if (!quantity || marketPrice === undefined || marketValue === undefined) continue;
@@ -155,8 +170,6 @@ function parseMutualFundHoldings(lines: string[], ownerId: string, periodTo?: st
       sectionStart = i + 1;
       continue;
     }
-    // Page headers repeat "About CDSL" and column headings. They are still
-    // inside the same MF table. Stop only at the actual end of the table.
     if (active && (/Grand Total|Details of Unclaimed Redemption|NOTES TO CAS/i.test(line))) active = false;
     if (!active) continue;
 
@@ -175,10 +188,11 @@ function parseMutualFundHoldings(lines: string[], ownerId: string, periodTo?: st
 
     const vals = numbers(afterIsin);
     if (vals.length < 4) continue;
-    const quantity = vals[0];
+    const quantity = normalizeDecimal(vals[0]);
     const nav = vals[1];
     const costValue = vals[2];
     const marketValue = vals[3];
+    if (!quantity) continue;
 
     const key = `${isin}|${folio}`;
     const existing = rows.get(key);
@@ -194,14 +208,11 @@ function parseMutualFundHoldings(lines: string[], ownerId: string, periodTo?: st
       continue;
     }
 
-    const q = Number(existing.quantity) + Number(quantity);
-    const cost = Number(existing.costValue?.value || 0) + Number(costValue);
-    const value = Number(existing.marketValue?.value || 0) + Number(marketValue);
-    const weightedNav = q > 0 ? value / q : Number(nav);
-    existing.quantity = String(q);
-    existing.costValue = money(cost);
-    existing.marketValue = money(value);
-    existing.marketPrice = money(weightedNav);
+    // Preserve exact decimal strings when the same ISIN/folio appears on
+    // multiple rows. The NAV is normally identical; retain the first source NAV.
+    existing.quantity = addDecimals(existing.quantity, quantity);
+    existing.costValue = money(addDecimals(existing.costValue?.value || '0', costValue));
+    existing.marketValue = money(addDecimals(existing.marketValue?.value || '0', marketValue));
   }
 
   return [...rows.values()];
