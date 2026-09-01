@@ -1,7 +1,10 @@
 import { CanonicalCASDocument, CASHolding, CASSecurity, CASSource, money, normalizeISIN, normalizePan } from './casV2Model';
 import { validateCanonicalCAS, CASValidationResult } from './casV2Validation';
 
-const ISIN_RE = /\b([A-Z]{2}[A-Z0-9]{10})\b/i;
+// Indian ISIN: 12 characters with a numeric check digit at the end.
+// Requiring the final digit prevents header words such as TRANSACTIONS or
+// CONSOLIDATED from being mistaken for securities.
+const ISIN_RE = /\b([A-Z]{2}[A-Z0-9]{9}[0-9])\b/i;
 const DATE_RE = /(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})/;
 const ALPHA_DATE_RE = /(\d{1,2})[-/]([A-Za-z]{3,9})[-/](\d{2,4})/;
 const MONTHS: Record<string, string> = {
@@ -110,7 +113,9 @@ function parseDematHoldings(lines: string[], ownerId: string, periodTo?: string)
       sectionStart = i + 1;
       continue;
     }
-    if (active && (/MUTUAL FUND UNITS HELD/i.test(line) || /For any queries/i.test(line))) active = false;
+    // A new holding statement can start later for another CDSL account, so
+    // stopping here does not lose later accounts; the next heading reactivates.
+    if (active && (/MUTUAL FUND UNITS HELD/i.test(line) || /STATEMENT OF TRANSACTIONS/i.test(line) || /For any queries/i.test(line))) active = false;
     if (!active) continue;
 
     const isinMatch = line.match(ISIN_RE);
@@ -120,8 +125,6 @@ function parseDematHoldings(lines: string[], ownerId: string, periodTo?: string)
 
     const afterIsin = line.slice((isinMatch.index || 0) + isinMatch[0].length);
     const vals = numbers(afterIsin);
-    // Sparse PDF text often removes '--' cells. We therefore require only
-    // Current Balance + Market Price + Market Value, not all seven columns.
     if (vals.length < 4) continue;
 
     const quantity = vals[0];
@@ -152,7 +155,9 @@ function parseMutualFundHoldings(lines: string[], ownerId: string, periodTo?: st
       sectionStart = i + 1;
       continue;
     }
-    if (active && (/NOTES TO CAS|ABOUT CDSL|Load Structures|Grand Total/i.test(line))) active = false;
+    // Page headers repeat "About CDSL" and column headings. They are still
+    // inside the same MF table. Stop only at the actual end of the table.
+    if (active && (/Grand Total|Details of Unclaimed Redemption|NOTES TO CAS/i.test(line))) active = false;
     if (!active) continue;
 
     const isinMatch = line.match(ISIN_RE);
