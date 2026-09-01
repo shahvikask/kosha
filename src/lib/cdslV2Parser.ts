@@ -47,6 +47,54 @@ function valueFromLabel(lines: string[], label: RegExp): string | undefined {
   return undefined;
 }
 
+function cleanName(value: string): string {
+  return value
+    .replace(/\s+/g, ' ')
+    .replace(/\b(?:HOLDING STATEMENT AS ON|MUTUAL FUND UNITS HELD AS ON).*$/i, '')
+    .replace(/\b(?:ISIN|Scheme Name|Security|Current Bal|Frozen Bal|Pledge|Free Bal|Market Price|Value)\b/gi, ' ')
+    .trim();
+}
+
+/**
+ * CDSL PDF extraction places the security/scheme name on one or more lines
+ * around the ISIN. The old implementation looked only backwards, which
+ * caused the previous scheme's continuation line to become the current name.
+ * Prefer the text immediately before the ISIN and, when present, the first
+ * continuation line immediately after it.
+ */
+function nameAroundIsin(lines: string[], index: number, sectionStart: number): string {
+  const current = lines[index];
+  const isinMatch = current.match(ISIN_RE);
+  if (!isinMatch) return 'Unnamed Security';
+
+  const before = cleanName(current.slice(0, isinMatch.index));
+  const continuation = index + 1 < lines.length ? cleanName(lines[index + 1]) : '';
+
+  const candidates: string[] = [];
+  if (before) candidates.push(before);
+
+  // Only use a preceding line when the current line has no scheme/security
+  // name (common when PDF extraction separates the first column).
+  if (!before) {
+    for (let i = index - 1; i >= Math.max(sectionStart, index - 3); i--) {
+      const prior = cleanName(lines[i]);
+      if (!prior) continue;
+      if (/^(?:DP Name|BO ID|Account Status|Nominee|Statement|Page|Portfolio Value)/i.test(prior)) break;
+      candidates.unshift(prior);
+      if (candidates.join(' ').length >= 12) break;
+    }
+  }
+
+  // A continuation line belongs to this row only when it does not look like
+  // the next security/scheme row. If it contains another ISIN, never append it.
+  if (continuation && !ISIN_RE.test(lines[index + 1]) &&
+      !/^(?:Grand Total|Portfolio Value|DP Name|Page|For any queries)/i.test(continuation)) {
+    candidates.push(continuation);
+  }
+
+  return cleanName(candidates.join(' ')) || 'Unnamed Security';
+}
+
 function parseSummary(lines: string[], ownerId: string, periodFrom?: string, periodTo?: string) {
   const demat = valueFromLabel(lines, /CDSL\s+Demat\s+Accounts?/i);
   const mf = valueFromLabel(lines, /Mutual\s+Fund\s+Folios/i);
@@ -64,25 +112,16 @@ function parseSummary(lines: string[], ownerId: string, periodFrom?: string, per
   };
 }
 
-function nearestName(lines: string[], index: number): string {
-  const candidates: string[] = [];
-  for (let i = index - 1; i >= Math.max(0, index - 4); i--) {
-    const line = lines[i].trim();
-    if (!line || /^(ISIN|Scheme Name|Security|Current|Frozen|Pledge|Market|Value|Folio|Closing|Portfolio Value|Page\s)/i.test(line)) continue;
-    if (/^(CDSL|NSDL|Mutual Fund|HOLDING|STATEMENT|Summary|For any queries|Central Depository)/i.test(line)) continue;
-    candidates.unshift(line);
-  }
-  return candidates.join(' ').replace(/\s+/g, ' ').trim() || 'Unnamed Security';
-}
-
 function parseDematHoldings(lines: string[], ownerId: string, periodTo?: string): CASHolding[] {
   const holdings: CASHolding[] = [];
   let active = false;
+  let sectionStart = 0;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (/HOLDING STATEMENT AS ON/i.test(line) && !/OF AIF/i.test(line)) {
       active = true;
+      sectionStart = i + 1;
       continue;
     }
     if (active && (/MUTUAL FUND UNITS HELD/i.test(line) || /STATEMENT OF TRANSACTIONS/i.test(line) || /For any queries/i.test(line))) {
@@ -97,32 +136,19 @@ function parseDematHoldings(lines: string[], ownerId: string, periodTo?: string)
 
     const afterIsin = line.slice((isinMatch.index || 0) + isinMatch[0].length);
     const vals = numbers(afterIsin);
-    if (vals.length < 3) continue;
+    // CDSL holding table: Current Bal, Frozen Bal, Pledge Bal,
+    // Pledge Setup Bal, Free Bal, Market Price/Face Value, Market Value.
+    if (vals.length < 7) continue;
 
+    const quantity = vals[0];
     const marketPrice = vals[vals.length - 2];
     const marketValue = vals[vals.length - 1];
-    const candidates = vals.slice(0, -2);
+    if (!quantity || marketPrice === undefined || marketValue === undefined) continue;
 
-    // Select the CDSL Current Balance only when it mathematically reconciles
-    // to the stated market value. This prevents security-description numbers
-    // such as FV RS.2/- from becoming the holding quantity.
-    let quantity: string | undefined;
-    if (Number(marketValue) === 0) {
-      quantity = candidates[candidates.length - 1];
-    } else {
-      let bestError = Number.POSITIVE_INFINITY;
-      for (const candidate of candidates) {
-        const error = Math.abs(Number(candidate) * Number(marketPrice) - Number(marketValue));
-        if (error < bestError) {
-          bestError = error;
-          quantity = candidate;
-        }
-      }
-      if (bestError > Math.max(2, Number(marketValue) * 0.002)) continue;
-    }
-    if (!quantity) continue;
-
-    const security: CASSecurity = { isin, name: nearestName(lines, i) };
+    const security: CASSecurity = {
+      isin,
+      name: nameAroundIsin(lines, i, sectionStart),
+    };
     holdings.push({
       kind: 'HOLDING', source: 'CDSL', ownerId, asOfDate: periodTo,
       security,
@@ -135,13 +161,15 @@ function parseDematHoldings(lines: string[], ownerId: string, periodTo?: string)
 }
 
 function parseMutualFundHoldings(lines: string[], ownerId: string, periodTo?: string): CASHolding[] {
-  const holdings: CASHolding[] = [];
+  const rows = new Map<string, CASHolding>();
   let active = false;
+  let sectionStart = 0;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (/MUTUAL FUND UNITS HELD AS ON/i.test(line)) {
       active = true;
+      sectionStart = i + 1;
       continue;
     }
     if (active && (/NOTES TO CAS|ABOUT CDSL|Load Structures|Grand Total/i.test(line))) active = false;
@@ -153,46 +181,65 @@ function parseMutualFundHoldings(lines: string[], ownerId: string, periodTo?: st
     if (!isin) continue;
 
     let afterIsin = line.slice((isinMatch.index || 0) + isinMatch[0].length);
-    // Remove distributor/ARN tokens before locating the folio. In older
-    // layouts the folio may be "1/0", so slash-bearing folios are supported.
+    // ARN is a distributor identifier, never a financial column. Remove it
+    // before locating the folio or numeric holding columns.
     afterIsin = afterIsin.replace(/\bARN[-:]?\s*[A-Z0-9-]+/gi, ' ');
+
     const folioMatch = afterIsin.match(/\b\d{1,14}\/\d+\b/) || afterIsin.match(/\b\d{5,14}\b/);
     const folio = folioMatch?.[0];
-    if (folio) afterIsin = afterIsin.replace(folio, ' ');
+    if (!folio) continue;
+    afterIsin = afterIsin.replace(folio, ' ');
 
+    // CDSL MF table: Closing Balance (Units), NAV, Cumulative Amount
+    // Invested, Valuation. Any later P/L/XIRR columns are deliberately ignored.
     const vals = numbers(afterIsin);
-    // CDSL MF holding columns: Closing units, NAV, cumulative invested,
-    // valuation, unrealised P/L, annualised return. We only accept the
-    // deterministic first/second/fourth values; no estimation is allowed.
     if (vals.length < 4) continue;
     const quantity = vals[0];
     const nav = vals[1];
     const costValue = vals[2];
     const marketValue = vals[3];
-    if (!quantity || !nav || !marketValue) continue;
+    if (quantity === undefined || nav === undefined || costValue === undefined || marketValue === undefined) continue;
 
     const security: CASSecurity = {
       isin,
       folio,
-      name: nearestName(lines, i),
+      name: nameAroundIsin(lines, i, sectionStart),
     };
 
-    holdings.push({
-      kind: 'HOLDING', source: 'CDSL', ownerId, asOfDate: periodTo,
-      security,
-      quantity,
-      marketPrice: money(nav),
-      marketValue: money(marketValue),
-      costValue: money(costValue),
-    });
+    const key = `${isin}|${folio}`;
+    const existing = rows.get(key);
+    if (!existing) {
+      rows.set(key, {
+        kind: 'HOLDING', source: 'CDSL', ownerId, asOfDate: periodTo,
+        security,
+        quantity,
+        marketPrice: money(nav),
+        marketValue: money(marketValue),
+        costValue: money(costValue),
+      });
+      continue;
+    }
+
+    // Some CDSL CAS versions print multiple rows for the same scheme/folio.
+    // Aggregate them instead of creating multiple holdings that later reconcile
+    // against the same ISIN/folio and corrupt the snapshot quantity.
+    const q = Number(existing.quantity) + Number(quantity);
+    const cost = Number(existing.costValue?.value || 0) + Number(costValue);
+    const value = Number(existing.marketValue?.value || 0) + Number(marketValue);
+    const weightedNav = q > 0 ? value / q : Number(nav);
+    existing.quantity = String(q);
+    existing.costValue = money(cost);
+    existing.marketValue = money(value);
+    existing.marketPrice = money(weightedNav);
   }
-  return holdings;
+
+  return [...rows.values()];
 }
 
 /**
  * V2 CDSL parser for the holdings/summary layer.
- * It intentionally does not manufacture transactions yet; transaction parsing
- * is the next source-specific stage after the holding model is validated.
+ * Source values are read from the actual CDSL table columns; the parser does
+ * not estimate cost, quantity, NAV or valuation.
  */
 export function parseCdslCasV2Text(fullText: string, ownerId: string): CanonicalCASDocument {
   const lines = fullText.split(/\r?\n/).map(v => v.trim()).filter(Boolean);
