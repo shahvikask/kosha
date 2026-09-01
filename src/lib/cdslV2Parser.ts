@@ -1,7 +1,6 @@
 import { CanonicalCASDocument, CASHolding, CASSecurity, CASSource, money, normalizeISIN, normalizePan } from './casV2Model';
 import { validateCanonicalCAS, CASValidationResult } from './casV2Validation';
 
-// Indian ISIN = 12 characters.
 const ISIN_RE = /\b([A-Z]{2}[A-Z0-9]{10})\b/i;
 const DATE_RE = /(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})/;
 const ALPHA_DATE_RE = /(\d{1,2})[-/]([A-Za-z]{3,9})[-/](\d{2,4})/;
@@ -55,13 +54,6 @@ function cleanName(value: string): string {
     .trim();
 }
 
-/**
- * CDSL PDF extraction places the security/scheme name on one or more lines
- * around the ISIN. The old implementation looked only backwards, which
- * caused the previous scheme's continuation line to become the current name.
- * Prefer the text immediately before the ISIN and, when present, the first
- * continuation line immediately after it.
- */
 function nameAroundIsin(lines: string[], index: number, sectionStart: number): string {
   const current = lines[index];
   const isinMatch = current.match(ISIN_RE);
@@ -69,12 +61,9 @@ function nameAroundIsin(lines: string[], index: number, sectionStart: number): s
 
   const before = cleanName(current.slice(0, isinMatch.index));
   const continuation = index + 1 < lines.length ? cleanName(lines[index + 1]) : '';
-
   const candidates: string[] = [];
   if (before) candidates.push(before);
 
-  // Only use a preceding line when the current line has no scheme/security
-  // name (common when PDF extraction separates the first column).
   if (!before) {
     for (let i = index - 1; i >= Math.max(sectionStart, index - 3); i--) {
       const prior = cleanName(lines[i]);
@@ -85,13 +74,10 @@ function nameAroundIsin(lines: string[], index: number, sectionStart: number): s
     }
   }
 
-  // A continuation line belongs to this row only when it does not look like
-  // the next security/scheme row. If it contains another ISIN, never append it.
   if (continuation && !ISIN_RE.test(lines[index + 1]) &&
       !/^(?:Grand Total|Portfolio Value|DP Name|Page|For any queries)/i.test(continuation)) {
     candidates.push(continuation);
   }
-
   return cleanName(candidates.join(' ')) || 'Unnamed Security';
 }
 
@@ -124,9 +110,7 @@ function parseDematHoldings(lines: string[], ownerId: string, periodTo?: string)
       sectionStart = i + 1;
       continue;
     }
-    if (active && (/MUTUAL FUND UNITS HELD/i.test(line) || /STATEMENT OF TRANSACTIONS/i.test(line) || /For any queries/i.test(line))) {
-      active = false;
-    }
+    if (active && (/MUTUAL FUND UNITS HELD/i.test(line) || /For any queries/i.test(line))) active = false;
     if (!active) continue;
 
     const isinMatch = line.match(ISIN_RE);
@@ -136,22 +120,18 @@ function parseDematHoldings(lines: string[], ownerId: string, periodTo?: string)
 
     const afterIsin = line.slice((isinMatch.index || 0) + isinMatch[0].length);
     const vals = numbers(afterIsin);
-    // CDSL holding table: Current Bal, Frozen Bal, Pledge Bal,
-    // Pledge Setup Bal, Free Bal, Market Price/Face Value, Market Value.
-    if (vals.length < 7) continue;
+    // Sparse PDF text often removes '--' cells. We therefore require only
+    // Current Balance + Market Price + Market Value, not all seven columns.
+    if (vals.length < 4) continue;
 
     const quantity = vals[0];
     const marketPrice = vals[vals.length - 2];
     const marketValue = vals[vals.length - 1];
     if (!quantity || marketPrice === undefined || marketValue === undefined) continue;
 
-    const security: CASSecurity = {
-      isin,
-      name: nameAroundIsin(lines, i, sectionStart),
-    };
     holdings.push({
       kind: 'HOLDING', source: 'CDSL', ownerId, asOfDate: periodTo,
-      security,
+      security: { isin, name: nameAroundIsin(lines, i, sectionStart) },
       quantity,
       marketPrice: money(marketPrice),
       marketValue: money(marketValue),
@@ -181,8 +161,6 @@ function parseMutualFundHoldings(lines: string[], ownerId: string, periodTo?: st
     if (!isin) continue;
 
     let afterIsin = line.slice((isinMatch.index || 0) + isinMatch[0].length);
-    // ARN is a distributor identifier, never a financial column. Remove it
-    // before locating the folio or numeric holding columns.
     afterIsin = afterIsin.replace(/\bARN[-:]?\s*[A-Z0-9-]+/gi, ' ');
 
     const folioMatch = afterIsin.match(/\b\d{1,14}\/\d+\b/) || afterIsin.match(/\b\d{5,14}\b/);
@@ -190,28 +168,19 @@ function parseMutualFundHoldings(lines: string[], ownerId: string, periodTo?: st
     if (!folio) continue;
     afterIsin = afterIsin.replace(folio, ' ');
 
-    // CDSL MF table: Closing Balance (Units), NAV, Cumulative Amount
-    // Invested, Valuation. Any later P/L/XIRR columns are deliberately ignored.
     const vals = numbers(afterIsin);
     if (vals.length < 4) continue;
     const quantity = vals[0];
     const nav = vals[1];
     const costValue = vals[2];
     const marketValue = vals[3];
-    if (quantity === undefined || nav === undefined || costValue === undefined || marketValue === undefined) continue;
-
-    const security: CASSecurity = {
-      isin,
-      folio,
-      name: nameAroundIsin(lines, i, sectionStart),
-    };
 
     const key = `${isin}|${folio}`;
     const existing = rows.get(key);
     if (!existing) {
       rows.set(key, {
         kind: 'HOLDING', source: 'CDSL', ownerId, asOfDate: periodTo,
-        security,
+        security: { isin, folio, name: nameAroundIsin(lines, i, sectionStart) },
         quantity,
         marketPrice: money(nav),
         marketValue: money(marketValue),
@@ -220,9 +189,6 @@ function parseMutualFundHoldings(lines: string[], ownerId: string, periodTo?: st
       continue;
     }
 
-    // Some CDSL CAS versions print multiple rows for the same scheme/folio.
-    // Aggregate them instead of creating multiple holdings that later reconcile
-    // against the same ISIN/folio and corrupt the snapshot quantity.
     const q = Number(existing.quantity) + Number(quantity);
     const cost = Number(existing.costValue?.value || 0) + Number(costValue);
     const value = Number(existing.marketValue?.value || 0) + Number(marketValue);
@@ -236,11 +202,6 @@ function parseMutualFundHoldings(lines: string[], ownerId: string, periodTo?: st
   return [...rows.values()];
 }
 
-/**
- * V2 CDSL parser for the holdings/summary layer.
- * Source values are read from the actual CDSL table columns; the parser does
- * not estimate cost, quantity, NAV or valuation.
- */
 export function parseCdslCasV2Text(fullText: string, ownerId: string): CanonicalCASDocument {
   const lines = fullText.split(/\r?\n/).map(v => v.trim()).filter(Boolean);
   const periodMatch = fullText.match(/period from\s+([^\s]+)\s+to\s+([^\s]+)/i);
