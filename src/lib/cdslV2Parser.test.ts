@@ -39,6 +39,23 @@ Small Cap Fund INF760K01JF9 17745005675/0 ARN-190724 4568.857 34.4 1,31,376.15 1
 Ultra Short Term Fund INF760K01DC9 1/0 ARN-190724 .08 3531.7107 253.77 282.54 .96 0 42.68
 `;
 
+// Real CDSL Sep-2024 structural rows from the supplied anonymized corpus.
+const sep2024 = `
+Statement for the period from 01-Sep-2024 to 30-Sep-2024
+CDSL Demat Accounts 87,891.15
+NSDL Demat Accounts N.A
+Mutual Fund Folios 1,50,46,788.14
+Total Portfolio Value 1,51,34,679.29
+HOLDING STATEMENT AS ON 30-09-2024
+BHARAT ELECTRONICS LIMITED#EQ SH WITH FACE
+INE263A01024 49.000 -- -- -- 49.000 285.050 13,967.45
+CG POWER AND INDUSTRIAL SOLUTIONS LIMITED - NEW
+INE067A01029 19.000 -- -- -- 19.000 759.000 14,421.00
+MUTUAL FUND UNITS HELD AS ON 30-09-2024
+MURG - Edelweiss Multi Cap Fund - INF754K01RW0 9109231221/0 122179.591 15.8329 12,21,857.00 19,34,457.25 1.98 0 15064.88
+AMP - ICICI Prudential Asset Allocator INF109K01837 17001385/94 12597.049 114.854 13,60,304.63 14,46,821.47
+`;
+
 const a = parseCdslCasV2Text(standard, 'owner-test');
 assert.equal(a.periodTo, '2022-03-31');
 assert.equal(a.summary?.grandTotal?.value, '1523376.36');
@@ -62,5 +79,20 @@ assert.equal(c.holdings[1].marketValue?.value, '157168.68');
 assert.equal(c.holdings[2].quantity, '0.08');
 assert.equal(c.holdings[2].marketPrice?.value, '3531.7107');
 assert.equal(c.holdings[2].marketValue?.value, '282.54');
+
+const d = parseCdslCasV2Text(sep2024, 'owner-test');
+assert.equal(d.summary?.dematValue?.value, '87891.15');
+assert.equal(d.summary?.mutualFundValue?.value, '15046788.14');
+assert.equal(d.summary?.grandTotal?.value, '15134679.29');
+assert.equal(d.holdings[0].security.name, 'BHARAT ELECTRONICS LIMITED#EQ SH WITH FACE');
+assert.equal(d.holdings[1].security.name, 'CG POWER AND INDUSTRIAL SOLUTIONS LIMITED - NEW');
+assert.equal(d.holdings[2].security.name, 'MURG - Edelweiss Multi Cap Fund -');
+assert.equal(d.holdings[2].quantity, '122179.591');
+assert.equal(d.holdings[2].marketPrice?.value, '15.8329');
+assert.equal(d.holdings[2].marketValue?.value, '1934457.25');
+assert.equal(d.holdings[2].costValue?.value, '1221857');
+assert.equal(d.holdings[3].security.name, 'AMP - ICICI Prudential Asset Allocator');
+assert.equal(d.holdings[3].quantity, '12597.049');
+assert.equal(d.holdings[3].marketValue?.value, '1446821.47');
 
 console.log('CDSL V2 parser structural tests passed');
