@@ -53,6 +53,7 @@ CG POWER AND INDUSTRIAL SOLUTIONS LIMITED - NEW
 INE067A01029 19.000 -- -- -- 19.000 759.000 14,421.00
 MUTUAL FUND UNITS HELD AS ON 30-09-2024
 MURG - Edelweiss Multi Cap Fund - INF754K01RW0 9109231221/0 122179.591 15.8329 12,21,857.00 19,34,457.25 1.98 0 15064.88
+Regular Plan Growth
 AMP - ICICI Prudential Asset Allocator INF109K01837 17001385/94 12597.049 114.854 13,60,304.63 14,46,821.47
 `;
 
@@ -86,7 +87,7 @@ assert.equal(d.summary?.mutualFundValue?.value, '15046788.14');
 assert.equal(d.summary?.grandTotal?.value, '15134679.29');
 assert.equal(d.holdings[0].security.name, 'BHARAT ELECTRONICS LIMITED#EQ SH WITH FACE');
 assert.equal(d.holdings[1].security.name, 'CG POWER AND INDUSTRIAL SOLUTIONS LIMITED - NEW');
-assert.equal(d.holdings[2].security.name, 'MURG - Edelweiss Multi Cap Fund -');
+assert.equal(d.holdings[2].security.name, 'MURG - Edelweiss Multi Cap Fund - Regular Plan Growth');
 assert.equal(d.holdings[2].quantity, '122179.591');
 assert.equal(d.holdings[2].marketPrice?.value, '15.8329');
 assert.equal(d.holdings[2].marketValue?.value, '1934457.25');
