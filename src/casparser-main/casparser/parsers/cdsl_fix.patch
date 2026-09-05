@@ -1,0 +1,104 @@
+--- a/src/casparser-main/casparser/parsers/cdsl.py
++++ b/src/casparser-main/casparser/parsers/cdsl.py
+@@ -490,11 +490,35 @@
+         m = SECTION_BOID_RE.search(txt)
+         if m:
+             broker = m.group(1).strip()
++            # BO ID header may carry Hindi overlay text after the name;
++            # keep only the English broker portion.
++            broker = re.split(r"\s{2,}|DP\s+\u0915\u093e", broker)[0].strip()
++            broker = re.sub(r"\s+", " ", broker)
+             bo_id = m.group(2)
+             type_word, dp_id, client_id = _split_bo_id(bo_id)
+             if type_word:
+                 ac_key = _account_key(type_word, dp_id, client_id)
+-                cur_account = accounts_by_key.get(ac_key)
++                # Create account on-the-fly if the page-2 summary missed it
++                # (common when the broker name wraps into an extra cell).
++                if ac_key not in accounts_by_key:
++                    ac = DematAccount(
++                        name=broker or dp_id,
++                        type=_full_type(type_word),
++                        dp_id=dp_id,
++                        client_id=client_id,
++                        folios=0,
++                        balance=Decimal(0),
++                        owners=list(pending_owners),
++                        equities=[],
++                        mutual_funds=[],
++                    )
++                    accounts_by_key[ac_key] = ac
++                    ordered_accounts.append(ac)
++                else:
++                    if broker and len(broker) > len(accounts_by_key[ac_key].name or ""):
++                        accounts_by_key[ac_key].name = broker
++                cur_account = accounts_by_key[ac_key]
+                 cur_mode = None
+                 continue
+ 
+@@ -505,8 +529,23 @@
+             if "NSDL" in txt.upper() and "CDSL" not in txt.upper():
+                 type_word = "NSDL"
+             broker, dp_id, client_id = m.groups()
++            broker = re.sub(r"\s+", " ", broker.strip())
+             ac_key = _account_key(type_word, dp_id.strip(), client_id.strip())
+-            cur_account = accounts_by_key.get(ac_key)
++            if ac_key not in accounts_by_key:
++                ac = DematAccount(
++                    name=broker or dp_id.strip(),
++                    type=_full_type(type_word),
++                    dp_id=dp_id.strip(),
++                    client_id=client_id.strip(),
++                    folios=0,
++                    balance=Decimal(0),
++                    owners=list(pending_owners),
++                    equities=[],
++                    mutual_funds=[],
++                )
++                accounts_by_key[ac_key] = ac
++                ordered_accounts.append(ac)
++            cur_account = accounts_by_key[ac_key]
+             cur_mode = None
+             continue
+ 
+@@ -568,6 +607,24 @@
+             if mf:
+                 cur_account.mutual_funds.append(mf)
+ 
++    # Recompute demat account balances from holdings when the summary
++    # balance was missing/zero (accounts created on-the-fly).
++    for ac in ordered_accounts:
++        if ac.type == "Mutual Fund Folios":
++            continue
++        holdings_sum = sum(
++            (e.value for e in ac.equities), Decimal(0)
++        ) + sum(
++            (m.value for m in ac.mutual_funds), Decimal(0)
++        ) + sum(
++            (b.value for b in ac.bonds), Decimal(0)
++        )
++        if holdings_sum > 0 and (ac.balance == 0 or ac.balance is None):
++            ac.balance = holdings_sum
++        elif holdings_sum > 0 and ac.folios == 0:
++            ac.folios = len(ac.equities) + len(ac.mutual_funds) + len(ac.bonds)
++
+     return NSDLCASData(
+         statement_period=period,
+         accounts=ordered_accounts,
+@@ -590,11 +647,19 @@
+ 
+ def _is_summary_demat_row(block: Block) -> bool:
+-    if len(block.cells) != 4:
++    # Broker names often wrap (e.g. MOTILAL OSWAL FINANCIAL SERVICES /
++    # LIMITED), producing 5 cells instead of 4. Accept 3+ cells and
++    # search for DP Id / Client Id across the middle cells.
++    if len(block.cells) < 3:
+         return False
+     if not DEMAT_TYPE_RE.match(block.cells[0].text.strip()):
+         return False
+-    return bool(SUMMARY_DPC_RE.search(block.cells[1].text))
++    combined = " ".join(c.text for c in block.cells[1:])
++    return bool(SUMMARY_DPC_RE.search(combined))
+ 
+ 
+ def _is_summary_mf_folios_row(block: Block) -> bool:
