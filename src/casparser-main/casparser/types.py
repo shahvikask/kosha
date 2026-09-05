@@ -1,0 +1,329 @@
+from datetime import date
+from decimal import Decimal
+from typing import List, Optional, Union
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from .enums import CASFileType, FileType, TransactionType
+
+
+class StatementPeriod(BaseModel):
+    from_: str = Field(alias="from")
+    to: str
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class InvestorInfo(BaseModel):
+    """Investor Info data structure."""
+
+    name: str
+    email: str
+    address: str
+    mobile: str
+
+
+class TransactionData(BaseModel):
+    """Mutual fund scheme transaction."""
+
+    date: Union[date, str]
+    description: str
+    amount: Optional[Decimal] = None
+    units: Optional[Decimal] = None
+    nav: Optional[Decimal] = None
+    balance: Optional[Decimal] = None
+    type: TransactionType
+    dividend_rate: Optional[Decimal] = None
+    # For GIFT_IN / GIFT_OUT transfers: the *counterparty* folio named in
+    # the description (the destination for a gift-out, the source for a
+    # gift-in). Lets a donor's statement be linked to the donee's across
+    # two CAS files. None for all other transaction types.
+    gift_folio: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def fix_float(cls, data: dict):
+        for k, v in data.items():
+            try:
+                if issubclass(Decimal, cls.__annotations__[k]) and isinstance(v, str):
+                    data[k] = v.replace(",", "_").replace("_", "")
+            except TypeError:
+                pass
+        return data
+
+
+class SchemeValuation(BaseModel):
+    """Scheme valuation as of a given date."""
+
+    date: Union[date, str]
+    nav: Decimal
+    cost: Optional[Decimal] = None
+    value: Decimal
+
+    @model_validator(mode="before")
+    @classmethod
+    def fix_float(cls, data: dict):
+        for k, v in data.items():
+            try:
+                if issubclass(Decimal, cls.__annotations__[k]) and isinstance(v, str):
+                    data[k] = v.replace(",", "_").replace("_", "")
+            except TypeError:
+                pass
+        return data
+
+
+class Scheme(BaseModel):
+    """Mutual Fund Scheme data structure."""
+
+    scheme: str
+    advisor: Optional[str] = None
+    rta_code: str
+    rta: str
+    type: Optional[str] = None
+    isin: Optional[str] = None
+    amfi: Optional[str] = None
+    nominees: List[str] = []
+    open: Decimal
+    close: Decimal
+    close_calculated: Decimal
+    valuation: SchemeValuation
+    transactions: List[TransactionData]
+
+    @model_validator(mode="before")
+    @classmethod
+    def fix_float(cls, data: dict):
+        for k, v in data.items():
+            try:
+                if issubclass(Decimal, cls.__annotations__[k]) and isinstance(v, str):
+                    data[k] = v.replace(",", "_").replace("_", "")
+            except TypeError:
+                pass
+        return data
+
+
+class Folio(BaseModel):
+    """Mutual Fund Folio data structure."""
+
+    folio: str
+    amc: str
+    # First/primary holder's name as printed in the folio header. Newer
+    # CAMS/KFintech DETAILED templates print it on the line after
+    # `Folio No:`; older templates omit it entirely, so None means
+    # "not present in the statement" — fall back to investor_info.name
+    # only for single-investor statements. See issue #145.
+    name: Optional[str] = None
+    PAN: Optional[str] = None
+    KYC: Optional[str] = None
+    PANKYC: Optional[str] = None
+    schemes: List[Scheme]
+
+
+class CASData(BaseModel):
+    """CAS Parser return data type."""
+
+    statement_period: StatementPeriod
+    folios: List[Folio]
+    investor_info: InvestorInfo
+    cas_type: CASFileType
+    file_type: FileType
+    # Non-fatal data-quality warnings raised during parsing. Currently
+    # populated by the CAMS/KFin DETAILED parser, which reconciles each
+    # scheme's transactions against the printed running Unit Balance
+    # column (the statement's own checksum). A non-empty list means a
+    # transaction row was likely dropped or mis-parsed — the parse still
+    # returns, but the data for that scheme should not be trusted blindly.
+    parse_warnings: List[str] = []
+    model_config = ConfigDict(
+        populate_by_name=True,
+        use_enum_values=True,
+    )
+
+
+class DematOwner(BaseModel):
+    name: str
+    PAN: str
+
+
+class Equity(BaseModel):
+    name: Optional[str] = None
+    isin: str
+    num_shares: Decimal
+    price: Decimal
+    value: Decimal
+    # Depository (NSDL/CDSL) statements identify an equity holding only by
+    # ISIN. The exchange trading symbol (and exchange) are backfilled from the
+    # ISIN database after parsing (see parsers._isin.batch_equity_symbols) so
+    # downstream consumers can price the holding via a symbol-keyed feed.
+    symbol: Optional[str] = None
+    exchange: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def fix_float(cls, data: dict):
+        for k, v in data.items():
+            try:
+                if issubclass(Decimal, cls.__annotations__[k]) and isinstance(v, str):
+                    data[k] = v.replace(",", "_").replace("_", "")
+            except TypeError:
+                # Optional[...] / Union annotations (name / symbol / exchange)
+                # aren't classes; only the required Decimal fields need the
+                # comma-stripping treatment.
+                pass
+        return data
+
+
+class Bond(BaseModel):
+    """Corporate / government bond holding.
+
+    Two source layouts feed this model — both are present in the same
+    NSDL CAS, one per demat-account flavour:
+
+    - **NSDL-account summary form** (8 data cells):
+      `ISIN | name | frequency | coupon_rate | maturity | num_bonds |
+      face_value | value`. All optional fields populated.
+    - **CDSL-account detailed form** (13 data cells, identical layout to
+      detailed equity rows): we only get `num_bonds`, `market_price`,
+      `value`. `coupon_rate`/`frequency`/`maturity`/`face_value` are
+      `None` here — the detailed table doesn't include them.
+    """
+
+    name: Optional[str] = None
+    isin: str
+    num_bonds: Decimal
+    value: Decimal
+    face_value: Optional[Decimal] = None
+    coupon_rate: Optional[Decimal] = None
+    coupon_frequency: Optional[str] = None
+    maturity_date: Optional[str] = None
+    market_price: Optional[Decimal] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def fix_float(cls, data: dict):
+        for k, v in data.items():
+            try:
+                if issubclass(Decimal, cls.__annotations__[k]) and isinstance(v, str):
+                    data[k] = v.replace(",", "_").replace("_", "")
+            except TypeError:
+                # Optional[Decimal] / Union annotations land here; the
+                # parser already strips commas before constructing the
+                # model, so this is just a safety-net for required
+                # Decimal fields.
+                pass
+        return data
+
+
+class MutualFund(BaseModel):
+    name: Optional[str] = None
+    isin: str
+    # Depository (NSDL/CDSL) statements identify an MF holding only by
+    # ISIN — unlike RTA (CAMS/KFin) `Scheme` rows they carry no AMFI code
+    # or scheme type. These are backfilled from the ISIN database after
+    # parsing (see parsers._isin.batch_isin_metadata) so a demat holding
+    # lines up with the same scheme from an RTA CAS on `amfi` / `type`.
+    amfi: Optional[str] = None
+    type: Optional[str] = None
+    balance: Decimal
+    nav: Decimal
+    value: Decimal
+    avg_cost: Optional[Decimal] = None
+    total_cost: Optional[Decimal] = None
+    ucc: Optional[str] = None
+    folio: Optional[str] = None
+    pnl: Optional[Decimal] = None
+    return_: Optional[Decimal] = Field(None, alias="return")
+
+    @model_validator(mode="before")
+    @classmethod
+    def fix_float(cls, data: dict):
+        # Build a lookup from both attribute names and field aliases so that
+        # aliased fields (e.g. ``return`` -> ``return_``) also get the
+        # comma-stripping treatment.
+        annotations_by_key: dict = {}
+        for attr, annotation in cls.__annotations__.items():
+            annotations_by_key[attr] = annotation
+            field = cls.model_fields.get(attr)
+            if field is not None and field.alias is not None:
+                annotations_by_key[field.alias] = annotation
+        for k, v in data.items():
+            annotation = annotations_by_key.get(k)
+            if annotation is not None and issubclass(Decimal, annotation) and isinstance(v, str):
+                data[k] = v.replace(",", "_").replace("_", "")
+        return data
+
+
+class DematAccount(BaseModel):
+    name: str
+    type: str
+    dp_id: Optional[str] = ""
+    client_id: Optional[str] = ""
+    folios: int
+    balance: Decimal
+    owners: List[DematOwner]
+    equities: List[Equity]
+    mutual_funds: List[MutualFund]
+    bonds: List[Bond] = []
+
+    @model_validator(mode="before")
+    @classmethod
+    def fix_float(cls, data: dict):
+        for k, v in data.items():
+            try:
+                if issubclass(Decimal, cls.__annotations__[k]) and isinstance(v, str):
+                    data[k] = v.replace(",", "_")
+            except TypeError:
+                pass
+        return data
+
+
+class NPSScheme(BaseModel):
+    """A single NPS scheme holding (one asset class within a tier).
+
+    NPS schemes are not securities — they carry no ISIN/AMFI code. The
+    depository CAS prints the pension-fund scheme name, the fund manager,
+    and the unit balance + NAV; `value` is `units * nav`.
+    """
+
+    scheme: str
+    fund_manager: Optional[str] = None
+    tier: Optional[str] = None  # "I" / "II"
+    asset_class: Optional[str] = None  # "E" | "C" | "G" | "A"
+    units: Decimal
+    nav: Decimal
+    value: Decimal
+
+    @model_validator(mode="before")
+    @classmethod
+    def fix_float(cls, data: dict):
+        for k, v in data.items():
+            try:
+                if issubclass(Decimal, cls.__annotations__[k]) and isinstance(v, str):
+                    data[k] = v.replace(",", "")
+            except TypeError:
+                pass
+        return data
+
+
+class NPSAccount(BaseModel):
+    """NPS holdings for a single PRAN, as printed in the depository CAS."""
+
+    pran: Optional[str] = None  # PRAN as printed (often masked)
+    nps_sp: Optional[str] = None  # NPS Service Provider / CRA (e.g. "PROT" = Protean)
+    value: Decimal  # reported "Portfolio Value" total for the PRAN
+    schemes: List[NPSScheme] = []
+
+
+class NSDLCASData(BaseModel):
+    accounts: List[DematAccount]
+    statement_period: StatementPeriod
+    investor_info: InvestorInfo
+    file_type: FileType
+    # National Pension System holdings, when the CAS includes an NPS
+    # section (holdings only — the transaction ledger is not parsed).
+    nps: Optional[NPSAccount] = None
+    # Non-fatal data-quality warnings from NSDL demat parsing (e.g. a
+    # holdings row whose nav/value could not be confirmed arithmetically).
+    parse_warnings: List[str] = []
+    model_config = ConfigDict(
+        populate_by_name=True,
+        use_enum_values=True,
+    )
