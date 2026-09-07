@@ -8,9 +8,12 @@
  *
  * Money is INTEGER scaled 10,000. Quantity is INTEGER scaled 100,000,000.
  * No REAL columns anywhere — floating point is prohibited (SRS-LED-007).
+ *
+ * v3 adds family-profile columns and CAS import fields so every value
+ * casparser emits (CDSL, NSDL, CAMS, KFin) has a home.
  */
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export const SCHEMA_V1 = `
 PRAGMA foreign_keys = ON;
@@ -22,16 +25,24 @@ CREATE TABLE IF NOT EXISTS vault_meta (
 );
 
 CREATE TABLE IF NOT EXISTS entity (
-  entity_id         TEXT PRIMARY KEY,
-  entity_type       TEXT NOT NULL,
-  display_name      TEXT NOT NULL,
-  pan_masked        TEXT,
-  date_of_majority  TEXT,
-  guardian_id       TEXT REFERENCES entity(entity_id),
-  is_active         INTEGER NOT NULL DEFAULT 1,
-  created_at        TEXT NOT NULL,
+  entity_id          TEXT PRIMARY KEY,
+  entity_type        TEXT NOT NULL,
+  display_name       TEXT NOT NULL,
+  pan_masked         TEXT,
+  pan_for_statements TEXT,
+  date_of_majority   TEXT,
+  date_of_birth      TEXT,
+  guardian_id        TEXT REFERENCES entity(entity_id),
+  relation           TEXT NOT NULL DEFAULT 'Self',
+  color              TEXT,
+  notes              TEXT,
+  is_primary         INTEGER NOT NULL DEFAULT 0,
+  is_active          INTEGER NOT NULL DEFAULT 1,
+  created_at         TEXT NOT NULL,
   CONSTRAINT ck_entity__type CHECK (entity_type IN (
-    'INDIVIDUAL','HUF','PROPRIETORSHIP','PRIVATE_TRUST','PARTNERSHIP_FIRM'))
+    'INDIVIDUAL','HUF','PROPRIETORSHIP','PRIVATE_TRUST','PARTNERSHIP_FIRM')),
+  CONSTRAINT ck_entity__relation CHECK (relation IN (
+    'Self','Spouse','Parent','Child','HUF','Joint'))
 );
 
 CREATE TABLE IF NOT EXISTS account (
@@ -40,6 +51,9 @@ CREATE TABLE IF NOT EXISTS account (
   account_type      TEXT NOT NULL,
   custodian         TEXT NOT NULL,
   identifier_masked TEXT,
+  dp_id             TEXT,
+  client_id         TEXT,
+  bo_id             TEXT,
   base_currency     TEXT NOT NULL DEFAULT 'INR',
   nominee           TEXT,
   opened_on         TEXT,
@@ -65,6 +79,10 @@ CREATE TABLE IF NOT EXISTS instrument (
   rta               TEXT,
   amfi_code         TEXT,
   advisor           TEXT,
+  scheme_type       TEXT,
+  ucc               TEXT,
+  exchange          TEXT,
+  dp_name           TEXT,
   is_user_created   INTEGER NOT NULL DEFAULT 1,
   created_at        TEXT NOT NULL
 );
@@ -77,11 +95,23 @@ CREATE TABLE IF NOT EXISTS holding (
   account_id        TEXT REFERENCES account(account_id),
   current_price_minor      INTEGER NOT NULL DEFAULT 0,
   benchmark_price_minor    INTEGER,
+  issue_price_minor        INTEGER,
   sgb_valuation_mode       TEXT,
   last_price_updated       TEXT,
   price_source             TEXT,
   needs_review             INTEGER NOT NULL DEFAULT 0,
   review_reasons           TEXT,
+  institution_name         TEXT,
+  account_number_masked    TEXT,
+  notes                    TEXT,
+  location                 TEXT,
+  tag                      TEXT,
+  tags_json                TEXT,
+  coupon_rate_bps          INTEGER,
+  interest_rate_bps        INTEGER,
+  maturity_date            TEXT,
+  next_coupon_date         TEXT,
+  monthly_emi_minor        INTEGER,
   created_at        TEXT NOT NULL,
   CONSTRAINT ck_holding__price CHECK (current_price_minor >= 0)
 );
@@ -164,6 +194,9 @@ CREATE TABLE IF NOT EXISTS import_batch (
   period_from         TEXT,
   period_to           TEXT,
   investor_name       TEXT,
+  investor_pan_masked TEXT,
+  investor_email      TEXT,
+  cas_id              TEXT,
   statement_type      TEXT,
   rows_new            INTEGER NOT NULL DEFAULT 0,
   rows_duplicate      INTEGER NOT NULL DEFAULT 0,
@@ -185,12 +218,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_source_document__sha
   ON source_document(sha256);
 
 CREATE TABLE IF NOT EXISTS statement_position (
-  import_batch_id  TEXT NOT NULL,
-  holding_id       TEXT NOT NULL,
-  statement_date   TEXT NOT NULL,
-  quantity_scaled  INTEGER NOT NULL,
-  unit_price_minor INTEGER NOT NULL,
-  invested_minor   INTEGER,
+  import_batch_id      TEXT NOT NULL,
+  holding_id           TEXT NOT NULL,
+  statement_date       TEXT NOT NULL,
+  quantity_scaled      INTEGER NOT NULL,
+  unit_price_minor     INTEGER NOT NULL,
+  invested_minor       INTEGER,
+  isin                 TEXT,
+  folio                TEXT,
+  current_value_minor  INTEGER,
+  amc                  TEXT,
+  scheme_type          TEXT,
+  source_section       TEXT,
   PRIMARY KEY (import_batch_id, holding_id)
 );
 
@@ -249,3 +288,54 @@ CREATE TABLE IF NOT EXISTS egress_log (
   allow_listed   INTEGER NOT NULL DEFAULT 1
 );
 `;
+
+/** Recreated after a permitted family-member cascade delete. */
+export const LEDGER_NO_DELETE_TRIGGER = `
+CREATE TRIGGER IF NOT EXISTS tg_ledger_event__no_delete
+BEFORE DELETE ON ledger_event
+BEGIN
+  SELECT RAISE(ABORT, 'ledger_event is append-only: record a CORRECTION event');
+END;
+`;
+
+/**
+ * Columns added in schema v3. Applied via ALTER TABLE on existing vaults
+ * (CREATE IF NOT EXISTS will not reshape already-created tables).
+ * Format: [table, column, "column-name TYPE [DEFAULT …]"]
+ */
+export const SCHEMA_V3_COLUMNS: [string, string, string][] = [
+  ['entity', 'pan_for_statements', 'pan_for_statements TEXT'],
+  ['entity', 'date_of_birth', 'date_of_birth TEXT'],
+  ['entity', 'relation', "relation TEXT NOT NULL DEFAULT 'Self'"],
+  ['entity', 'color', 'color TEXT'],
+  ['entity', 'notes', 'notes TEXT'],
+  ['entity', 'is_primary', 'is_primary INTEGER NOT NULL DEFAULT 0'],
+  ['account', 'dp_id', 'dp_id TEXT'],
+  ['account', 'client_id', 'client_id TEXT'],
+  ['account', 'bo_id', 'bo_id TEXT'],
+  ['instrument', 'scheme_type', 'scheme_type TEXT'],
+  ['instrument', 'ucc', 'ucc TEXT'],
+  ['instrument', 'exchange', 'exchange TEXT'],
+  ['instrument', 'dp_name', 'dp_name TEXT'],
+  ['holding', 'issue_price_minor', 'issue_price_minor INTEGER'],
+  ['holding', 'institution_name', 'institution_name TEXT'],
+  ['holding', 'account_number_masked', 'account_number_masked TEXT'],
+  ['holding', 'notes', 'notes TEXT'],
+  ['holding', 'location', 'location TEXT'],
+  ['holding', 'tag', 'tag TEXT'],
+  ['holding', 'tags_json', 'tags_json TEXT'],
+  ['holding', 'coupon_rate_bps', 'coupon_rate_bps INTEGER'],
+  ['holding', 'interest_rate_bps', 'interest_rate_bps INTEGER'],
+  ['holding', 'maturity_date', 'maturity_date TEXT'],
+  ['holding', 'next_coupon_date', 'next_coupon_date TEXT'],
+  ['holding', 'monthly_emi_minor', 'monthly_emi_minor INTEGER'],
+  ['import_batch', 'investor_pan_masked', 'investor_pan_masked TEXT'],
+  ['import_batch', 'investor_email', 'investor_email TEXT'],
+  ['import_batch', 'cas_id', 'cas_id TEXT'],
+  ['statement_position', 'isin', 'isin TEXT'],
+  ['statement_position', 'folio', 'folio TEXT'],
+  ['statement_position', 'current_value_minor', 'current_value_minor INTEGER'],
+  ['statement_position', 'amc', 'amc TEXT'],
+  ['statement_position', 'scheme_type', 'scheme_type TEXT'],
+  ['statement_position', 'source_section', 'source_section TEXT'],
+];
