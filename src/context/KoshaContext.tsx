@@ -8,6 +8,7 @@ import {
   TaxSummary,
   TaxGainItem,
   StatementImportRecord,
+  isPrimaryFamilyMember,
 } from '../types';
 import { INITIAL_FAMILY_MEMBERS, INITIAL_HOLDINGS, INITIAL_LEDGER_EVENTS } from '../data/initialData';
 import { MoneyEngine, MONEY_SCALE, QTY_SCALE } from '../lib/money';
@@ -230,6 +231,31 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         let entities = await r.allEntities();
         let currentHoldings = await r.allHoldings();
         let currentEvents = await r.allEvents();
+
+        // One-time: restore relation/colour for sample entity ids after v3
+        // columns were added (those fields were previously dropped on write).
+        const backfilled = await r.getMeta('family_profile_v3_backfill');
+        if (backfilled !== 'true' && entities.length > 0) {
+          const byId = new Map(entities.map(e => [e.id, e]));
+          for (const seed of INITIAL_FAMILY_MEMBERS) {
+            const cur = byId.get(seed.id);
+            if (!cur) continue;
+            await r.upsertEntity({
+              ...cur,
+              relation: seed.relation,
+              color: seed.color || cur.color,
+              notes: cur.notes || seed.notes,
+              dateOfBirth: cur.dateOfBirth || seed.dateOfBirth,
+              isPrimary: seed.relation === 'Self',
+            });
+          }
+          const after = await r.allEntities();
+          if (after.length && !after.some(e => isPrimaryFamilyMember(e))) {
+            await r.upsertEntity({ ...after[0], relation: 'Self', isPrimary: true });
+          }
+          await r.setMeta('family_profile_v3_backfill', 'true');
+          entities = await r.allEntities();
+        }
 
         // Seed initial sample data if SQLite is completely empty on fresh install
         if (entities.length === 0 && currentHoldings.length === 0 && currentEvents.length === 0) {
@@ -468,18 +494,23 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const addFamilyMember = async (memberData: Omit<FamilyMember, 'id'> & { pan?: string; panCard?: string; panForStatements?: string }): Promise<FamilyMember> => {
+    const wantsPrimary = isPrimaryFamilyMember({ relation: memberData.relation, isPrimary: memberData.isPrimary });
+    if (wantsPrimary && familyMembers.some(m => isPrimaryFamilyMember(m))) {
+      throw new Error('There is already a primary member (Self). Additional members must be Spouse, Parent, Child, HUF or Joint.');
+    }
     const newId = `fam_${Date.now()}`;
     const rawPan = (memberData as any).pan || (memberData as any).panCard || memberData.panMasked || '';
     const masked = rawPan ? maskPan(rawPan) : undefined;
     const newMember: FamilyMember = {
       name: memberData.name,
-      relation: memberData.relation,
+      relation: wantsPrimary ? 'Self' : memberData.relation,
       id: newId,
       panMasked: masked,
       panForStatements: memberData.panForStatements?.trim().toUpperCase() || undefined,
       dateOfBirth: memberData.dateOfBirth?.trim() || undefined,
       color: memberData.color,
       notes: memberData.notes?.trim() || undefined,
+      isPrimary: wantsPrimary,
     };
     if (repo) {
       await repo.upsertEntity(newMember);
@@ -492,8 +523,16 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const existing = familyMembers.find(m => m.id === id);
     if (!existing) return;
 
+    const nextRelation = updates.relation ?? existing.relation;
+    if (isPrimaryFamilyMember(existing) && nextRelation !== 'Self') {
+      throw new Error('The primary member must remain Self. You can edit name, PAN and other details.');
+    }
+    if (!isPrimaryFamilyMember(existing) && nextRelation === 'Self' && familyMembers.some(m => m.id !== id && isPrimaryFamilyMember(m))) {
+      throw new Error('There is already a primary member (Self).');
+    }
+
     const rawPan = updates.panMasked ?? (updates as any).panCard ?? (updates as any).pan;
-    const updated: FamilyMember = { ...existing, ...updates };
+    const updated: FamilyMember = { ...existing, ...updates, relation: nextRelation };
     if (rawPan !== undefined) {
       updated.panMasked = rawPan ? maskPan(rawPan) : undefined;
     }
@@ -503,6 +542,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (updates.dateOfBirth !== undefined) {
       updated.dateOfBirth = updates.dateOfBirth.trim() || undefined;
     }
+    updated.isPrimary = isPrimaryFamilyMember(updated);
 
     if (repo) {
       await repo.upsertEntity(updated);
@@ -511,21 +551,29 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deleteFamilyMember = async (id: string): Promise<{ deletedHoldingsCount: number; deletedEventsCount: number }> => {
-    const memberHoldingIds = new Set(holdings.filter(h => h.ownerId === id).map(h => h.id));
-    const deletedHoldingsCount = memberHoldingIds.size;
+    const member = familyMembers.find(m => m.id === id);
+    if (member && isPrimaryFamilyMember(member)) {
+      throw new Error('The primary member (Self) cannot be deleted. You can still remove individual holdings.');
+    }
+
+    let deletedHoldingsCount = holdings.filter(h => h.ownerId === id).length;
+    let deletedEventsCount = ledgerEvents.filter(e => e.ownerId === id).length;
 
     if (repo) {
-      await repo.deleteEntity(id);
+      const result = await repo.deleteEntity(id);
+      deletedHoldingsCount = result.deletedHoldingsCount;
+      deletedEventsCount = result.deletedEventsCount;
     }
 
     setHoldings(prev => prev.filter(h => h.ownerId !== id));
+    setLedgerEvents(prev => prev.filter(e => e.ownerId !== id));
     setFamilyMembers(prev => prev.filter(m => m.id !== id));
 
     if (selectedMemberId === id) {
       setSelectedMemberId('ALL');
     }
 
-    return { deletedHoldingsCount, deletedEventsCount: 0 };
+    return { deletedHoldingsCount, deletedEventsCount };
   };
 
   const computeTaxSummary = (financialYear: string): TaxSummary => {
@@ -704,6 +752,8 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const skippedRecords = records.filter(r => !r.selected);
     skippedCount += skippedRecords.length;
 
+    const importBatchId = `batch_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+
     // 2. SPLIT incoming records by recordType
     const transactionRecords = selectedRecords.filter(r => r.recordType === 'TRANSACTION');
     const holdingRecords = selectedRecords.filter(r => r.recordType !== 'TRANSACTION');
@@ -729,7 +779,9 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           symbolOrFolio: rec.folio || rec.isin || rec.holdingName.substring(0, 12).toUpperCase(),
           isin: rec.isin,
           category: rec.category,
-          subCategory: rec.category === 'SPECIALISED' ? 'AIF Category II' : rec.category === 'EQUITY' ? 'Listed Equity' : 'Mutual Fund',
+          subCategory: rec.schemeType === 'AIF'
+            ? 'AIF Category II'
+            : rec.category === 'SPECIALISED' ? 'AIF Category II' : rec.category === 'EQUITY' ? 'Listed Equity' : 'Mutual Fund',
           ownerId: effectiveOwnerId,
           quantityScaled: '0',
           averageCostPerUnitMinor: priceMinor,
@@ -737,6 +789,16 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           lastPriceUpdated: rec.date || new Date().toISOString(),
           isPriceStale: false,
           priceSource: 'Tradebook / Transaction Record',
+          amc: rec.amc,
+          rta: rec.rta,
+          amfiCode: rec.amfiCode,
+          advisor: rec.advisor,
+          schemeType: rec.schemeType,
+          ucc: rec.ucc,
+          exchange: rec.exchange,
+          dpName: rec.dpName,
+          institutionName: rec.dpName,
+          accountNumberMasked: rec.folio || rec.dematAccount,
         };
         currentWorkingHoldings = [newHolding, ...currentWorkingHoldings];
         if (repo) await repo.upsertHolding(newHolding);
@@ -762,6 +824,8 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           totalAmountMinor: totalAmountMinor,
           notes: `Imported from CAS statement (${rec.statusMessage || rec.action})`,
           createdAt: new Date().toISOString(),
+          importBatchId,
+          sourceRef: rec.isin || rec.folio,
         };
         newEventsToCommit.push(ev);
         importedCount++;
@@ -773,7 +837,6 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // --- Path B: HOLDING records (snapshots -> reconcile) ---
     let reconciliationResult: ReconciliationResult | undefined;
     const statementDate = holdingRecords[0]?.date || new Date().toISOString().split('T')[0];
-    const importBatchId = `batch_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
     if (holdingRecords.length > 0) {
       const snapshotLines: SnapshotLine[] = [];
@@ -793,7 +856,9 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             symbolOrFolio: rec.folio || rec.isin || rec.holdingName.substring(0, 12).toUpperCase(),
             isin: rec.isin,
             category: rec.category,
-            subCategory: rec.category === 'SPECIALISED' ? 'AIF Category II' : rec.category === 'EQUITY' ? 'Listed Equity' : 'Mutual Fund',
+            subCategory: rec.schemeType === 'AIF'
+              ? 'AIF Category II'
+              : rec.category === 'SPECIALISED' ? 'AIF Category II' : rec.category === 'EQUITY' ? 'Listed Equity' : 'Mutual Fund',
             ownerId: effectiveOwnerId,
             quantityScaled: '0',
             averageCostPerUnitMinor: priceMinor,
@@ -801,6 +866,16 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             lastPriceUpdated: rec.date || new Date().toISOString(),
             isPriceStale: false,
             priceSource: 'CAS Statement Snapshot',
+            amc: rec.amc,
+            rta: rec.rta,
+            amfiCode: rec.amfiCode,
+            advisor: rec.advisor,
+            schemeType: rec.schemeType,
+            ucc: rec.ucc,
+            exchange: rec.exchange,
+            dpName: rec.dpName,
+            institutionName: rec.dpName,
+            accountNumberMasked: rec.folio || rec.dematAccount,
           };
           currentWorkingHoldings = [newH, ...currentWorkingHoldings];
           if (repo) await repo.upsertHolding(newH);
@@ -842,7 +917,8 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       // Step 5: Events to commit
       const acceptedIds = new Set(snapshotLines.map(l => l.holdingId));
-      const reconciledEvents = eventsToCommit(reconciliationResult, acceptedIds);
+      const reconciledEvents = eventsToCommit(reconciliationResult, acceptedIds)
+        .map(e => ({ ...e, importBatchId, sourceRef: e.holdingId }));
       newEventsToCommit.push(...reconciledEvents);
 
       importedCount += reconciliationResult.counts.NEW_POSITION + reconciliationResult.counts.ADJUST_UP + reconciliationResult.counts.ADJUST_DOWN + reconciliationResult.counts.CLOSED;
@@ -864,6 +940,8 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         });
 
         for (const line of snapshotLines) {
+          const rec = holdingRecords.find(r => r.holdingName === line.holdingName && (r.isin === line.isin || r.folio === line.folio))
+            || holdingRecords.find(r => r.holdingName === line.holdingName);
           await repo.recordStatementPosition({
             importBatchId,
             holdingId: line.holdingId,
@@ -871,6 +949,33 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             quantityScaled: line.quantityScaled.toString(),
             unitPriceMinor: line.unitPriceMinor.toString(),
             investedMinor: line.cumulativeInvestedMinor ? line.cumulativeInvestedMinor.toString() : undefined,
+            isin: line.isin,
+            folio: line.folio,
+            currentValueMinor: rec?.currentValuation != null
+              ? String(Math.round(rec.currentValuation * 1e4))
+              : undefined,
+            amc: rec?.amc,
+            schemeType: rec?.schemeType,
+            sourceSection: rec?.category,
+          });
+        }
+
+        // Persist demat / folio accounts when the statement names them
+        const seenAccounts = new Set<string>();
+        for (const rec of holdingRecords) {
+          const ident = rec.dematAccount || rec.folio;
+          if (!ident || seenAccounts.has(ident)) continue;
+          seenAccounts.add(ident);
+          const acctId = `acct_${ident.replace(/[^A-Za-z0-9]/g, '').slice(0, 24) || Date.now()}`;
+          await repo.upsertAccount({
+            id: acctId,
+            entityId: effectiveOwnerId,
+            accountType: rec.folio ? 'MF_FOLIO' : 'DEMAT',
+            custodian: rec.dpName || rec.amc || 'CAS',
+            identifierMasked: ident,
+            dpId: rec.dpId,
+            clientId: rec.clientId,
+            boId: rec.dematAccount,
           });
         }
       }

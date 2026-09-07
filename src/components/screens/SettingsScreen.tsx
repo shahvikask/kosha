@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useKosha } from '../../context/KoshaContext';
 import { MoneyEngine, QTY_SCALE } from '../../lib/money';
-import { FamilyMember, FamilyRelation } from '../../types';
+import { FamilyMember, FamilyRelation, isPrimaryFamilyMember } from '../../types';
 import {
   encryptJson,
   decryptJson,
@@ -170,7 +170,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
   };
 
   // Save Add or Edit Member
-  const handleSaveMember = (e: React.FormEvent) => {
+  const handleSaveMember = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName.trim()) {
       setNotification({ type: 'error', message: 'Member name is required.' });
@@ -182,11 +182,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
       ? (formPanForStatements.trim().toUpperCase() || (cleanPan && !cleanPan.includes('*') ? cleanPan : undefined))
       : undefined;
 
+    try {
     if (editingMember) {
       // Update existing member
-      updateFamilyMember(editingMember.id, {
+      await updateFamilyMember(editingMember.id, {
         name: formName.trim(),
-        relation: formRelation,
+        relation: isPrimaryFamilyMember(editingMember) ? 'Self' : formRelation,
         panMasked: cleanPan ? maskPan(cleanPan) : undefined,
         panForStatements: panForStatementsVal,
         dateOfBirth: formDob.trim() || undefined,
@@ -199,9 +200,11 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
       });
     } else {
       // Add new member
-      addFamilyMember({
+      await addFamilyMember({
         name: formName.trim(),
-        relation: formRelation,
+        relation: formRelation === 'Self' && familyMembers.some(m => isPrimaryFamilyMember(m))
+          ? 'Spouse'
+          : formRelation,
         panMasked: cleanPan ? maskPan(cleanPan) : undefined,
         panForStatements: panForStatementsVal,
         dateOfBirth: formDob.trim() || undefined,
@@ -216,18 +219,40 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
 
     setIsFormOpen(false);
     setEditingMember(null);
+    } catch (err: any) {
+      setNotification({
+        type: 'error',
+        message: err?.message || 'Could not save this family member.',
+      });
+    }
   };
 
   // Confirm and execute cascade deletion
   const handleConfirmDelete = async () => {
     if (!deletingMember) return;
+    if (isPrimaryFamilyMember(deletingMember)) {
+      setDeletingMember(null);
+      setNotification({
+        type: 'error',
+        message: 'The primary member (Self) cannot be deleted. You can still remove individual holdings.',
+      });
+      return;
+    }
     const memberName = deletingMember.name;
-    const { deletedHoldingsCount, deletedEventsCount } = await deleteFamilyMember(deletingMember.id);
-    setDeletingMember(null);
-    setNotification({
-      type: 'warning',
-      message: `Deleted "${memberName}" and permanently removed ${deletedHoldingsCount} associated asset holdings and ${deletedEventsCount} ledger records.`,
-    });
+    try {
+      const { deletedHoldingsCount, deletedEventsCount } = await deleteFamilyMember(deletingMember.id);
+      setDeletingMember(null);
+      setNotification({
+        type: 'warning',
+        message: `Deleted "${memberName}" and permanently removed ${deletedHoldingsCount} associated asset holdings and ${deletedEventsCount} ledger records.`,
+      });
+    } catch (err: any) {
+      setDeletingMember(null);
+      setNotification({
+        type: 'error',
+        message: err?.message || 'Could not delete this member.',
+      });
+    }
   };
 
   // Export local backup file (Encrypted)
@@ -383,7 +408,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
               <span>Family Members & HUF Entities</span>
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">
-              Manage family member profiles, PAN cards, Dates of Birth, and HUF tax entities
+              Self is the primary profile and cannot be deleted. Additional members can be removed with their holdings.
             </p>
           </div>
 
@@ -403,6 +428,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
             const summaryData = getMemberAssetSummary(member.id);
             const age = calculateAge(member.dateOfBirth);
             const isHuf = member.relation === 'HUF';
+            const isPrimary = isPrimaryFamilyMember(member);
 
             return (
               <div
@@ -427,12 +453,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
                             className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
                               isHuf
                                 ? 'bg-purple-950/80 text-purple-300 border-purple-800/80'
-                                : member.relation === 'Self'
+                                : isPrimary
                                 ? 'bg-sky-950/80 text-sky-300 border-sky-800/80'
                                 : 'bg-slate-800 text-slate-300 border-slate-700'
                             }`}
                           >
-                            {member.relation === 'HUF' ? 'HUF Entity' : member.relation}
+                            {isHuf ? 'HUF Entity' : isPrimary ? 'Self · Primary' : member.relation}
                           </span>
                         </div>
                         {member.notes && (
@@ -452,6 +478,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
                         <span className="hidden sm:inline text-[11px] font-medium">Edit</span>
                       </button>
 
+                      {isPrimary ? (
+                        <span
+                          className="p-1.5 rounded-lg bg-slate-900 text-slate-500 border border-slate-800 text-[11px] font-medium cursor-not-allowed"
+                          title="Primary member cannot be deleted. Holdings can still be removed."
+                        >
+                          Locked
+                        </span>
+                      ) : (
                       <button
                         onClick={() => setDeletingMember(member)}
                         className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-rose-950/80 text-slate-400 hover:text-rose-300 border border-slate-700/80 hover:border-rose-800/80 transition-colors cursor-pointer text-xs flex items-center gap-1"
@@ -460,6 +494,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
                         <Trash2 className="w-3.5 h-3.5" />
                         <span className="hidden sm:inline text-[11px] font-medium">Delete</span>
                       </button>
+                      )}
                     </div>
                   </div>
 
@@ -750,17 +785,26 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onOpenEmergencyS
                     Relationship / Entity Type *
                   </label>
                   <select
-                    value={formRelation}
+                    value={editingMember && isPrimaryFamilyMember(editingMember) ? 'Self' : formRelation}
                     onChange={e => setFormRelation(e.target.value as FamilyRelation)}
-                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-400/50 cursor-pointer"
+                    disabled={Boolean(editingMember && isPrimaryFamilyMember(editingMember))}
+                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-400/50 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    <option value="Self">Self (Primary)</option>
+                    {(editingMember && isPrimaryFamilyMember(editingMember)) ||
+                    (!editingMember && !familyMembers.some(m => isPrimaryFamilyMember(m))) ? (
+                      <option value="Self">Self (Primary — cannot be deleted)</option>
+                    ) : null}
                     <option value="Spouse">Spouse</option>
                     <option value="Child">Child</option>
                     <option value="Parent">Parent</option>
                     <option value="HUF">HUF (Hindu Undivided Family)</option>
                     <option value="Joint">Joint Holding Unit</option>
                   </select>
+                  {editingMember && isPrimaryFamilyMember(editingMember) && (
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      Self is the default primary profile. It cannot be deleted; holdings can still be cleared.
+                    </p>
+                  )}
                 </div>
 
                 {/* Avatar Color */}
