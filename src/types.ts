@@ -111,6 +111,16 @@ export interface FamilyMember {
   dateOfBirth?: string; // ISO date YYYY-MM-DD
   color: string;
   notes?: string;
+  /** Exactly one member is primary (Self). Cannot be deleted. */
+  isPrimary?: boolean;
+}
+
+/** Self is the default primary profile and cannot be removed. */
+export function isPrimaryFamilyMember(
+  m: Pick<FamilyMember, 'relation' | 'isPrimary'> | null | undefined
+): boolean {
+  if (!m) return false;
+  return m.isPrimary === true || m.relation === 'Self';
 }
 
 export type EventType =
@@ -140,6 +150,8 @@ export interface LedgerEvent {
   notes?: string;
   supersedesEventId?: string;
   createdAt: string;
+  importBatchId?: string;
+  sourceRef?: string;
 }
 
 export interface PurchaseParcel {
@@ -194,6 +206,18 @@ export interface Holding {
   location?: string; // for Real Estate
   tag?: string; // e.g. "Retirement", "Child Higher Education", "Emergency", "Tax Saving", or Family Member tag
   tags?: string[]; // Array of tags for multi-tagging and goal filtering
+
+  // CAS / registrar fields (CDSL, NSDL, CAMS, KFin)
+  amc?: string;
+  rta?: string;
+  amfiCode?: string;
+  advisor?: string;
+  /** Parser scheme type: AIF | ETF | EQUITY | DEBT | HYBRID */
+  schemeType?: string;
+  ucc?: string;
+  exchange?: string;
+  dpName?: string;
+  accountId?: string;
 }
 
 export interface PortfolioSummary {
@@ -266,6 +290,16 @@ export interface StatementImportRecord {
   currentValuation?: number;
   cumulativeInvested?: number;
   dematAccount?: string;
+  amc?: string;
+  rta?: string;
+  amfiCode?: string;
+  advisor?: string;
+  schemeType?: string;
+  ucc?: string;
+  exchange?: string;
+  dpName?: string;
+  dpId?: string;
+  clientId?: string;
 }
 
 export interface EmergencyDossierItem {

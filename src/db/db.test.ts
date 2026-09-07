@@ -17,14 +17,15 @@ const hold=(id:string,name:string,price:number):Holding=>({
   id,name,symbolOrFolio:'X',category:'EQUITY',subCategory:'Large Cap',ownerId:'f1',
   quantityScaled:'0',averageCostPerUnitMinor:'0',currentPriceMinor:String(price*10000),
   lastPriceUpdated:'2026-08-01T00:00:00Z',isPriceStale:false,priceSource:'t'} as Holding);
-const fam:FamilyMember = {id:'f1',name:'Self',relation:'SELF' as any,color:'#000',panMasked:'ABCDE****F'};
+const fam:FamilyMember = {id:'f1',name:'Self',relation:'Self',color:'#000',panMasked:'ABCDE****F',isPrimary:true};
+const famSpouse:FamilyMember = {id:'f2',name:'Spouse',relation:'Spouse',color:'#ec4899',isPrimary:false};
 
 (async () => {
   console.log('--- A. Real Annex A DDL executes ---');
   const drv = new NodeSqlDriver();
   const repo = new Repository(drv);
   await repo.initialise();
-  eq('schema version', await repo.schemaVersion(), 2);
+  eq('schema version', await repo.schemaVersion(), 3);
   const tables = await drv.query<{name:string}>(
     `SELECT name FROM sqlite_master WHERE type='table' ORDER BY name`);
   eq('tables created', tables.length >= 13, true);
@@ -147,6 +148,59 @@ const fam:FamilyMember = {id:'f1',name:'Self',relation:'SELF' as any,color:'#000
   eq('gold total', Number(tot3)/1e4, 100*7450 + 50*7580);
   eq('events are OPENING_BALANCE', e3.every(x=>x.eventType==='OPENING_BALANCE'), true);
   await drv3.close();
+
+  console.log('\n--- K. Family profile persists and Self cannot be deleted ---');
+  const drv4 = new NodeSqlDriver(); const repo4 = new Repository(drv4);
+  await repo4.initialise();
+  await repo4.upsertEntity(fam);
+  await repo4.upsertEntity(famSpouse);
+  const ents = await repo4.allEntities();
+  const self = ents.find(e => e.id==='f1')!;
+  const spouse = ents.find(e => e.id==='f2')!;
+  eq('self relation', self.relation, 'Self');
+  eq('self is primary', self.isPrimary, true);
+  eq('spouse relation', spouse.relation, 'Spouse');
+  eq('spouse not primary', spouse.isPrimary, false);
+  let primaryBlocked=false;
+  try { await repo4.deleteEntity('f1'); }
+  catch(e){ primaryBlocked = String((e as Error).message).includes('cannot be deleted'); }
+  eq('primary delete refused', primaryBlocked, true);
+  eq('primary still present', (await repo4.allEntities()).some(e=>e.id==='f1'), true);
+
+  console.log('\n--- L. Extra member cascade removes holdings and events ---');
+  const spouseHold:Holding = {...hold('h_sp','Spouse TCS',4280), ownerId:'f2'};
+  await repo4.upsertHolding(spouseHold);
+  const spouseEv:LedgerEvent = {...ev('e_sp2','BUY','2024-06-02',5,3400,'h_sp'), ownerId:'f2'};
+  await repo4.appendEvent(spouseEv);
+  const cas = await repo4.deleteEntity('f2');
+  eq('cascade holdings', cas.deletedHoldingsCount, 1);
+  eq('cascade events', cas.deletedEventsCount, 1);
+  eq('spouse gone', (await repo4.allEntities()).some(e=>e.id==='f2'), false);
+  eq('self remains', (await repo4.allEntities()).some(e=>e.id==='f1'), true);
+  eq('spouse holdings gone', (await repo4.allHoldings()).some(h=>h.ownerId==='f2'), false);
+  await repo4.upsertHolding(hold('h1','Reliance Industries',2950));
+  await repo4.appendEvent(ev('e_keep','BUY','2024-03-14',1,2450,'h1'));
+  eq('append-only trigger restored', await (async()=>{
+    let blocked=false;
+    try { await drv4.exec(`DELETE FROM ledger_event WHERE ledger_event_id='e_keep'`); }
+    catch{ blocked=true; }
+    return blocked;
+  })(), true);
+
+  console.log('\n--- M. CAS instrument fields round-trip ---');
+  const casH:Holding = {
+    ...hold('h_mf','Parag Parikh Flexi Cap',84.15),
+    amc:'PPFAS', rta:'CAMS', amfiCode:'122639', schemeType:'EQUITY',
+    institutionName:'PPFAS Mutual Fund', accountNumberMasked:'Folio 12894019',
+  };
+  await repo4.upsertHolding(casH);
+  const back = (await repo4.allHoldings()).find(h=>h.id==='h_mf')!;
+  eq('amc stored', back.amc, 'PPFAS');
+  eq('rta stored', back.rta, 'CAMS');
+  eq('amfi stored', back.amfiCode, '122639');
+  eq('scheme type stored', back.schemeType, 'EQUITY');
+  eq('folio stored', back.accountNumberMasked, 'Folio 12894019');
+  await drv4.close();
 
   console.log(`\n${pass} passed, ${fail} failed`);
   await drv.close(); await drv2.close();

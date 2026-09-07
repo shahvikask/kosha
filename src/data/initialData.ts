@@ -10,6 +10,7 @@ export const INITIAL_FAMILY_MEMBERS: FamilyMember[] = [
     dateOfBirth: '1986-04-12',
     color: '#0284c7', // Blue
     notes: 'Primary earner & investor',
+    isPrimary: true,
   },
   {
     id: 'fam_2',
