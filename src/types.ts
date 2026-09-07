@@ -300,6 +300,7 @@ export interface StatementImportRecord {
   dpName?: string;
   dpId?: string;
   clientId?: string;
+  casFileType?: 'CDSL' | 'NSDL' | 'CAMS' | 'KFINTECH';
 }
 
 export interface EmergencyDossierItem {

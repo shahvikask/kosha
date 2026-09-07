@@ -47,6 +47,9 @@ export interface ParsedDematHolding {
 
 export interface CASParseResult {
   statementType: 'CAMS_KFIN_MF' | 'CDSL_NSDL_DEMAT' | 'GENERIC_CSV_OR_PDF';
+  engine?: 'PYTHON_CASPARSER' | 'BROWSER';
+  fileType?: 'CDSL' | 'NSDL' | 'CAMS' | 'KFINTECH';
+  filename?: string;
   investorName?: string;
   investorPan?: string;
   investorEmail?: string;
@@ -55,6 +58,11 @@ export interface CASParseResult {
   schemes: ParsedCASScheme[];
   dematHoldings: ParsedDematHolding[];
   importRecords: StatementImportRecord[];
+  accounts?: { name: string; type?: string; dpId?: string; clientId?: string; folios?: number; balance: number }[];
+  pdfTotals?: { demat: number; mutualFund: number; aif: number; grand: number };
+  parsedTotals?: { holdingsCount: number; holdingsValue: number };
+  totalsDelta?: number;
+  parseComplete?: boolean;
   summary: {
     totalFolios: number;
     totalTransactions: number;
@@ -1109,7 +1117,8 @@ export function parseCamsKfinCasText(
 }
 
 /**
- * Universal Entry Point: In-Browser CAS & Statement Processor.
+ * Universal entry: PDF statements go through the local Python casparser
+ * sidecar (auto-detects CDSL / NSDL / CAMS / KFin). CSV stays in-browser.
  */
 export async function parseStatementFile(
   file: File,
@@ -1124,16 +1133,8 @@ export async function parseStatementFile(
     return parseCsvStatementText(text, file.name, existingLedger, targetOwnerId);
   }
 
-  const arrayBuffer = await file.arrayBuffer();
-  const { fullText } = await extractPdfTextInBrowser(arrayBuffer, password);
-
-  const isDematOrCdsl = /CDSL|NSDL|Central Depository|Demat Accounts|HOLDING STATEMENT|MUTUAL FUND UNITS HELD/i.test(fullText);
-
-  if (isDematOrCdsl) {
-    return parseCdslCasText(fullText, existingLedger, targetOwnerId);
-  } else {
-    return parseCamsKfinCasText(fullText, existingLedger, targetOwnerId);
-  }
+  const { parseCasPdfWithPython } = await import('./casPython');
+  return parseCasPdfWithPython(file, password);
 }
 
 /**

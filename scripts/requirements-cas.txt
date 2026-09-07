@@ -1,0 +1,6 @@
+# Local Python CAS sidecar (scripts/cas_parse_server.py)
+# PDFs are parsed on the user's machine and never uploaded.
+pydantic>=2.3.0,<3
+pypdfium2>=5.0,<7
+python-dateutil>=2.8.2,<3
+casparser-isin>=2025.3.1

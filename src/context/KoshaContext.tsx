@@ -22,7 +22,14 @@ import { ExposureNode } from '../lib/taxonomy';
 import { SqliteWasmDriver } from '../db/sqliteWasmDriver';
 import { Repository } from '../db/repository';
 import { migrateFromLocalStorage, MigrationReport } from '../db/migrate';
-import { reconcileStatement, eventsToCommit, SnapshotLine, ReconciliationResult } from '../lib/snapshot';
+import { reconcileStatement, eventsToCommit, SnapshotLine, ReconciliationResult, snapshotLinesToClose } from '../lib/snapshot';
+import {
+  CasImportMeta,
+  CasLatestState,
+  EMPTY_CAS_LATEST,
+  parseCasLatest,
+  upsertCasLatest,
+} from '../lib/casPython';
 
 interface KoshaContextType {
   familyMembers: FamilyMember[];
@@ -62,8 +69,11 @@ interface KoshaContextType {
   importStatementRecords: (
     records: StatementImportRecord[],
     targetOwnerId?: string,
-    mode?: 'SYNC_UPDATE' | 'REPLACE_SNAPSHOT'
+    mode?: 'SYNC_UPDATE' | 'REPLACE_SNAPSHOT',
+    casMeta?: CasImportMeta
   ) => Promise<{ imported: number; updated: number; skipped: number; reconciliationResult?: ReconciliationResult }>;
+  lastStatementAsOf: string | null;
+  casLatest: CasLatestState;
   cleanDuplicatesAndHeal: () => Promise<{ mergedCount: number; flaggedCount: number }>;
   exportBackupJson: (passphrase?: string) => Promise<string>;
   importBackupJson: (dataOrJsonStr: string | any) => Promise<boolean>;
@@ -118,6 +128,19 @@ export function findMatchingHolding(
   }
 
   return undefined;
+}
+
+function holdingIdsForImportedRecords(
+  records: StatementImportRecord[],
+  working: Holding[],
+  ownerId: string
+): string[] {
+  const ids: string[] = [];
+  for (const rec of records) {
+    const matched = findMatchingHolding(working, rec, ownerId);
+    if (matched) ids.push(matched.id);
+  }
+  return Array.from(new Set(ids));
 }
 
 export function sanitizeAndDeduplicateHoldings(rawHoldings: Holding[]): { holdings: Holding[]; mergedCount: number; flaggedCount: number } {
@@ -217,6 +240,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [isPrivacyMasked, setIsPrivacyMasked] = useState<boolean>(false);
   const [sgbValuationMode, setSgbValuationMode] = useState<'MARKET_TRADED' | 'RBI_BENCHMARK'>('MARKET_TRADED');
   const [activeScreen, setActiveScreen] = useState<'HOME' | 'MY_MONEY' | 'GROWTH' | 'DOCUMENTS' | 'SETTINGS' | 'SIMPLE_VIEW'>('HOME');
+  const [casLatest, setCasLatest] = useState<CasLatestState>(EMPTY_CAS_LATEST);
 
   useEffect(() => {
     (async () => {
@@ -274,6 +298,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setFamilyMembers(entities);
         setHoldings(currentHoldings);
         setLedgerEvents(currentEvents);
+        setCasLatest(parseCasLatest(await r.getMeta('cas_latest')));
         setRepo(r);
         setDbDriver(driver);
         setDbReady(true);
@@ -741,7 +766,8 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const importStatementRecords = async (
     records: StatementImportRecord[],
     targetOwnerId?: string,
-    mode: 'SYNC_UPDATE' | 'REPLACE_SNAPSHOT' = 'SYNC_UPDATE'
+    mode: 'SYNC_UPDATE' | 'REPLACE_SNAPSHOT' = 'SYNC_UPDATE',
+    casMeta?: CasImportMeta
   ): Promise<{ imported: number; updated: number; skipped: number; reconciliationResult?: ReconciliationResult }> => {
     let importedCount = 0;
     let updatedCount = 0;
@@ -754,8 +780,11 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const importBatchId = `batch_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
-    // 2. SPLIT incoming records by recordType
-    const transactionRecords = selectedRecords.filter(r => r.recordType === 'TRANSACTION');
+    // Python CAS is a holdings snapshot. Never treat rows as buys/sells.
+    const isPythonCas = mode === 'REPLACE_SNAPSHOT' || Boolean(casMeta);
+    const transactionRecords = isPythonCas
+      ? []
+      : selectedRecords.filter(r => r.recordType === 'TRANSACTION');
     const holdingRecords = selectedRecords.filter(r => r.recordType !== 'TRANSACTION');
 
     let currentWorkingHoldings = [...holdings];
@@ -912,6 +941,17 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         });
       }
 
+      // Same-issuer overwrite: close holdings that were on the previous
+      // CDSL/NSDL/CAMS/KFin file but are missing from this one.
+      if (isPythonCas && casMeta?.fileType) {
+        const prevIds = Array.isArray(casMeta.closeHoldingIds)
+            ? casMeta.closeHoldingIds
+            : casLatest.byOwner[effectiveOwnerId]?.[casMeta.fileType]?.holdingIds || [];
+        snapshotLines.push(
+          ...snapshotLinesToClose(prevIds, snapshotLines, currentWorkingHoldings, statementDate, ledgerEvents)
+        );
+      }
+
       // Step 4: Call reconciliation
       reconciliationResult = reconcileStatement(snapshotLines, ledgerEvents, currentWorkingHoldings, effectiveOwnerId);
 
@@ -928,12 +968,12 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (repo) {
         await repo.recordBatch({
           id: importBatchId,
-          filename: holdingRecords[0]?.holdingName ? 'CAS_Statement_Import.pdf' : 'Statement.pdf',
+          filename: casMeta?.filename || (holdingRecords[0]?.holdingName ? 'CAS_Statement_Import.pdf' : 'Statement.pdf'),
           kind: 'CAS_STATEMENT',
-          statementDate,
-          periodFrom: statementDate,
-          periodTo: statementDate,
-          statementType: 'CAS_HOLDINGS_SNAPSHOT',
+          statementDate: casMeta?.periodTo || statementDate,
+          periodFrom: casMeta?.periodFrom || statementDate,
+          periodTo: casMeta?.periodTo || statementDate,
+          statementType: casMeta?.fileType || 'CAS_HOLDINGS_SNAPSHOT',
           rowsNew: reconciliationResult.counts.NEW_POSITION,
           rowsDuplicate: reconciliationResult.counts.MATCH,
           rowsConflict: reconciliationResult.counts.CONFLICT,
@@ -991,6 +1031,20 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const sanitized = sanitizeAndDeduplicateHoldings(currentWorkingHoldings);
     setHoldings(sanitized.holdings);
+
+    if (casMeta?.fileType) {
+      const persistedIds = holdingIdsForImportedRecords(holdingRecords, currentWorkingHoldings, effectiveOwnerId);
+      const next = upsertCasLatest(casLatest, effectiveOwnerId, {
+        ...casMeta,
+        closeHoldingIds: undefined,
+        holdingIds: persistedIds,
+        importedAt: new Date().toISOString(),
+      });
+      setCasLatest(next);
+      if (repo) {
+        await repo.setMeta('cas_latest', JSON.stringify(next));
+      }
+    }
 
     return { imported: importedCount, updated: updatedCount, skipped: skippedCount, reconciliationResult };
   };
@@ -1098,6 +1152,8 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         deleteFamilyMember,
         computeTaxSummary,
         importStatementRecords,
+        lastStatementAsOf: casLatest.asOf,
+        casLatest,
         cleanDuplicatesAndHeal,
         exportBackupJson,
         importBackupJson,

@@ -1,9 +1,10 @@
 // FILE: src/lib/snapshot.test.ts
-import { reconcileStatement, SnapshotLine, ReconciliationResult } from './snapshot';
+import { reconcileStatement, SnapshotLine, ReconciliationResult, snapshotLinesToClose } from './snapshot';
 import { getSampleCdslSep2024, getSampleCdslJune2026, getSampleCdslJuly2026 } from './casFixtures';
 import { derivePositions } from './positions';
 import { QTY_SCALE } from './money';
 import { LedgerEvent, Holding, StatementImportRecord } from '../types';
+import { formatStatementDate, formatInrAmount } from './casPython';
 
 let pass=0, fail=0;
 const eq=(n:string,a:any,b:any)=>{const ok=String(a)===String(b);ok?pass++:fail++;console.log(`${ok?'ok  ':'FAIL'} ${n}: ${a}${ok?'':'  | want '+b}`)};
@@ -114,6 +115,18 @@ const partial = { ...jul, importRecords: jul.importRecords.filter(r =>
 const p = reconcileStatement(toLines(partial as any), events, holdings, 'f1');
 eq('warns about untouched holdings', p.warnings.length > 0, true);
 eq('warning mentions custodian', p.warnings[0].includes('custodian'), true);
+
+console.log('\n=== G. Same-issuer overwrite closes vanished holdings ===');
+{
+  const current = toLines(jul);
+  const prevIds = holdings.map(h => h.id);
+  const gone = snapshotLinesToClose(prevIds, current.slice(0, 1), holdings, '2026-02-28', events);
+  eq('closes holdings missing from later file', gone.length > 0, true);
+  eq('closed lines have zero quantity', gone.every(l => l.quantityScaled === 0n), true);
+}
+
+eq('calendar date no UTC shift', formatStatementDate('2026-01-31'), '31 January 2026');
+eq('inr grouping', formatInrAmount(26210612.93), '₹ 2,62,10,612.93');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);

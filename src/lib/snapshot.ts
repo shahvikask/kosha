@@ -228,3 +228,43 @@ export function eventsToCommit(
     .filter(l => l.suggestedEvent && acceptedHoldingIds.has(l.line.holdingId))
     .map(l => l.suggestedEvent as LedgerEvent);
 }
+
+/**
+ * Zero-quantity snapshot lines for holdings that were on the previous
+ * statement of the same issuer but are missing from this one.
+ * Used so a later CDSL/NSDL/CAMS/KFin file replaces — not appends — the last one.
+ */
+export function snapshotLinesToClose(
+  previousHoldingIds: string[],
+  currentLines: SnapshotLine[],
+  holdings: Holding[],
+  statementDate: string,
+  events: LedgerEvent[] = []
+): SnapshotLine[] {
+  const mentioned = new Set(currentLines.map(l => l.holdingId));
+  const out: SnapshotLine[] = [];
+  for (const id of previousHoldingIds) {
+    if (mentioned.has(id)) continue;
+    const h = holdings.find(x => x.id === id);
+    if (!h) continue;
+    if (events.length > 0) {
+      const { qtyScaled } = expectedQuantityAsOf(
+        events.filter(e => e.holdingId === id),
+        h.category,
+        statementDate
+      );
+      if (qtyScaled === 0n) continue;
+    }
+    out.push({
+      holdingId: h.id,
+      holdingName: h.name,
+      category: h.category,
+      statementDate,
+      quantityScaled: 0n,
+      unitPriceMinor: BigInt(h.currentPriceMinor || '0'),
+      isin: h.isin,
+      folio: h.symbolOrFolio,
+    });
+  }
+  return out;
+}

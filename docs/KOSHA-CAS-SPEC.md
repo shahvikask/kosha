@@ -76,6 +76,12 @@ Statement positions are external snapshots. The reconciliation engine compares t
 
 Parsers must be versioned. A change in a source PDF layout should create a parser regression fixture before release. Parser version is stored with each import batch so historical imports remain explainable.
 
+## Frontend import path
+
+The Documents tab does **not** parse CAS PDFs in the browser. PDFs are sent to a local Python casparser sidecar (`scripts/cas_parse_server.py` on `127.0.0.1:8765`). The sidecar auto-detects CDSL / NSDL / CAMS / KFintech, returns JSON, and the UI asks the user to confirm PDF total vs parsed total before writing a holdings snapshot.
+
+A later file of the **same issuer** replaces the previous snapshot of that issuer. Totals are not added across months.
+
 ## NSDL implementation priority
 
 NSDL CAS is a first-class source and must have a dedicated parser and representative test corpus before Kosha claims production NSDL support. Do not infer NSDL structure from CDSL patterns.

@@ -11,7 +11,15 @@ import {
   ReconciliationResult,
   reconcileStatement,
   SnapshotOutcome,
+  snapshotLinesToClose,
 } from '../../lib/snapshot';
+import {
+  CasFileType,
+  CasImportMeta,
+  formatStatementDate,
+  pingCasParser,
+} from '../../lib/casPython';
+import { CasConfirmPanel } from './CasConfirmPanel';
 import {
   UploadCloud,
   CheckCircle2,
@@ -40,6 +48,7 @@ export const DocumentsScreen: React.FC = () => {
     importStatementRecords,
     cleanDuplicatesAndHeal,
     derived,
+    casLatest,
   } = useKosha();
 
   const [activeTab, setActiveTab] = useState<'IMPORTER' | 'TAXES' | 'RECORD_BOOK'>('IMPORTER');
@@ -78,6 +87,7 @@ export const DocumentsScreen: React.FC = () => {
   });
 
   const [importNotification, setImportNotification] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
+  const [pythonReady, setPythonReady] = useState<boolean | null>(null);
 
   // Record Book filter & search
   const [recordBookSearch, setRecordBookSearch] = useState<string>('');
@@ -96,6 +106,10 @@ export const DocumentsScreen: React.FC = () => {
     const m = familyMembers.find(fm => fm.id === newMemberId);
     setPdfPassword(m?.panForStatements || '');
   };
+
+  useEffect(() => {
+    pingCasParser().then(setPythonReady);
+  }, []);
 
   useEffect(() => {
     if (activeTargetMember?.panForStatements) {
@@ -159,19 +173,23 @@ export const DocumentsScreen: React.FC = () => {
       });
     }
 
+    if (result.engine === 'PYTHON_CASPARSER' && result.fileType) {
+      const prevIds = casLatest.byOwner[ownerId]?.[result.fileType as CasFileType]?.holdingIds || [];
+      snapshotLines.push(...snapshotLinesToClose(prevIds, snapshotLines, holdings, statementDate, ledgerEvents));
+    }
+
     const recon = reconcileStatement(snapshotLines, ledgerEvents, holdings, ownerId);
     setReconciliation(recon);
 
-    // Default checkbox selection rule:
-    // Ticked by default EXCEPT ADJUST_DOWN and CLOSED, which are UNTICKED.
+    // Python CAS overwrite: tick everything, including ADJUST_DOWN and CLOSED,
+    // so the later statement replaces the earlier one of the same issuer.
+    const overwrite = result.engine === 'PYTHON_CASPARSER';
     const initialAccepted = new Set<string>();
     for (const line of recon.lines) {
-      if (line.outcome === 'ADJUST_DOWN' || line.outcome === 'CLOSED') {
-        // Unticked by default (opt-in)
-      } else {
-        // MATCH, NEW_POSITION, ADJUST_UP ticked by default
-        initialAccepted.add(line.line.holdingId);
+      if (!overwrite && (line.outcome === 'ADJUST_DOWN' || line.outcome === 'CLOSED')) {
+        continue;
       }
+      initialAccepted.add(line.line.holdingId);
     }
     setAcceptedHoldingIds(initialAccepted);
   };
@@ -225,7 +243,7 @@ export const DocumentsScreen: React.FC = () => {
 
       if (result.importRecords.length === 0) {
         setParseError(
-          'No portfolio holdings or transactions found in the statement. Please check if the statement format is supported.'
+          'Python casparser did not find any valued holdings in this statement. Closed / nil lines are skipped. Check that the PDF is a CDSL, NSDL, CAMS or KFintech CAS.'
         );
         return;
       }
@@ -336,17 +354,61 @@ export const DocumentsScreen: React.FC = () => {
     if (!reconciliation) return;
 
     const recordsToImport = rawRecords.filter(r => {
+      if (r.recordType === 'TRANSACTION' && parseResult?.engine === 'PYTHON_CASPARSER') {
+        return false;
+      }
       if (r.recordType === 'TRANSACTION') return true;
       const matched = findMatchingHolding(holdings, r, targetMemberId);
       const hId = matched?.id || `tmp_${r.id}`;
       return acceptedHoldingIds.has(hId);
     });
 
-    const res = await importStatementRecords(recordsToImport, targetMemberId, 'SYNC_UPDATE');
+    const isPython = parseResult?.engine === 'PYTHON_CASPARSER';
+    const fileType = parseResult?.fileType as CasFileType | undefined;
+    const prevIds = fileType
+      ? casLatest.byOwner[targetMemberId]?.[fileType]?.holdingIds || []
+      : [];
+    const closeHoldingIds = reconciliation.lines
+      .filter(
+        l =>
+          l.outcome === 'CLOSED' &&
+          acceptedHoldingIds.has(l.line.holdingId) &&
+          prevIds.includes(l.line.holdingId)
+      )
+      .map(l => l.line.holdingId);
 
+    const casMeta: CasImportMeta | undefined =
+      isPython && fileType
+        ? {
+            fileType,
+            filename: parseResult?.filename || selectedFile?.name || 'statement.pdf',
+            periodFrom: parseResult?.periodFrom,
+            periodTo: parseResult?.periodTo,
+            investorName: parseResult?.investorName,
+            investorPan: parseResult?.investorPan,
+            pdfGrandTotal: parseResult?.pdfTotals?.grand ?? parseResult?.summary.totalValuation ?? 0,
+            parsedGrandTotal:
+              parseResult?.parsedTotals?.holdingsValue ?? parseResult?.summary.totalValuation ?? 0,
+            complete: parseResult?.parseComplete === true,
+            closeHoldingIds,
+          }
+        : undefined;
+
+    const res = await importStatementRecords(
+      recordsToImport,
+      targetMemberId,
+      isPython ? 'REPLACE_SNAPSHOT' : 'SYNC_UPDATE',
+      casMeta
+    );
+
+    const asOf = parseResult?.periodTo
+      ? formatStatementDate(parseResult.periodTo)
+      : formattedStatementDate;
     setImportNotification({
       type: 'success',
-      message: `Your records have been updated for ${activeTargetMember?.name}. ${res.imported} item(s) recorded.`,
+      message: isPython
+        ? `Your ${fileType} records now match this statement${asOf ? ` dated ${asOf}` : ''}. ${res.imported} item(s) recorded. Earlier ${fileType} holdings were overwritten, not added.`
+        : `Your records have been updated for ${activeTargetMember?.name}. ${res.imported} item(s) recorded.`,
     });
 
     setReconciliation(null);
@@ -397,15 +459,10 @@ export const DocumentsScreen: React.FC = () => {
 
   // Format date readable
   const formattedStatementDate = useMemo(() => {
-    if (!reconciliation?.statementDate) return '';
-    try {
-      const d = new Date(reconciliation.statementDate);
-      if (isNaN(d.getTime())) return reconciliation.statementDate;
-      return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
-    } catch {
-      return reconciliation.statementDate;
-    }
-  }, [reconciliation?.statementDate]);
+    const iso = parseResult?.periodTo || reconciliation?.statementDate;
+    if (!iso) return '';
+    return formatStatementDate(iso) || iso;
+  }, [parseResult?.periodTo, reconciliation?.statementDate]);
 
   return (
     <div className="space-y-6 pb-12">
@@ -542,9 +599,20 @@ export const DocumentsScreen: React.FC = () => {
                   Drop Encrypted CAS PDF or Statement CSV
                 </h3>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  Supports password-protected <strong>CAMS & KFintech CAS</strong>,{' '}
-                  <strong>CDSL & NSDL Demat Statements</strong>, and broker CSV exports.
+                  Supports password-protected <strong>CDSL, NSDL, CAMS and KFintech</strong> CAS
+                  PDFs via Python casparser, plus broker CSV exports. Same issuer overwrites
+                  the previous file — later months replace earlier ones.
                 </p>
+                {pythonReady === false && (
+                  <p className="text-xs text-amber-300 pt-2">
+                    Python casparser is not running. Start the app with <span className="font-mono">npm run dev</span> so PDFs can be read on this computer.
+                  </p>
+                )}
+                {pythonReady === true && (
+                  <p className="text-[11px] text-emerald-400/90 pt-1">
+                    Python casparser is ready on this computer.
+                  </p>
+                )}
               </div>
 
               <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
@@ -663,13 +731,13 @@ export const DocumentsScreen: React.FC = () => {
 
                   <button
                     type="submit"
-                    disabled={isParsing || !pdfPassword}
+                    disabled={isParsing}
                     className="px-5 py-2.5 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-slate-950 text-xs sm:text-sm font-bold rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 whitespace-nowrap"
                   >
                     {isParsing ? (
                       <>
                         <RefreshCw className="w-4 h-4 animate-spin" />
-                        <span>Reading in Browser...</span>
+                        <span>Reading with Python casparser...</span>
                       </>
                     ) : (
                       <>
@@ -684,7 +752,7 @@ export const DocumentsScreen: React.FC = () => {
                   🔒 {activeTargetMember?.name
                     ? `Enter the 10-character PAN of ${activeTargetMember.name} in capitals.`
                     : 'Enter the 10-character PAN of the primary holder in capitals.'}{' '}
-                  Reading runs 100% locally in your browser memory.
+                  Python casparser reads the PDF on this computer. The file does not leave your machine.
                 </p>
               </form>
             )}
@@ -725,6 +793,17 @@ export const DocumentsScreen: React.FC = () => {
             )}
           </div>
 
+          {parseResult?.engine === 'PYTHON_CASPARSER' && (
+            <CasConfirmPanel
+              result={parseResult}
+              previous={
+                parseResult.fileType
+                  ? casLatest.byOwner[targetMemberId]?.[parseResult.fileType as CasFileType] || null
+                  : null
+              }
+            />
+          )}
+
           {/* TASK 6: RECONCILIATION REVIEW (SRS-UX-033) */}
           {reconciliation && (
             <div className="bg-slate-900/80 rounded-3xl border border-slate-800 backdrop-blur-md shadow-lg overflow-hidden space-y-6 p-6 sm:p-7 animate-in fade-in">
@@ -734,7 +813,9 @@ export const DocumentsScreen: React.FC = () => {
                   We read your statement dated {formattedStatementDate}
                 </h3>
                 <p className="text-xs text-slate-400">
-                  Review the differences below before updating your records. Only the difference is recorded.
+                  {parseResult?.engine === 'PYTHON_CASPARSER'
+                    ? 'This snapshot replaces the previous file of the same issuer. Only the difference is recorded — values are not added together.'
+                    : 'Review the differences below before updating your records. Only the difference is recorded.'}
                 </p>
               </div>
 

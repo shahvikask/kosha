@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useKosha } from '../../context/KoshaContext';
 import { BrandLogo } from '../common/BrandLogo';
+import { formatStatementDate } from '../../lib/casPython';
 import {
   Users,
   Eye,
@@ -29,6 +30,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddHolding, onOpenAddRecor
     setSgbValuationMode,
     activeScreen,
     setActiveScreen,
+    lastStatementAsOf,
   } = useKosha();
 
   const [isFamilyDropdownOpen, setIsFamilyDropdownOpen] = useState(false);
@@ -246,6 +248,16 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddHolding, onOpenAddRecor
         </div>
 
       </div>
+      {lastStatementAsOf && (
+        <div className="border-t border-slate-800/80 bg-slate-950/70">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-1.5 text-center text-xs text-slate-400">
+            The data is up to date until{' '}
+            <span className="font-semibold text-amber-300">
+              {formatStatementDate(lastStatementAsOf)}
+            </span>
+          </div>
+        </div>
+      )}
     </header>
   );
 };
