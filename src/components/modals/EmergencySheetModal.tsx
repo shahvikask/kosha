@@ -51,8 +51,7 @@ export const EmergencySheetModal: React.FC<EmergencySheetModalProps> = ({ isOpen
               {lastStatementAsOf ? ` · Statement as of ${formatCalendarDate(lastStatementAsOf)}` : ''}
             </p>
             <p className="mt-4 p-4 rounded-2xl text-xs leading-relaxed" style={{ background: 'var(--input)' }}>
-              For the family. This lists every holding and account stored in this vault, with the nominee you typed.
-              Passwords are not stored here. Blank rows mean the fact was never entered — we do not invent locker numbers or UANs.
+              For the family. This lists every holding and account stored in this vault. Nominee names appear only when they came from a statement — typing a name here does not register it with CDSL, CAMS or KFintech. Passwords are not stored. Blank rows mean the fact was never on a statement.
             </p>
           </div>
 
@@ -106,7 +105,7 @@ export const EmergencySheetModal: React.FC<EmergencySheetModalProps> = ({ isOpen
                           {a.dpId ? ` · DP ${a.dpId}` : ''}
                         </td>
                         <td>{owner?.name || '—'}</td>
-                        <td>{a.nominee || 'Not entered'}</td>
+                        <td>{a.nominee || 'Not on statement'}</td>
                       </tr>
                     );
                   })}

@@ -228,6 +228,73 @@ export function displayHoldingName(name: string | null | undefined): string {
   return rest || n;
 }
 
+const GENERIC_CUSTODIAN = /^(mutual fund folios?|mf folios?|cas)$/i;
+
+/** Longest first so "ICICI Prudential" wins over "ICICI". */
+const AMC_PREFIXES = [
+  'Aditya Birla Sun Life',
+  'Baroda BNP Paribas',
+  'Mahindra Manulife',
+  'WhiteOak Capital',
+  'Motilal Oswal',
+  'Canara Robeco',
+  'ICICI Prudential',
+  'Nippon India',
+  'Parag Parikh',
+  'Mirae Asset',
+  'JM Financial',
+  'Bank of India',
+  'Edelweiss',
+  'WhiteOak',
+  'Bandhan',
+  'Sundaram',
+  'Franklin',
+  'Invesco',
+  'Kotak',
+  'HDFC',
+  'Axis',
+  'Quant',
+  'PPFAS',
+  'Groww',
+  'Tata',
+  'HSBC',
+  'Navi',
+  'DSP',
+  'UTI',
+  'SBI',
+  'LIC',
+  'ITI',
+];
+
+export function inferAmcFromSchemeName(name: string | null | undefined): string | undefined {
+  const n = displayHoldingName(name).trim();
+  if (!n) return undefined;
+  const lower = n.toLowerCase();
+  const prefixes = [...AMC_PREFIXES].sort((a, b) => b.length - a.length);
+  for (const prefix of prefixes) {
+    if (lower.startsWith(prefix.toLowerCase())) return prefix;
+  }
+  return undefined;
+}
+
+/** Title for an account card: AMC or broker, never the CDSL bucket "Mutual Fund Folios". */
+export function accountTitle(
+  custodian: string | undefined,
+  holdings: { amc?: string; name: string }[],
+  accountType?: string
+): string {
+  const amc = holdings.map(h => (h.amc || '').trim()).find(Boolean);
+  if (amc) return amc;
+  const c = (custodian || '').trim();
+  if (c && !GENERIC_CUSTODIAN.test(c)) return c;
+  for (const h of holdings) {
+    const inferred = inferAmcFromSchemeName(h.name);
+    if (inferred) return inferred;
+  }
+  if (accountType === 'MF_FOLIO') return 'Mutual fund folio';
+  return c || 'Account';
+}
+
 export function whereHeld(h: Holding): string {
   const bits = [
     h.institutionName || h.dpName || h.amc,

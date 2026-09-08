@@ -116,7 +116,9 @@ const KoshaMainApp: React.FC = () => {
               onOpenHoldingDetail={id => setSelectedHoldingIdForDetail(id)}
             />
           )}
-          {activeScreen === 'ACCOUNTS' && <AccountsScreen />}
+          {activeScreen === 'ACCOUNTS' && (
+            <AccountsScreen onOpenHoldingDetail={id => setSelectedHoldingIdForDetail(id)} />
+          )}
           {activeScreen === 'DOCUMENTS' && <DocumentsScreen />}
           {activeScreen === 'FAMILY' && (
             <FamilyScreen onOpenEmergencySheet={() => setIsEmergencySheetOpen(true)} />

@@ -1,9 +1,20 @@
 import React, { useMemo, useState } from 'react';
 import { useKosha } from '../../context/KoshaContext';
 import { PrivacyValue } from '../common/PrivacyValue';
-import { metricsOf } from '../../lib/holdingView';
+import {
+  metricsOf,
+  displayHoldingName,
+  accountTitle,
+  unitWord,
+} from '../../lib/holdingView';
+import { MoneyEngine } from '../../lib/money';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 
-export const AccountsScreen: React.FC = () => {
+interface Props {
+  onOpenHoldingDetail?: (id: string) => void;
+}
+
+export const AccountsScreen: React.FC<Props> = ({ onOpenHoldingDetail }) => {
   const {
     accounts,
     holdings,
@@ -11,11 +22,18 @@ export const AccountsScreen: React.FC = () => {
     derived,
     sgbValuationMode,
     selectedMemberId,
-    updateAccountNominee,
   } = useKosha();
 
-  const [editing, setEditing] = useState<string | null>(null);
-  const [nomineeDraft, setNomineeDraft] = useState('');
+  const [openIds, setOpenIds] = useState<Set<string>>(() => new Set());
+
+  const toggle = (id: string) => {
+    setOpenIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const rows = useMemo(() => {
     return accounts
@@ -24,24 +42,31 @@ export const AccountsScreen: React.FC = () => {
         const hs = holdings.filter(h => h.accountId === a.id || (
           !h.accountId && (h.accountNumberMasked === a.identifierMasked || h.symbolOrFolio === a.identifierMasked)
         ));
-        const value = hs.reduce((s, h) => s + metricsOf(h, derived, sgbValuationMode).value, 0n);
+        const valued = hs
+          .map(h => ({ h, m: metricsOf(h, derived, sgbValuationMode) }))
+          .sort((x, y) => (x.m.value < y.m.value ? 1 : -1));
+        const value = valued.reduce((s, r) => s + r.m.value, 0n);
         const owner = familyMembers.find(m => m.id === a.ownerId);
-        return { a, hs, value, owner };
+        const isFolio = a.accountType === 'MF_FOLIO';
+        return {
+          a,
+          hs: valued,
+          value,
+          owner,
+          title: accountTitle(a.custodian, hs, a.accountType),
+          kind: isFolio ? 'Mutual fund' : 'Demat',
+          number: a.identifierMasked || (a.dpId && a.clientId ? `${a.dpId} ${a.clientId}` : a.boId) || '',
+        };
       })
       .sort((x, y) => (x.value < y.value ? 1 : -1));
   }, [accounts, holdings, familyMembers, derived, sgbValuationMode, selectedMemberId]);
 
-  const saveNominee = async (id: string) => {
-    await updateAccountNominee(id, nomineeDraft.trim());
-    setEditing(null);
-  };
-
   return (
-    <div className="space-y-5 pb-12">
+    <div className="space-y-4 pb-12">
       <div>
         <h1 className="text-2xl font-bold">Accounts</h1>
         <p className="text-sm" style={{ color: 'var(--muted)' }}>
-          Demat accounts and mutual-fund folios from your statements. Add a nominee so the family printout is complete.
+          Demat accounts and mutual-fund folios from your statements. Tap the holding count to see what sits on that folio.
         </p>
       </div>
 
@@ -50,61 +75,82 @@ export const AccountsScreen: React.FC = () => {
           No demat or folio yet. They appear after you confirm a CDSL, NSDL, CAMS or KFintech PDF.
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4">
-          {rows.map(({ a, hs, value, owner }) => (
-            <div key={a.id} className="card p-5 space-y-3">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="font-bold">{a.custodian}</div>
-                  <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
-                    {a.accountType === 'MF_FOLIO' ? 'Mutual fund folio' : 'Demat account'}
-                    {owner ? ` · ${owner.name}` : ''}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {rows.map(({ a, hs, value, owner, title, kind, number }) => {
+            const expanded = openIds.has(a.id);
+            return (
+              <div key={a.id} className="card p-3.5 flex flex-col min-w-0">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-bold text-sm truncate">{title}</div>
+                    <div className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--muted)' }}>
+                      {kind}
+                      {owner ? ` · ${owner.name}` : ''}
+                      {number ? ` · ${number}` : ''}
+                    </div>
                   </div>
+                  <PrivacyValue minor={value} includePaise={false} className="text-sm font-bold shrink-0" />
                 </div>
-                <PrivacyValue minor={value} includePaise={false} className="text-base font-bold" />
-              </div>
-              <div className="text-xs space-y-1" style={{ color: 'var(--muted)' }}>
-                {a.identifierMasked && <div>Folio / BOID · {a.identifierMasked}</div>}
-                {a.dpId && <div>DP ID · {a.dpId}{a.clientId ? ` · Client ${a.clientId}` : ''}</div>}
-                <div>{hs.length} holding{hs.length === 1 ? '' : 's'} on this account</div>
-              </div>
-              <div className="pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
-                <div className="text-xs font-semibold mb-1">If something happens, who gets this?</div>
-                {editing === a.id ? (
-                  <div className="flex gap-2">
-                    <input
-                      value={nomineeDraft}
-                      onChange={e => setNomineeDraft(e.target.value)}
-                      className="flex-1 px-3 py-1.5 rounded-lg border text-sm"
-                      style={{ background: 'var(--input)', borderColor: 'var(--border)', color: 'var(--text)' }}
-                      placeholder="Spouse name, or joint"
-                    />
-                    <button
-                      onClick={() => saveNominee(a.id)}
-                      className="px-3 py-1.5 rounded-lg text-xs font-bold"
-                      style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}
-                    >
-                      Save
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    className="text-sm"
-                    onClick={() => {
-                      setEditing(a.id);
-                      setNomineeDraft(a.nominee || '');
-                    }}
-                  >
-                    {a.nominee ? (
-                      <span>Nominee · <strong>{a.nominee}</strong> (tap to change)</span>
+
+                <button
+                  type="button"
+                  onClick={() => toggle(a.id)}
+                  className="mt-2 text-[11px] font-semibold flex items-center gap-0.5 w-fit"
+                  style={{ color: 'var(--accent)' }}
+                  aria-expanded={expanded}
+                >
+                  {expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                  {hs.length} holding{hs.length === 1 ? '' : 's'}
+                </button>
+
+                {expanded && (
+                  <div className="mt-2 pt-1 border-t divide-y" style={{ borderColor: 'var(--border)' }}>
+                    {hs.length === 0 ? (
+                      <div className="py-2 text-[11px]" style={{ color: 'var(--muted)' }}>
+                        Nothing on this account right now.
+                      </div>
                     ) : (
-                      <span style={{ color: 'var(--accent)' }}>Add a nominee</span>
+                      hs.map(({ h, m }) => {
+                        const body = (
+                          <>
+                            <div className="min-w-0">
+                              <div className="text-xs font-medium truncate">{displayHoldingName(h.name)}</div>
+                              <div className="text-[10px] mt-0.5" style={{ color: 'var(--muted)' }}>
+                                {unitWord(h) && m.qty > 0n
+                                  ? `${MoneyEngine.toQty(m.qty).toLocaleString('en-IN')} ${unitWord(h)}`
+                                  : '—'}
+                              </div>
+                            </div>
+                            <PrivacyValue minor={m.value} includePaise={false} className="text-xs font-semibold shrink-0" />
+                          </>
+                        );
+                        return onOpenHoldingDetail ? (
+                          <button
+                            key={h.id}
+                            type="button"
+                            onClick={() => onOpenHoldingDetail(h.id)}
+                            className="w-full text-left py-2 flex items-center justify-between gap-2 hover:opacity-90"
+                          >
+                            {body}
+                          </button>
+                        ) : (
+                          <div key={h.id} className="py-2 flex items-center justify-between gap-2">
+                            {body}
+                          </div>
+                        );
+                      })
                     )}
-                  </button>
+                  </div>
                 )}
+
+                {a.nominee ? (
+                  <div className="mt-2 text-[10px] leading-snug" style={{ color: 'var(--muted)' }}>
+                    Family note · {a.nominee}. This is not the nominee on the registrar — that comes from the statement.
+                  </div>
+                ) : null}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

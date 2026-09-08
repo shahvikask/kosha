@@ -6,7 +6,7 @@ import { xirr } from './returns';
 import { classifyHolding, EXPOSURES, WRAPPERS, exposureLabel, l2Label } from './taxonomy';
 import { resolveSplit, apportion, buildTree, isHybrid, activeWrappers } from './lookthrough';
 import { LedgerEvent, Holding } from '../types';
-import { eventLabel, bucketOf, upcomingFromHoldings, displayHoldingName } from './holdingView';
+import { eventLabel, bucketOf, upcomingFromHoldings, displayHoldingName, accountTitle, inferAmcFromSchemeName } from './holdingView';
 import { formatStatementDate } from './casPython';
 import { findMatchingHolding, holdingIdentityKey } from './matchHolding';
 import { StatementImportRecord } from '../types';
@@ -281,6 +281,17 @@ eq('no prefix share', displayHoldingName('HDFC Bank Ltd'), 'HDFC Bank Ltd');
 eq('SGB year-dash kept', displayHoldingName('Sovereign Gold Bond 2018-19 Series VI'), 'Sovereign Gold Bond 2018-19 Series VI');
 eq('code only unchanged', displayHoldingName('AVAP'), 'AVAP');
 eq('empty', displayHoldingName(''), '');
+
+console.log('\n--- M. Account card title from AMC / broker, not CDSL bucket ---');
+eq('infer Edelweiss', inferAmcFromSchemeName('MURG - Edelweiss Multi Cap Fund - Regular Plan Growth'), 'Edelweiss');
+eq('infer ICICI', inferAmcFromSchemeName('3572 - ICICI Prudential Active Momentum Fund'), 'ICICI Prudential');
+eq('infer Nippon', inferAmcFromSchemeName('MCAG - NIPPON INDIA MNC FUND'), 'Nippon India');
+eq('infer WhiteOak Capital', inferAmcFromSchemeName('101G - WhiteOak Capital Fund'), 'WhiteOak Capital');
+eq('HDFC fund prefix', inferAmcFromSchemeName('HDFC Flexi Cap Fund'), 'HDFC');
+eq('generic custodian uses AMC field', accountTitle('Mutual Fund Folios', [{amc:'ICICI Prudential', name:'X'}], 'MF_FOLIO'), 'ICICI Prudential');
+eq('generic custodian infers from scheme', accountTitle('Mutual Fund Folios', [{name:'MURG - Edelweiss Multi Cap Fund'}], 'MF_FOLIO'), 'Edelweiss');
+eq('demat keeps broker name', accountTitle('RAISE SECURITIES PRIVATE LIMITED', [{name:'HDFC Bank Ltd'}], 'DEMAT'), 'RAISE SECURITIES PRIVATE LIMITED');
+eq('empty mf fallback', accountTitle('Mutual Fund Folios', [], 'MF_FOLIO'), 'Mutual fund folio');
 
 console.log('\n--- H. Encryption ---');
 (async()=>{

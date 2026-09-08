@@ -282,7 +282,7 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
           {field('Depository', holding.dpName)}
           {field('Exchange', holding.exchange)}
           {field('Advisor', holding.advisor)}
-          {acct?.nominee && field('Nominee on this account', acct.nominee)}
+          {acct?.nominee && field('Family note (not the registrar nominee)', acct.nominee)}
         </div>
 
         {(holding.nextCouponDate || holding.maturityDate || holding.couponRatePercent || isElss || isGovt) && (

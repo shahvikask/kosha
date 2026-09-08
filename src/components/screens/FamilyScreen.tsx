@@ -574,7 +574,7 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
               <FileCheck className="w-5 h-5" /> Family printout
             </h2>
             <p className="text-xs mt-1 max-w-xl" style={{ color: 'var(--muted)' }}>
-              A paper list of every folio, demat and nominee from this vault. No sample lockers or UAN numbers — only what you have entered.
+              A paper list of every folio and demat from this vault. No sample lockers or UAN numbers — only what the statements contain.
             </p>
           </div>
           <button
