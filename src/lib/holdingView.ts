@@ -176,7 +176,7 @@ export function upcomingFromHoldings(
       out.push({
         id: `c_${h.id}`,
         date: h.nextCouponDate,
-        title: `Gold bond interest · ${h.name}`,
+        title: `Gold bond interest · ${displayHoldingName(h.name)}`,
         kind: 'SGB_COUPON',
         holdingId: h.id,
       });
@@ -191,7 +191,7 @@ export function upcomingFromHoldings(
       out.push({
         id: `m_${h.id}`,
         date: h.maturityDate,
-        title: `${kindLabel} · ${h.name}`,
+        title: `${kindLabel} · ${displayHoldingName(h.name)}`,
         kind: 'MATURITY',
         holdingId: h.id,
       });
@@ -212,6 +212,20 @@ export function upcomingFromHoldings(
 
 export function formatCalendarDate(iso?: string | null): string {
   return formatStatementDate(iso);
+}
+
+/**
+ * CDSL prints mutual-fund names as "SCHEMECODE - Fund name"
+ * (MURG, 3572, 001ZG, 15, …). Strip that prefix for display only.
+ * Stored names and matching are unchanged.
+ */
+export function displayHoldingName(name: string | null | undefined): string {
+  const n = (name || '').trim();
+  if (!n) return '';
+  const m = n.match(/^([A-Z0-9]{1,8})\s*-\s+(.+)$/);
+  if (!m) return n;
+  const rest = m[2].trim();
+  return rest || n;
 }
 
 export function whereHeld(h: Holding): string {

@@ -13,7 +13,7 @@ import {
   SnapshotOutcome,
   snapshotLinesToClose,
 } from '../../lib/snapshot';
-import { eventLabel } from '../../lib/holdingView';
+import { eventLabel, displayHoldingName } from '../../lib/holdingView';
 import {
   CasFileType,
   CasImportMeta,
@@ -822,7 +822,7 @@ export const DocumentsScreen: React.FC = () => {
                                 <span className="text-emerald-400 font-bold">✓</span>
                                 <div>
                                   <span className="font-semibold text-slate-200">
-                                    {l.line.holdingName}
+                                    {displayHoldingName(l.line.holdingName)}
                                   </span>
                                   <span className="text-slate-500 ml-2">({l.message})</span>
                                 </div>
@@ -886,7 +886,7 @@ export const DocumentsScreen: React.FC = () => {
                                 />
                                 <div>
                                   <div className="font-bold text-slate-100">
-                                    {l.line.holdingName}
+                                    {displayHoldingName(l.line.holdingName)}
                                   </div>
                                   <div className="text-slate-300 text-[11px] mt-0.5 leading-relaxed">
                                     {l.message}
@@ -957,7 +957,7 @@ export const DocumentsScreen: React.FC = () => {
                                 />
                                 <div>
                                   <div className="font-bold text-slate-100">
-                                    {l.line.holdingName}
+                                    {displayHoldingName(l.line.holdingName)}
                                   </div>
                                   <div className="text-slate-300 text-[11px] mt-0.5 leading-relaxed">
                                     {l.message}
@@ -1028,7 +1028,7 @@ export const DocumentsScreen: React.FC = () => {
                                 />
                                 <div>
                                   <div className="font-bold text-slate-100">
-                                    {l.line.holdingName}
+                                    {displayHoldingName(l.line.holdingName)}
                                   </div>
                                   <div className="text-slate-300 text-[11px] mt-0.5 leading-relaxed">
                                     {l.message}
@@ -1099,7 +1099,7 @@ export const DocumentsScreen: React.FC = () => {
                                 />
                                 <div>
                                   <div className="font-bold text-slate-100">
-                                    {l.line.holdingName}
+                                    {displayHoldingName(l.line.holdingName)}
                                   </div>
                                   <div className="text-slate-300 text-[11px] mt-0.5 leading-relaxed">
                                     {l.message}
@@ -1328,7 +1328,7 @@ export const DocumentsScreen: React.FC = () => {
               {taxSummary.records.map(rec => (
                 <div key={rec.id} className="py-3 flex items-center justify-between">
                   <div>
-                    <div className="font-semibold text-sm text-slate-100">{rec.holdingName}</div>
+                    <div className="font-semibold text-sm text-slate-100">{displayHoldingName(rec.holdingName)}</div>
                     <div className="text-xs text-slate-400">
                       Bought: {rec.purchaseDate} • Sold: {rec.saleDate} ({rec.holdingDays} days) •{' '}
                       {rec.taxType}
@@ -1414,7 +1414,7 @@ export const DocumentsScreen: React.FC = () => {
                     </div>
 
                     <div>
-                      <div className="font-semibold text-sm text-slate-100">{ev.holdingName}</div>
+                      <div className="font-semibold text-sm text-slate-100">{displayHoldingName(ev.holdingName)}</div>
                       <div className="text-xs text-slate-400">
                         {eventLabel(ev.eventType)} · {ev.eventDate}
                         {ev.notes ? ` · ${ev.notes}` : ''}

@@ -2,7 +2,7 @@ import React from 'react';
 import { useKosha } from '../../context/KoshaContext';
 import { ASSET_CATEGORIES } from '../../types';
 import { MoneyEngine } from '../../lib/money';
-import { metricsOf, whereHeld, formatCalendarDate } from '../../lib/holdingView';
+import { metricsOf, whereHeld, formatCalendarDate, displayHoldingName } from '../../lib/holdingView';
 import { X, Printer, ShieldCheck } from 'lucide-react';
 
 interface EmergencySheetModalProps {
@@ -141,7 +141,7 @@ export const EmergencySheetModal: React.FC<EmergencySheetModalProps> = ({ isOpen
                     return (
                       <tr key={h.id} className="border-t" style={{ borderColor: 'var(--border)' }}>
                         <td className="py-2">
-                          <div className="font-semibold">{h.name}</div>
+                          <div className="font-semibold">{displayHoldingName(h.name)}</div>
                           {h.isin && <div style={{ color: 'var(--muted)' }}>{h.isin}</div>}
                         </td>
                         <td>{ASSET_CATEGORIES[h.category].shortName}</td>

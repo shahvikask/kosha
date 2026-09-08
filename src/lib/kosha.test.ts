@@ -6,7 +6,7 @@ import { xirr } from './returns';
 import { classifyHolding, EXPOSURES, WRAPPERS, exposureLabel, l2Label } from './taxonomy';
 import { resolveSplit, apportion, buildTree, isHybrid, activeWrappers } from './lookthrough';
 import { LedgerEvent, Holding } from '../types';
-import { eventLabel, bucketOf, upcomingFromHoldings } from './holdingView';
+import { eventLabel, bucketOf, upcomingFromHoldings, displayHoldingName } from './holdingView';
 import { formatStatementDate } from './casPython';
 import { findMatchingHolding, holdingIdentityKey } from './matchHolding';
 import { StatementImportRecord } from '../types';
@@ -271,6 +271,16 @@ eq('correct value not last-NAV lump', Math.round(correctValue) !== Math.round(in
 eq('dedup key not folio-only',
   holdingIdentityKey(mfHold('a', momentum)) === holdingIdentityKey(mfHold('b', multiAsset)),
   false);
+
+console.log('\n--- L. Display name strips CDSL scheme-code prefix ---');
+eq('MURG prefix', displayHoldingName('MURG - Edelweiss Multi Cap Fund - Regular Plan Growth'), 'Edelweiss Multi Cap Fund - Regular Plan Growth');
+eq('3572 prefix', displayHoldingName('3572 - ICICI Prudential Active Momentum Fund'), 'ICICI Prudential Active Momentum Fund');
+eq('15 numeric prefix', displayHoldingName('15 - ICICI Prudential Multi-Asset Fund'), 'ICICI Prudential Multi-Asset Fund');
+eq('001ZG prefix', displayHoldingName('001ZG - Parag Parikh Flexi Cap Fund'), 'Parag Parikh Flexi Cap Fund');
+eq('no prefix share', displayHoldingName('HDFC Bank Ltd'), 'HDFC Bank Ltd');
+eq('SGB year-dash kept', displayHoldingName('Sovereign Gold Bond 2018-19 Series VI'), 'Sovereign Gold Bond 2018-19 Series VI');
+eq('code only unchanged', displayHoldingName('AVAP'), 'AVAP');
+eq('empty', displayHoldingName(''), '');
 
 console.log('\n--- H. Encryption ---');
 (async()=>{

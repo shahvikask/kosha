@@ -9,6 +9,7 @@ import {
   plainCategory,
   unitWord,
   whereHeld,
+  displayHoldingName,
 } from '../../lib/holdingView';
 import { MoneyEngine } from '../../lib/money';
 import { Search, Plus } from 'lucide-react';
@@ -95,7 +96,7 @@ export const HoldingsScreen: React.FC<Props> = ({ onOpenAddHolding, onOpenHoldin
                 className="w-full text-left px-4 py-3.5 flex items-center justify-between gap-3 hover:opacity-90"
               >
                 <div className="min-w-0">
-                  <div className="font-semibold text-sm truncate">{h.name}</div>
+                  <div className="font-semibold text-sm truncate">{displayHoldingName(h.name)}</div>
                   <div className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--muted)' }}>
                     {plainCategory(h.category)}
                     {owner ? ` · ${owner.name}` : ''}

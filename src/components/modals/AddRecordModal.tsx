@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useKosha } from '../../context/KoshaContext';
 import { EventType } from '../../types';
 import { MoneyEngine } from '../../lib/money';
+import { displayHoldingName } from '../../lib/holdingView';
 import { X, ArrowRightLeft, ShieldCheck, CheckCircle2 } from 'lucide-react';
 
 interface AddRecordModalProps {
@@ -130,7 +131,7 @@ export const AddRecordModal: React.FC<AddRecordModalProps> = ({
             >
               {holdings.map(h => (
                 <option key={h.id} value={h.id}>
-                  {h.name} ({h.symbolOrFolio})
+                  {displayHoldingName(h.name)} ({h.symbolOrFolio})
                 </option>
               ))}
             </select>

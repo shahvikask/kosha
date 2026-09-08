@@ -8,6 +8,7 @@ import {
   formatStatementDate,
 } from '../../lib/casPython';
 import { ASSET_CATEGORIES } from '../../types';
+import { displayHoldingName } from '../../lib/holdingView';
 import {
   AlertTriangle,
   BadgeCheck,
@@ -243,7 +244,7 @@ export const CasConfirmPanel: React.FC<CasConfirmPanelProps> = ({ result, previo
                 {holdings.map(h => (
                   <tr key={h.id} className="bg-slate-950/40">
                     <td className="px-3 py-2.5 text-slate-100 font-medium max-w-[280px]">
-                      {h.holdingName}
+                      {displayHoldingName(h.holdingName)}
                     </td>
                     <td className="px-3 py-2.5 font-mono text-slate-400 whitespace-nowrap">
                       <div>{h.isin || '—'}</div>

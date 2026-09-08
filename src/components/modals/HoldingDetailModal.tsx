@@ -9,6 +9,7 @@ import {
   unitWord,
   formatCalendarDate,
   whereHeld,
+  displayHoldingName,
 } from '../../lib/holdingView';
 import { X, Edit3, Plus, Trash2, Calendar, Coins } from 'lucide-react';
 
@@ -114,7 +115,7 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
           <div className="space-y-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="w-3 h-3 rounded-full" style={{ backgroundColor: catInfo.color }} />
-              <h2 className="text-xl font-bold">{holding.name}</h2>
+              <h2 className="text-xl font-bold">{displayHoldingName(holding.name)}</h2>
               {owner && (
                 <span
                   className="text-xs font-semibold px-2 py-0.5 rounded-full text-white"
