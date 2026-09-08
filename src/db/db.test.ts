@@ -202,6 +202,45 @@ const famSpouse:FamilyMember = {id:'f2',name:'Spouse',relation:'Spouse',color:'#
   eq('folio stored', back.accountNumberMasked, 'Folio 12894019');
   await drv4.close();
 
+  console.log('\n--- N. CAS import must create the demat/folio account BEFORE the holding ---');
+  const drv5 = new NodeSqlDriver();
+  const repo5 = new Repository(drv5);
+  await repo5.initialise();
+  await repo5.upsertEntity(fam);
+  let danglingRejected = false;
+  try {
+    await repo5.upsertHolding({ ...hold('h_fk', 'HDFC Flexi Cap', 100), accountId: 'acct_FOLIO12894019' });
+  } catch (e) {
+    danglingRejected = String((e as Error).message).toLowerCase().includes('foreign key');
+  }
+  eq('holding with missing account is rejected', danglingRejected, true);
+
+  await repo5.upsertAccount({
+    id: 'acct_FOLIO12894019',
+    entityId: 'f1',
+    accountType: 'MF_FOLIO',
+    custodian: 'CAMS',
+    identifierMasked: '12894019',
+  });
+  await repo5.upsertHolding({
+    ...hold('h_ok', 'HDFC Flexi Cap', 84.15),
+    accountId: 'acct_FOLIO12894019',
+    accountNumberMasked: '12894019',
+  });
+  const savedOk = (await repo5.allHoldings()).find(h => h.id === 'h_ok');
+  eq('holding saved once account exists', Boolean(savedOk), true);
+  eq('account linked on holding', savedOk?.accountId, 'acct_FOLIO12894019');
+  const accts = await repo5.allAccounts();
+  eq('folio appears in accounts', accts.some(a => a.id === 'acct_FOLIO12894019'), true);
+  await repo5.appendEvent({
+    ...ev('e_ob', 'OPENING_BALANCE', '2026-03-31', 1234.56, 84.15, 'h_ok'),
+    holdingName: 'HDFC Flexi Cap',
+  });
+  const derived = derivePositions(await repo5.allEvents(), await repo5.allHoldings());
+  const pos = derived.positions.get('h_ok')!;
+  eq('ledger qty after confirm', Number(pos.quantityScaled) / 1e8, 1234.56);
+  await drv5.close();
+
   console.log(`\n${pass} passed, ${fail} failed`);
   await drv.close(); await drv2.close();
   process.exit(fail?1:0);

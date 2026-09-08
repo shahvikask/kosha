@@ -141,6 +141,16 @@ export function findMatchingHolding(
   return undefined;
 }
 
+/** Stable demat / folio id used as holding.accountId. Must exist in account first. */
+export function casAccountId(
+  rec: Pick<StatementImportRecord, 'dematAccount' | 'folio'>
+): string | undefined {
+  const ident = rec.dematAccount || rec.folio;
+  if (!ident) return undefined;
+  const slug = ident.replace(/[^A-Za-z0-9]/g, '').slice(0, 24);
+  return `acct_${slug || 'x'}`;
+}
+
 function holdingIdsForImportedRecords(
   records: StatementImportRecord[],
   working: Holding[],
@@ -929,12 +939,35 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (holdingRecords.length > 0) {
       const snapshotLines: SnapshotLine[] = [];
 
+      // Account rows MUST exist before holdings: holding.account_id is an FK.
+      if (repo) {
+        const seenAccounts = new Set<string>();
+        for (const rec of holdingRecords) {
+          const ident = rec.dematAccount || rec.folio;
+          const acctId = casAccountId(rec);
+          if (!ident || !acctId || seenAccounts.has(ident)) continue;
+          seenAccounts.add(ident);
+          await repo.upsertAccount({
+            id: acctId,
+            entityId: effectiveOwnerId,
+            accountType: rec.folio && !rec.dematAccount ? 'MF_FOLIO' : 'DEMAT',
+            custodian: rec.dpName || rec.amc || 'CAS',
+            identifierMasked: ident,
+            dpId: rec.dpId,
+            clientId: rec.clientId,
+            boId: rec.dematAccount,
+          });
+        }
+        setAccounts(await repo.allAccounts());
+      }
+
       for (const rec of holdingRecords) {
         let matched = findMatchingHolding(currentWorkingHoldings, rec, effectiveOwnerId);
         let holdingId = matched?.id;
 
         const priceMinor = MoneyEngine.fromRupees(rec.pricePerUnit).toString();
         const priceMinorBig = BigInt(priceMinor);
+        const acctId = casAccountId(rec);
 
         if (!matched) {
           holdingId = `h_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
@@ -964,9 +997,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             dpName: rec.dpName,
             institutionName: rec.dpName,
             accountNumberMasked: rec.folio || rec.dematAccount,
-            accountId: (rec.dematAccount || rec.folio)
-              ? `acct_${(rec.dematAccount || rec.folio || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 24)}`
-              : undefined,
+            accountId: acctId,
           };
           currentWorkingHoldings = [newH, ...currentWorkingHoldings];
           if (repo) await repo.upsertHolding(newH);
@@ -979,6 +1010,12 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               currentPriceMinor: priceMinor,
               lastPriceUpdated: rec.date ? `${rec.date}T00:00:00.000Z` : new Date().toISOString(),
               priceSource: 'CAS Statement Snapshot',
+              accountId: matched.accountId || acctId,
+              accountNumberMasked: matched.accountNumberMasked || rec.folio || rec.dematAccount,
+              amc: matched.amc || rec.amc,
+              rta: matched.rta || rec.rta,
+              amfiCode: matched.amfiCode || rec.amfiCode,
+              dpName: matched.dpName || rec.dpName,
             };
             if (repo) await repo.upsertHolding(updatedH);
             currentWorkingHoldings = currentWorkingHoldings.map(h => h.id === matched!.id ? updatedH : h);
@@ -1063,25 +1100,6 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           });
         }
 
-        // Persist demat / folio accounts when the statement names them
-        const seenAccounts = new Set<string>();
-        for (const rec of holdingRecords) {
-          const ident = rec.dematAccount || rec.folio;
-          if (!ident || seenAccounts.has(ident)) continue;
-          seenAccounts.add(ident);
-          const acctId = `acct_${ident.replace(/[^A-Za-z0-9]/g, '').slice(0, 24) || Date.now()}`;
-          await repo.upsertAccount({
-            id: acctId,
-            entityId: effectiveOwnerId,
-            accountType: rec.folio ? 'MF_FOLIO' : 'DEMAT',
-            custodian: rec.dpName || rec.amc || 'CAS',
-            identifierMasked: ident,
-            dpId: rec.dpId,
-            clientId: rec.clientId,
-            boId: rec.dematAccount,
-          });
-        }
-        setAccounts(await repo.allAccounts());
         setImportBatches(await repo.allBatches());
       }
     }

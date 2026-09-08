@@ -89,6 +89,7 @@ export const DocumentsScreen: React.FC = () => {
 
   const [importNotification, setImportNotification] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
   const [pythonReady, setPythonReady] = useState<boolean | null>(null);
+  const [isCommitting, setIsCommitting] = useState(false);
 
   // Record Book filter & search
   const [recordBookSearch, setRecordBookSearch] = useState<string>('');
@@ -321,71 +322,93 @@ export const DocumentsScreen: React.FC = () => {
 
   // Execute Commit
   const handleCommitUpdates = async () => {
-    if (!reconciliation) return;
+    if (!reconciliation || isCommitting) return;
+    setIsCommitting(true);
+    setImportNotification(null);
 
-    const recordsToImport = rawRecords.filter(r => {
-      if (r.recordType === 'TRANSACTION' && parseResult?.engine === 'PYTHON_CASPARSER') {
-        return false;
+    try {
+      const recordsToImport = rawRecords.filter(r => {
+        if (r.recordType === 'TRANSACTION' && parseResult?.engine === 'PYTHON_CASPARSER') {
+          return false;
+        }
+        if (r.recordType === 'TRANSACTION') return true;
+        const matched = findMatchingHolding(holdings, r, targetMemberId);
+        const hId = matched?.id || `tmp_${r.id}`;
+        return acceptedHoldingIds.has(hId);
+      });
+
+      if (recordsToImport.length === 0 && parseResult?.engine === 'PYTHON_CASPARSER') {
+        setImportNotification({
+          type: 'error',
+          message: 'Nothing was ticked to import. Tick the holdings you want, then try again.',
+        });
+        return;
       }
-      if (r.recordType === 'TRANSACTION') return true;
-      const matched = findMatchingHolding(holdings, r, targetMemberId);
-      const hId = matched?.id || `tmp_${r.id}`;
-      return acceptedHoldingIds.has(hId);
-    });
 
-    const isPython = parseResult?.engine === 'PYTHON_CASPARSER';
-    const fileType = parseResult?.fileType as CasFileType | undefined;
-    const prevIds = fileType
-      ? casLatest.byOwner[targetMemberId]?.[fileType]?.holdingIds || []
-      : [];
-    const closeHoldingIds = reconciliation.lines
-      .filter(
-        l =>
-          l.outcome === 'CLOSED' &&
-          acceptedHoldingIds.has(l.line.holdingId) &&
-          prevIds.includes(l.line.holdingId)
-      )
-      .map(l => l.line.holdingId);
+      const isPython = parseResult?.engine === 'PYTHON_CASPARSER';
+      const fileType = parseResult?.fileType as CasFileType | undefined;
+      const prevIds = fileType
+        ? casLatest.byOwner[targetMemberId]?.[fileType]?.holdingIds || []
+        : [];
+      const closeHoldingIds = reconciliation.lines
+        .filter(
+          l =>
+            l.outcome === 'CLOSED' &&
+            acceptedHoldingIds.has(l.line.holdingId) &&
+            prevIds.includes(l.line.holdingId)
+        )
+        .map(l => l.line.holdingId);
 
-    const casMeta: CasImportMeta | undefined =
-      isPython && fileType
-        ? {
-            fileType,
-            filename: parseResult?.filename || selectedFile?.name || 'statement.pdf',
-            periodFrom: parseResult?.periodFrom,
-            periodTo: parseResult?.periodTo,
-            investorName: parseResult?.investorName,
-            investorPan: parseResult?.investorPan,
-            pdfGrandTotal: parseResult?.pdfTotals?.grand ?? parseResult?.summary.totalValuation ?? 0,
-            parsedGrandTotal:
-              parseResult?.parsedTotals?.holdingsValue ?? parseResult?.summary.totalValuation ?? 0,
-            complete: parseResult?.parseComplete === true,
-            closeHoldingIds,
-          }
-        : undefined;
+      const casMeta: CasImportMeta | undefined =
+        isPython && fileType
+          ? {
+              fileType,
+              filename: parseResult?.filename || selectedFile?.name || 'statement.pdf',
+              periodFrom: parseResult?.periodFrom,
+              periodTo: parseResult?.periodTo,
+              investorName: parseResult?.investorName,
+              investorPan: parseResult?.investorPan,
+              pdfGrandTotal: parseResult?.pdfTotals?.grand ?? parseResult?.summary.totalValuation ?? 0,
+              parsedGrandTotal:
+                parseResult?.parsedTotals?.holdingsValue ?? parseResult?.summary.totalValuation ?? 0,
+              complete: parseResult?.parseComplete === true,
+              closeHoldingIds,
+            }
+          : undefined;
 
-    const res = await importStatementRecords(
-      recordsToImport,
-      targetMemberId,
-      isPython ? 'REPLACE_SNAPSHOT' : 'SYNC_UPDATE',
-      casMeta
-    );
+      const res = await importStatementRecords(
+        recordsToImport,
+        targetMemberId,
+        isPython ? 'REPLACE_SNAPSHOT' : 'SYNC_UPDATE',
+        casMeta
+      );
 
-    const asOf = parseResult?.periodTo
-      ? formatStatementDate(parseResult.periodTo)
-      : formattedStatementDate;
-    setImportNotification({
-      type: 'success',
-      message: isPython
-        ? `Your ${fileType} records now match this statement${asOf ? ` dated ${asOf}` : ''}. ${res.imported} item(s) recorded. Earlier ${fileType} holdings were overwritten, not added.`
-        : `Your records have been updated for ${activeTargetMember?.name}. ${res.imported} item(s) recorded.`,
-    });
+      const asOf = parseResult?.periodTo
+        ? formatStatementDate(parseResult.periodTo)
+        : formattedStatementDate;
+      setImportNotification({
+        type: 'success',
+        message: isPython
+          ? `Your ${fileType} records now match this statement${asOf ? ` dated ${asOf}` : ''}. ${res.imported} item(s) recorded. Earlier ${fileType} holdings were overwritten, not added.`
+          : `Your records have been updated for ${activeTargetMember?.name}. ${res.imported} item(s) recorded.`,
+      });
 
-    setReconciliation(null);
-    setRawRecords([]);
-    setParseResult(null);
-    setSelectedFile(null);
-    setAcceptedHoldingIds(new Set());
+      setReconciliation(null);
+      setRawRecords([]);
+      setParseResult(null);
+      setSelectedFile(null);
+      setAcceptedHoldingIds(new Set());
+    } catch (err: any) {
+      console.error('CAS commit failed:', err);
+      setImportNotification({
+        type: 'error',
+        message:
+          err?.message ||
+          'Could not save this statement. Nothing new was recorded. Try again, or reload the app.',
+      });
+    } finally {
+      setIsCommitting(false);
+    }
   };
 
   // Clean Duplicates and Heal State
@@ -1122,9 +1145,10 @@ export const DocumentsScreen: React.FC = () => {
                   </div>
                   <button
                     onClick={handleCommitUpdates}
-                    className="px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-100 text-xs sm:text-sm font-bold rounded-xl border border-slate-700 transition-colors cursor-pointer"
+                    disabled={isCommitting}
+                    className="px-6 py-2.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-100 text-xs sm:text-sm font-bold rounded-xl border border-slate-700 transition-colors cursor-pointer"
                   >
-                    Refresh Prices Only
+                    {isCommitting ? 'Saving…' : 'Refresh Prices Only'}
                   </button>
                 </div>
               ) : (
@@ -1165,9 +1189,10 @@ export const DocumentsScreen: React.FC = () => {
                     <button
                       id="update-my-records-btn"
                       onClick={handleCommitUpdates}
-                      className="flex-1 sm:flex-initial px-6 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs sm:text-sm font-bold rounded-xl shadow-md transition-colors cursor-pointer flex items-center justify-center gap-2"
+                      disabled={isCommitting}
+                      className="flex-1 sm:flex-initial px-6 py-2.5 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 text-xs sm:text-sm font-bold rounded-xl shadow-md transition-colors cursor-pointer flex items-center justify-center gap-2"
                     >
-                      <span>Update my records</span>
+                      <span>{isCommitting ? 'Saving…' : 'Update my records'}</span>
                     </button>
                   </div>
                 </div>
