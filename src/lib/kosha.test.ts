@@ -8,6 +8,8 @@ import { resolveSplit, apportion, buildTree, isHybrid, activeWrappers } from './
 import { LedgerEvent, Holding } from '../types';
 import { eventLabel, bucketOf, upcomingFromHoldings } from './holdingView';
 import { formatStatementDate } from './casPython';
+import { findMatchingHolding, holdingIdentityKey } from './matchHolding';
+import { StatementImportRecord } from '../types';
 
 let pass=0, fail=0;
 const eq=(n:string,a:any,b:any)=>{const ok=String(a)===String(b);ok?pass++:fail++;console.log(`${ok?'ok  ':'FAIL'} ${n}: ${a}${ok?'':' | want '+b}`)};
@@ -197,6 +199,78 @@ const up = upcomingFromHoldings(
 eq('upcoming includes coupon', up.some(i=>i.kind==='SGB_COUPON'), true);
 eq('upcoming includes goal', up.some(i=>i.kind==='GOAL'), true);
 
+console.log('\n--- K. Same AMC folio must not merge different schemes ---');
+const mfRec = (name: string, isin: string, folio: string): StatementImportRecord => ({
+  id: isin, date: '2026-03-31', holdingName: name, category: 'MUTUAL_FUND',
+  action: 'BUY', quantity: 1, pricePerUnit: 10, totalAmount: 10,
+  status: 'NEW', statusMessage: '', selected: true, isin, folio, recordType: 'HOLDING',
+});
+const mfHold = (id: string, rec: StatementImportRecord): Holding => ({
+  id, name: rec.holdingName, symbolOrFolio: rec.folio || '', isin: rec.isin,
+  category: 'MUTUAL_FUND', subCategory: 'MF', ownerId: 'f1',
+  quantityScaled: '0', averageCostPerUnitMinor: '0', currentPriceMinor: '0',
+  lastPriceUpdated: '2026-03-31', isPriceStale: false, priceSource: 't',
+});
+const iciciFolio = '17001385/94';
+const momentum = mfRec('3572 - ICICI Prudential Active Momentum Fund - Growth', 'INF109K1A377', iciciFolio);
+const multiAsset = mfRec('15 - ICICI Prudential Multi-Asset Fund - Growth', 'INF109K01761', iciciFolio);
+const avap1 = mfRec('AVAP - ICICI Prudential Aggressive Hybrid Active FOF - Growth', 'INF109K01852', iciciFolio);
+const avap2 = mfRec('AVAP - ICICI Prudential Aggressive Hybrid Active FOF - Growth', 'INF109K01852', iciciFolio);
+const edel1 = mfRec('CYRG - Edelweiss Business Cycle Fund', 'INF754K01SW8', '9109231221/0');
+const edel2 = mfRec('MURG - Edelweiss Multi Cap Fund', 'INF754K01RW0', '9109231221/0');
+const first = mfHold('h_mom', momentum);
+eq('different ISIN same folio: no match', findMatchingHolding([first], multiAsset, 'f1') ? 'hit' : 'none', 'none');
+eq('same ISIN second lot: match', findMatchingHolding([mfHold('h_av', avap1)], avap2, 'f1')?.id, 'h_av');
+eq('edelweiss different schemes: no match', findMatchingHolding([mfHold('h_cyrg', edel1)], edel2, 'f1') ? 'hit' : 'none', 'none');
+
+const seq = [momentum, multiAsset, avap1, avap2, edel1, edel2];
+const working: Holding[] = [];
+for (const r of seq) {
+  const m = findMatchingHolding(working, r, 'f1');
+  if (!m) working.push(mfHold('h' + working.length, r));
+}
+eq('unique holdings from 6 rows (1 duplicate ISIN)', working.length, 5);
+
+const woFolio = '1000129793';
+const woMid = mfRec('101G - WhiteOak Capital - Mid Cap Fund - Regular Plan Growth', 'INF03CN01103', woFolio);
+const woLarge = mfRec('111G - WhiteOak Capital - Large Cap Fund - Regular Plan Growth', 'INF03CN01111', woFolio);
+eq('whiteoak stripped names collide but ISINs differ', findMatchingHolding([mfHold('h_wo', woMid)], woLarge, 'f1') ? 'hit' : 'none', 'none');
+
+const noIsinMid = { ...woMid, isin: undefined };
+const noIsinHold = mfHold('h_noisin', { ...woMid, isin: undefined });
+eq('no-ISIN backfill via folio+name', findMatchingHolding([noIsinHold], woMid, 'f1')?.id, 'h_noisin');
+
+// Mar 2026 smoking gun: summing units then × last NAV inflated Home to ₹5.44 cr.
+const iciciRows = [
+  { name: '3572 - ICICI Prudential Active Momentum Fund - Growth', isin: 'INF109K1A377', qty: 29998.5, nav: 12.81 },
+  { name: '15 - ICICI Prudential Multi-Asset Fund - Growth', isin: 'INF109K01761', qty: 8160.55, nav: 756.6303 },
+  { name: 'AVAP - ICICI Prudential Aggressive Hybrid Active FOF - Growth', isin: 'INF109K01852', qty: 38.415, nav: 221.04 },
+  { name: 'AVAP - ICICI Prudential Aggressive Hybrid Active FOF - Growth', isin: 'INF109K01852', qty: 11703.407, nav: 221.04 },
+  { name: 'ICICI Prudential Value Fund', isin: 'INF109K01AF8', qty: 1012.787, nav: 180.0 },
+];
+const iciciHoldings: Holding[] = [];
+let correctValue = 0;
+let lumpedQty = 0;
+for (const row of iciciRows) {
+  const rec = mfRec(row.name, row.isin, iciciFolio);
+  rec.quantity = row.qty;
+  rec.pricePerUnit = row.nav;
+  lumpedQty += row.qty;
+  const m = findMatchingHolding(iciciHoldings, rec, 'f1');
+  if (!m) {
+    iciciHoldings.push(mfHold('h' + iciciHoldings.length, rec));
+    correctValue += row.qty * row.nav;
+  } else {
+    correctValue += row.qty * row.nav;
+  }
+}
+const lastNav = iciciRows[iciciRows.length - 1].nav;
+const inflated = lumpedQty * lastNav;
+eq('icici folio yields 4 schemes not 1', iciciHoldings.length, 4);
+eq('correct value not last-NAV lump', Math.round(correctValue) !== Math.round(inflated), true);
+eq('dedup key not folio-only',
+  holdingIdentityKey(mfHold('a', momentum)) === holdingIdentityKey(mfHold('b', multiAsset)),
+  false);
 
 console.log('\n--- H. Encryption ---');
 (async()=>{

@@ -170,13 +170,41 @@ export function reconcileLine(
     } as LedgerEvent };
 }
 
+/** Merge lots of the same holding (same ISIN printed twice on a CAS). */
+export function coalesceSnapshotLines(lines: SnapshotLine[]): SnapshotLine[] {
+  const byId = new Map<string, SnapshotLine>();
+  const order: string[] = [];
+  for (const line of lines) {
+    const prev = byId.get(line.holdingId);
+    if (!prev) {
+      byId.set(line.holdingId, { ...line });
+      order.push(line.holdingId);
+      continue;
+    }
+    const invested =
+      prev.cumulativeInvestedMinor != null || line.cumulativeInvestedMinor != null
+        ? (prev.cumulativeInvestedMinor ?? 0n) + (line.cumulativeInvestedMinor ?? 0n)
+        : undefined;
+    byId.set(line.holdingId, {
+      ...prev,
+      quantityScaled: prev.quantityScaled + line.quantityScaled,
+      unitPriceMinor: line.unitPriceMinor || prev.unitPriceMinor,
+      cumulativeInvestedMinor: invested,
+      isin: prev.isin || line.isin,
+      folio: prev.folio || line.folio,
+    });
+  }
+  return order.map(id => byId.get(id)!);
+}
+
 /** Reconcile a whole statement. */
 export function reconcileStatement(
-  lines: SnapshotLine[],
+  rawLines: SnapshotLine[],
   allEvents: LedgerEvent[],
   holdings: Holding[],
   ownerId: string
 ): ReconciliationResult {
+  const lines = coalesceSnapshotLines(rawLines);
   const byHolding = new Map<string, LedgerEvent[]>();
   for (const e of allEvents) {
     const l = byHolding.get(e.holdingId) || [];

@@ -1,5 +1,5 @@
 // FILE: src/lib/snapshot.test.ts
-import { reconcileStatement, SnapshotLine, ReconciliationResult, snapshotLinesToClose } from './snapshot';
+import { reconcileStatement, SnapshotLine, ReconciliationResult, snapshotLinesToClose, coalesceSnapshotLines } from './snapshot';
 import { getSampleCdslSep2024, getSampleCdslJune2026, getSampleCdslJuly2026 } from './casFixtures';
 import { derivePositions } from './positions';
 import { QTY_SCALE } from './money';
@@ -127,6 +127,39 @@ console.log('\n=== G. Same-issuer overwrite closes vanished holdings ===');
 
 eq('calendar date no UTC shift', formatStatementDate('2026-01-31'), '31 January 2026');
 eq('inr grouping', formatInrAmount(26210612.93), '₹ 2,62,10,612.93');
+
+console.log('\n=== H. Same-ISIN lots on one statement coalesce, re-import is MATCH ===');
+{
+  const lot = (qty: number): SnapshotLine => ({
+    holdingId: 'h_avap',
+    holdingName: 'AVAP',
+    category: 'MUTUAL_FUND',
+    statementDate: '2026-03-31',
+    quantityScaled: BigInt(Math.round(qty * 1e8)),
+    unitPriceMinor: BigInt(Math.round(221.04 * 1e4)),
+    isin: 'INF109K01852',
+    folio: '17001385/94',
+  });
+  const merged = coalesceSnapshotLines([lot(38.415), lot(11703.407)]);
+  eq('coalesce to one line', merged.length, 1);
+  eq('qty is the sum', merged[0].quantityScaled.toString(),
+    (BigInt(Math.round(38.415 * 1e8)) + BigInt(Math.round(11703.407 * 1e8))).toString());
+
+  const avapHold: Holding = {
+    id: 'h_avap', name: 'AVAP', symbolOrFolio: '17001385/94', isin: 'INF109K01852',
+    category: 'MUTUAL_FUND', subCategory: '', ownerId: 'f1',
+    quantityScaled: '0', averageCostPerUnitMinor: '0',
+    currentPriceMinor: String(Math.round(221.04 * 1e4)),
+    lastPriceUpdated: '2026-03-31', isPriceStale: false, priceSource: 'CAS',
+  };
+  let evs: LedgerEvent[] = [];
+  const first = reconcileStatement([lot(38.415), lot(11703.407)], evs, [avapHold], 'f1');
+  eq('first import one NEW not two', first.counts.NEW_POSITION, 1);
+  evs = [...evs, ...first.lines.filter(l => l.suggestedEvent).map(l => l.suggestedEvent!)];
+  const again = reconcileStatement([lot(38.415), lot(11703.407)], evs, [avapHold], 'f1');
+  eq('re-import MATCH not zeroed', again.counts.MATCH, 1);
+  eq('re-import no extra events', again.counts.ADJUST_DOWN + again.counts.ADJUST_UP, 0);
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);

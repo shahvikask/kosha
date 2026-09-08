@@ -17,6 +17,8 @@ import {
 import { INITIAL_FAMILY_MEMBERS } from '../data/initialData';
 import { EMPTY_SELF, ThemeName } from '../lib/holdingView';
 import { applyTheme, readStoredTheme, writeStoredTheme } from '../lib/theme';
+import { findMatchingHolding, holdingIdentityKey } from '../lib/matchHolding';
+export { findMatchingHolding, normalizeHoldingName } from '../lib/matchHolding';
 import { MoneyEngine, MONEY_SCALE, QTY_SCALE } from '../lib/money';
 import { xirr, buildCashFlows, totalGainPercent } from '../lib/returns';
 import { foldHolding, financialYearOf, assessmentYearOf } from '../lib/lots';
@@ -94,54 +96,6 @@ interface KoshaContextType {
 
 const KoshaContext = createContext<KoshaContextType | null>(null);
 
-export function normalizeHoldingName(str: string): string {
-  return (str || '')
-    .toLowerCase()
-    .replace(/\b(fund|direct|regular|growth|plan|ltd|limited|equity|shares|growth|idcw|dividend|class|series|option|institutional|flexi cap|large cap|small cap|mid cap)\b/gi, '')
-    .replace(/[^a-z0-9]/gi, '')
-    .trim();
-}
-
-export function findMatchingHolding(
-  existingHoldings: Holding[],
-  rec: StatementImportRecord,
-  ownerId: string
-): Holding | undefined {
-  // 1. ISIN match for this owner (highest confidence)
-  if (rec.isin && rec.isin.length >= 10) {
-    const isinMatch = existingHoldings.find(
-      h => h.ownerId === ownerId && h.isin && h.isin.toUpperCase() === rec.isin!.toUpperCase()
-    );
-    if (isinMatch) return isinMatch;
-  }
-
-  // 2. Folio match for this owner
-  if (rec.folio && rec.folio !== 'MF_FOLIO' && rec.folio.length >= 5) {
-    const cleanRecFolio = rec.folio.split('/')[0].trim();
-    const folioMatch = existingHoldings.find(
-      h => h.ownerId === ownerId && h.symbolOrFolio && h.symbolOrFolio.includes(cleanRecFolio)
-    );
-    if (folioMatch) return folioMatch;
-  }
-
-  // 3. Normalized Name match for this owner
-  const normRec = normalizeHoldingName(rec.holdingName);
-  if (normRec.length >= 4) {
-    const nameMatch = existingHoldings.find(h => {
-      if (h.ownerId !== ownerId) return false;
-      const normH = normalizeHoldingName(h.name);
-      return (
-        normH === normRec ||
-        (normH.length >= 6 && (normH.includes(normRec) || normRec.includes(normH)))
-      );
-    });
-    if (nameMatch) return nameMatch;
-  }
-
-  return undefined;
-}
-
-/** Stable demat / folio id used as holding.accountId. Must exist in account first. */
 export function casAccountId(
   rec: Pick<StatementImportRecord, 'dematAccount' | 'folio'>
 ): string | undefined {
@@ -215,16 +169,7 @@ export function sanitizeAndDeduplicateHoldings(rawHoldings: Holding[]): { holdin
         : { needsReview: h.needsReview, reviewReasons: h.reviewReasons }),
     };
 
-    // Determine unique deduplication key
-    let key = '';
-    if (h.isin && h.isin.length >= 10) {
-      key = `${h.ownerId}_ISIN_${h.isin.toUpperCase()}`;
-    } else if (h.symbolOrFolio && h.symbolOrFolio.length >= 6 && !['MF_FOLIO', 'PORTFOLIO'].includes(h.symbolOrFolio)) {
-      key = `${h.ownerId}_FOLIO_${h.symbolOrFolio.split('/')[0].replace(/[^a-zA-Z0-9]/g, '').toUpperCase()}`;
-    } else {
-      const norm = normalizeHoldingName(h.name);
-      key = `${h.ownerId}_NAME_${norm.length > 4 ? norm.substring(0, 15) : h.name.toLowerCase()}`;
-    }
+    const key = holdingIdentityKey(h);
 
     if (seenMap.has(key)) {
       const existingIdx = seenMap.get(key)!;
@@ -1016,6 +961,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               rta: matched.rta || rec.rta,
               amfiCode: matched.amfiCode || rec.amfiCode,
               dpName: matched.dpName || rec.dpName,
+              isin: matched.isin || rec.isin,
             };
             if (repo) await repo.upsertHolding(updatedH);
             currentWorkingHoldings = currentWorkingHoldings.map(h => h.id === matched!.id ? updatedH : h);
