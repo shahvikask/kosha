@@ -6,6 +6,8 @@ import { xirr } from './returns';
 import { classifyHolding, EXPOSURES, WRAPPERS, exposureLabel, l2Label } from './taxonomy';
 import { resolveSplit, apportion, buildTree, isHybrid, activeWrappers } from './lookthrough';
 import { LedgerEvent, Holding } from '../types';
+import { eventLabel, bucketOf, upcomingFromHoldings } from './holdingView';
+import { formatStatementDate } from './casPython';
 
 let pass=0, fail=0;
 const eq=(n:string,a:any,b:any)=>{const ok=String(a)===String(b);ok?pass++:fail++;console.log(`${ok?'ok  ':'FAIL'} ${n}: ${a}${ok?'':' | want '+b}`)};
@@ -177,6 +179,23 @@ console.log('\n--- I. Structure sanity ---');
 eq('8 exposure nodes', EXPOSURES.length, 8);
 eq('11 wrappers', WRAPPERS.length, 11);
 eq('labels resolve', `${exposureLabel('DEBT')} / ${l2Label('DEBT','GOVERNMENT')}`, 'Debt & fixed income / Government');
+
+console.log('\n--- J. Plain-language events and family buckets ---');
+eq('snapshot label', eventLabel('SNAPSHOT_ADJUSTMENT'), 'Updated to match statement');
+eq('opening label', eventLabel('OPENING_BALANCE'), 'Opening from statement');
+eq('buy label', eventLabel('BUY'), 'Bought');
+eq('equity bucket', bucketOf(H('Reliance','EQUITY','Large Cap')), 'SHARES');
+eq('MF bucket', bucketOf(H('HDFC Flexi Cap','MUTUAL_FUND','Flexi Cap')), 'FUNDS');
+eq('SGB bucket', bucketOf(H('SGB 2020','GOLD_SGB','SGB')), 'GOLD');
+eq('PPF bucket', bucketOf(H('PPF','FIXED_INCOME','Govt Small Savings (EEE)')), 'GOVT');
+eq('statement date IST-safe', formatStatementDate('2026-03-31'), '31 March 2026');
+const up = upcomingFromHoldings(
+  [H('SGB 2020','GOLD_SGB','SGB',1,{nextCouponDate:'2099-11-15',maturityDate:'2099-11-15'})],
+  [{id:'g1',name:'College',targetDate:'2099-06-01'}],
+  '2026-01-01'
+);
+eq('upcoming includes coupon', up.some(i=>i.kind==='SGB_COUPON'), true);
+eq('upcoming includes goal', up.some(i=>i.kind==='GOAL'), true);
 
 
 console.log('\n--- H. Encryption ---');

@@ -14,8 +14,8 @@ interface PrivacyValueProps {
 export const PrivacyValue: React.FC<PrivacyValueProps> = ({
   minor,
   showCompact = false,
-  className = 'font-semibold text-slate-100',
-  compactClassName = 'text-xs text-slate-400 font-medium ml-1.5',
+  className = 'font-semibold',
+  compactClassName = 'text-xs font-medium ml-1.5',
   includePaise = true,
   prefix = '',
 }) => {
@@ -46,7 +46,29 @@ export const PrivacyValue: React.FC<PrivacyValueProps> = ({
       <span className={className}>
         {prefix}{formatted}
       </span>
-      {compact && <span className={compactClassName}>({compact})</span>}
+      {compact && (
+        <span className={compactClassName} style={{ color: 'var(--muted)' }}>
+          ({compact})
+        </span>
+      )}
+    </span>
+  );
+};
+
+export const PrivacyDelta: React.FC<{
+  minor: bigint;
+  className?: string;
+}> = ({ minor, className = 'font-semibold' }) => {
+  const { isPrivacyMasked } = useKosha();
+  const pos = minor >= 0n;
+  if (isPrivacyMasked) {
+    return <span className={`select-none font-mono ${className}`}>₹ •••••</span>;
+  }
+  const abs = pos ? minor : -minor;
+  return (
+    <span className={className} style={{ color: pos ? 'var(--good)' : 'var(--bad)' }}>
+      {pos ? '+' : '−'}
+      {MoneyEngine.formatRupees(abs, false)}
     </span>
   );
 };

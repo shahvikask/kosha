@@ -1,23 +1,117 @@
 @import "tailwindcss";
 
+:root {
+  --app: #0b1120;
+  --chrome: #0f172a;
+  --card: #111827;
+  --border: #1e293b;
+  --text: #f1f5f9;
+  --muted: #94a3b8;
+  --subtle: #64748b;
+  --accent: #fbbf24;
+  --accent-fg: #0f172a;
+  --good: #34d399;
+  --bad: #fb7185;
+  --chip: #1e293b;
+  --input: #020617;
+  --shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+html.theme-light {
+  --app: #f4efe4;
+  --chrome: #fffdf8;
+  --card: #ffffff;
+  --border: #e4d9c8;
+  --text: #1c1917;
+  --muted: #57534e;
+  --subtle: #a8a29e;
+  --accent: #d97706;
+  --accent-fg: #fffbeb;
+  --good: #047857;
+  --bad: #be123c;
+  --chip: #f3ebe0;
+  --input: #faf7f2;
+  --shadow: 0 10px 30px rgba(28, 25, 23, 0.08);
+}
+
 @layer base {
   * {
-    border-color: rgba(51, 65, 85, 0.4);
+    border-color: color-mix(in srgb, var(--border) 80%, transparent);
   }
-  
-  /* Custom sleek dark scrollbar */
+
+  html,
+  body,
+  #root {
+    background: var(--app);
+    color: var(--text);
+    min-height: 100%;
+  }
+
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
   }
   ::-webkit-scrollbar-track {
-    background: #0B1120;
+    background: var(--app);
   }
   ::-webkit-scrollbar-thumb {
-    background: #334155;
+    background: var(--subtle);
     border-radius: 9999px;
   }
-  ::-webkit-scrollbar-thumb:hover {
-    background: #475569;
-  }
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 1.5rem;
+  box-shadow: var(--shadow);
+}
+
+.chip {
+  background: var(--chip);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+/* Light-theme remap of leftover dark utility classes on older screens. */
+html.theme-light .bg-slate-900,
+html.theme-light .bg-slate-900\/80,
+html.theme-light .bg-slate-900\/90,
+html.theme-light .bg-slate-950,
+html.theme-light .bg-slate-950\/40,
+html.theme-light .bg-slate-950\/50,
+html.theme-light .bg-slate-950\/60,
+html.theme-light .bg-slate-950\/70,
+html.theme-light .bg-slate-950\/80 {
+  background-color: var(--card);
+}
+html.theme-light .bg-slate-800,
+html.theme-light .bg-slate-800\/40,
+html.theme-light .bg-slate-800\/80,
+html.theme-light .bg-slate-800\/90 {
+  background-color: var(--chip);
+}
+html.theme-light .text-slate-100,
+html.theme-light .text-slate-200,
+html.theme-light .text-white {
+  color: var(--text);
+}
+html.theme-light .text-slate-300,
+html.theme-light .text-slate-400,
+html.theme-light .text-slate-500 {
+  color: var(--muted);
+}
+html.theme-light .border-slate-800,
+html.theme-light .border-slate-800\/80,
+html.theme-light .border-slate-800\/90,
+html.theme-light .border-slate-700,
+html.theme-light .border-slate-700\/80 {
+  border-color: var(--border);
+}
+html.theme-light .divide-slate-800 > :not([hidden]) ~ :not([hidden]),
+html.theme-light .divide-slate-900 > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--border);
+}
+html.theme-light .placeholder-slate-500::placeholder {
+  color: var(--subtle);
 }

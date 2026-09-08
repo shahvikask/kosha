@@ -1,0 +1,231 @@
+import { AssetCategory, EventType, Holding } from '../types';
+import { DerivedState, marketValueMinor } from './positions';
+import { QTY_SCALE } from './money';
+import { formatStatementDate } from './casPython';
+
+export type ThemeName = 'dark' | 'light';
+export type FamilyBucketId =
+  | 'SHARES'
+  | 'FUNDS'
+  | 'GOLD'
+  | 'GOVT'
+  | 'PROPERTY'
+  | 'BANK'
+  | 'SPECIAL'
+  | 'LOAN';
+
+export const FAMILY_BUCKETS: {
+  id: FamilyBucketId;
+  title: string;
+  hint: string;
+}[] = [
+  { id: 'SHARES', title: 'Shares', hint: 'Stocks in your demat account' },
+  { id: 'FUNDS', title: 'Mutual funds', hint: 'Folios with CAMS or KFintech' },
+  { id: 'GOLD', title: 'Gold', hint: 'Sovereign gold bonds and physical gold' },
+  { id: 'GOVT', title: 'Govt schemes', hint: 'PPF, EPF, NPS, Sukanya' },
+  { id: 'PROPERTY', title: 'Property', hint: 'Home, land, REITs' },
+  { id: 'BANK', title: 'Bank & deposits', hint: 'Savings and fixed deposits' },
+  { id: 'SPECIAL', title: 'AIF & others', hint: 'PMS, AIF, unlisted' },
+  { id: 'LOAN', title: 'Loans', hint: 'What the family owes' },
+];
+
+export function bucketOf(h: Holding): FamilyBucketId {
+  if (h.category === 'EQUITY') return 'SHARES';
+  if (h.category === 'MUTUAL_FUND') return 'FUNDS';
+  if (h.category === 'GOLD_SGB') return 'GOLD';
+  if (h.category === 'REAL_ESTATE') return 'PROPERTY';
+  if (h.category === 'CASH_BANK') return 'BANK';
+  if (h.category === 'LIABILITY') return 'LOAN';
+  if (h.category === 'SPECIALISED') return 'SPECIAL';
+  if (h.category === 'FIXED_INCOME') {
+    const s = `${h.subCategory || ''} ${h.name}`.toLowerCase();
+    if (/\bfd\b|deposit|\brd\b/.test(s)) return 'BANK';
+    return 'GOVT';
+  }
+  return 'FUNDS';
+}
+
+export function plainCategory(category: AssetCategory): string {
+  switch (category) {
+    case 'EQUITY':
+      return 'Share';
+    case 'MUTUAL_FUND':
+      return 'Mutual fund';
+    case 'GOLD_SGB':
+      return 'Gold';
+    case 'FIXED_INCOME':
+      return 'Govt / deposit';
+    case 'REAL_ESTATE':
+      return 'Property';
+    case 'SPECIALISED':
+      return 'AIF / PMS';
+    case 'CASH_BANK':
+      return 'Bank';
+    case 'LIABILITY':
+      return 'Loan';
+    default:
+      return category;
+  }
+}
+
+export function eventLabel(type: EventType | string): string {
+  switch (type) {
+    case 'OPENING_BALANCE':
+      return 'Opening from statement';
+    case 'SNAPSHOT_ADJUSTMENT':
+      return 'Updated to match statement';
+    case 'BUY':
+      return 'Bought';
+    case 'SELL':
+      return 'Sold';
+    case 'BONUS':
+      return 'Bonus shares';
+    case 'SPLIT':
+      return 'Share split';
+    case 'DIVIDEND':
+      return 'Dividend';
+    case 'INTEREST':
+      return 'Interest';
+    case 'VALUATION_UPDATE':
+      return 'Value updated';
+    case 'REPAYMENT':
+      return 'Loan repayment';
+    case 'CORRECTION':
+      return 'Correction';
+    default:
+      return type;
+  }
+}
+
+export function unitWord(h: Holding): string {
+  if (h.category === 'GOLD_SGB') return 'grams';
+  if (h.category === 'REAL_ESTATE') return '';
+  if (h.category === 'CASH_BANK' || h.category === 'LIABILITY') return '';
+  return 'units';
+}
+
+export function priceMinorOf(
+  h: Holding,
+  sgbMode: 'MARKET_TRADED' | 'RBI_BENCHMARK'
+): bigint {
+  if (h.category === 'GOLD_SGB' && sgbMode === 'RBI_BENCHMARK' && h.benchmarkPriceMinor) {
+    return BigInt(h.benchmarkPriceMinor);
+  }
+  return BigInt(h.currentPriceMinor || '0');
+}
+
+export function qtyOf(h: Holding, derived: DerivedState): bigint {
+  const pos = derived.positions.get(h.id);
+  if (pos) return pos.quantityScaled;
+  return BigInt(h.quantityScaled || '0');
+}
+
+export function costOf(h: Holding, derived: DerivedState): bigint {
+  const pos = derived.positions.get(h.id);
+  if (pos) return pos.costMinor;
+  const qty = qtyOf(h, derived);
+  return (qty * BigInt(h.averageCostPerUnitMinor || '0')) / QTY_SCALE;
+}
+
+export function valueOf(
+  h: Holding,
+  derived: DerivedState,
+  sgbMode: 'MARKET_TRADED' | 'RBI_BENCHMARK'
+): bigint {
+  return marketValueMinor(qtyOf(h, derived), priceMinorOf(h, sgbMode));
+}
+
+export interface HoldingMetrics {
+  qty: bigint;
+  price: bigint;
+  value: bigint;
+  cost: bigint;
+  gain: bigint;
+}
+
+export function metricsOf(
+  h: Holding,
+  derived: DerivedState,
+  sgbMode: 'MARKET_TRADED' | 'RBI_BENCHMARK'
+): HoldingMetrics {
+  const qty = qtyOf(h, derived);
+  const price = priceMinorOf(h, sgbMode);
+  const value = marketValueMinor(qty, price);
+  const cost = costOf(h, derived);
+  return { qty, price, value, cost, gain: value - cost };
+}
+
+export type UpcomingKind = 'SGB_COUPON' | 'MATURITY' | 'GOAL';
+
+export interface UpcomingItem {
+  id: string;
+  date: string;
+  title: string;
+  kind: UpcomingKind;
+  holdingId?: string;
+}
+
+export function upcomingFromHoldings(
+  holdings: Holding[],
+  goals: { id: string; name: string; targetDate?: string }[],
+  asOf = new Date().toISOString().slice(0, 10)
+): UpcomingItem[] {
+  const out: UpcomingItem[] = [];
+  for (const h of holdings) {
+    if (h.nextCouponDate && h.nextCouponDate >= asOf) {
+      out.push({
+        id: `c_${h.id}`,
+        date: h.nextCouponDate,
+        title: `Gold bond interest · ${h.name}`,
+        kind: 'SGB_COUPON',
+        holdingId: h.id,
+      });
+    }
+    if (h.maturityDate && h.maturityDate >= asOf) {
+      const kindLabel =
+        h.category === 'GOLD_SGB'
+          ? 'Gold bond matures'
+          : h.category === 'FIXED_INCOME'
+            ? 'Matures'
+            : 'Lock-in ends';
+      out.push({
+        id: `m_${h.id}`,
+        date: h.maturityDate,
+        title: `${kindLabel} · ${h.name}`,
+        kind: 'MATURITY',
+        holdingId: h.id,
+      });
+    }
+  }
+  for (const g of goals) {
+    if (g.targetDate && g.targetDate >= asOf) {
+      out.push({
+        id: `g_${g.id}`,
+        date: g.targetDate,
+        title: `Goal · ${g.name}`,
+        kind: 'GOAL',
+      });
+    }
+  }
+  return out.sort((a, b) => a.date.localeCompare(b.date)).slice(0, 8);
+}
+
+export function formatCalendarDate(iso?: string | null): string {
+  return formatStatementDate(iso);
+}
+
+export function whereHeld(h: Holding): string {
+  const bits = [
+    h.institutionName || h.dpName || h.amc,
+    h.accountNumberMasked || h.symbolOrFolio,
+  ].filter(Boolean);
+  return bits.join(' · ') || 'Location not recorded';
+}
+
+export const EMPTY_SELF = {
+  id: 'fam_1',
+  name: 'You',
+  relation: 'Self' as const,
+  color: '#0284c7',
+  isPrimary: true,
+};

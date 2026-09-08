@@ -5,7 +5,7 @@ import { MoneyEngine, QTY_SCALE } from '../../lib/money';
 import { PrivacyValue } from '../common/PrivacyValue';
 import { ErrorBoundary } from '../common/ErrorBoundary';
 import { StatementImportRecord } from '../../types';
-import { parseStatementFile, CASParseResult, getSampleCdslJune2026, getSampleCdslJuly2026, getSampleCdslSep2024 } from '../../lib/casParser';
+import { parseStatementFile, CASParseResult } from '../../lib/casParser';
 import {
   SnapshotLine,
   ReconciliationResult,
@@ -13,6 +13,7 @@ import {
   SnapshotOutcome,
   snapshotLinesToClose,
 } from '../../lib/snapshot';
+import { eventLabel } from '../../lib/holdingView';
 import {
   CasFileType,
   CasImportMeta,
@@ -31,7 +32,6 @@ import {
   Eye,
   EyeOff,
   Users,
-  Sparkles,
   RefreshCw,
   FileCheck2,
   ChevronDown,
@@ -49,10 +49,11 @@ export const DocumentsScreen: React.FC = () => {
     cleanDuplicatesAndHeal,
     derived,
     casLatest,
+    importBatches,
   } = useKosha();
 
   const [activeTab, setActiveTab] = useState<'IMPORTER' | 'TAXES' | 'RECORD_BOOK'>('IMPORTER');
-  const [selectedFY, setSelectedFY] = useState<string>('FY 2025-26');
+  const [selectedFY, setSelectedFY] = useState<string>('2025-26');
 
   // Member selection for import (defaults to active filter or first member)
   const [targetMemberId, setTargetMemberId] = useState<string>(
@@ -286,37 +287,6 @@ export const DocumentsScreen: React.FC = () => {
     e.preventDefault();
     if (!selectedFile) return;
     processFile(selectedFile, pdfPassword.trim(), false);
-  };
-
-  // Load sample statements
-  const handleLoadCdslJune2026 = () => {
-    const result = getSampleCdslJune2026();
-    setSelectedFile(new File([''], 'JUNE2026_CDSL_CAS_Consolidated.pdf', { type: 'application/pdf' }));
-    if (result.investorPan) setPdfPassword(result.investorPan);
-    setParseError(null);
-    setParseResult(result);
-    setRawRecords(result.importRecords);
-    buildReconciliation(result, result.importRecords, targetMemberId);
-  };
-
-  const handleLoadCdslJuly2026 = () => {
-    const result = getSampleCdslJuly2026();
-    setSelectedFile(new File([''], 'JUL2026_CDSL_CAS_Consolidated.pdf', { type: 'application/pdf' }));
-    if (result.investorPan) setPdfPassword(result.investorPan);
-    setParseError(null);
-    setParseResult(result);
-    setRawRecords(result.importRecords);
-    buildReconciliation(result, result.importRecords, targetMemberId);
-  };
-
-  const handleLoadCdslSep2024 = () => {
-    const result = getSampleCdslSep2024();
-    setSelectedFile(new File([''], 'SEP2024_CDSL_CAS_Consolidated.pdf', { type: 'application/pdf' }));
-    if (result.investorPan) setPdfPassword(result.investorPan);
-    setParseError(null);
-    setParseResult(result);
-    setRawRecords(result.importRecords);
-    buildReconciliation(result, result.importRecords, targetMemberId);
   };
 
   // Toggle individual line checkbox
@@ -630,39 +600,6 @@ export const DocumentsScreen: React.FC = () => {
                     onChange={handleFileChange}
                   />
                 </label>
-
-                {import.meta.env.DEV && (
-                  <div className="flex flex-col items-center gap-2 pt-2 w-full">
-                    <p className="text-xs opacity-60 text-slate-400">
-                      Development only — synthetic sample statements
-                    </p>
-                    <div className="flex flex-wrap items-center justify-center gap-3">
-                      <button
-                        onClick={handleLoadCdslJune2026}
-                        className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs sm:text-sm font-semibold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
-                      >
-                        <Sparkles className="w-4 h-4 text-emerald-400" />
-                        <span>Test June 2026 Statement</span>
-                      </button>
-
-                      <button
-                        onClick={handleLoadCdslJuly2026}
-                        className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs sm:text-sm font-semibold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
-                      >
-                        <Sparkles className="w-4 h-4 text-amber-400" />
-                        <span>Test July 2026 Statement</span>
-                      </button>
-
-                      <button
-                        onClick={handleLoadCdslSep2024}
-                        className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs sm:text-sm font-semibold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
-                      >
-                        <Sparkles className="w-4 h-4 text-sky-400" />
-                        <span>Test Sep 2024 Statement</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
               </div>
 
               {selectedFile && (
@@ -1237,6 +1174,32 @@ export const DocumentsScreen: React.FC = () => {
               )}
             </div>
           )}
+
+          {importBatches.length > 0 && (
+            <div className="card p-6 space-y-3">
+              <h3 className="text-base font-bold">Statements you have confirmed</h3>
+              <p className="text-xs" style={{ color: 'var(--muted)' }}>
+                Later files of the same issuer replace earlier ones. Totals are not added together.
+              </p>
+              <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
+                {importBatches.map(b => (
+                  <div key={b.id} className="py-3 flex items-start justify-between gap-3 text-sm">
+                    <div>
+                      <div className="font-semibold">{b.filename}</div>
+                      <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
+                        {b.statementType || b.kind}
+                        {b.investorName ? ` · ${b.investorName}` : ''}
+                        {b.periodTo ? ` · until ${formatStatementDate(b.periodTo)}` : ''}
+                      </div>
+                    </div>
+                    <div className="text-xs text-right shrink-0" style={{ color: 'var(--muted)' }}>
+                      {b.rowsNew} new · {b.rowsDuplicate} already matched
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
         </ErrorBoundary>
       )}
@@ -1253,8 +1216,8 @@ export const DocumentsScreen: React.FC = () => {
                 onChange={e => setSelectedFY(e.target.value)}
                 className="px-3.5 py-1.5 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm font-semibold text-slate-200 cursor-pointer"
               >
-                <option value="FY 2025-26">FY 2025-26 (AY 2026-27)</option>
-                <option value="FY 2024-25">FY 2024-25 (AY 2025-26)</option>
+                <option value="2025-26">April 2025 – March 2026</option>
+                <option value="2024-25">April 2024 – March 2025</option>
               </select>
             </div>
 
@@ -1271,20 +1234,26 @@ export const DocumentsScreen: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Section 112A LTCG */}
             <div className="bg-slate-900/80 rounded-3xl p-5 border border-slate-800 shadow-lg backdrop-blur-md space-y-2">
-              <div className="text-xs text-slate-400 font-semibold">LTCG (Section 112A)</div>
+              <div className="text-xs text-slate-400 font-semibold">Long-term share gains</div>
               <PrivacyValue
                 minor={taxSummary.ltcgEquityTotalMinor}
                 className="text-xl font-bold text-slate-100"
                 showCompact
               />
-              <div className="text-xs text-emerald-400 font-medium">
-                ₹1.25L annual exemption applied. Tax payable: ₹0.00
+              <div className="text-xs font-medium" style={{ color: 'var(--muted)' }}>
+                First ₹1.25 lakh is free. Tax after that:{' '}
+                <PrivacyValue
+                  minor={taxSummary.ltcgEquityTaxMinor}
+                  className="text-xs font-bold"
+                  includePaise={false}
+                />
+                . This is an estimate, not a filed return.
               </div>
             </div>
 
             {/* Section 111A STCG */}
             <div className="bg-slate-900/80 rounded-3xl p-5 border border-slate-800 shadow-lg backdrop-blur-md space-y-2">
-              <div className="text-xs text-slate-400 font-semibold">STCG (Section 111A @ 20%)</div>
+              <div className="text-xs text-slate-400 font-semibold">Short-term share gains</div>
               <PrivacyValue
                 minor={taxSummary.stcgEquityTotalMinor}
                 className="text-xl font-bold text-slate-100"
@@ -1323,8 +1292,13 @@ export const DocumentsScreen: React.FC = () => {
 
           {/* Realised Sales Capital Gains Table Bento Card */}
           <div className="bg-slate-900/80 rounded-3xl border border-slate-800 shadow-lg overflow-hidden p-6 space-y-4 backdrop-blur-md">
-            <h3 className="text-base font-bold text-slate-100">Capital Gains Schedule</h3>
+            <h3 className="text-base font-bold text-slate-100">Sales this year</h3>
 
+            {taxSummary.records.length === 0 ? (
+              <p className="text-sm py-6 text-center" style={{ color: 'var(--muted)' }}>
+                No sales recorded in this year. Confirm a statement or record a sell, then come back.
+              </p>
+            ) : (
             <div className="divide-y divide-slate-800">
               {taxSummary.records.map(rec => (
                 <div key={rec.id} className="py-3 flex items-center justify-between">
@@ -1345,6 +1319,7 @@ export const DocumentsScreen: React.FC = () => {
                 </div>
               ))}
             </div>
+            )}
           </div>
 
           {/* Mandatory Statutory Disclaimer */}
@@ -1378,12 +1353,14 @@ export const DocumentsScreen: React.FC = () => {
                 onChange={e => setRecordBookFilterType(e.target.value)}
                 className="px-3.5 py-1.5 bg-slate-950 border border-slate-700 rounded-xl text-xs font-semibold text-slate-200 cursor-pointer"
               >
-                <option value="ALL">All Event Types</option>
-                <option value="BUY">BUY</option>
-                <option value="SELL">SELL</option>
-                <option value="DIVIDEND">DIVIDEND</option>
-                <option value="INTEREST">INTEREST</option>
-                <option value="REPAYMENT">REPAYMENT</option>
+                <option value="ALL">All rows</option>
+                <option value="BUY">Bought</option>
+                <option value="SELL">Sold</option>
+                <option value="SNAPSHOT_ADJUSTMENT">Updated to match statement</option>
+                <option value="OPENING_BALANCE">Opening from statement</option>
+                <option value="DIVIDEND">Dividend</option>
+                <option value="INTEREST">Interest</option>
+                <option value="REPAYMENT">Loan repayment</option>
               </select>
             </div>
           </div>
@@ -1398,7 +1375,7 @@ export const DocumentsScreen: React.FC = () => {
                 >
                   <div className="flex items-center gap-3">
                     <div
-                      className={`w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold border ${
+                      className={`w-9 h-9 rounded-xl flex items-center justify-center text-[10px] font-bold border ${
                         ev.eventType === 'BUY'
                           ? 'bg-sky-950/80 text-sky-300 border-sky-800/60'
                           : ev.eventType === 'SELL'
@@ -1408,13 +1385,14 @@ export const DocumentsScreen: React.FC = () => {
                           : 'bg-slate-800 text-slate-300 border-slate-700'
                       }`}
                     >
-                      {ev.eventType}
+                      {eventLabel(ev.eventType).split(' ')[0]}
                     </div>
 
                     <div>
                       <div className="font-semibold text-sm text-slate-100">{ev.holdingName}</div>
                       <div className="text-xs text-slate-400">
-                        {ev.eventDate} • {ev.notes || 'Recorded trade'}
+                        {eventLabel(ev.eventType)} · {ev.eventDate}
+                        {ev.notes ? ` · ${ev.notes}` : ''}
                       </div>
                     </div>
                   </div>

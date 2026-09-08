@@ -20,7 +20,7 @@ const COMMON_GOAL_TAGS = [
 ];
 
 export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClose }) => {
-  const { familyMembers, addHolding, selectedMemberId } = useKosha();
+  const { familyMembers, addHolding, selectedMemberId, goals } = useKosha();
 
   const [category, setCategory] = useState<AssetCategory>('EQUITY');
   const [name, setName] = useState('');
@@ -311,7 +311,7 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
                   <span>Quick Goal Presets:</span>
                 </div>
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  {COMMON_GOAL_TAGS.map(gt => {
+                  {[...new Set([...goals.map(g => g.name), ...COMMON_GOAL_TAGS])].map(gt => {
                     const isSelected = selectedTags.includes(gt);
                     return (
                       <button

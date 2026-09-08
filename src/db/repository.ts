@@ -16,7 +16,7 @@ import {
   SCHEMA_V3_COLUMNS,
   LEDGER_NO_DELETE_TRIGGER,
 } from './schema';
-import { LedgerEvent, Holding, FamilyMember, FamilyRelation, isPrimaryFamilyMember } from '../types';
+import { LedgerEvent, Holding, FamilyMember, FamilyRelation, isPrimaryFamilyMember, DematOrFolioAccount, FamilyGoal, ImportBatchInfo } from '../types';
 
 function toBps(percent: number | undefined | null): number | null {
   if (percent === undefined || percent === null || Number.isNaN(percent)) return null;
@@ -261,6 +261,78 @@ export class Repository {
       [a.id, a.entityId, a.accountType, a.custodian,
        a.identifierMasked ?? null, a.dpId ?? null, a.clientId ?? null,
        a.boId ?? null, a.nominee ?? null, new Date().toISOString()] as SqlValue[]);
+  }
+
+  async allAccounts(): Promise<DematOrFolioAccount[]> {
+    const rows = await this.db.query<Record<string, SqlValue>>(
+      `SELECT account_id, entity_id, account_type, custodian, identifier_masked,
+              dp_id, client_id, bo_id, nominee
+       FROM account ORDER BY custodian, identifier_masked`);
+    return rows.map(rowToAccount);
+  }
+
+  async updateAccountNominee(accountId: string, nominee: string): Promise<void> {
+    await this.db.exec(`UPDATE account SET nominee = ? WHERE account_id = ?`, [nominee, accountId]);
+  }
+
+  async allGoals(): Promise<FamilyGoal[]> {
+    const rows = await this.db.query<Record<string, SqlValue>>(
+      `SELECT goal_id, entity_id, name, target_minor, target_date, priority, created_at
+       FROM goal ORDER BY created_at ASC`);
+    return rows.map(rowToGoal);
+  }
+
+  async upsertGoal(g: FamilyGoal): Promise<void> {
+    await this.db.exec(
+      `INSERT INTO goal (goal_id, entity_id, name, target_minor, target_date, priority, created_at)
+       VALUES (?,?,?,?,?,?,?)
+       ON CONFLICT(goal_id) DO UPDATE SET
+         entity_id=excluded.entity_id,
+         name=excluded.name,
+         target_minor=excluded.target_minor,
+         target_date=excluded.target_date,
+         priority=excluded.priority`,
+      [g.id, g.ownerId ?? null, g.name, g.targetMinor, g.targetDate ?? null,
+       g.priority ?? null, g.createdAt]);
+  }
+
+  async deleteGoal(goalId: string): Promise<void> {
+    await this.db.exec(`DELETE FROM goal WHERE goal_id = ?`, [goalId]);
+  }
+
+  async allBatches(): Promise<ImportBatchInfo[]> {
+    const rows = await this.db.query<Record<string, SqlValue>>(
+      `SELECT import_batch_id, source_filename, document_kind, statement_date,
+              period_from, period_to, investor_name, statement_type,
+              rows_new, rows_duplicate, committed_at
+       FROM import_batch ORDER BY committed_at DESC LIMIT 50`);
+    return rows.map(rowToBatch);
+  }
+
+  /**
+   * Empty the vault but keep the primary Self entity. Used by "Start over".
+   * Temporarily drops the append-only trigger so ledger rows can be cleared.
+   */
+  async wipeVaultKeepSelf(): Promise<void> {
+    await this.db.transaction(async () => {
+      await this.db.exec(`DROP TRIGGER IF EXISTS tg_ledger_event__no_delete`);
+      await this.db.exec(`DELETE FROM statement_position`);
+      await this.db.exec(`DELETE FROM holding`);
+      await this.db.exec(`DELETE FROM account`);
+      await this.db.exec(`DELETE FROM liability`);
+      await this.db.exec(`DELETE FROM goal`);
+      await this.db.exec(`DELETE FROM import_batch`);
+      await this.db.exec(`DELETE FROM ledger_event`);
+      try {
+        await this.db.exec(`DELETE FROM price_observation`);
+      } catch {
+        /* table may not exist on very old vaults */
+      }
+      await this.db.exec(
+        `DELETE FROM entity WHERE is_primary = 0 AND relation != 'Self'`
+      );
+      await this.db.exec(LEDGER_NO_DELETE_TRIGGER);
+    });
   }
 
   // ---------- entities ----------
@@ -526,3 +598,46 @@ function rowToEntity(r: Record<string, SqlValue>): FamilyMember {
     isPrimary: Number(r.is_primary) === 1 || relation === 'Self',
   };
 }
+
+function rowToAccount(r: Record<string, SqlValue>): DematOrFolioAccount {
+  return {
+    id: s(r.account_id),
+    ownerId: s(r.entity_id),
+    accountType: s(r.account_type),
+    custodian: s(r.custodian),
+    identifierMasked: r.identifier_masked ? s(r.identifier_masked) : undefined,
+    dpId: r.dp_id ? s(r.dp_id) : undefined,
+    clientId: r.client_id ? s(r.client_id) : undefined,
+    boId: r.bo_id ? s(r.bo_id) : undefined,
+    nominee: r.nominee ? s(r.nominee) : undefined,
+  };
+}
+
+function rowToGoal(r: Record<string, SqlValue>): FamilyGoal {
+  return {
+    id: s(r.goal_id),
+    ownerId: r.entity_id ? s(r.entity_id) : undefined,
+    name: s(r.name),
+    targetMinor: s(r.target_minor || '0'),
+    targetDate: r.target_date ? s(r.target_date) : undefined,
+    priority: r.priority ? s(r.priority) : undefined,
+    createdAt: s(r.created_at),
+  };
+}
+
+function rowToBatch(r: Record<string, SqlValue>): ImportBatchInfo {
+  return {
+    id: s(r.import_batch_id),
+    filename: s(r.source_filename),
+    kind: s(r.document_kind),
+    statementDate: r.statement_date ? s(r.statement_date) : undefined,
+    periodFrom: r.period_from ? s(r.period_from) : undefined,
+    periodTo: r.period_to ? s(r.period_to) : undefined,
+    investorName: r.investor_name ? s(r.investor_name) : undefined,
+    statementType: r.statement_type ? s(r.statement_type) : undefined,
+    rowsNew: Number(r.rows_new || 0),
+    rowsDuplicate: Number(r.rows_duplicate || 0),
+    committedAt: s(r.committed_at),
+  };
+}
+

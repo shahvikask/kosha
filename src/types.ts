@@ -312,3 +312,42 @@ export interface EmergencyDossierItem {
   estimatedValueMinor: bigint;
   offlineActionSteps: string;
 }
+
+export type AppScreen = 'HOME' | 'HOLDINGS' | 'ACCOUNTS' | 'DOCUMENTS' | 'FAMILY';
+
+export interface DematOrFolioAccount {
+  id: string;
+  ownerId: string;
+  accountType: string;
+  custodian: string;
+  identifierMasked?: string;
+  dpId?: string;
+  clientId?: string;
+  boId?: string;
+  nominee?: string;
+}
+
+export interface FamilyGoal {
+  id: string;
+  ownerId?: string;
+  name: string;
+  targetMinor: string;
+  targetDate?: string;
+  priority?: string;
+  createdAt: string;
+}
+
+export interface ImportBatchInfo {
+  id: string;
+  filename: string;
+  kind: string;
+  statementDate?: string;
+  periodFrom?: string;
+  periodTo?: string;
+  investorName?: string;
+  statementType?: string;
+  rowsNew: number;
+  rowsDuplicate: number;
+  committedAt: string;
+}
+

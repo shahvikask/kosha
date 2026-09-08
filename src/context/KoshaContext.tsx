@@ -9,16 +9,20 @@ import {
   TaxGainItem,
   StatementImportRecord,
   isPrimaryFamilyMember,
+  AppScreen,
+  DematOrFolioAccount,
+  FamilyGoal,
+  ImportBatchInfo,
 } from '../types';
-import { INITIAL_FAMILY_MEMBERS, INITIAL_HOLDINGS, INITIAL_LEDGER_EVENTS } from '../data/initialData';
+import { INITIAL_FAMILY_MEMBERS } from '../data/initialData';
+import { EMPTY_SELF, ThemeName } from '../lib/holdingView';
+import { applyTheme, readStoredTheme, writeStoredTheme } from '../lib/theme';
 import { MoneyEngine, MONEY_SCALE, QTY_SCALE } from '../lib/money';
 import { xirr, buildCashFlows, totalGainPercent } from '../lib/returns';
 import { foldHolding, financialYearOf, assessmentYearOf } from '../lib/lots';
 import { derivePositions, marketValueMinor, DerivedState } from '../lib/positions';
 import { encryptJson, decryptJson, isEncryptedBlob, generateRecoveryKey, maskPan, WrongPassphraseError } from '../lib/vault';
 import { ruleSetFor, classifyGain, grandfatheredCostMinor, applyRateMinor } from '../lib/taxRules';
-import { buildTree, TreeL1, HoldingPlacement } from '../lib/lookthrough';
-import { ExposureNode } from '../lib/taxonomy';
 import { SqliteWasmDriver } from '../db/sqliteWasmDriver';
 import { Repository } from '../db/repository';
 import { migrateFromLocalStorage, MigrationReport } from '../db/migrate';
@@ -40,14 +44,18 @@ interface KoshaContextType {
   ledgerEvents: LedgerEvent[];
   filteredEvents: LedgerEvent[];
   derived: DerivedState;
-  taxonomy: { tree: TreeL1[]; exposureTotals: Map<ExposureNode, bigint>; placements: HoldingPlacement[] };
+  accounts: DematOrFolioAccount[];
+  goals: FamilyGoal[];
+  importBatches: ImportBatchInfo[];
   isPrivacyMasked: boolean;
   setIsPrivacyMasked: (val: boolean | ((prev: boolean) => boolean)) => void;
   sgbValuationMode: 'MARKET_TRADED' | 'RBI_BENCHMARK';
   setSgbValuationMode: (mode: 'MARKET_TRADED' | 'RBI_BENCHMARK') => void;
+  theme: ThemeName;
+  setTheme: (theme: ThemeName) => void;
   summary: PortfolioSummary;
-  activeScreen: 'HOME' | 'MY_MONEY' | 'GROWTH' | 'DOCUMENTS' | 'SETTINGS' | 'SIMPLE_VIEW';
-  setActiveScreen: (screen: 'HOME' | 'MY_MONEY' | 'GROWTH' | 'DOCUMENTS' | 'SETTINGS' | 'SIMPLE_VIEW') => void;
+  activeScreen: AppScreen;
+  setActiveScreen: (screen: AppScreen) => void;
   
   // Database status
   repo: Repository | null;
@@ -77,8 +85,11 @@ interface KoshaContextType {
   cleanDuplicatesAndHeal: () => Promise<{ mergedCount: number; flaggedCount: number }>;
   exportBackupJson: (passphrase?: string) => Promise<string>;
   importBackupJson: (dataOrJsonStr: string | any) => Promise<boolean>;
-  resetToSampleData: () => Promise<void>;
+  startOver: () => Promise<void>;
   updateHoldingPrice: (id: string, newPriceRupees: number) => Promise<void>;
+  upsertGoal: (goal: Omit<FamilyGoal, 'id' | 'createdAt'> & { id?: string }) => Promise<FamilyGoal>;
+  deleteGoal: (id: string) => Promise<void>;
+  updateAccountNominee: (accountId: string, nominee: string) => Promise<void>;
 }
 
 const KoshaContext = createContext<KoshaContextType | null>(null);
@@ -237,10 +248,19 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [ledgerEvents, setLedgerEvents] = useState<LedgerEvent[]>([]);
 
   const [selectedMemberId, setSelectedMemberId] = useState<string>('ALL');
-  const [isPrivacyMasked, setIsPrivacyMasked] = useState<boolean>(false);
-  const [sgbValuationMode, setSgbValuationMode] = useState<'MARKET_TRADED' | 'RBI_BENCHMARK'>('MARKET_TRADED');
-  const [activeScreen, setActiveScreen] = useState<'HOME' | 'MY_MONEY' | 'GROWTH' | 'DOCUMENTS' | 'SETTINGS' | 'SIMPLE_VIEW'>('HOME');
+  const [isPrivacyMasked, setIsPrivacyMaskedState] = useState<boolean>(false);
+  const [sgbValuationMode, setSgbValuationModeState] = useState<'MARKET_TRADED' | 'RBI_BENCHMARK'>('MARKET_TRADED');
+  const [theme, setThemeState] = useState<ThemeName>(() => readStoredTheme() || 'dark');
+  const [activeScreen, setActiveScreen] = useState<AppScreen>('HOME');
   const [casLatest, setCasLatest] = useState<CasLatestState>(EMPTY_CAS_LATEST);
+  const [accounts, setAccounts] = useState<DematOrFolioAccount[]>([]);
+  const [goals, setGoals] = useState<FamilyGoal[]>([]);
+  const [importBatches, setImportBatches] = useState<ImportBatchInfo[]>([]);
+
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
+
 
   useEffect(() => {
     (async () => {
@@ -281,33 +301,52 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           entities = await r.allEntities();
         }
 
-        // Seed initial sample data if SQLite is completely empty on fresh install
+        // Fresh install: one Self, no sample stocks
         if (entities.length === 0 && currentHoldings.length === 0 && currentEvents.length === 0) {
-          for (const m of INITIAL_FAMILY_MEMBERS) {
-            await r.upsertEntity(m);
-          }
-          for (const h of INITIAL_HOLDINGS) {
-            await r.upsertHolding(h);
-          }
-          await r.appendEvents(INITIAL_LEDGER_EVENTS);
+          await r.upsertEntity(EMPTY_SELF);
           entities = await r.allEntities();
-          currentHoldings = await r.allHoldings();
-          currentEvents = await r.allEvents();
+        }
+
+        const prefsRaw = await r.getMeta('ui_prefs');
+        if (prefsRaw) {
+          try {
+            const prefs = JSON.parse(prefsRaw);
+            if (prefs.privacy === true) setIsPrivacyMaskedState(true);
+            if (prefs.sgb === 'RBI_BENCHMARK' || prefs.sgb === 'MARKET_TRADED') {
+              setSgbValuationModeState(prefs.sgb);
+            }
+            if (prefs.theme === 'light' || prefs.theme === 'dark') {
+              setThemeState(prefs.theme);
+              writeStoredTheme(prefs.theme);
+              applyTheme(prefs.theme);
+            }
+          } catch {
+            /* ignore */
+          }
+        } else {
+          const stored = readStoredTheme();
+          if (stored) {
+            setThemeState(stored);
+            applyTheme(stored);
+          }
         }
 
         setFamilyMembers(entities);
         setHoldings(currentHoldings);
         setLedgerEvents(currentEvents);
         setCasLatest(parseCasLatest(await r.getMeta('cas_latest')));
+        setAccounts(await r.allAccounts());
+        setGoals(await r.allGoals());
+        setImportBatches(await r.allBatches());
         setRepo(r);
         setDbDriver(driver);
         setDbReady(true);
       } catch (err: any) {
         console.error('Failed to initialize SQLite Database:', err);
         setDbError(err?.message || 'Database initialization error');
-        setFamilyMembers(INITIAL_FAMILY_MEMBERS);
-        setHoldings(INITIAL_HOLDINGS);
-        setLedgerEvents(INITIAL_LEDGER_EVENTS);
+        setFamilyMembers([EMPTY_SELF]);
+        setHoldings([]);
+        setLedgerEvents([]);
         setDbReady(true);
       }
     })();
@@ -327,18 +366,38 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return derivePositions(filteredEvents, filteredHoldings);
   }, [filteredEvents, filteredHoldings]);
 
-  const taxonomy = useMemo(() => {
-    const valuationFn = (h: Holding): bigint => {
-      const pos = derived.positions.get(h.id);
-      const qtyScaled = pos ? pos.quantityScaled : BigInt(h.quantityScaled || '0');
-      let effectivePrice = BigInt(h.currentPriceMinor || '0');
-      if (h.category === 'GOLD_SGB' && sgbValuationMode === 'RBI_BENCHMARK' && h.benchmarkPriceMinor) {
-        effectivePrice = BigInt(h.benchmarkPriceMinor);
-      }
-      return (qtyScaled * effectivePrice) / QTY_SCALE;
+  const persistUiPrefs = async (next: {
+    privacy?: boolean;
+    sgb?: 'MARKET_TRADED' | 'RBI_BENCHMARK';
+    theme?: ThemeName;
+  }) => {
+    const payload = {
+      privacy: next.privacy ?? isPrivacyMasked,
+      sgb: next.sgb ?? sgbValuationMode,
+      theme: next.theme ?? theme,
     };
-    return buildTree(filteredHoldings, valuationFn);
-  }, [filteredHoldings, derived, sgbValuationMode]);
+    if (repo) await repo.setMeta('ui_prefs', JSON.stringify(payload));
+  };
+
+  const setIsPrivacyMasked = (val: boolean | ((prev: boolean) => boolean)) => {
+    setIsPrivacyMaskedState(prev => {
+      const next = typeof val === 'function' ? val(prev) : val;
+      persistUiPrefs({ privacy: next });
+      return next;
+    });
+  };
+
+  const setSgbValuationMode = (mode: 'MARKET_TRADED' | 'RBI_BENCHMARK') => {
+    setSgbValuationModeState(mode);
+    persistUiPrefs({ sgb: mode });
+  };
+
+  const setTheme = (next: ThemeName) => {
+    setThemeState(next);
+    writeStoredTheme(next);
+    applyTheme(next);
+    persistUiPrefs({ theme: next });
+  };
 
   const summary = useMemo((): PortfolioSummary => {
     let totalAssetsMinor = 0n;
@@ -373,8 +432,8 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       ? (Number(unrealisedGainMinor) / Number(totalInvestedMinor)) * 100
       : 0;
 
-    const dayChangeMinor = (totalAssetsMinor * 45n) / 10000n;
-    const dayChangePercent = 0.45;
+    const dayChangeMinor = 0n;
+    const dayChangePercent = 0;
 
     filteredEvents.forEach(ev => {
       if (ev.eventType === 'DIVIDEND' || ev.eventType === 'INTEREST') {
@@ -905,6 +964,9 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             dpName: rec.dpName,
             institutionName: rec.dpName,
             accountNumberMasked: rec.folio || rec.dematAccount,
+            accountId: (rec.dematAccount || rec.folio)
+              ? `acct_${(rec.dematAccount || rec.folio || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 24)}`
+              : undefined,
           };
           currentWorkingHoldings = [newH, ...currentWorkingHoldings];
           if (repo) await repo.upsertHolding(newH);
@@ -973,6 +1035,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           statementDate: casMeta?.periodTo || statementDate,
           periodFrom: casMeta?.periodFrom || statementDate,
           periodTo: casMeta?.periodTo || statementDate,
+          investorName: casMeta?.investorName,
           statementType: casMeta?.fileType || 'CAS_HOLDINGS_SNAPSHOT',
           rowsNew: reconciliationResult.counts.NEW_POSITION,
           rowsDuplicate: reconciliationResult.counts.MATCH,
@@ -1018,6 +1081,8 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             boId: rec.dematAccount,
           });
         }
+        setAccounts(await repo.allAccounts());
+        setImportBatches(await repo.allBatches());
       }
     }
 
@@ -1106,16 +1171,65 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  const resetToSampleData = async (): Promise<void> => {
+  const startOver = async (): Promise<void> => {
     if (repo) {
-      for (const m of INITIAL_FAMILY_MEMBERS) await repo.upsertEntity(m);
-      for (const h of INITIAL_HOLDINGS) await repo.upsertHolding(h);
-      await repo.appendEvents(INITIAL_LEDGER_EVENTS);
+      await repo.wipeVaultKeepSelf();
+      const remaining = await repo.allEntities();
+      if (!remaining.some(e => isPrimaryFamilyMember(e))) {
+        await repo.upsertEntity(EMPTY_SELF);
+      }
+      await repo.setMeta('cas_latest', JSON.stringify(EMPTY_CAS_LATEST));
+      setFamilyMembers(await repo.allEntities());
+      setHoldings(await repo.allHoldings());
+      setLedgerEvents(await repo.allEvents());
+      setAccounts(await repo.allAccounts());
+      setGoals(await repo.allGoals());
+      setImportBatches(await repo.allBatches());
+    } else {
+      setFamilyMembers([EMPTY_SELF]);
+      setHoldings([]);
+      setLedgerEvents([]);
+      setAccounts([]);
+      setGoals([]);
+      setImportBatches([]);
     }
-    setFamilyMembers(INITIAL_FAMILY_MEMBERS);
-    setHoldings(INITIAL_HOLDINGS);
-    setLedgerEvents(INITIAL_LEDGER_EVENTS);
+    setCasLatest(EMPTY_CAS_LATEST);
     setSelectedMemberId('ALL');
+  };
+
+  const upsertGoal = async (
+    goal: Omit<FamilyGoal, 'id' | 'createdAt'> & { id?: string }
+  ): Promise<FamilyGoal> => {
+    const row: FamilyGoal = {
+      id: goal.id || `goal_${Date.now().toString(36)}`,
+      ownerId: goal.ownerId,
+      name: goal.name.trim(),
+      targetMinor: goal.targetMinor || '0',
+      targetDate: goal.targetDate,
+      priority: goal.priority,
+      createdAt: new Date().toISOString(),
+    };
+    if (repo) await repo.upsertGoal(row);
+    setGoals(prev => {
+      const i = prev.findIndex(g => g.id === row.id);
+      if (i >= 0) {
+        const next = [...prev];
+        next[i] = row;
+        return next;
+      }
+      return [...prev, row];
+    });
+    return row;
+  };
+
+  const deleteGoal = async (id: string): Promise<void> => {
+    if (repo) await repo.deleteGoal(id);
+    setGoals(prev => prev.filter(g => g.id !== id));
+  };
+
+  const updateAccountNominee = async (accountId: string, nominee: string): Promise<void> => {
+    if (repo) await repo.updateAccountNominee(accountId, nominee);
+    setAccounts(prev => prev.map(a => (a.id === accountId ? { ...a, nominee } : a)));
   };
 
   return (
@@ -1129,11 +1243,15 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         ledgerEvents,
         filteredEvents,
         derived,
-        taxonomy,
+        accounts,
+        goals,
+        importBatches,
         isPrivacyMasked,
         setIsPrivacyMasked,
         sgbValuationMode,
         setSgbValuationMode,
+        theme,
+        setTheme,
         summary,
         activeScreen,
         setActiveScreen,
@@ -1157,8 +1275,11 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         cleanDuplicatesAndHeal,
         exportBackupJson,
         importBackupJson,
-        resetToSampleData,
+        startOver,
         updateHoldingPrice,
+        upsertGoal,
+        deleteGoal,
+        updateAccountNominee,
       }}
     >
       {children}
