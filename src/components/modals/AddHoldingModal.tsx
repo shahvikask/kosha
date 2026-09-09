@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useKosha } from '../../context/KoshaContext';
-import { ASSET_CATEGORIES, ASSET_SUBCATEGORIES, AssetCategory } from '../../types';
+import { ASSET_CATEGORIES, ASSET_SUBCATEGORIES, AssetCategory, ListedSecurity } from '../../types';
 import { MoneyEngine } from '../../lib/money';
 import { addCalendarMonths } from '../../lib/emi';
+import { searchListed } from '../../lib/eodPrices';
+import { formatStatementDate } from '../../lib/casPython';
 import { X, Tag, Target, Check } from 'lucide-react';
 
 interface AddHoldingModalProps {
@@ -76,11 +78,23 @@ function namePlaceholder(category: AssetCategory): string {
 }
 
 export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClose }) => {
-  const { familyMembers, addHolding, selectedMemberId, goals } = useKosha();
+  const {
+    familyMembers,
+    addHolding,
+    selectedMemberId,
+    goals,
+    listedSecurities,
+    refreshEodPrices,
+    pricesRefreshing,
+    pricesAsOf,
+    pricesError,
+  } = useKosha();
 
   const [category, setCategory] = useState<AssetCategory>('EQUITY');
   const [name, setName] = useState('');
   const [symbolOrFolio, setSymbolOrFolio] = useState('');
+  const [picked, setPicked] = useState<ListedSecurity | null>(null);
+  const [searchQ, setSearchQ] = useState('');
   const [subCategory, setSubCategory] = useState(ASSET_SUBCATEGORIES.EQUITY[0]);
   const [ownerId, setOwnerId] = useState(
     selectedMemberId === 'ALL' ? familyMembers[0]?.id || 'fam_1' : selectedMemberId
@@ -99,6 +113,12 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
   const [monthlyEmiRupees, setMonthlyEmiRupees] = useState('');
   const [remainingEmis, setRemainingEmis] = useState('');
   const [nextEmiDate, setNextEmiDate] = useState('');
+
+  const listedPicker = category === 'EQUITY' || category === 'MUTUAL_FUND';
+  const matches = useMemo(
+    () => (listedPicker ? searchListed(listedSecurities, searchQ, category, 20) : []),
+    [listedPicker, listedSecurities, searchQ, category],
+  );
 
   if (!isOpen) return null;
 
@@ -121,10 +141,24 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
   const handleCategory = (next: AssetCategory) => {
     setCategory(next);
     setSubCategory(ASSET_SUBCATEGORIES[next][0]);
+    setPicked(null);
+    setSearchQ('');
+    setName('');
+    setSymbolOrFolio('');
+    setCurrentPriceRupees('');
+  };
+
+  const pickSecurity = (row: ListedSecurity) => {
+    setPicked(row);
+    setName(row.name);
+    setSymbolOrFolio(row.symbol || row.nseSymbol || row.amfiCode || '');
+    setCurrentPriceRupees(MoneyEngine.toRupees(BigInt(row.closeMinor)).toString());
+    setSearchQ('');
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (listedPicker && !picked) return;
     if (!name.trim()) return;
 
     const unitAsset = usesUnits(category);
@@ -155,13 +189,15 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
     addHolding({
       name: name.trim(),
       symbolOrFolio: symbolOrFolio.trim() || name.substring(0, 8).toUpperCase(),
+      isin: picked?.isin,
       category,
       subCategory: subCategory.trim() || ASSET_CATEGORIES[category].name,
       ownerId,
       quantityScaled: qtyScaled,
       averageCostPerUnitMinor: costMinor,
       currentPriceMinor,
-      priceSource: 'Manual Initial Entry',
+      priceSource: picked?.source || 'Manual Initial Entry',
+      amfiCode: picked?.amfiCode,
       institutionName: institutionName.trim() || undefined,
       accountNumberMasked: symbolOrFolio.trim() || undefined,
       notes: notes.trim() || undefined,
@@ -224,9 +260,78 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className={lbl}>Holding Name *</label>
-              <input type="text" required placeholder={namePlaceholder(category)} value={name} onChange={e => setName(e.target.value)} className={inp} />
+            <div className={listedPicker ? 'sm:col-span-2' : ''}>
+              <label className={lbl}>{listedPicker ? 'Search NSE / BSE / AMFI *' : 'Holding Name *'}</label>
+              {listedPicker ? (
+                <div className="space-y-2">
+                  {picked ? (
+                    <div className="px-3.5 py-2.5 rounded-xl border border-slate-700 bg-slate-950">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="font-semibold truncate">{picked.name}</div>
+                          <div className="text-[11px] text-slate-400 font-mono">
+                            {picked.symbol || picked.nseSymbol || picked.amfiCode} · {picked.isin} · {picked.source}
+                          </div>
+                          <div className="text-[11px] text-slate-400">
+                            Close {MoneyEngine.formatRupees(BigInt(picked.closeMinor), false)} as on{' '}
+                            {formatStatementDate(picked.priceDate)}
+                          </div>
+                        </div>
+                        <button type="button" onClick={() => { setPicked(null); setName(''); }} className="text-xs text-amber-300">
+                          Change
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <input
+                        type="text"
+                        value={searchQ}
+                        onChange={e => setSearchQ(e.target.value)}
+                        placeholder={category === 'EQUITY' ? 'Type TCS or Tata Consultancy' : 'Type Parag Parikh or ISIN'}
+                        className={inp}
+                        autoComplete="off"
+                      />
+                      {listedSecurities.length === 0 && (
+                        <div className="text-xs text-amber-200/90 flex items-center justify-between gap-2">
+                          <span>Refresh market prices once to fill this list. Typing a name by hand is off for shares and funds.</span>
+                          <button
+                            type="button"
+                            onClick={() => refreshEodPrices()}
+                            disabled={pricesRefreshing}
+                            className="shrink-0 px-2.5 py-1 rounded-lg bg-amber-400 text-slate-950 text-[11px] font-bold"
+                          >
+                            {pricesRefreshing ? 'Reading…' : 'Refresh prices'}
+                          </button>
+                        </div>
+                      )}
+                      {pricesError && <div className="text-[11px] text-rose-300">{pricesError}</div>}
+                      {matches.length > 0 && (
+                        <div className="max-h-48 overflow-y-auto rounded-xl border border-slate-700 divide-y divide-slate-800">
+                          {matches.map(row => (
+                            <button
+                              key={row.isin}
+                              type="button"
+                              onClick={() => pickSecurity(row)}
+                              className="w-full text-left px-3 py-2 hover:bg-slate-800"
+                            >
+                              <div className="text-sm font-semibold truncate">{row.name}</div>
+                              <div className="text-[11px] text-slate-400 font-mono">
+                                {row.symbol || row.nseSymbol || row.amfiCode} · {row.isin}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {searchQ.trim().length >= 2 && matches.length === 0 && listedSecurities.length > 0 && (
+                        <div className="text-[11px] text-slate-400">No listed {category === 'EQUITY' ? 'share' : 'fund'} matches.</div>
+                      )}
+                    </>
+                  )}
+                </div>
+              ) : (
+                <input type="text" required placeholder={namePlaceholder(category)} value={name} onChange={e => setName(e.target.value)} className={inp} />
+              )}
             </div>
             <div>
               <label className={lbl}>Family Owner *</label>
@@ -242,8 +347,17 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-semibold text-slate-400 block mb-1">{identifierLabel(category)}</label>
-              <input type="text" placeholder={category === 'EQUITY' ? 'e.g. SBIN' : 'optional'} value={symbolOrFolio} onChange={e => setSymbolOrFolio(e.target.value)} className={inp + ' font-mono'} />
+              <label className="text-xs font-semibold text-slate-400 block mb-1">
+                {listedPicker ? (category === 'MUTUAL_FUND' ? 'Folio Number' : 'Exchange symbol') : identifierLabel(category)}
+              </label>
+              <input
+                type="text"
+                readOnly={listedPicker && category === 'EQUITY'}
+                placeholder={category === 'EQUITY' ? 'from bhavcopy' : category === 'MUTUAL_FUND' ? 'folio on the statement' : 'optional'}
+                value={symbolOrFolio}
+                onChange={e => setSymbolOrFolio(e.target.value)}
+                className={inp + ' font-mono'}
+              />
             </div>
             <div>
               <label className="text-xs font-semibold text-slate-400 block mb-1">Subcategory *</label>
@@ -301,7 +415,20 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
               </div>
               <div>
                 <label className={lbl}>{category === 'MUTUAL_FUND' ? 'Current NAV (₹)' : 'Current price (₹)'}</label>
-                <input type="number" step="any" placeholder="Leave blank to use buy price" value={currentPriceRupees} onChange={e => setCurrentPriceRupees(e.target.value)} className={inp} />
+                <input
+                  type="number"
+                  step="any"
+                  readOnly={!!picked}
+                  placeholder={picked ? 'From last close' : 'Leave blank to use buy price'}
+                  value={currentPriceRupees}
+                  onChange={e => setCurrentPriceRupees(e.target.value)}
+                  className={inp}
+                />
+                {picked && (
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Close as on {formatStatementDate(picked.priceDate)}. Not live.
+                  </p>
+                )}
               </div>
             </div>
           ) : (

@@ -4,7 +4,7 @@ import { formatStatementDate } from '../../lib/casPython';
 import { Shield, CheckCircle2 } from 'lucide-react';
 
 export const StatusBar: React.FC = () => {
-  const { holdings, lastStatementAsOf } = useKosha();
+  const { holdings, lastStatementAsOf, pricesAsOf } = useKosha();
 
   return (
     <footer
@@ -21,6 +21,9 @@ export const StatusBar: React.FC = () => {
             ? `Statement as of ${formatStatementDate(lastStatementAsOf)}`
             : 'No statement imported yet'}
         </span>
+        {pricesAsOf && (
+          <span className="hidden sm:inline">Prices as on {formatStatementDate(pricesAsOf)}</span>
+        )}
         <span className="hidden sm:inline">{holdings.length} holdings</span>
         <span className="flex items-center gap-1 font-semibold" style={{ color: 'var(--good)' }}>
           <CheckCircle2 className="w-3.5 h-3.5" />

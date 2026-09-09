@@ -26,6 +26,11 @@ ROOT = Path(__file__).resolve().parent.parent
 CAS_SRC = ROOT / "src" / "casparser-main"
 if str(CAS_SRC) not in sys.path:
     sys.path.insert(0, str(CAS_SRC))
+SCRIPTS = Path(__file__).resolve().parent
+if str(SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS))
+
+from eod_prices import refresh_eod  # noqa: E402
 
 HOST = "127.0.0.1"
 PORT = 8765
@@ -413,6 +418,16 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _refresh_prices(self) -> None:
+        try:
+            result = refresh_eod()
+        except Exception as exc:
+            traceback.print_exc()
+            self._json(500, {"ok": False, "error": f"Could not refresh prices: {exc}"})
+            return
+        status = 200 if result.get("ok") else 502
+        self._json(status, result)
+
     def do_OPTIONS(self) -> None:  # noqa: N802
         self.send_response(204)
         self._cors()
@@ -420,12 +435,16 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path.split("?", 1)[0] in ("/health", "/api/cas/health"):
-            self._json(200, {"ok": True, "engine": "PYTHON_CASPARSER"})
+            self._json(200, {"ok": True, "engine": "PYTHON_CASPARSER", "eod": True})
             return
         self._json(404, {"ok": False, "error": "Not found"})
 
     def do_POST(self) -> None:  # noqa: N802
-        if self.path.split("?", 1)[0] not in ("/parse", "/api/cas/parse"):
+        path = self.path.split("?", 1)[0]
+        if path in ("/prices/refresh", "/api/cas/prices/refresh"):
+            self._refresh_prices()
+            return
+        if path not in ("/parse", "/api/cas/parse"):
             self._json(404, {"ok": False, "error": "Not found"})
             return
         length = int(self.headers.get("Content-Length") or "0")

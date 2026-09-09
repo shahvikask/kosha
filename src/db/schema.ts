@@ -13,7 +13,7 @@
  * casparser emits (CDSL, NSDL, CAMS, KFin) has a home.
  */
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export const SCHEMA_V1 = `
 PRAGMA foreign_keys = ON;
@@ -347,3 +347,23 @@ export const SCHEMA_V4_COLUMNS: [string, string, string][] = [
   ['holding', 'emi_status', 'emi_status TEXT'],
   ['holding', 'remaining_emi_count', 'remaining_emi_count INTEGER'],
 ];
+
+/** Listed NSE/BSE/AMFI universe for picker + close-only CMP. */
+export const SCHEMA_V5_SQL = `
+CREATE TABLE IF NOT EXISTS listed_security (
+  isin          TEXT PRIMARY KEY,
+  name          TEXT NOT NULL,
+  symbol        TEXT,
+  nse_symbol    TEXT,
+  bse_symbol    TEXT,
+  amfi_code     TEXT,
+  category      TEXT NOT NULL,
+  close_minor   INTEGER NOT NULL DEFAULT 0,
+  price_date    TEXT NOT NULL,
+  source        TEXT NOT NULL,
+  updated_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_listed__symbol ON listed_security(symbol);
+CREATE INDEX IF NOT EXISTS ix_listed__name ON listed_security(name);
+CREATE INDEX IF NOT EXISTS ix_listed__cat ON listed_security(category);
+`;

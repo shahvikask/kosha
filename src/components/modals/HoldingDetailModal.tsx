@@ -331,6 +331,12 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
             </button>
           )}
         </div>
+        {holding.lastPriceUpdated && (
+          <div className="text-[11px] -mt-1" style={{ color: 'var(--muted)' }}>
+            {holding.priceSource || 'Price'} as on {holding.lastPriceUpdated.slice(0, 10)}
+            {/NSE|BSE|AMFI/i.test(holding.priceSource || '') ? ' — last close, not live' : ''}
+          </div>
+        )}
 
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {field('AMC', holding.amc)}

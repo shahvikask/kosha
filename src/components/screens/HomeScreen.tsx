@@ -9,6 +9,7 @@ import {
   formatCalendarDate,
 } from '../../lib/holdingView';
 import { MoneyEngine } from '../../lib/money';
+import { formatStatementDate } from '../../lib/casPython';
 import { FileSpreadsheet, Target, Calendar } from 'lucide-react';
 
 interface HomeScreenProps {
@@ -30,6 +31,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     sgbValuationMode,
     derived,
     lastStatementAsOf,
+    pricesAsOf,
     goals,
   } = useKosha();
 
@@ -97,6 +99,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           {lastStatementAsOf
             ? 'Figures follow your last confirmed statement, plus anything you added manually.'
             : 'Import a CDSL, NSDL, CAMS or KFintech PDF to fill this in.'}
+          {pricesAsOf ? ` Market prices as on ${formatStatementDate(pricesAsOf)} (last close / NAV, not live).` : ''}
         </div>
       </div>
 

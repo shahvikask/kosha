@@ -128,6 +128,20 @@ export interface FamilyMember {
   isPrimary?: boolean;
 }
 
+/** Official close / NAV row from NSE, BSE or AMFI (not live). */
+export interface ListedSecurity {
+  isin: string;
+  name: string;
+  symbol?: string;
+  nseSymbol?: string;
+  bseSymbol?: string;
+  amfiCode?: string;
+  category: AssetCategory;
+  closeMinor: string;
+  priceDate: string;
+  source: string;
+}
+
 /** Self is the default primary profile and cannot be removed. */
 export function isPrimaryFamilyMember(
   m: Pick<FamilyMember, 'relation' | 'isPrimary'> | null | undefined

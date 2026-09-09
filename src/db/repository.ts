@@ -15,9 +15,10 @@ import {
   SCHEMA_VERSION,
   SCHEMA_V3_COLUMNS,
   SCHEMA_V4_COLUMNS,
+  SCHEMA_V5_SQL,
   LEDGER_NO_DELETE_TRIGGER,
 } from './schema';
-import { LedgerEvent, Holding, FamilyMember, FamilyRelation, isPrimaryFamilyMember, DematOrFolioAccount, FamilyGoal, ImportBatchInfo } from '../types';
+import { LedgerEvent, Holding, FamilyMember, FamilyRelation, isPrimaryFamilyMember, DematOrFolioAccount, FamilyGoal, ImportBatchInfo, ListedSecurity } from '../types';
 
 function toBps(percent: number | undefined | null): number | null {
   if (percent === undefined || percent === null || Number.isNaN(percent)) return null;
@@ -43,6 +44,9 @@ export class Repository {
     }
     if (current < 4) {
       await this.applyColumns(SCHEMA_V4_COLUMNS);
+    }
+    if (current < 5) {
+      await this.db.exec(SCHEMA_V5_SQL);
     }
 
     if (rows.length === 0) {
@@ -455,6 +459,95 @@ export class Repository {
       basis: String(rows[0].basis),
       source: String(rows[0].source),
     };
+  }
+
+  async replaceListedSecurities(rows: ListedSecurity[]): Promise<void> {
+    await this.db.transaction(async () => {
+      await this.db.exec(`DELETE FROM listed_security`);
+      const chunk = 60;
+      for (let i = 0; i < rows.length; i += chunk) {
+        const part = rows.slice(i, i + chunk);
+        const placeholders = part.map(() => '(?,?,?,?,?,?,?,?,?,?,?)').join(',');
+        const params: SqlValue[] = [];
+        const now = new Date().toISOString();
+        for (const r of part) {
+          params.push(
+            r.isin,
+            r.name,
+            r.symbol ?? null,
+            r.nseSymbol ?? null,
+            r.bseSymbol ?? null,
+            r.amfiCode ?? null,
+            r.category,
+            r.closeMinor,
+            r.priceDate,
+            r.source,
+            now,
+          );
+        }
+        await this.db.exec(
+          `INSERT OR REPLACE INTO listed_security (
+             isin, name, symbol, nse_symbol, bse_symbol, amfi_code,
+             category, close_minor, price_date, source, updated_at)
+           VALUES ${placeholders}`,
+          params,
+        );
+      }
+    });
+  }
+
+  async allListedSecurities(): Promise<ListedSecurity[]> {
+    const rows = await this.db.query<Record<string, SqlValue>>(
+      `SELECT isin, name, symbol, nse_symbol, bse_symbol, amfi_code,
+              category, close_minor, price_date, source
+       FROM listed_security`,
+    );
+    return rows.map(r => ({
+      isin: String(r.isin),
+      name: String(r.name),
+      symbol: r.symbol ? String(r.symbol) : undefined,
+      nseSymbol: r.nse_symbol ? String(r.nse_symbol) : undefined,
+      bseSymbol: r.bse_symbol ? String(r.bse_symbol) : undefined,
+      amfiCode: r.amfi_code ? String(r.amfi_code) : undefined,
+      category: String(r.category) as ListedSecurity['category'],
+      closeMinor: String(r.close_minor),
+      priceDate: String(r.price_date),
+      source: String(r.source),
+    }));
+  }
+
+  async searchListedSecurities(q: string, category?: string, limit = 25): Promise<ListedSecurity[]> {
+    const needle = `%${q.trim()}%`;
+    const rows = await this.db.query<Record<string, SqlValue>>(
+      category
+        ? `SELECT isin, name, symbol, nse_symbol, bse_symbol, amfi_code,
+                  category, close_minor, price_date, source
+           FROM listed_security
+           WHERE category = ? AND (name LIKE ? OR symbol LIKE ? OR isin LIKE ?
+                 OR nse_symbol LIKE ? OR bse_symbol LIKE ? OR amfi_code LIKE ?)
+           ORDER BY symbol ASC LIMIT ?`
+        : `SELECT isin, name, symbol, nse_symbol, bse_symbol, amfi_code,
+                  category, close_minor, price_date, source
+           FROM listed_security
+           WHERE name LIKE ? OR symbol LIKE ? OR isin LIKE ?
+                 OR nse_symbol LIKE ? OR bse_symbol LIKE ? OR amfi_code LIKE ?
+           ORDER BY symbol ASC LIMIT ?`,
+      category
+        ? [category, needle, needle, needle, needle, needle, needle, limit]
+        : [needle, needle, needle, needle, needle, needle, limit],
+    );
+    return rows.map(r => ({
+      isin: String(r.isin),
+      name: String(r.name),
+      symbol: r.symbol ? String(r.symbol) : undefined,
+      nseSymbol: r.nse_symbol ? String(r.nse_symbol) : undefined,
+      bseSymbol: r.bse_symbol ? String(r.bse_symbol) : undefined,
+      amfiCode: r.amfi_code ? String(r.amfi_code) : undefined,
+      category: String(r.category) as ListedSecurity['category'],
+      closeMinor: String(r.close_minor),
+      priceDate: String(r.price_date),
+      source: String(r.source),
+    }));
   }
 
   // ---------- import batches & statement positions ----------

@@ -13,6 +13,7 @@ import {
   DematOrFolioAccount,
   FamilyGoal,
   ImportBatchInfo,
+  ListedSecurity,
 } from '../types';
 import { INITIAL_FAMILY_MEMBERS } from '../data/initialData';
 import { EMPTY_SELF, ThemeName } from '../lib/holdingView';
@@ -41,6 +42,7 @@ import {
 } from '../lib/casPython';
 import { planEmiCatchUp, applyEmiPlan } from '../lib/emi';
 import { findDuplicatePanMember } from '../lib/pan';
+import { applyCatalogPrices, catalogToListed, isEodPriceSource, refreshEodFromSidecar } from '../lib/eodPrices';
 
 interface KoshaContextType {
   familyMembers: FamilyMember[];
@@ -98,6 +100,11 @@ interface KoshaContextType {
   upsertGoal: (goal: Omit<FamilyGoal, 'id' | 'createdAt'> & { id?: string }) => Promise<FamilyGoal>;
   deleteGoal: (id: string) => Promise<void>;
   updateAccountNominee: (accountId: string, nominee: string) => Promise<void>;
+  listedSecurities: ListedSecurity[];
+  pricesAsOf: string | null;
+  pricesRefreshing: boolean;
+  pricesError: string | null;
+  refreshEodPrices: () => Promise<void>;
 }
 
 const KoshaContext = createContext<KoshaContextType | null>(null);
@@ -252,6 +259,10 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [accounts, setAccounts] = useState<DematOrFolioAccount[]>([]);
   const [goals, setGoals] = useState<FamilyGoal[]>([]);
   const [importBatches, setImportBatches] = useState<ImportBatchInfo[]>([]);
+  const [listedSecurities, setListedSecurities] = useState<ListedSecurity[]>([]);
+  const [pricesAsOf, setPricesAsOf] = useState<string | null>(null);
+  const [pricesRefreshing, setPricesRefreshing] = useState(false);
+  const [pricesError, setPricesError] = useState<string | null>(null);
 
   useEffect(() => {
     applyTheme(theme);
@@ -336,6 +347,13 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setAccounts(await r.allAccounts());
         setGoals(await r.allGoals());
         setImportBatches(await r.allBatches());
+        try {
+          const listed = await r.allListedSecurities();
+          setListedSecurities(listed);
+          setPricesAsOf(await r.getMeta('prices_as_of'));
+        } catch {
+          setListedSecurities([]);
+        }
         setRepo(r);
         setDbDriver(driver);
         setDbReady(true);
@@ -1014,7 +1032,10 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           if (repo) await repo.upsertHolding(newH);
         } else {
           // Rule 6: Record price observation, but only update holding.currentPriceMinor if statement date is newer
-          const isNewer = !matched.lastPriceUpdated || rec.date >= matched.lastPriceUpdated.split('T')[0];
+          const isEod = isEodPriceSource(matched.priceSource);
+          const isNewer =
+            !isEod &&
+            (!matched.lastPriceUpdated || rec.date >= matched.lastPriceUpdated.split('T')[0]);
           if (isNewer) {
             const updatedH: Holding = {
               ...matched,
@@ -1262,6 +1283,49 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setAccounts(prev => prev.map(a => (a.id === accountId ? { ...a, nominee } : a)));
   };
 
+  const refreshEodPrices = async (): Promise<void> => {
+    setPricesRefreshing(true);
+    setPricesError(null);
+    try {
+      const result = await refreshEodFromSidecar();
+      if (!result.ok) {
+        setPricesError(result.error || 'Could not refresh prices.');
+        return;
+      }
+      const listed = (result.catalog || [])
+        .map(catalogToListed)
+        .filter((row): row is ListedSecurity => !!row);
+      if (repo) {
+        await repo.replaceListedSecurities(listed);
+        if (result.asOf) await repo.setMeta('prices_as_of', result.asOf);
+      }
+      setListedSecurities(listed);
+      setPricesAsOf(result.asOf || null);
+      const applied = applyCatalogPrices(holdings, listed);
+      if (applied.updated > 0) {
+        if (repo) {
+          for (const h of applied.holdings) {
+            if (h.currentPriceMinor !== holdings.find(x => x.id === h.id)?.currentPriceMinor
+              || h.priceSource !== holdings.find(x => x.id === h.id)?.priceSource) {
+              await repo.upsertHolding(h);
+              if (h.isin) {
+                await repo.addPrice(h.id, h.lastPriceUpdated.slice(0, 10), 'EOD_CLOSE', h.currentPriceMinor, h.priceSource);
+              }
+            }
+          }
+        }
+        setHoldings(applied.holdings);
+      }
+      if (result.warnings && result.warnings.length) {
+        setPricesError(result.warnings.join(' '));
+      }
+    } catch (err: any) {
+      setPricesError(err?.message || 'Could not refresh prices.');
+    } finally {
+      setPricesRefreshing(false);
+    }
+  };
+
   return (
     <KoshaContext.Provider
       value={{
@@ -1314,6 +1378,11 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         upsertGoal,
         deleteGoal,
         updateAccountNominee,
+        listedSecurities,
+        pricesAsOf,
+        pricesRefreshing,
+        pricesError,
+        refreshEodPrices,
       }}
     >
       {children}

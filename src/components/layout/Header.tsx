@@ -10,6 +10,7 @@ import {
   Sun,
   Moon,
   ArrowRightLeft,
+  RefreshCw,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -29,6 +30,9 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddHolding, onOpenAddRecor
     lastStatementAsOf,
     statementAsOfByMember,
     setActiveScreen,
+    pricesAsOf,
+    pricesRefreshing,
+    refreshEodPrices,
   } = useKosha();
 
   const [isFamilyDropdownOpen, setIsFamilyDropdownOpen] = useState(false);
@@ -110,6 +114,16 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddHolding, onOpenAddRecor
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => refreshEodPrices()}
+            disabled={pricesRefreshing}
+            className="p-2 rounded-xl border"
+            style={{ borderColor: 'var(--border)', background: 'var(--card)', color: 'var(--text)' }}
+            title={pricesAsOf ? `Prices as on ${formatStatementDateShort(pricesAsOf)}` : 'Refresh last close / NAV'}
+          >
+            <RefreshCw className={`w-4 h-4 ${pricesRefreshing ? 'animate-spin' : ''}`} />
+          </button>
+
           <button
             onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
             className="p-2 rounded-xl border"
@@ -212,6 +226,18 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddHolding, onOpenAddRecor
           </span>
         </div>
       ) : null}
+      {pricesAsOf && (
+        <div
+          className="text-center text-[11px] py-1 border-t"
+          style={{ borderColor: 'var(--border)', color: 'var(--muted)', background: 'var(--app)' }}
+        >
+          Prices as on{' '}
+          <span className="font-semibold" style={{ color: 'var(--text)' }}>
+            {formatStatementDate(pricesAsOf)}
+          </span>
+          {' · '}NSE / BSE close and AMFI NAV — not live
+        </div>
+      )}
     </header>
   );
 };

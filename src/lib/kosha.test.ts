@@ -10,6 +10,7 @@ import { eventLabel, bucketOf, upcomingFromHoldings, displayHoldingName, account
 import { formatStatementDate, latestAsOfForOwner, statementAsOfByMember, parseCasLatest } from './casPython';
 import { addCalendarMonths, dueEmiDates, planEmiCatchUp, resumeEmiDate } from './emi';
 import { checkImportPan, pansMatch, panBlocksCommit, findDuplicatePanMember, panFingerprint } from './pan';
+import { applyCatalogPrices, catalogToListed, searchListed, isEodPriceSource } from './eodPrices';
 import { findMatchingHolding, holdingIdentityKey } from './matchHolding';
 import { StatementImportRecord } from '../types';
 
@@ -360,6 +361,21 @@ eq('allow match', panBlocksCommit({ kind: 'MATCH' }), false);
 eq('allow missing pdf pan', panBlocksCommit({ kind: 'NO_PDF_PAN' }), false);
 eq('dup PAN finds Nancy', findDuplicatePanMember(fam, 'ABTPS0000M')?.name, 'Nancy');
 eq('own PAN not a dup', findDuplicatePanMember(fam, 'ABCPS1234K', 'fam_1') == null, true);
+
+console.log('\n--- Q. Close-only CMP from catalog ---');
+eq('eod source NSE', isEodPriceSource('NSE close'), true);
+eq('cas source not eod', isEodPriceSource('CAS Statement Snapshot'), false);
+const tcs = catalogToListed({ isin: 'INE467B01029', name: 'TCS', symbol: 'TCS', nse: 'TCS', bse: 'TCS', amfi: '', cat: 'EQUITY', px: 2208, dt: '2026-09-09', src: 'NSE close' });
+eq('TCS close minor', tcs && tcs.closeMinor, String(2208 * 10000));
+const before = hold('h_tcs', 'EQUITY', 1000, 2000, 2000);
+before.isin = 'INE467B01029';
+const priced = applyCatalogPrices([before], tcs ? [tcs] : []);
+eq('updated count', priced.updated, 1);
+eq('CMP 2208', Number(priced.holdings[0].currentPriceMinor) / 10000, 2208);
+eq('qty unchanged', priced.holdings[0].quantityScaled, before.quantityScaled);
+const catalogRows = [tcs!];
+eq('search TCS', searchListed(catalogRows, 'tcs', 'EQUITY')[0]?.isin, 'INE467B01029');
+eq('search misses funds', searchListed(catalogRows, 'tcs', 'MUTUAL_FUND').length, 0);
 
 console.log('\n--- H. Encryption ---');
 (async()=>{
