@@ -22,6 +22,12 @@ import {
 } from '../../lib/casPython';
 import { CasConfirmPanel } from './CasConfirmPanel';
 import {
+  checkImportPan,
+  displayPan,
+  panBlocksCommit,
+  PanImportCheck,
+} from '../../lib/pan';
+import {
   UploadCloud,
   CheckCircle2,
   AlertTriangle,
@@ -95,18 +101,23 @@ export const DocumentsScreen: React.FC = () => {
   const [recordBookSearch, setRecordBookSearch] = useState<string>('');
   const [recordBookFilterType, setRecordBookFilterType] = useState<string>('ALL');
 
-  // Clear staged file & results when changing member or clearing manually
+  // Clear staged file when changing member before a parse; after a parse, retarget
+  // so a wrong profile can be switched without dropping the PDF.
   const handleTargetMemberChange = (newMemberId: string) => {
     setTargetMemberId(newMemberId);
+    const m = familyMembers.find(fm => fm.id === newMemberId);
+    setPdfPassword(m?.panForStatements || '');
+    if (parseResult) {
+      buildReconciliation(parseResult, rawRecords, newMemberId);
+      setImportNotification(null);
+      return;
+    }
     setSelectedFile(null);
-    setParseResult(null);
     setRawRecords([]);
     setReconciliation(null);
     setAcceptedHoldingIds(new Set());
     setParseError(null);
     setImportNotification(null);
-    const m = familyMembers.find(fm => fm.id === newMemberId);
-    setPdfPassword(m?.panForStatements || '');
   };
 
   useEffect(() => {
@@ -320,9 +331,25 @@ export const DocumentsScreen: React.FC = () => {
     return reconciliation.lines.every(l => l.outcome === 'MATCH');
   }, [reconciliation]);
 
+  const panCheck = useMemo(
+    () => checkImportPan(activeTargetMember, familyMembers, parseResult?.investorPan),
+    [activeTargetMember, familyMembers, parseResult?.investorPan]
+  );
+  const commitBlockedByPan = !!parseResult && panBlocksCommit(panCheck);
+
   // Execute Commit
   const handleCommitUpdates = async () => {
     if (!reconciliation || isCommitting) return;
+    if (commitBlockedByPan) {
+      setImportNotification({
+        type: 'error',
+        message:
+          panCheck.kind === 'SWITCH'
+            ? `This statement belongs to ${panCheck.matched.name}. Switch to that profile before updating records.`
+            : 'The PAN on this statement does not match the selected family member. Records were not changed.',
+      });
+      return;
+    }
     setIsCommitting(true);
     setImportNotification(null);
 
@@ -752,6 +779,16 @@ export const DocumentsScreen: React.FC = () => {
               </div>
             )}
           </div>
+
+          {parseResult && (
+            <PanOwnerBanner
+              check={panCheck}
+              selectedName={activeTargetMember?.name || 'this member'}
+              investorName={parseResult.investorName}
+              printedPan={parseResult.investorPan}
+              onSwitch={id => handleTargetMemberChange(id)}
+            />
+          )}
 
           {parseResult?.engine === 'PYTHON_CASPARSER' && (
             <CasConfirmPanel
@@ -1189,8 +1226,13 @@ export const DocumentsScreen: React.FC = () => {
                     <button
                       id="update-my-records-btn"
                       onClick={handleCommitUpdates}
-                      disabled={isCommitting}
-                      className="flex-1 sm:flex-initial px-6 py-2.5 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 text-xs sm:text-sm font-bold rounded-xl shadow-md transition-colors cursor-pointer flex items-center justify-center gap-2"
+                      disabled={isCommitting || commitBlockedByPan}
+                      title={
+                        commitBlockedByPan
+                          ? 'The PAN on this statement does not match the selected family member'
+                          : undefined
+                      }
+                      className="flex-1 sm:flex-initial px-6 py-2.5 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 text-xs sm:text-sm font-bold rounded-xl shadow-md transition-colors cursor-pointer flex items-center justify-center gap-2"
                     >
                       <span>{isCommitting ? 'Saving…' : 'Update my records'}</span>
                     </button>
@@ -1440,3 +1482,92 @@ export const DocumentsScreen: React.FC = () => {
     </div>
   );
 };
+
+const PanOwnerBanner: React.FC<{
+  check: PanImportCheck;
+  selectedName: string;
+  investorName?: string;
+  printedPan?: string;
+  onSwitch: (memberId: string) => void;
+}> = ({ check, selectedName, investorName, printedPan, onSwitch }) => {
+  const pan = displayPan(printedPan);
+  const who = investorName ? `${investorName} · ${pan}` : pan;
+
+  if (check.kind === 'MATCH') return null;
+
+  if (check.kind === 'NO_PDF_PAN') {
+    return (
+      <div className="p-4 rounded-2xl border bg-amber-950/40 border-amber-500/40 text-amber-100 text-sm">
+        <div className="flex items-start gap-2">
+          <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+          <div>
+            <div className="font-bold">PAN not printed on this statement</div>
+            <p className="text-xs mt-1 text-amber-100/80">
+              Confirm this file really belongs to {selectedName} before you update records.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (check.kind === 'SWITCH') {
+    return (
+      <div className="p-4 rounded-2xl border bg-rose-950/50 border-rose-700/60 text-rose-100 space-y-3">
+        <div className="flex items-start gap-2">
+          <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <div className="font-bold">This statement is not {selectedName}'s</div>
+            <p className="text-xs text-rose-100/85">
+              The PDF is for {who}. That PAN belongs to{' '}
+              <strong>
+                {check.matched.name} ({check.matched.relation})
+              </strong>
+              . Records were not changed. Switch to that profile to continue.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => onSwitch(check.matched.id)}
+          className="px-4 py-2 rounded-xl text-xs font-bold bg-amber-400 text-slate-950 hover:bg-amber-300"
+        >
+          Switch to {check.matched.name} and review
+        </button>
+      </div>
+    );
+  }
+
+  if (check.kind === 'MEMBER_HAS_NO_PAN') {
+    return (
+      <div className="p-4 rounded-2xl border bg-rose-950/50 border-rose-700/60 text-rose-100 space-y-1">
+        <div className="flex items-start gap-2">
+          <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+          <div>
+            <div className="font-bold">{selectedName} has no PAN on file</div>
+            <p className="text-xs mt-1 text-rose-100/85">
+              This PDF is {who}. Save that PAN on {selectedName} in Family, or pick the person it
+              belongs to. Update my records stays off until then.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 rounded-2xl border bg-rose-950/50 border-rose-700/60 text-rose-100 space-y-1">
+      <div className="flex items-start gap-2">
+        <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+        <div>
+          <div className="font-bold">No family member has this PAN</div>
+          <p className="text-xs mt-1 text-rose-100/85">
+            This PDF is {who}. Add that PAN on the right person in Family, then select them here.
+            Nothing has been saved.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
+

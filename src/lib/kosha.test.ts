@@ -9,6 +9,7 @@ import { LedgerEvent, Holding } from '../types';
 import { eventLabel, bucketOf, upcomingFromHoldings, displayHoldingName, accountTitle, inferAmcFromSchemeName } from './holdingView';
 import { formatStatementDate, latestAsOfForOwner, statementAsOfByMember, parseCasLatest } from './casPython';
 import { addCalendarMonths, dueEmiDates, planEmiCatchUp, resumeEmiDate } from './emi';
+import { checkImportPan, pansMatch, panBlocksCommit, findDuplicatePanMember, panFingerprint } from './pan';
 import { findMatchingHolding, holdingIdentityKey } from './matchHolding';
 import { StatementImportRecord } from '../types';
 
@@ -338,6 +339,27 @@ eq('skips already posted Jul', skipped && skipped.events.map(e => e.eventDate).j
 eq('resume jumps past gap', resumeEmiDate('2026-07-05', '2026-09-09'), '2026-10-05');
 const emiUp = upcomingFromHoldings([{ ...loan, nextCouponDate: '2026-10-05' }], []);
 eq('upcoming EMI not gold-bond', emiUp.some(i => i.kind === 'EMI' && i.title.includes('HDFC Car Loan')), true);
+
+console.log('\n--- P. Import PAN must match the selected member ---');
+eq('full vs masked', pansMatch('ABCDE1234F', 'ABCDE****F'), true);
+eq('different PAN', pansMatch('ABCDE1234F', 'ABTPS9999M'), false);
+eq('fingerprint', panFingerprint('abcde1234f'), 'ABCDE****F');
+const selfM = { id: 'fam_1', name: 'Vikas', relation: 'Self' as const, color: '#000', panMasked: 'ABCPS****K', panForStatements: 'ABCPS1234K', isPrimary: true };
+const spouseM = { id: 'fam_2', name: 'Nancy', relation: 'Spouse' as const, color: '#111', panMasked: 'ABTPS****M' };
+const hufM = { id: 'fam_3', name: 'Vikas HUF', relation: 'HUF' as const, color: '#222', panMasked: 'AAAPS****R' };
+const fam = [selfM, spouseM, hufM];
+eq('match selected', checkImportPan(selfM, fam, 'ABCPS1234K').kind, 'MATCH');
+eq('wrong member suggests spouse', checkImportPan(selfM, fam, 'ABTPS8888M').kind, 'SWITCH');
+const sw = checkImportPan(selfM, fam, 'ABTPS8888M');
+eq('switch target Nancy', sw.kind === 'SWITCH' ? sw.matched.name : '', 'Nancy');
+eq('unknown PAN', checkImportPan(selfM, fam, 'ZZZZZ9999Z').kind, 'UNKNOWN_PAN');
+eq('no pan on member', checkImportPan({ ...hufM, panMasked: undefined }, fam, 'ZZZZZ9999Z').kind, 'MEMBER_HAS_NO_PAN');
+eq('pdf missing PAN allowed', checkImportPan(selfM, fam, undefined).kind, 'NO_PDF_PAN');
+eq('block switch', panBlocksCommit({ kind: 'SWITCH', matched: spouseM }), true);
+eq('allow match', panBlocksCommit({ kind: 'MATCH' }), false);
+eq('allow missing pdf pan', panBlocksCommit({ kind: 'NO_PDF_PAN' }), false);
+eq('dup PAN finds Nancy', findDuplicatePanMember(fam, 'ABTPS0000M')?.name, 'Nancy');
+eq('own PAN not a dup', findDuplicatePanMember(fam, 'ABCPS1234K', 'fam_1') == null, true);
 
 console.log('\n--- H. Encryption ---');
 (async()=>{

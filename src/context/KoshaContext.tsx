@@ -40,6 +40,7 @@ import {
   MemberStatementAsOf,
 } from '../lib/casPython';
 import { planEmiCatchUp, applyEmiPlan } from '../lib/emi';
+import { findDuplicatePanMember } from '../lib/pan';
 
 interface KoshaContextType {
   familyMembers: FamilyMember[];
@@ -591,6 +592,13 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
     const newId = `fam_${Date.now()}`;
     const rawPan = (memberData as any).pan || (memberData as any).panCard || memberData.panMasked || '';
+    const dup = findDuplicatePanMember(
+      familyMembers,
+      memberData.panForStatements || rawPan || ''
+    );
+    if (dup) {
+      throw new Error(`PAN already used by ${dup.name} (${dup.relation}). Each person needs their own PAN.`);
+    }
     const masked = rawPan ? maskPan(rawPan) : undefined;
     const newMember: FamilyMember = {
       name: memberData.name,
@@ -634,6 +642,12 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       updated.dateOfBirth = updates.dateOfBirth.trim() || undefined;
     }
     updated.isPrimary = isPrimaryFamilyMember(updated);
+
+    const panToCheck = updated.panForStatements || updated.panMasked || '';
+    const dup = findDuplicatePanMember(familyMembers, panToCheck, id);
+    if (dup) {
+      throw new Error(`PAN already used by ${dup.name} (${dup.relation}). Each person needs their own PAN.`);
+    }
 
     if (repo) {
       await repo.upsertEntity(updated);
