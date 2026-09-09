@@ -129,6 +129,11 @@ const KoshaMainApp: React.FC = () => {
       <StatusBar />
 
       <AddHoldingModal isOpen={isAddHoldingOpen} onClose={() => setIsAddHoldingOpen(false)} />
+      <HoldingDetailModal
+        holdingId={selectedHoldingIdForDetail}
+        onClose={() => setSelectedHoldingIdForDetail(null)}
+        onOpenAddRecord={id => handleOpenAddRecord(id)}
+      />
       <AddRecordModal
         isOpen={isAddRecordOpen}
         onClose={() => {
@@ -136,11 +141,7 @@ const KoshaMainApp: React.FC = () => {
           setPreselectedHoldingForRecord(undefined);
         }}
         preselectedHoldingId={preselectedHoldingForRecord}
-      />
-      <HoldingDetailModal
-        holdingId={selectedHoldingIdForDetail}
-        onClose={() => setSelectedHoldingIdForDetail(null)}
-        onOpenAddRecord={id => handleOpenAddRecord(id)}
+        lockToHolding={!!preselectedHoldingForRecord}
       />
       <EmergencySheetModal isOpen={isEmergencySheetOpen} onClose={() => setIsEmergencySheetOpen(false)} />
     </div>

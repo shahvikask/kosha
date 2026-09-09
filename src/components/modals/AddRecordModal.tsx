@@ -1,47 +1,80 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useKosha } from '../../context/KoshaContext';
-import { EventType } from '../../types';
+import { EventType, Holding } from '../../types';
 import { MoneyEngine } from '../../lib/money';
 import { displayHoldingName } from '../../lib/holdingView';
-import { X, ArrowRightLeft, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { X } from 'lucide-react';
 
 interface AddRecordModalProps {
   isOpen: boolean;
   onClose: () => void;
   preselectedHoldingId?: string;
+  /** When true, the form is locked to preselectedHoldingId (opened from a holding sheet). */
+  lockToHolding?: boolean;
 }
 
 export const AddRecordModal: React.FC<AddRecordModalProps> = ({
   isOpen,
   onClose,
   preselectedHoldingId,
+  lockToHolding = false,
 }) => {
-  const { holdings, appendLedgerEvent, updateHolding, familyMembers } = useKosha();
+  const { holdings, filteredHoldings, selectedMemberId, appendLedgerEvent, updateHolding, familyMembers } =
+    useKosha();
 
-  const [holdingId, setHoldingId] = useState<string>(
-    preselectedHoldingId || (holdings[0]?.id || '')
-  );
+  const [holdingId, setHoldingId] = useState('');
   const [eventType, setEventType] = useState<EventType>('BUY');
-  const [eventDate, setEventDate] = useState<string>(
-    new Date().toISOString().split('T')[0]
-  );
-  const [quantity, setQuantity] = useState<string>('1');
-  const [unitPriceRupees, setUnitPriceRupees] = useState<string>('');
-  const [totalAmountRupees, setTotalAmountRupees] = useState<string>('');
-  const [chargesRupees, setChargesRupees] = useState<string>('0');
-  const [notes, setNotes] = useState<string>('');
+  const [eventDate, setEventDate] = useState(new Date().toISOString().split('T')[0]);
+  const [quantity, setQuantity] = useState('1');
+  const [unitPriceRupees, setUnitPriceRupees] = useState('');
+  const [totalAmountRupees, setTotalAmountRupees] = useState('');
+  const [chargesRupees, setChargesRupees] = useState('0');
+  const [notes, setNotes] = useState('');
+
+  const pickerHoldings = lockToHolding ? holdings : filteredHoldings;
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const fallback = lockToHolding
+      ? preselectedHoldingId || ''
+      : preselectedHoldingId && pickerHoldings.some(h => h.id === preselectedHoldingId)
+        ? preselectedHoldingId
+        : pickerHoldings[0]?.id || '';
+    setHoldingId(fallback);
+    setEventType('BUY');
+    setEventDate(new Date().toISOString().split('T')[0]);
+    setQuantity('1');
+    setUnitPriceRupees('');
+    setTotalAmountRupees('');
+    setChargesRupees('0');
+    setNotes('');
+  }, [isOpen, preselectedHoldingId, lockToHolding]);
+
+  const grouped = useMemo(() => {
+    const byOwner = new Map<string, Holding[]>();
+    for (const h of pickerHoldings) {
+      const list = byOwner.get(h.ownerId) || [];
+      list.push(h);
+      byOwner.set(h.ownerId, list);
+    }
+    return familyMembers
+      .map(m => ({ member: m, holdings: byOwner.get(m.id) || [] }))
+      .filter(g => g.holdings.length > 0);
+  }, [pickerHoldings, familyMembers]);
 
   if (!isOpen) return null;
 
   const selectedHolding = holdings.find(h => h.id === holdingId);
+  const owner = selectedHolding
+    ? familyMembers.find(m => m.id === selectedHolding.ownerId)
+    : undefined;
+  const locked = lockToHolding && !!preselectedHoldingId;
+  const showOwnerInPicker = selectedMemberId === 'ALL';
 
-  // Auto calculate total amount
   const handlePriceOrQtyChange = (newQty: string, newPrice: string) => {
     const q = parseFloat(newQty) || 0;
     const p = parseFloat(newPrice) || 0;
-    if (q > 0 && p > 0) {
-      setTotalAmountRupees((q * p).toString());
-    }
+    if (q > 0 && p > 0) setTotalAmountRupees((q * p).toString());
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -50,94 +83,113 @@ export const AddRecordModal: React.FC<AddRecordModalProps> = ({
 
     const qtyNum = parseFloat(quantity) || 1;
     const priceNum = parseFloat(unitPriceRupees) || 0;
-    const totalNum = parseFloat(totalAmountRupees) || (qtyNum * priceNum);
+    const totalNum = parseFloat(totalAmountRupees) || qtyNum * priceNum;
     const chargesNum = parseFloat(chargesRupees) || 0;
 
-    const qtyScaled = MoneyEngine.fromQty(qtyNum).toString();
-    const unitPriceMinor = MoneyEngine.fromRupees(priceNum).toString();
-    const totalAmountMinor = MoneyEngine.fromRupees(totalNum).toString();
-    const chargesMinor = MoneyEngine.fromRupees(chargesNum).toString();
-
-    // Append to immutable ledger
     appendLedgerEvent({
       holdingId: selectedHolding.id,
       holdingName: selectedHolding.name,
       ownerId: selectedHolding.ownerId,
       eventType,
       eventDate,
-      quantityScaled: qtyScaled,
-      unitPriceMinor,
-      totalAmountMinor,
-      chargesMinor,
+      quantityScaled: MoneyEngine.fromQty(qtyNum).toString(),
+      unitPriceMinor: MoneyEngine.fromRupees(priceNum).toString(),
+      totalAmountMinor: MoneyEngine.fromRupees(totalNum).toString(),
+      chargesMinor: MoneyEngine.fromRupees(chargesNum).toString(),
       notes: notes.trim() || undefined,
     });
 
-    // Update holding balance
     const currentQtyScaled = BigInt(selectedHolding.quantityScaled || '0');
-    const changeQtyScaled = BigInt(qtyScaled);
+    const changeQtyScaled = MoneyEngine.fromQty(qtyNum);
 
     if (eventType === 'BUY' || eventType === 'BONUS') {
-      const newQtyScaled = currentQtyScaled + changeQtyScaled;
       updateHolding(selectedHolding.id, {
-        quantityScaled: newQtyScaled.toString(),
+        quantityScaled: (currentQtyScaled + changeQtyScaled).toString(),
       });
     } else if (eventType === 'SELL') {
-      const newQtyScaled = currentQtyScaled > changeQtyScaled ? currentQtyScaled - changeQtyScaled : 0n;
-      updateHolding(selectedHolding.id, {
-        quantityScaled: newQtyScaled.toString(),
-      });
+      const next = currentQtyScaled > changeQtyScaled ? currentQtyScaled - changeQtyScaled : 0n;
+      updateHolding(selectedHolding.id, { quantityScaled: next.toString() });
     } else if (eventType === 'REPAYMENT' && selectedHolding.category === 'LIABILITY') {
-      // Reduce loan principal
       const currentOutstanding = BigInt(selectedHolding.currentPriceMinor || '0');
-      const paidPrincipal = MoneyEngine.fromRupees(totalNum);
-      const newOutstanding = currentOutstanding > paidPrincipal ? currentOutstanding - paidPrincipal : 0n;
-      updateHolding(selectedHolding.id, {
-        currentPriceMinor: newOutstanding.toString(),
-      });
+      const paid = MoneyEngine.fromRupees(totalNum);
+      const newOutstanding = currentOutstanding > paid ? currentOutstanding - paid : 0n;
+      updateHolding(selectedHolding.id, { currentPriceMinor: newOutstanding.toString() });
     }
 
     onClose();
   };
 
+  const optionLabel = (h: Holding) => {
+    const name = displayHoldingName(h.name);
+    const ident = h.symbolOrFolio ? ` (${h.symbolOrFolio})` : '';
+    if (!showOwnerInPicker) return `${name}${ident}`;
+    const who = familyMembers.find(m => m.id === h.ownerId);
+    return `${name}${ident} · ${who ? who.name : 'Unknown'}`;
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in">
       <div
-        className="bg-slate-900 rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl border border-slate-800 space-y-5 text-slate-100"
+        className="bg-slate-900 rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl border border-slate-800 space-y-5 text-slate-100 max-h-[90vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-          <div>
+          <div className="min-w-0 pr-2">
             <h2 className="text-lg font-bold text-white font-serif">Record Transaction</h2>
-            <p className="text-xs text-slate-400">Append an action into your permanent local ledger</p>
+            <p className="text-xs text-slate-400 truncate">
+              {locked && selectedHolding
+                ? `On ${displayHoldingName(selectedHolding.name)}${owner ? ` · ${owner.name}` : ''}`
+                : selectedMemberId === 'ALL'
+                  ? 'Pick a holding. Names include the family member.'
+                  : 'Holdings for the profile you are viewing.'}
+            </p>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          
-          {/* Target Holding */}
-          <div>
-            <label className="text-xs font-bold text-slate-300 block mb-1">Target Holding *</label>
-            <select
-              value={holdingId}
-              onChange={e => setHoldingId(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-sm font-semibold text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-400/50"
-            >
-              {holdings.map(h => (
-                <option key={h.id} value={h.id}>
-                  {displayHoldingName(h.name)} ({h.symbolOrFolio})
-                </option>
-              ))}
-            </select>
-          </div>
+          {locked ? (
+            <div className="px-3.5 py-2.5 rounded-xl border border-slate-700 bg-slate-950 text-sm">
+              <div className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">Holding</div>
+              <div className="font-semibold text-slate-100 truncate">
+                {selectedHolding ? displayHoldingName(selectedHolding.name) : '—'}
+              </div>
+              {owner && <div className="text-xs text-slate-400">{owner.name} ({owner.relation})</div>}
+            </div>
+          ) : (
+            <div>
+              <label className="text-xs font-bold text-slate-300 block mb-1">Target Holding *</label>
+              <select
+                value={holdingId}
+                onChange={e => setHoldingId(e.target.value)}
+                required
+                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-sm font-semibold text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-400/50"
+              >
+                {pickerHoldings.length === 0 && <option value="">No holdings in this profile</option>}
+                {showOwnerInPicker
+                  ? grouped.map(g => (
+                      <optgroup key={g.member.id} label={`${g.member.name} (${g.member.relation})`}>
+                        {g.holdings.map(h => (
+                          <option key={h.id} value={h.id}>
+                            {optionLabel(h)}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))
+                  : pickerHoldings.map(h => (
+                      <option key={h.id} value={h.id}>
+                        {optionLabel(h)}
+                      </option>
+                    ))}
+              </select>
+            </div>
+          )}
 
-          {/* Action Type & Date */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-bold text-slate-300 block mb-1">Action Type *</label>
@@ -167,7 +219,6 @@ export const AddRecordModal: React.FC<AddRecordModalProps> = ({
             </div>
           </div>
 
-          {/* Quantity & Price */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="text-xs font-bold text-slate-300 block mb-1">Units / Qty *</label>
@@ -212,7 +263,6 @@ export const AddRecordModal: React.FC<AddRecordModalProps> = ({
             </div>
           </div>
 
-          {/* Charges / Brokerage / STT */}
           <div>
             <label className="text-xs font-semibold text-slate-400 block mb-1">Brokerage / STT / Stamp Duty (₹)</label>
             <input
@@ -225,7 +275,6 @@ export const AddRecordModal: React.FC<AddRecordModalProps> = ({
             />
           </div>
 
-          {/* Notes */}
           <div>
             <label className="text-xs font-semibold text-slate-400 block mb-1">Notes / Description</label>
             <input
@@ -245,15 +294,14 @@ export const AddRecordModal: React.FC<AddRecordModalProps> = ({
             >
               Cancel
             </button>
-
             <button
               type="submit"
-              className="px-5 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 text-sm font-bold rounded-xl shadow-md shadow-amber-400/10 transition-all cursor-pointer"
+              disabled={!selectedHolding}
+              className="px-5 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 text-sm font-bold rounded-xl cursor-pointer disabled:opacity-50"
             >
               Append to Ledger
             </button>
           </div>
-
         </form>
       </div>
     </div>
