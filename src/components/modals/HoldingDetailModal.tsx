@@ -299,7 +299,7 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
             <PrivacyValue minor={m.value} className="text-xl font-bold" showCompact includePaise={false} />
           </div>
           <div className="p-4 rounded-2xl border" style={{ borderColor: 'var(--border)', background: 'var(--input)' }}>
-            <div className="text-xs mb-1" style={{ color: 'var(--muted)' }}>Put in</div>
+            <div className="text-xs mb-1" style={{ color: 'var(--muted)' }}>Put in (Invested)</div>
             <PrivacyValue minor={m.cost} className="text-xl font-bold" includePaise={false} />
           </div>
           <div className="p-4 rounded-2xl border" style={{ borderColor: 'var(--border)', background: 'var(--input)' }}>

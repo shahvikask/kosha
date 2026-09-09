@@ -90,8 +90,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         />
         <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Mini label="You own" value={summary.totalAssetsMinor} good />
-          <Mini label="You owe" value={summary.totalLiabilitiesMinor} bad />
-          <Mini label="Put in" value={summary.totalInvestedMinor} />
+          <Mini label="You owe (Loans & Liabilities)" value={summary.totalLiabilitiesMinor} bad />
+          <Mini label="Put in (Invested)" value={summary.totalInvestedMinor} />
         </div>
         <div className="mt-3 text-xs" style={{ color: 'var(--muted)' }}>
           {lastStatementAsOf

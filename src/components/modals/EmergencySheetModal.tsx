@@ -58,7 +58,7 @@ export const EmergencySheetModal: React.FC<EmergencySheetModalProps> = ({ isOpen
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 rounded-2xl border" style={{ borderColor: 'var(--border)' }}>
             <Stat label="What the family owns minus loans" value={MoneyEngine.formatRupees(summary.netWorthMinor, false)} />
             <Stat label="You own" value={MoneyEngine.formatRupees(summary.totalAssetsMinor, false)} />
-            <Stat label="You owe" value={MoneyEngine.formatRupees(summary.totalLiabilitiesMinor, false)} />
+            <Stat label="You owe (Loans & Liabilities)" value={MoneyEngine.formatRupees(summary.totalLiabilitiesMinor, false)} />
             <div>
               <div className="text-[11px] font-semibold uppercase" style={{ color: 'var(--muted)' }}>
                 People
