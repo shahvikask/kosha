@@ -198,46 +198,48 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddHolding, onOpenAddRecor
         </div>
       </div>
 
-      {selectedMemberId === 'ALL' && statementAsOfByMember.length > 0 ? (
+      {(selectedMemberId === 'ALL' && statementAsOfByMember.length > 0) ||
+      lastStatementAsOf ||
+      pricesAsOf ? (
         <div
-          className="text-center text-xs py-1.5 border-t px-3"
+          className="flex items-center justify-between gap-4 text-[11px] sm:text-xs py-1.5 border-t px-4 sm:px-6"
           style={{ borderColor: 'var(--border)', color: 'var(--muted)', background: 'var(--app)' }}
         >
-          The data is up to date until{' '}
-          {statementAsOfByMember.map((m, i) => (
-            <span key={m.id}>
-              {i > 0 ? <span> · </span> : null}
-              <span className="font-medium" style={{ color: 'var(--text)' }}>{m.name}</span>
-              {' '}
-              <span className="font-semibold" style={{ color: 'var(--accent)' }}>
-                {formatStatementDateShort(m.asOf)}
+          <div className="min-w-0 truncate text-left">
+            {selectedMemberId === 'ALL' && statementAsOfByMember.length > 0 ? (
+              <>
+                The data is up to date until{' '}
+                {statementAsOfByMember.map((m, i) => (
+                  <span key={m.id}>
+                    {i > 0 ? <span> · </span> : null}
+                    <span className="font-medium" style={{ color: 'var(--text)' }}>{m.name}</span>
+                    {' '}
+                    <span className="font-semibold" style={{ color: 'var(--accent)' }}>
+                      {formatStatementDateShort(m.asOf)}
+                    </span>
+                  </span>
+                ))}
+              </>
+            ) : lastStatementAsOf ? (
+              <>
+                The data is up to date until{' '}
+                <span className="font-semibold" style={{ color: 'var(--accent)' }}>
+                  {formatStatementDate(lastStatementAsOf)}
+                </span>
+              </>
+            ) : null}
+          </div>
+          {pricesAsOf && (
+            <div className="shrink-0 text-right">
+              Prices as on{' '}
+              <span className="font-semibold" style={{ color: 'var(--text)' }}>
+                {formatStatementDate(pricesAsOf)}
               </span>
-            </span>
-          ))}
-        </div>
-      ) : lastStatementAsOf ? (
-        <div
-          className="text-center text-xs py-1.5 border-t"
-          style={{ borderColor: 'var(--border)', color: 'var(--muted)', background: 'var(--app)' }}
-        >
-          The data is up to date until{' '}
-          <span className="font-semibold" style={{ color: 'var(--accent)' }}>
-            {formatStatementDate(lastStatementAsOf)}
-          </span>
+              {' · '}NSE / BSE close and AMFI NAV — not live
+            </div>
+          )}
         </div>
       ) : null}
-      {pricesAsOf && (
-        <div
-          className="text-center text-[11px] py-1 border-t"
-          style={{ borderColor: 'var(--border)', color: 'var(--muted)', background: 'var(--app)' }}
-        >
-          Prices as on{' '}
-          <span className="font-semibold" style={{ color: 'var(--text)' }}>
-            {formatStatementDate(pricesAsOf)}
-          </span>
-          {' · '}NSE / BSE close and AMFI NAV — not live
-        </div>
-      )}
     </header>
   );
 };
