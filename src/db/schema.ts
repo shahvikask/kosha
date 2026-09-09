@@ -13,7 +13,7 @@
  * casparser emits (CDSL, NSDL, CAMS, KFin) has a home.
  */
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export const SCHEMA_V1 = `
 PRAGMA foreign_keys = ON;
@@ -112,6 +112,8 @@ CREATE TABLE IF NOT EXISTS holding (
   maturity_date            TEXT,
   next_coupon_date         TEXT,
   monthly_emi_minor        INTEGER,
+  emi_status               TEXT,
+  remaining_emi_count      INTEGER,
   created_at        TEXT NOT NULL,
   CONSTRAINT ck_holding__price CHECK (current_price_minor >= 0)
 );
@@ -338,4 +340,10 @@ export const SCHEMA_V3_COLUMNS: [string, string, string][] = [
   ['statement_position', 'amc', 'amc TEXT'],
   ['statement_position', 'scheme_type', 'scheme_type TEXT'],
   ['statement_position', 'source_section', 'source_section TEXT'],
+];
+
+/** Columns added in schema v4 (loan EMI schedule on holding). */
+export const SCHEMA_V4_COLUMNS: [string, string, string][] = [
+  ['holding', 'emi_status', 'emi_status TEXT'],
+  ['holding', 'remaining_emi_count', 'remaining_emi_count INTEGER'],
 ];

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useKosha } from '../../context/KoshaContext';
-import { ASSET_CATEGORIES } from '../../types';
+import { ASSET_CATEGORIES, EmiStatus } from '../../types';
 import { MoneyEngine } from '../../lib/money';
 import { PrivacyValue, PrivacyDelta } from '../common/PrivacyValue';
 import {
@@ -12,6 +12,7 @@ import {
   displayHoldingName,
 } from '../../lib/holdingView';
 import { X, Edit3, Plus, Trash2, Calendar, Coins } from 'lucide-react';
+import { resumeEmiDate } from '../../lib/emi';
 
 interface HoldingDetailModalProps {
   holdingId: string | null;
@@ -45,6 +46,9 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
   const [editCoupon, setEditCoupon] = useState('');
   const [editNextCoupon, setEditNextCoupon] = useState('');
   const [editMaturity, setEditMaturity] = useState('');
+  const [editEmi, setEditEmi] = useState('');
+  const [editRemaining, setEditRemaining] = useState('');
+  const [editRate, setEditRate] = useState('');
 
   if (!holdingId) return null;
   const holding = holdings.find(h => h.id === holdingId);
@@ -67,6 +71,9 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
     setEditCoupon(holding.couponRatePercent != null ? String(holding.couponRatePercent) : '');
     setEditNextCoupon(holding.nextCouponDate || '');
     setEditMaturity(holding.maturityDate || '');
+    setEditEmi(holding.monthlyEmiMinor ? String(MoneyEngine.toRupees(BigInt(holding.monthlyEmiMinor))) : '');
+    setEditRemaining(holding.remainingEmiCount != null ? String(holding.remainingEmiCount) : '');
+    setEditRate(holding.interestRatePercent != null ? String(holding.interestRatePercent) : '');
     setIsEditingAll(true);
   };
 
@@ -75,6 +82,9 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
     if (!editName.trim()) return;
     if (isNaN(priceVal) || priceVal < 0) return;
     const coupon = parseFloat(editCoupon);
+    const rate = parseFloat(editRate);
+    const emiVal = parseFloat(editEmi);
+    const remainVal = parseInt(editRemaining, 10);
     updateHolding(holding.id, {
       name: editName.trim(),
       symbolOrFolio: editSymbol.trim() || holding.symbolOrFolio,
@@ -82,8 +92,11 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
       lastPriceUpdated: new Date().toISOString(),
       priceSource: 'Manual Verified Entry',
       couponRatePercent: !isNaN(coupon) ? coupon : holding.couponRatePercent,
+      interestRatePercent: !isNaN(rate) ? rate : holding.interestRatePercent,
       nextCouponDate: editNextCoupon || undefined,
       maturityDate: editMaturity || undefined,
+      monthlyEmiMinor: !isNaN(emiVal) && emiVal > 0 ? MoneyEngine.fromRupees(emiVal).toString() : holding.monthlyEmiMinor,
+      remainingEmiCount: !isNaN(remainVal) ? remainVal : holding.remainingEmiCount,
     });
     setIsEditingAll(false);
   };
@@ -167,7 +180,7 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
                 />
               </label>
               <label className="block">
-                <span style={{ color: 'var(--muted)' }}>Price per unit (₹)</span>
+                <span style={{ color: 'var(--muted)' }}>{holding.category === 'LIABILITY' ? 'Outstanding (₹)' : 'Price per unit (₹)'}</span>
                 <input
                   type="number"
                   step="any"
@@ -206,6 +219,53 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
                       type="date"
                       value={editMaturity}
                       onChange={e => setEditMaturity(e.target.value)}
+                      className="w-full mt-1 px-3 py-2 rounded-xl border"
+                      style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--text)' }}
+                    />
+                  </label>
+                </>
+              )}
+              {holding.category === 'LIABILITY' && (
+                <>
+                  <label className="block">
+                    <span style={{ color: 'var(--muted)' }}>Monthly EMI (₹)</span>
+                    <input
+                      type="number"
+                      step="any"
+                      value={editEmi}
+                      onChange={e => setEditEmi(e.target.value)}
+                      className="w-full mt-1 px-3 py-2 rounded-xl border"
+                      style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--text)' }}
+                    />
+                  </label>
+                  <label className="block">
+                    <span style={{ color: 'var(--muted)' }}>Interest % a year</span>
+                    <input
+                      type="number"
+                      step="any"
+                      value={editRate}
+                      onChange={e => setEditRate(e.target.value)}
+                      className="w-full mt-1 px-3 py-2 rounded-xl border"
+                      style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--text)' }}
+                    />
+                  </label>
+                  <label className="block">
+                    <span style={{ color: 'var(--muted)' }}>Remaining EMI months</span>
+                    <input
+                      type="number"
+                      step="1"
+                      value={editRemaining}
+                      onChange={e => setEditRemaining(e.target.value)}
+                      className="w-full mt-1 px-3 py-2 rounded-xl border"
+                      style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--text)' }}
+                    />
+                  </label>
+                  <label className="block">
+                    <span style={{ color: 'var(--muted)' }}>Next EMI date</span>
+                    <input
+                      type="date"
+                      value={editNextCoupon}
+                      onChange={e => setEditNextCoupon(e.target.value)}
                       className="w-full mt-1 px-3 py-2 rounded-xl border"
                       style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--text)' }}
                     />
@@ -284,6 +344,85 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
           {field('Advisor', holding.advisor)}
           {acct?.nominee && field('Family note (not the registrar nominee)', acct.nominee)}
         </div>
+
+        {holding.category === 'LIABILITY' && (
+          <div className="p-4 rounded-2xl border space-y-3" style={{ borderColor: 'var(--border)' }}>
+            <div className="text-sm font-bold">Loan EMI</div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+              {holding.monthlyEmiMinor && (
+                <div>
+                  <div className="text-xs" style={{ color: 'var(--muted)' }}>Monthly EMI</div>
+                  <PrivacyValue minor={BigInt(holding.monthlyEmiMinor)} includePaise={false} className="font-semibold" />
+                </div>
+              )}
+              {holding.interestRatePercent != null && (
+                <div>
+                  <div className="text-xs" style={{ color: 'var(--muted)' }}>Interest</div>
+                  <div className="font-semibold">{holding.interestRatePercent}% a year</div>
+                </div>
+              )}
+              {holding.remainingEmiCount != null && (
+                <div>
+                  <div className="text-xs" style={{ color: 'var(--muted)' }}>Remaining</div>
+                  <div className="font-semibold">{holding.remainingEmiCount} months</div>
+                </div>
+              )}
+              {holding.nextCouponDate && (
+                <div>
+                  <div className="text-xs" style={{ color: 'var(--muted)' }}>Next EMI</div>
+                  <div className="font-semibold">{formatCalendarDate(holding.nextCouponDate)}</div>
+                </div>
+              )}
+              <div>
+                <div className="text-xs" style={{ color: 'var(--muted)' }}>Status</div>
+                <div className="font-semibold">
+                  {holding.emiStatus === 'PAUSED' ? 'Paused' : holding.emiStatus === 'STOPPED' ? 'Stopped' : 'Paying'}
+                </div>
+              </div>
+            </div>
+            <p className="text-[11px]" style={{ color: 'var(--muted)' }}>
+              While Paying, each due EMI is written into the record book when you open the vault, and outstanding falls by the EMI amount.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {holding.emiStatus !== 'PAYING' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const asOf = new Date().toISOString().slice(0, 10);
+                    updateHolding(holding.id, {
+                      emiStatus: 'PAYING' as EmiStatus,
+                      nextCouponDate: resumeEmiDate(holding.nextCouponDate, asOf),
+                    });
+                  }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold border"
+                  style={{ borderColor: 'var(--border)' }}
+                >
+                  Resume EMI
+                </button>
+              )}
+              {holding.emiStatus !== 'PAUSED' && holding.emiStatus !== 'STOPPED' && (
+                <button
+                  type="button"
+                  onClick={() => updateHolding(holding.id, { emiStatus: 'PAUSED' as EmiStatus })}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold border"
+                  style={{ borderColor: 'var(--border)' }}
+                >
+                  Pause EMI
+                </button>
+              )}
+              {holding.emiStatus !== 'STOPPED' && (
+                <button
+                  type="button"
+                  onClick={() => updateHolding(holding.id, { emiStatus: 'STOPPED' as EmiStatus })}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold border"
+                  style={{ borderColor: 'var(--border)', color: 'var(--bad)' }}
+                >
+                  Stop EMI
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {(holding.nextCouponDate || holding.maturityDate || holding.couponRatePercent || isElss || isGovt) && (
           <div className="p-4 rounded-2xl border space-y-2" style={{ borderColor: 'var(--border)' }}>

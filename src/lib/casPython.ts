@@ -302,6 +302,44 @@ export function formatStatementDate(iso?: string | null): string {
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
+export function formatStatementDateShort(iso?: string | null): string {
+  if (!iso) return '';
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!m) return iso;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+/** Latest periodTo across every statement type for one family member. */
+export function latestAsOfForOwner(state: CasLatestState, ownerId: string): string | null {
+  const owner = state.byOwner[ownerId];
+  if (!owner) return null;
+  let asOf: string | null = null;
+  for (const m of Object.values(owner)) {
+    if (m?.periodTo && (!asOf || m.periodTo > asOf)) asOf = m.periodTo;
+  }
+  return asOf;
+}
+
+export interface MemberStatementAsOf {
+  id: string;
+  name: string;
+  relation?: string;
+  asOf: string;
+}
+
+export function statementAsOfByMember(
+  state: CasLatestState,
+  members: { id: string; name: string; relation?: string }[]
+): MemberStatementAsOf[] {
+  const out: MemberStatementAsOf[] = [];
+  for (const m of members) {
+    const asOf = latestAsOfForOwner(state, m.id);
+    if (asOf) out.push({ id: m.id, name: m.name, relation: m.relation, asOf });
+  }
+  return out;
+}
+
 /** Indian grouping for a rupee amount that still has paise. */
 export function formatInrAmount(n: number): string {
   if (!Number.isFinite(n)) return '₹ 0.00';

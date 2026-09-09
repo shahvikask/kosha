@@ -155,7 +155,7 @@ export function metricsOf(
   return { qty, price, value, cost, gain: value - cost };
 }
 
-export type UpcomingKind = 'SGB_COUPON' | 'MATURITY' | 'GOAL';
+export type UpcomingKind = 'SGB_COUPON' | 'MATURITY' | 'GOAL' | 'EMI';
 
 export interface UpcomingItem {
   id: string;
@@ -172,11 +172,22 @@ export function upcomingFromHoldings(
 ): UpcomingItem[] {
   const out: UpcomingItem[] = [];
   for (const h of holdings) {
-    if (h.nextCouponDate && h.nextCouponDate >= asOf) {
+    if (h.category === 'LIABILITY' && h.nextCouponDate && h.nextCouponDate >= asOf && h.emiStatus !== 'STOPPED') {
+      out.push({
+        id: `e_${h.id}`,
+        date: h.nextCouponDate,
+        title: `EMI due · ${displayHoldingName(h.name)}`,
+        kind: 'EMI',
+        holdingId: h.id,
+      });
+    } else if (h.category !== 'LIABILITY' && h.nextCouponDate && h.nextCouponDate >= asOf) {
       out.push({
         id: `c_${h.id}`,
         date: h.nextCouponDate,
-        title: `Gold bond interest · ${displayHoldingName(h.name)}`,
+        title:
+          h.category === 'GOLD_SGB'
+            ? `Gold bond interest · ${displayHoldingName(h.name)}`
+            : `Interest · ${displayHoldingName(h.name)}`,
         kind: 'SGB_COUPON',
         holdingId: h.id,
       });
@@ -187,7 +198,9 @@ export function upcomingFromHoldings(
           ? 'Gold bond matures'
           : h.category === 'FIXED_INCOME'
             ? 'Matures'
-            : 'Lock-in ends';
+            : h.category === 'LIABILITY'
+              ? 'Loan ends'
+              : 'Lock-in ends';
       out.push({
         id: `m_${h.id}`,
         date: h.maturityDate,

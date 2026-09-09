@@ -55,7 +55,7 @@ export const HoldingsScreen: React.FC<Props> = ({ onOpenAddHolding, onOpenHoldin
           className="px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-1.5"
           style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}
         >
-          <Plus className="w-4 h-4" /> Add by hand
+          <Plus className="w-4 h-4" /> Add manually
         </button>
       </div>
 
@@ -82,7 +82,7 @@ export const HoldingsScreen: React.FC<Props> = ({ onOpenAddHolding, onOpenHoldin
       {rows.length === 0 ? (
         <div className="card p-8 text-center text-sm" style={{ color: 'var(--muted)' }}>
           {filteredHoldings.length === 0
-            ? 'Nothing here yet. Read a statement or add PPF / property by hand.'
+            ? 'Nothing here yet. Read a statement or add PPF / property manually.'
             : 'No holding matches that search.'}
         </div>
       ) : (

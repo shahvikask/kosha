@@ -13,6 +13,8 @@ export type AssetCategory =
   | 'CASH_BANK'
   | 'LIABILITY';
 
+export type EmiStatus = 'PAYING' | 'PAUSED' | 'STOPPED';
+
 export interface CategoryInfo {
   id: AssetCategory;
   name: string;
@@ -96,6 +98,17 @@ export const ASSET_CATEGORIES: Record<AssetCategory, CategoryInfo> = {
     isLiability: true,
     color: '#e11d48', // Rose
   },
+};
+
+export const ASSET_SUBCATEGORIES: Record<AssetCategory, string[]> = {
+  EQUITY: ['Large cap', 'Mid cap', 'Small cap', 'Multi & flexi cap', 'Sector & thematic', 'Other'],
+  MUTUAL_FUND: ['Equity fund', 'Debt fund', 'Hybrid fund', 'Index / ETF', 'ELSS (tax saving)', 'Other'],
+  GOLD_SGB: ['Sovereign Gold Bond', 'Physical gold (24K)', 'Digital gold', 'Other'],
+  FIXED_INCOME: ['PPF', 'EPF', 'NPS', 'Sukanya Samriddhi (SSY)', 'Bank FD', 'Bond / GOI', 'Other'],
+  REAL_ESTATE: ['Residential', 'Commercial', 'Land', 'REIT', 'Other'],
+  SPECIALISED: ['PMS', 'AIF', 'Unlisted equity', 'Other'],
+  CASH_BANK: ['Savings account', 'Current account', 'Liquid / overnight', 'Other'],
+  LIABILITY: ['Home loan', 'Car loan', 'Education loan', 'Personal loan', 'Other'],
 };
 
 export type FamilyRelation = 'Self' | 'Spouse' | 'Parent' | 'Child' | 'HUF' | 'Joint';
@@ -191,6 +204,9 @@ export interface Holding {
   institutionName?: string;
   accountNumberMasked?: string;
   monthlyEmiMinor?: string;
+  /** Paying = auto EMI on vault open. Paused / Stopped skip catch-up. */
+  emiStatus?: EmiStatus;
+  remainingEmiCount?: number;
 
   lastPriceUpdated: string;
   isPriceStale: boolean;

@@ -7,7 +7,8 @@ import { classifyHolding, EXPOSURES, WRAPPERS, exposureLabel, l2Label } from './
 import { resolveSplit, apportion, buildTree, isHybrid, activeWrappers } from './lookthrough';
 import { LedgerEvent, Holding } from '../types';
 import { eventLabel, bucketOf, upcomingFromHoldings, displayHoldingName, accountTitle, inferAmcFromSchemeName } from './holdingView';
-import { formatStatementDate } from './casPython';
+import { formatStatementDate, latestAsOfForOwner, statementAsOfByMember, parseCasLatest } from './casPython';
+import { addCalendarMonths, dueEmiDates, planEmiCatchUp, resumeEmiDate } from './emi';
 import { findMatchingHolding, holdingIdentityKey } from './matchHolding';
 import { StatementImportRecord } from '../types';
 
@@ -292,6 +293,51 @@ eq('generic custodian uses AMC field', accountTitle('Mutual Fund Folios', [{amc:
 eq('generic custodian infers from scheme', accountTitle('Mutual Fund Folios', [{name:'MURG - Edelweiss Multi Cap Fund'}], 'MF_FOLIO'), 'Edelweiss');
 eq('demat keeps broker name', accountTitle('RAISE SECURITIES PRIVATE LIMITED', [{name:'HDFC Bank Ltd'}], 'DEMAT'), 'RAISE SECURITIES PRIVATE LIMITED');
 eq('empty mf fallback', accountTitle('Mutual Fund Folios', [], 'MF_FOLIO'), 'Mutual fund folio');
+
+console.log('\n--- N. Statement as-of is per family member ---');
+const casState = parseCasLatest(JSON.stringify({
+  asOf: '2026-02-28',
+  byOwner: {
+    fam_1: { CDSL: { fileType: 'CDSL', filename: 'a.pdf', pdfGrandTotal: 1, parsedGrandTotal: 1, complete: true, periodTo: '2026-01-31' } },
+    fam_2: { CDSL: { fileType: 'CDSL', filename: 'b.pdf', pdfGrandTotal: 1, parsedGrandTotal: 1, complete: true, periodTo: '2026-02-28' } },
+    fam_3: { CAMS: { fileType: 'CAMS', filename: 'c.pdf', pdfGrandTotal: 1, parsedGrandTotal: 1, complete: true, periodTo: '2026-01-31' } },
+  },
+}));
+eq('global max still Feb', casState.asOf, '2026-02-28');
+eq('self is Jan', latestAsOfForOwner(casState, 'fam_1'), '2026-01-31');
+eq('spouse is Feb', latestAsOfForOwner(casState, 'fam_2'), '2026-02-28');
+eq('unknown owner null', latestAsOfForOwner(casState, 'fam_x') == null, true);
+const listed = statementAsOfByMember(casState, [
+  { id: 'fam_1', name: 'Vikas' },
+  { id: 'fam_2', name: 'Nancy' },
+  { id: 'fam_3', name: 'HUF' },
+]);
+eq('three profiles listed', listed.map(x => x.name + ':' + x.asOf).join('|'), 'Vikas:2026-01-31|Nancy:2026-02-28|HUF:2026-01-31');
+
+console.log('\n--- O. Loan EMI catch-up ---');
+eq('Jan 31 plus 1 month', addCalendarMonths('2026-01-31', 1), '2026-02-28');
+eq('due dates three months', dueEmiDates('2026-03-05', 3, '2026-05-10').join(','), '2026-03-05,2026-04-05,2026-05-05');
+eq('future EMI not due', dueEmiDates('2026-10-05', 12, '2026-09-09').join(','), '');
+const loan: Holding = {
+  ...hold('loan1', 'LIABILITY', 1, 850000, 612000, 'Car loan'),
+  name: 'HDFC Car Loan',
+  monthlyEmiMinor: String(18500 * 10000),
+  remainingEmiCount: 6,
+  nextCouponDate: '2026-07-05',
+  emiStatus: 'PAYING',
+};
+const julyPlan = planEmiCatchUp(loan, '2026-09-09');
+eq('posts Jul Aug Sep', julyPlan && julyPlan.events.map(e => e.eventDate).join(','), '2026-07-05,2026-08-05,2026-09-05');
+eq('remaining after 3', julyPlan && julyPlan.remainingEmiCount, 3);
+eq('outstanding minus 3 EMIs', julyPlan && Number(julyPlan.outstandingMinor) / 10000, 612000 - 18500 * 3);
+eq('next EMI Oct', julyPlan && julyPlan.nextCouponDate, '2026-10-05');
+const paused = planEmiCatchUp({ ...loan, emiStatus: 'PAUSED' }, '2026-09-09');
+eq('paused posts nothing', paused, null);
+const skipped = planEmiCatchUp(loan, '2026-09-09', ['2026-07-05']);
+eq('skips already posted Jul', skipped && skipped.events.map(e => e.eventDate).join(','), '2026-08-05,2026-09-05');
+eq('resume jumps past gap', resumeEmiDate('2026-07-05', '2026-09-09'), '2026-10-05');
+const emiUp = upcomingFromHoldings([{ ...loan, nextCouponDate: '2026-10-05' }], []);
+eq('upcoming EMI not gold-bond', emiUp.some(i => i.kind === 'EMI' && i.title.includes('HDFC Car Loan')), true);
 
 console.log('\n--- H. Encryption ---');
 (async()=>{

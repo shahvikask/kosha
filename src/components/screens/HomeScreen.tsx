@@ -95,7 +95,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         </div>
         <div className="mt-3 text-xs" style={{ color: 'var(--muted)' }}>
           {lastStatementAsOf
-            ? 'Figures follow your last confirmed statement, plus anything you typed by hand.'
+            ? 'Figures follow your last confirmed statement, plus anything you added manually.'
             : 'Import a CDSL, NSDL, CAMS or KFintech PDF to fill this in.'}
         </div>
       </div>
@@ -135,7 +135,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               hint="CDSL, CAMS, KFin"
               onClick={() => setActiveScreen('DOCUMENTS')}
             />
-            <Action title="Add by hand" hint="PPF, home, gold" onClick={onOpenAddHolding} />
+            <Action title="Add manually" hint="PPF, home, gold" onClick={onOpenAddHolding} />
             <Action title="See holdings" hint="Search by name" onClick={() => setActiveScreen('HOLDINGS')} />
             <Action title="Demat & folios" hint="Where it sits" onClick={() => setActiveScreen('ACCOUNTS')} />
           </div>

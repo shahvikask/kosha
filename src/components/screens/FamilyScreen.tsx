@@ -473,7 +473,7 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
           <Target className="w-4 h-4" /> Goals
         </h2>
         <p className="text-xs" style={{ color: 'var(--muted)' }}>
-          Name a goal (child’s college, house, retirement). Tag holdings with the same name when you add them by hand.
+          Name a goal (child’s college, house, retirement). Tag holdings with the same name when you add them manually.
         </p>
         {goals.length === 0 && (
           <p className="text-sm" style={{ color: 'var(--muted)' }}>

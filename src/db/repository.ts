@@ -14,6 +14,7 @@ import {
   SCHEMA_V1,
   SCHEMA_VERSION,
   SCHEMA_V3_COLUMNS,
+  SCHEMA_V4_COLUMNS,
   LEDGER_NO_DELETE_TRIGGER,
 } from './schema';
 import { LedgerEvent, Holding, FamilyMember, FamilyRelation, isPrimaryFamilyMember, DematOrFolioAccount, FamilyGoal, ImportBatchInfo } from '../types';
@@ -38,7 +39,10 @@ export class Repository {
     const current = rows.length ? Number(rows[0].value) : 0;
 
     if (current < 3) {
-      await this.applyV3Columns();
+      await this.applyColumns(SCHEMA_V3_COLUMNS);
+    }
+    if (current < 4) {
+      await this.applyColumns(SCHEMA_V4_COLUMNS);
     }
 
     if (rows.length === 0) {
@@ -50,10 +54,10 @@ export class Repository {
     }
   }
 
-  private async applyV3Columns(): Promise<void> {
-    for (const [table, column, ddl] of SCHEMA_V3_COLUMNS) {
-      const cols = await this.db.query<{ name: string }>(`PRAGMA table_info(${table})`);
-      if (cols.some(c => c.name === column)) continue;
+  private async applyColumns(cols: [string, string, string][]): Promise<void> {
+    for (const [table, column, ddl] of cols) {
+      const info = await this.db.query<{ name: string }>(`PRAGMA table_info(${table})`);
+      if (info.some(c => c.name === column)) continue;
       await this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
     }
   }
@@ -99,6 +103,14 @@ export class Repository {
   async appendEvents(events: LedgerEvent[]): Promise<void> {
     await this.db.transaction(async () => {
       for (const e of events) await this.appendEvent(e);
+    });
+  }
+
+  /** Append EMI repayments and persist the reduced outstanding in one commit. */
+  async commitEmiCatchUp(holding: Holding, events: LedgerEvent[]): Promise<void> {
+    await this.db.transaction(async () => {
+      for (const e of events) await this.appendEvent(e);
+      await this.upsertHolding(holding);
     });
   }
 
@@ -172,8 +184,9 @@ export class Repository {
          benchmark_price_minor, issue_price_minor, sgb_valuation_mode, last_price_updated,
          price_source, needs_review, review_reasons, institution_name, account_number_masked,
          notes, location, tag, tags_json, coupon_rate_bps, interest_rate_bps,
-         maturity_date, next_coupon_date, monthly_emi_minor, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         maturity_date, next_coupon_date, monthly_emi_minor, emi_status,
+         remaining_emi_count, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON CONFLICT(holding_id) DO UPDATE SET
          account_id=COALESCE(excluded.account_id, holding.account_id),
          current_price_minor=excluded.current_price_minor,
@@ -193,8 +206,10 @@ export class Repository {
          coupon_rate_bps=COALESCE(excluded.coupon_rate_bps, holding.coupon_rate_bps),
          interest_rate_bps=COALESCE(excluded.interest_rate_bps, holding.interest_rate_bps),
          maturity_date=COALESCE(excluded.maturity_date, holding.maturity_date),
-         next_coupon_date=COALESCE(excluded.next_coupon_date, holding.next_coupon_date),
-         monthly_emi_minor=COALESCE(excluded.monthly_emi_minor, holding.monthly_emi_minor)`,
+         next_coupon_date=excluded.next_coupon_date,
+         monthly_emi_minor=COALESCE(excluded.monthly_emi_minor, holding.monthly_emi_minor),
+         emi_status=excluded.emi_status,
+         remaining_emi_count=excluded.remaining_emi_count`,
       [h.id, h.id, h.ownerId, h.accountId ?? null, h.currentPriceMinor ?? '0',
        h.benchmarkPriceMinor ?? null, h.issuePriceMinor ?? null, null,
        h.lastPriceUpdated ?? null, h.priceSource ?? null,
@@ -205,7 +220,8 @@ export class Repository {
        h.tags ? JSON.stringify(h.tags) : null,
        toBps(h.couponRatePercent), toBps(h.interestRatePercent),
        h.maturityDate ?? null, h.nextCouponDate ?? null,
-       h.monthlyEmiMinor ?? null,
+       h.monthlyEmiMinor ?? null, h.emiStatus ?? null,
+       h.remainingEmiCount ?? null,
        new Date().toISOString()] as SqlValue[]);
   }
 
@@ -217,6 +233,7 @@ export class Repository {
               h.institution_name, h.account_number_masked, h.notes AS holding_notes,
               h.location, h.tag, h.tags_json, h.coupon_rate_bps, h.interest_rate_bps,
               h.maturity_date, h.next_coupon_date, h.monthly_emi_minor,
+              h.emi_status, h.remaining_emi_count,
               i.name, i.category, i.sub_category, i.symbol_or_folio, i.isin,
               i.exposure_node, i.l2_node, i.wrapper, i.allocation_split,
               i.fmv_31jan2018_minor, i.amc, i.rta, i.amfi_code, i.advisor,
@@ -568,6 +585,10 @@ function rowToHolding(r: Record<string, SqlValue>): Holding {
     maturityDate: r.maturity_date ? s(r.maturity_date) : undefined,
     nextCouponDate: r.next_coupon_date ? s(r.next_coupon_date) : undefined,
     monthlyEmiMinor: r.monthly_emi_minor ? s(r.monthly_emi_minor) : undefined,
+    emiStatus: r.emi_status ? (s(r.emi_status) as Holding['emiStatus']) : undefined,
+    remainingEmiCount: r.remaining_emi_count != null && r.remaining_emi_count !== ''
+      ? Number(r.remaining_emi_count)
+      : undefined,
     amc: r.amc ? s(r.amc) : undefined,
     rta: r.rta ? s(r.rta) : undefined,
     amfiCode: r.amfi_code ? s(r.amfi_code) : undefined,

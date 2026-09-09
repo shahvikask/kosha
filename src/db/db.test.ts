@@ -25,7 +25,7 @@ const famSpouse:FamilyMember = {id:'f2',name:'Spouse',relation:'Spouse',color:'#
   const drv = new NodeSqlDriver();
   const repo = new Repository(drv);
   await repo.initialise();
-  eq('schema version', await repo.schemaVersion(), 3);
+  eq('schema version', await repo.schemaVersion(), 4);
   const tables = await drv.query<{name:string}>(
     `SELECT name FROM sqlite_master WHERE type='table' ORDER BY name`);
   eq('tables created', tables.length >= 13, true);
@@ -240,6 +240,30 @@ const famSpouse:FamilyMember = {id:'f2',name:'Spouse',relation:'Spouse',color:'#
   const pos = derived.positions.get('h_ok')!;
   eq('ledger qty after confirm', Number(pos.quantityScaled) / 1e8, 1234.56);
   await drv5.close();
+
+  console.log('\n--- O. Loan EMI fields persist on holding ---');
+  const drv6 = new NodeSqlDriver();
+  const repo6 = new Repository(drv6);
+  await repo6.initialise();
+  await repo6.upsertEntity(fam);
+  await repo6.upsertHolding({
+    ...hold('h_loan', 'HDFC Car Loan', 612000),
+    category: 'LIABILITY',
+    subCategory: 'Car loan',
+    monthlyEmiMinor: String(18500 * 10000),
+    remainingEmiCount: 36,
+    emiStatus: 'PAYING',
+    interestRatePercent: 9.25,
+    nextCouponDate: '2026-10-05',
+    institutionName: 'HDFC Bank',
+  } as Holding);
+  const loan = (await repo6.allHoldings()).find(h => h.id === 'h_loan')!;
+  eq('emi amount stored', loan.monthlyEmiMinor, String(18500 * 10000));
+  eq('remaining months stored', loan.remainingEmiCount, 36);
+  eq('emi status stored', loan.emiStatus, 'PAYING');
+  eq('rate stored', loan.interestRatePercent, 9.25);
+  eq('next emi stored', loan.nextCouponDate, '2026-10-05');
+  await drv6.close();
 
   console.log(`\n${pass} passed, ${fail} failed`);
   await drv.close(); await drv2.close();

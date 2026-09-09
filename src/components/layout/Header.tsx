@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useKosha } from '../../context/KoshaContext';
 import { BrandLogo } from '../common/BrandLogo';
-import { formatStatementDate } from '../../lib/casPython';
+import { formatStatementDate, formatStatementDateShort } from '../../lib/casPython';
 import {
   Eye,
   EyeOff,
@@ -27,6 +27,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddHolding, onOpenAddRecor
     theme,
     setTheme,
     lastStatementAsOf,
+    statementAsOfByMember,
     setActiveScreen,
   } = useKosha();
 
@@ -159,7 +160,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddHolding, onOpenAddRecor
                 >
                   <Plus className="w-4 h-4" />
                   <div>
-                    <div className="font-semibold">Add something by hand</div>
+                    <div className="font-semibold">Add manually</div>
                     <div className="text-xs" style={{ color: 'var(--muted)' }}>PPF, property, loan, gold</div>
                   </div>
                 </button>
@@ -183,7 +184,24 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddHolding, onOpenAddRecor
         </div>
       </div>
 
-      {lastStatementAsOf && (
+      {selectedMemberId === 'ALL' && statementAsOfByMember.length > 0 ? (
+        <div
+          className="text-center text-xs py-1.5 border-t px-3"
+          style={{ borderColor: 'var(--border)', color: 'var(--muted)', background: 'var(--app)' }}
+        >
+          The data is up to date until{' '}
+          {statementAsOfByMember.map((m, i) => (
+            <span key={m.id}>
+              {i > 0 ? <span> · </span> : null}
+              <span className="font-medium" style={{ color: 'var(--text)' }}>{m.name}</span>
+              {' '}
+              <span className="font-semibold" style={{ color: 'var(--accent)' }}>
+                {formatStatementDateShort(m.asOf)}
+              </span>
+            </span>
+          ))}
+        </div>
+      ) : lastStatementAsOf ? (
         <div
           className="text-center text-xs py-1.5 border-t"
           style={{ borderColor: 'var(--border)', color: 'var(--muted)', background: 'var(--app)' }}
@@ -193,7 +211,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddHolding, onOpenAddRecor
             {formatStatementDate(lastStatementAsOf)}
           </span>
         </div>
-      )}
+      ) : null}
     </header>
   );
 };

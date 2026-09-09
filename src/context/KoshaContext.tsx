@@ -35,7 +35,11 @@ import {
   EMPTY_CAS_LATEST,
   parseCasLatest,
   upsertCasLatest,
+  latestAsOfForOwner,
+  statementAsOfByMember,
+  MemberStatementAsOf,
 } from '../lib/casPython';
+import { planEmiCatchUp, applyEmiPlan } from '../lib/emi';
 
 interface KoshaContextType {
   familyMembers: FamilyMember[];
@@ -83,6 +87,7 @@ interface KoshaContextType {
     casMeta?: CasImportMeta
   ) => Promise<{ imported: number; updated: number; skipped: number; reconciliationResult?: ReconciliationResult }>;
   lastStatementAsOf: string | null;
+  statementAsOfByMember: MemberStatementAsOf[];
   casLatest: CasLatestState;
   cleanDuplicatesAndHeal: () => Promise<{ mergedCount: number; flaggedCount: number }>;
   exportBackupJson: (passphrase?: string) => Promise<string>;
@@ -103,6 +108,41 @@ export function casAccountId(
   if (!ident) return undefined;
   const slug = ident.replace(/[^A-Za-z0-9]/g, '').slice(0, 24);
   return `acct_${slug || 'x'}`;
+}
+
+function emiEventsFromPlan(holdingId: string, plan: NonNullable<ReturnType<typeof planEmiCatchUp>>): LedgerEvent[] {
+  const now = new Date().toISOString();
+  return plan.events.map(e => ({
+    ...e,
+    id: `ev_emi_${holdingId}_${e.eventDate}`,
+    createdAt: now,
+  }));
+}
+
+async function catchUpHoldings(
+  r: Repository,
+  holdings: Holding[],
+  events: LedgerEvent[],
+  asOf: string
+): Promise<{ holdings: Holding[]; events: LedgerEvent[] }> {
+  const extra: LedgerEvent[] = [];
+  const next: Holding[] = [];
+  for (const h of holdings) {
+    const posted = events
+      .filter(e => e.holdingId === h.id && e.eventType === 'REPAYMENT')
+      .map(e => e.eventDate);
+    const plan = planEmiCatchUp(h, asOf, posted);
+    if (!plan) {
+      next.push(h);
+      continue;
+    }
+    const rows = emiEventsFromPlan(h.id, plan);
+    const updated = applyEmiPlan(h, plan);
+    await r.commitEmiCatchUp(updated, rows);
+    extra.push(...rows);
+    next.push(updated);
+  }
+  return { holdings: next, events: extra.length ? [...extra, ...events] : events };
 }
 
 function holdingIdsForImportedRecords(
@@ -205,7 +245,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [selectedMemberId, setSelectedMemberId] = useState<string>('ALL');
   const [isPrivacyMasked, setIsPrivacyMaskedState] = useState<boolean>(false);
   const [sgbValuationMode, setSgbValuationModeState] = useState<'MARKET_TRADED' | 'RBI_BENCHMARK'>('MARKET_TRADED');
-  const [theme, setThemeState] = useState<ThemeName>(() => readStoredTheme() || 'dark');
+  const [theme, setThemeState] = useState<ThemeName>(() => readStoredTheme() || 'light');
   const [activeScreen, setActiveScreen] = useState<AppScreen>('HOME');
   const [casLatest, setCasLatest] = useState<CasLatestState>(EMPTY_CAS_LATEST);
   const [accounts, setAccounts] = useState<DematOrFolioAccount[]>([]);
@@ -287,8 +327,10 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
 
         setFamilyMembers(entities);
-        setHoldings(currentHoldings);
-        setLedgerEvents(currentEvents);
+        const asOf = new Date().toISOString().slice(0, 10);
+        const caught = await catchUpHoldings(r, currentHoldings, currentEvents, asOf);
+        setHoldings(caught.holdings);
+        setLedgerEvents(caught.events);
         setCasLatest(parseCasLatest(await r.getMeta('cas_latest')));
         setAccounts(await r.allAccounts());
         setGoals(await r.allGoals());
@@ -461,9 +503,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (repo) {
       await repo.upsertHolding(newHolding);
     }
-    setHoldings(prev => [newHolding, ...prev]);
 
-    // Append initial BUY or opening event into append-only ledger
     const initialAmount = (BigInt(holdingData.quantityScaled) * BigInt(holdingData.averageCostPerUnitMinor)) / QTY_SCALE;
     await appendLedgerEvent({
       holdingId: newId,
@@ -477,7 +517,19 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       notes: 'Initial holding record creation',
     });
 
-    return newHolding;
+    let saved = newHolding;
+    if (holdingData.category === 'LIABILITY' && repo) {
+      const plan = planEmiCatchUp(newHolding, new Date().toISOString().slice(0, 10));
+      if (plan) {
+        const rows = emiEventsFromPlan(newId, plan);
+        saved = applyEmiPlan(newHolding, plan);
+        await repo.commitEmiCatchUp(saved, rows);
+        setLedgerEvents(prev => [...rows, ...prev]);
+      }
+    }
+
+    setHoldings(prev => [saved, ...prev.filter(h => h.id !== newId)]);
+    return saved;
   };
 
   const updateHolding = async (id: string, updates: Partial<Holding>): Promise<void> => {
@@ -1234,7 +1286,11 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         deleteFamilyMember,
         computeTaxSummary,
         importStatementRecords,
-        lastStatementAsOf: casLatest.asOf,
+        lastStatementAsOf:
+          selectedMemberId === 'ALL'
+            ? casLatest.asOf
+            : latestAsOfForOwner(casLatest, selectedMemberId),
+        statementAsOfByMember: statementAsOfByMember(casLatest, familyMembers),
         casLatest,
         cleanDuplicatesAndHeal,
         exportBackupJson,
