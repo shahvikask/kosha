@@ -4,10 +4,6 @@
   "description": "GrowUrDhan desktop vault",
   "windows": ["main"],
   "permissions": [
-    "core:default",
-    "allow-sql-open",
-    "allow-sql-exec",
-    "allow-sql-query",
-    "allow-sql-close"
+    "core:default"
   ]
 }
