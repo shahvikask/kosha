@@ -9,6 +9,7 @@ import { LedgerEvent, Holding } from '../types';
 import { eventLabel, bucketOf, upcomingFromHoldings, displayHoldingName, accountTitle, inferAmcFromSchemeName, looksLikeSgb, metricsOf } from './holdingView';
 import { formatStatementDate, latestAsOfForOwner, statementAsOfByMember, parseCasLatest } from './casPython';
 import { addCalendarMonths, dueEmiDates, planEmiCatchUp, resumeEmiDate } from './emi';
+import { absoluteReturnPct, cagrPct, incomeByFinancialYear, buildGrowthModel, firstActivityDate, formatPct } from './growth';
 import { checkImportPan, pansMatch, panBlocksCommit, findDuplicatePanMember, panFingerprint } from './pan';
 import { applyCatalogPrices, catalogToListed, searchListed, isEodPriceSource } from './eodPrices';
 import { findMatchingHolding, holdingIdentityKey } from './matchHolding';
@@ -393,6 +394,36 @@ eq('loan original amount', Number(lm.cost) / 10000, 850000);
 eq('loan has no share-style gain', lm.gain, 0n);
 eq('loan recorded label', eventLabel('VALUATION_UPDATE', 'Loan recorded — outstanding at start'), 'Loan recorded');
 eq('repayment label', eventLabel('REPAYMENT'), 'Loan repayment');
+
+console.log('\n--- S. Growth engine ---');
+eq('absolute 50%', Math.round(absoluteReturnPct(1_000_000_000n, 1_500_000_000n)!), 50);
+eq('cagr ~10% over 2y', Math.round(cagrPct(1_000_000_000n, 1_210_000_000n, '2024-09-10', '2026-09-10')!), 10);
+eq('cagr refuses short window', cagrPct(1_000_000_000n, 1_100_000_000n, '2026-09-01', '2026-09-10'), null);
+eq('format pct', formatPct(12.54), '+12.5%');
+eq('FY of May is next label', financialYearOf('2026-05-01'), '2026-27');
+const divEv = ev('dv1','DIVIDEND','2026-05-10',1,5000,'h_g');
+const inc = incomeByFinancialYear([divEv], new Map());
+eq('dividend in FY 2026-27', inc[0]?.fy, '2026-27');
+eq('dividend amount', Number(inc[0]?.dividendMinor)/10000, 5000);
+eq('first date', firstActivityDate([ev('a','BUY','2025-01-02',1,1), ev('b','BUY','2024-06-01',1,1)]), '2024-06-01');
+const gh = hold('h_g','EQUITY',10,100,150);
+const openEv: LedgerEvent = {
+  ...ev('op1','OPENING_BALANCE','2024-09-10',10,100,'h_g'),
+};
+const gDer = derivePositions([openEv], [gh]);
+const gModel = buildGrowthModel(
+  [gh],
+  [openEv],
+  gDer,
+  [{ id:'f1', name:'Vikas', relation:'Self', color:'#f59e0b', isPrimary:true }],
+  'MARKET_TRADED',
+  '2026-09-10',
+);
+eq('growth assets', Number(gModel.kpis.assetsMinor)/10000, 1500);
+eq('growth invested', Number(gModel.kpis.investedMinor)/10000, 1000);
+eq('growth abs +50%', Math.round(gModel.kpis.absoluteReturnPct || 0), 50);
+eq('shares slice present', gModel.buckets.some(s => s.id === 'SHARES'), true);
+eq('xirr not null with opening', gModel.kpis.xirrPct == null, false);
 
 console.log('\n--- H. Encryption ---');
 (async()=>{

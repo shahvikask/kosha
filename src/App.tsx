@@ -4,6 +4,7 @@ import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
 import { StatusBar } from './components/layout/StatusBar';
 import { HomeScreen } from './components/screens/HomeScreen';
+import { GrowthScreen } from './components/screens/GrowthScreen';
 import { HoldingsScreen } from './components/screens/HoldingsScreen';
 import { AccountsScreen } from './components/screens/AccountsScreen';
 import { DocumentsScreen } from './components/screens/DocumentsScreen';
@@ -109,6 +110,9 @@ const KoshaMainApp: React.FC = () => {
               onOpenAddRecord={() => handleOpenAddRecord()}
               onOpenHoldingDetail={id => setSelectedHoldingIdForDetail(id)}
             />
+          )}
+          {activeScreen === 'GROWTH' && (
+            <GrowthScreen onOpenHoldingDetail={id => setSelectedHoldingIdForDetail(id)} />
           )}
           {activeScreen === 'HOLDINGS' && (
             <HoldingsScreen
