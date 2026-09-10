@@ -12,10 +12,11 @@ import { AddHoldingModal } from './components/modals/AddHoldingModal';
 import { AddRecordModal } from './components/modals/AddRecordModal';
 import { HoldingDetailModal } from './components/modals/HoldingDetailModal';
 import { EmergencySheetModal } from './components/modals/EmergencySheetModal';
+import { AuthScreen } from './components/screens/AuthScreen';
 import { AlertTriangle, CheckCircle2, RefreshCw, X } from 'lucide-react';
 
 const KoshaMainApp: React.FC = () => {
-  const { activeScreen, dbReady, dbError, migration } = useKosha();
+  const { activeScreen, dbReady, dbError, migration, account, unlocked, mustRotatePassword } = useKosha();
 
   const [isAddHoldingOpen, setIsAddHoldingOpen] = useState(false);
   const [isAddRecordOpen, setIsAddRecordOpen] = useState(false);
@@ -61,6 +62,10 @@ const KoshaMainApp: React.FC = () => {
         <div className="text-lg font-bold tracking-wide animate-pulse">Opening your records...</div>
       </div>
     );
+  }
+
+  if (!account || !unlocked || mustRotatePassword) {
+    return <AuthScreen />;
   }
 
   return (

@@ -13,7 +13,7 @@
  * casparser emits (CDSL, NSDL, CAMS, KFin) has a home.
  */
 
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 export const SCHEMA_V1 = `
 PRAGMA foreign_keys = ON;
@@ -366,4 +366,26 @@ CREATE TABLE IF NOT EXISTS listed_security (
 CREATE INDEX IF NOT EXISTS ix_listed__symbol ON listed_security(symbol);
 CREATE INDEX IF NOT EXISTS ix_listed__name ON listed_security(name);
 CREATE INDEX IF NOT EXISTS ix_listed__cat ON listed_security(category);
+`;
+
+/** Local login (one owner). Password stored as PBKDF2 hash only. */
+export const SCHEMA_V6_SQL = `
+CREATE TABLE IF NOT EXISTS vault_account (
+  id                    TEXT PRIMARY KEY,
+  email                 TEXT NOT NULL UNIQUE,
+  first_name            TEXT NOT NULL,
+  last_name             TEXT NOT NULL,
+  password_salt         TEXT NOT NULL,
+  password_hash         TEXT NOT NULL,
+  password_iterations   INTEGER NOT NULL,
+  password_changed_at   TEXT NOT NULL,
+  pan_masked            TEXT,
+  pan_for_statements    TEXT,
+  date_of_birth         TEXT,
+  q1_id                 TEXT NOT NULL,
+  q1_hash               TEXT NOT NULL,
+  q2_id                 TEXT NOT NULL,
+  q2_hash               TEXT NOT NULL,
+  created_at            TEXT NOT NULL
+);
 `;

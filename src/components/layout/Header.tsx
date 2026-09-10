@@ -11,6 +11,7 @@ import {
   Moon,
   ArrowRightLeft,
   RefreshCw,
+  Lock,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -33,6 +34,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddHolding, onOpenAddRecor
     pricesAsOf,
     pricesRefreshing,
     refreshEodPrices,
+    lockVault,
   } = useKosha();
 
   const [isFamilyDropdownOpen, setIsFamilyDropdownOpen] = useState(false);
@@ -131,6 +133,15 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddHolding, onOpenAddRecor
             title={theme === 'light' ? 'Switch to dark' : 'Switch to light'}
           >
             {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+          </button>
+
+          <button
+            onClick={() => lockVault()}
+            className="p-2 rounded-xl border"
+            style={{ borderColor: 'var(--border)', background: 'var(--card)', color: 'var(--text)' }}
+            title="Lock"
+          >
+            <Lock className="w-4 h-4" />
           </button>
 
           <button

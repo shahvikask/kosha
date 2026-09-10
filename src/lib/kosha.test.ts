@@ -11,6 +11,7 @@ import { formatStatementDate, latestAsOfForOwner, statementAsOfByMember, parseCa
 import { addCalendarMonths, dueEmiDates, planEmiCatchUp, resumeEmiDate } from './emi';
 import { absoluteReturnPct, cagrPct, incomeByFinancialYear, buildGrowthModel, firstActivityDate, formatPct } from './growth';
 import { profileOf, holdingReturn } from './returnMetrics';
+import { titleCaseName, passwordIssues, isValidPan, isValidEmail, normaliseAnswer, needsPasswordRotation, packHash, unpackHash, hashSecret, verifySecret } from './auth';
 import { checkImportPan, pansMatch, panBlocksCommit, findDuplicatePanMember, panFingerprint } from './pan';
 import { applyCatalogPrices, catalogToListed, searchListed, isEodPriceSource } from './eodPrices';
 import { findMatchingHolding, holdingIdentityKey } from './matchHolding';
@@ -445,6 +446,19 @@ const ppfRet = holdingReturn(ppfH, [], derivePositions([], [ppfH]), 'MARKET_TRAD
 eq('PPF primary 7.1', ppfRet.primaryText, '+7.1%');
 eq('AIF is TVPI', profileOf({...hold('a1','SPECIALISED',1,100,150), name:'Cat II AIF'}, [], '2026-09-10').primaryLabel, 'TVPI');
 
+console.log('\n--- U. Local vault login ---');
+eq('title Vikas', titleCaseName('vIKAS'), 'Vikas');
+eq('title last Shah', titleCaseName('SHAH'), 'Shah');
+eq('pw short', passwordIssues('Ab1!').length>0, true);
+eq('pw ok', passwordIssues('Abcd1234!').length, 0);
+eq('pan ok', isValidPan('byaps1234q'), true);
+eq('pan bad', isValidPan('123'), false);
+eq('email ok', isValidEmail('a@b.com'), true);
+eq('answer case', normaliseAnswer('  Blue  Dog '), 'blue dog');
+eq('rotate 181d', needsPasswordRotation(new Date(Date.now()-181*86400000).toISOString()), true);
+eq('rotate fresh', needsPasswordRotation(new Date().toISOString()), false);
+eq('unpack hash', unpackHash(packHash({salt:'s',hash:'h',iterations:3}))?.hash, 'h');
+
 console.log('\n--- H. Encryption ---');
 (async()=>{
   const secret={holdings:[{name:'Reliance',value:389000}],pan:'ABCDE1234F'};
@@ -463,6 +477,9 @@ console.log('\n--- H. Encryption ---');
   eq('tampering detected', tampered, true);
   eq('recovery key format', /^[0-9A-F]{5}(-[0-9A-F]{1,5})+$/.test(generateRecoveryKey()), true);
   eq('PAN masked', maskPan('ABCDE1234F'), 'ABCDE****F');
+  const hashed = await hashSecret('Abcd1234!');
+  eq('password verifies', await verifySecret('Abcd1234!', hashed.salt, hashed.hash, hashed.iterations), true);
+  eq('wrong password fails', await verifySecret('nope', hashed.salt, hashed.hash, hashed.iterations), false);
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail?1:0);

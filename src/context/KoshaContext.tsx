@@ -25,6 +25,22 @@ import { xirr, buildCashFlows, totalGainPercent } from '../lib/returns';
 import { foldHolding, financialYearOf, assessmentYearOf } from '../lib/lots';
 import { derivePositions, DerivedState } from '../lib/positions';
 import { encryptJson, decryptJson, isEncryptedBlob, generateRecoveryKey, maskPan, WrongPassphraseError } from '../lib/vault';
+import {
+  VaultAccountPublic,
+  toPublicAccount,
+  titleCaseName,
+  passwordIssues,
+  isValidPan,
+  isValidEmail,
+  normaliseAnswer,
+  needsPasswordRotation,
+  hashSecret,
+  verifySecret,
+  packHash,
+  unpackHash,
+  writeRememberedEmail,
+  clearRememberedEmail,
+} from '../lib/auth';
 import { ruleSetFor, classifyGain, grandfatheredCostMinor, applyRateMinor } from '../lib/taxRules';
 import { SqliteWasmDriver } from '../db/sqliteWasmDriver';
 import { Repository } from '../db/repository';
@@ -105,6 +121,25 @@ interface KoshaContextType {
   pricesRefreshing: boolean;
   pricesError: string | null;
   refreshEodPrices: () => Promise<void>;
+  account: VaultAccountPublic | null;
+  unlocked: boolean;
+  mustRotatePassword: boolean;
+  registerOwner: (input: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    password: string;
+    pan: string;
+    dateOfBirth: string;
+    q1Id: string;
+    q1Answer: string;
+    q2Id: string;
+    q2Answer: string;
+  }) => Promise<string | null>;
+  login: (email: string, password: string) => Promise<string | null>;
+  lockVault: () => void;
+  changePassword: (oldPassword: string, newPassword: string) => Promise<string | null>;
+  resetWithQuestions: (email: string, a1: string, a2: string, newPassword: string) => Promise<string | null>;
 }
 
 const KoshaContext = createContext<KoshaContextType | null>(null);
@@ -263,6 +298,9 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [pricesAsOf, setPricesAsOf] = useState<string | null>(null);
   const [pricesRefreshing, setPricesRefreshing] = useState(false);
   const [pricesError, setPricesError] = useState<string | null>(null);
+  const [account, setAccount] = useState<VaultAccountPublic | null>(null);
+  const [unlocked, setUnlocked] = useState(false);
+  const [mustRotatePassword, setMustRotatePassword] = useState(false);
 
   useEffect(() => {
     applyTheme(theme);
@@ -364,6 +402,15 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           setPricesAsOf(await r.getMeta('prices_as_of'));
         } catch {
           setListedSecurities([]);
+        }
+        try {
+          const acc = await r.getVaultAccount();
+          if (acc) {
+            setAccount(toPublicAccount(acc));
+            setMustRotatePassword(needsPasswordRotation(acc.passwordChangedAt));
+          }
+        } catch {
+          setAccount(null);
         }
         setRepo(r);
         setDbDriver(driver);
@@ -1263,12 +1310,161 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  const registerOwner = async (input: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    password: string;
+    pan: string;
+    dateOfBirth: string;
+    q1Id: string;
+    q1Answer: string;
+    q2Id: string;
+    q2Answer: string;
+  }): Promise<string | null> => {
+    if (!repo) return 'Vault is not ready.';
+    const firstName = titleCaseName(input.firstName);
+    const lastName = titleCaseName(input.lastName);
+    const email = input.email.trim().toLowerCase();
+    const pan = input.pan.trim().toUpperCase();
+    if (!firstName || !lastName) return 'Enter first and last name.';
+    if (!isValidEmail(email)) return 'Enter a valid email.';
+    const issues = passwordIssues(input.password);
+    if (issues.length) return `Password: ${issues.join(', ')}.`;
+    if (!isValidPan(pan)) return 'PAN must look like ABCDE1234F.';
+    if (!input.dateOfBirth) return 'Enter date of birth.';
+    if (input.q1Id === input.q2Id) return 'Pick two different questions.';
+    const pw = await hashSecret(input.password);
+    const a1 = await hashSecret(normaliseAnswer(input.q1Answer));
+    const a2 = await hashSecret(normaliseAnswer(input.q2Answer));
+    const now = new Date().toISOString();
+    const stored = {
+      email,
+      firstName,
+      lastName,
+      passwordSalt: pw.salt,
+      passwordHash: pw.hash,
+      passwordIterations: pw.iterations,
+      passwordChangedAt: now,
+      panMasked: maskPan(pan),
+      panForStatements: pan,
+      dateOfBirth: input.dateOfBirth,
+      q1Id: input.q1Id,
+      q1Hash: packHash(a1),
+      q2Id: input.q2Id,
+      q2Hash: packHash(a2),
+      createdAt: now,
+    };
+    await repo.saveVaultAccount(stored);
+    const entities = await repo.allEntities();
+    const self = entities.find(e => isPrimaryFamilyMember(e)) || { ...EMPTY_SELF };
+    await repo.upsertEntity({
+      ...self,
+      name: `${firstName} ${lastName}`.trim(),
+      relation: 'Self',
+      isPrimary: true,
+      panMasked: maskPan(pan),
+      panForStatements: pan,
+      dateOfBirth: input.dateOfBirth,
+    });
+    setFamilyMembers(await repo.allEntities());
+    setAccount(toPublicAccount(stored));
+    writeRememberedEmail(email);
+    setUnlocked(true);
+    setMustRotatePassword(false);
+    return null;
+  };
+
+  const login = async (email: string, password: string): Promise<string | null> => {
+    if (!repo) return 'Vault is not ready.';
+    const stored = await repo.getVaultAccount();
+    if (!stored) return 'No account on this computer. Create one first.';
+    if (email.trim().toLowerCase() !== stored.email.toLowerCase()) {
+      return 'Email or password is wrong.';
+    }
+    const ok = await verifySecret(password, stored.passwordSalt, stored.passwordHash, stored.passwordIterations);
+    if (!ok) return 'Email or password is wrong.';
+    writeRememberedEmail(stored.email);
+    setAccount(toPublicAccount(stored));
+    setUnlocked(true);
+    setMustRotatePassword(needsPasswordRotation(stored.passwordChangedAt));
+    return null;
+  };
+
+  const lockVault = () => {
+    setUnlocked(false);
+  };
+
+  const changePassword = async (oldPassword: string, newPassword: string): Promise<string | null> => {
+    if (!repo) return 'Vault is not ready.';
+    const stored = await repo.getVaultAccount();
+    if (!stored) return 'No account.';
+    const ok = await verifySecret(oldPassword, stored.passwordSalt, stored.passwordHash, stored.passwordIterations);
+    if (!ok) return 'Current password is wrong.';
+    const issues = passwordIssues(newPassword);
+    if (issues.length) return `Password: ${issues.join(', ')}.`;
+    if (oldPassword === newPassword) return 'Pick a different new password.';
+    const pw = await hashSecret(newPassword);
+    const next = {
+      ...stored,
+      passwordSalt: pw.salt,
+      passwordHash: pw.hash,
+      passwordIterations: pw.iterations,
+      passwordChangedAt: new Date().toISOString(),
+    };
+    await repo.saveVaultAccount(next);
+    setAccount(toPublicAccount(next));
+    setMustRotatePassword(false);
+    setUnlocked(true);
+    return null;
+  };
+
+  const resetWithQuestions = async (
+    email: string,
+    a1: string,
+    a2: string,
+    newPassword: string,
+  ): Promise<string | null> => {
+    if (!repo) return 'Vault is not ready.';
+    const stored = await repo.getVaultAccount();
+    if (!stored) return 'No account on this computer.';
+    if (email.trim().toLowerCase() !== stored.email.toLowerCase()) {
+      return 'Those answers did not match.';
+    }
+    const p1 = unpackHash(stored.q1Hash);
+    const p2 = unpackHash(stored.q2Hash);
+    if (!p1 || !p2) return 'Security questions are missing. Start over from Family.';
+    const ok1 = await verifySecret(normaliseAnswer(a1), p1.salt, p1.hash, p1.iterations);
+    const ok2 = await verifySecret(normaliseAnswer(a2), p2.salt, p2.hash, p2.iterations);
+    if (!ok1 || !ok2) return 'Those answers did not match.';
+    const issues = passwordIssues(newPassword);
+    if (issues.length) return `Password: ${issues.join(', ')}.`;
+    const pw = await hashSecret(newPassword);
+    const next = {
+      ...stored,
+      passwordSalt: pw.salt,
+      passwordHash: pw.hash,
+      passwordIterations: pw.iterations,
+      passwordChangedAt: new Date().toISOString(),
+    };
+    await repo.saveVaultAccount(next);
+    setAccount(toPublicAccount(next));
+    setMustRotatePassword(false);
+    setUnlocked(true);
+    writeRememberedEmail(stored.email);
+    return null;
+  };
+
   const startOver = async (): Promise<void> => {
     if (repo) {
       await repo.wipeVaultKeepSelf();
+      await repo.deleteVaultAccount();
       const remaining = await repo.allEntities();
       if (!remaining.some(e => isPrimaryFamilyMember(e))) {
         await repo.upsertEntity(EMPTY_SELF);
+      } else {
+        const self = remaining.find(e => isPrimaryFamilyMember(e))!;
+        await repo.upsertEntity({ ...self, name: 'You', panMasked: undefined, panForStatements: undefined, dateOfBirth: undefined });
       }
       await repo.setMeta('cas_latest', JSON.stringify(EMPTY_CAS_LATEST));
       setFamilyMembers(await repo.allEntities());
@@ -1287,6 +1483,10 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
     setCasLatest(EMPTY_CAS_LATEST);
     setSelectedMemberId('ALL');
+    setAccount(null);
+    setUnlocked(false);
+    setMustRotatePassword(false);
+    clearRememberedEmail();
   };
 
   const upsertGoal = async (
@@ -1424,6 +1624,14 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         pricesRefreshing,
         pricesError,
         refreshEodPrices,
+        account,
+        unlocked,
+        mustRotatePassword,
+        registerOwner,
+        login,
+        lockVault,
+        changePassword,
+        resetWithQuestions,
       }}
     >
       {children}

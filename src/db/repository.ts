@@ -16,9 +16,11 @@ import {
   SCHEMA_V3_COLUMNS,
   SCHEMA_V4_COLUMNS,
   SCHEMA_V5_SQL,
+  SCHEMA_V6_SQL,
   LEDGER_NO_DELETE_TRIGGER,
 } from './schema';
 import { LedgerEvent, Holding, FamilyMember, FamilyRelation, isPrimaryFamilyMember, DematOrFolioAccount, FamilyGoal, ImportBatchInfo, ListedSecurity } from '../types';
+import { VaultAccount } from '../lib/auth';
 
 function toBps(percent: number | undefined | null): number | null {
   if (percent === undefined || percent === null || Number.isNaN(percent)) return null;
@@ -47,6 +49,9 @@ export class Repository {
     }
     if (current < 5) {
       await this.db.exec(SCHEMA_V5_SQL);
+    }
+    if (current < 6) {
+      await this.db.exec(SCHEMA_V6_SQL);
     }
 
     if (rows.length === 0) {
@@ -352,6 +357,11 @@ export class Repository {
       await this.db.exec(
         `DELETE FROM entity WHERE is_primary = 0 AND relation != 'Self'`
       );
+      try {
+        await this.db.exec(`DELETE FROM vault_account`);
+      } catch {
+        /* table added in v6 */
+      }
       await this.db.exec(LEDGER_NO_DELETE_TRIGGER);
     });
   }
@@ -617,6 +627,65 @@ export class Repository {
       filename: String(r[0].source_filename),
       committedAt: String(r[0].committed_at),
     } : null;
+  }
+
+  async getVaultAccount(): Promise<VaultAccount | null> {
+    try {
+      const rows = await this.db.query<Record<string, SqlValue>>(
+        `SELECT * FROM vault_account WHERE id = 'owner' LIMIT 1`,
+      );
+      if (!rows.length) return null;
+      const r = rows[0];
+      return {
+        email: String(r.email),
+        firstName: String(r.first_name),
+        lastName: String(r.last_name),
+        passwordSalt: String(r.password_salt),
+        passwordHash: String(r.password_hash),
+        passwordIterations: Number(r.password_iterations),
+        passwordChangedAt: String(r.password_changed_at),
+        panMasked: r.pan_masked ? String(r.pan_masked) : undefined,
+        panForStatements: r.pan_for_statements ? String(r.pan_for_statements) : undefined,
+        dateOfBirth: r.date_of_birth ? String(r.date_of_birth) : undefined,
+        q1Id: String(r.q1_id),
+        q1Hash: String(r.q1_hash),
+        q2Id: String(r.q2_id),
+        q2Hash: String(r.q2_hash),
+        createdAt: String(r.created_at),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  async saveVaultAccount(a: VaultAccount): Promise<void> {
+    await this.db.exec(
+      `INSERT INTO vault_account (
+         id, email, first_name, last_name, password_salt, password_hash, password_iterations,
+         password_changed_at, pan_masked, pan_for_statements, date_of_birth,
+         q1_id, q1_hash, q2_id, q2_hash, created_at)
+       VALUES ('owner',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+       ON CONFLICT(id) DO UPDATE SET
+         email=excluded.email, first_name=excluded.first_name, last_name=excluded.last_name,
+         password_salt=excluded.password_salt, password_hash=excluded.password_hash,
+         password_iterations=excluded.password_iterations, password_changed_at=excluded.password_changed_at,
+         pan_masked=excluded.pan_masked, pan_for_statements=excluded.pan_for_statements,
+         date_of_birth=excluded.date_of_birth, q1_id=excluded.q1_id, q1_hash=excluded.q1_hash,
+         q2_id=excluded.q2_id, q2_hash=excluded.q2_hash`,
+      [
+        a.email, a.firstName, a.lastName, a.passwordSalt, a.passwordHash, a.passwordIterations,
+        a.passwordChangedAt, a.panMasked || null, a.panForStatements || null, a.dateOfBirth || null,
+        a.q1Id, a.q1Hash, a.q2Id, a.q2Hash, a.createdAt,
+      ],
+    );
+  }
+
+  async deleteVaultAccount(): Promise<void> {
+    try {
+      await this.db.exec(`DELETE FROM vault_account`);
+    } catch {
+      /* ignore */
+    }
   }
 }
 
