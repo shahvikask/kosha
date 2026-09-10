@@ -13,6 +13,7 @@ import {
 } from '../../lib/holdingView';
 import { X, Edit3, Plus, Trash2, Calendar, Coins } from 'lucide-react';
 import { resumeEmiDate } from '../../lib/emi';
+import { holdingReturn } from '../../lib/returnMetrics';
 
 interface HoldingDetailModalProps {
   holdingId: string | null;
@@ -313,6 +314,10 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
         </div>
 
         {!catInfo.isLiability && (
+          <ReturnPanel holding={holding} />
+        )}
+
+        {!catInfo.isLiability && (
         <div className="text-sm" style={{ color: 'var(--muted)' }}>
           {unitWord(holding) && m.qty > 0n
             ? `${MoneyEngine.toQty(m.qty).toLocaleString('en-IN')} ${unitWord(holding)} · `
@@ -526,6 +531,35 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
           )}
         </div>
       </div>
+    </div>
+  );
+};
+
+const ReturnPanel: React.FC<{ holding: import('../../types').Holding }> = ({ holding }) => {
+  const { ledgerEvents, derived, sgbValuationMode } = useKosha();
+  const asOf = new Date().toISOString().slice(0, 10);
+  const r = holdingReturn(holding, ledgerEvents, derived, sgbValuationMode, asOf);
+  return (
+    <div className="p-4 rounded-2xl border space-y-3" style={{ borderColor: 'var(--border)', background: 'var(--input)' }}>
+      <div className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--muted)' }}>
+        Return for this instrument
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <div className="text-[11px]" style={{ color: 'var(--muted)' }}>{r.profile.primaryLabel}</div>
+          <div className="text-lg font-bold" style={{ color: (r.primaryPct ?? 0) >= 0 ? 'var(--good)' : 'var(--bad)' }}>
+            {r.primaryText}
+          </div>
+        </div>
+        <div>
+          <div className="text-[11px]" style={{ color: 'var(--muted)' }}>{r.profile.secondaryLabel}</div>
+          <div className="text-lg font-bold">{r.secondaryText}</div>
+        </div>
+      </div>
+      <p className="text-[11px] leading-relaxed" style={{ color: 'var(--muted)' }}>{r.profile.why}</p>
+      <p className="text-[11px]" style={{ color: 'var(--muted)' }}>
+        Nifty, category average, G-sec and CRISIL figures are not in this vault — we only compute what your record book supports. CMP is last close / NAV, not live.
+      </p>
     </div>
   );
 };

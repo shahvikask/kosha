@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useKosha } from '../../context/KoshaContext';
-import { PrivacyValue, PrivacyDelta } from '../common/PrivacyValue';
+import { PrivacyValue } from '../common/PrivacyValue';
 import {
   FAMILY_BUCKETS,
   FamilyBucketId,
@@ -13,6 +13,7 @@ import {
 } from '../../lib/holdingView';
 import { MoneyEngine } from '../../lib/money';
 import { Search, Plus } from 'lucide-react';
+import { holdingReturn, bucketMetricHint } from '../../lib/returnMetrics';
 
 interface Props {
   onOpenAddHolding: () => void;
@@ -20,14 +21,20 @@ interface Props {
 }
 
 export const HoldingsScreen: React.FC<Props> = ({ onOpenAddHolding, onOpenHoldingDetail }) => {
-  const { filteredHoldings, familyMembers, derived, sgbValuationMode } = useKosha();
+  const { filteredHoldings, familyMembers, derived, sgbValuationMode, ledgerEvents } = useKosha();
   const [q, setQ] = useState('');
   const [bucket, setBucket] = useState<FamilyBucketId | 'ALL'>('ALL');
 
+  const asOf = new Date().toISOString().slice(0, 10);
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return filteredHoldings
-      .map(h => ({ h, m: metricsOf(h, derived, sgbValuationMode), b: bucketOf(h) }))
+      .map(h => ({
+        h,
+        m: metricsOf(h, derived, sgbValuationMode),
+        b: bucketOf(h),
+        r: holdingReturn(h, ledgerEvents, derived, sgbValuationMode, asOf),
+      }))
       .filter(r => (bucket === 'ALL' ? true : r.b === bucket))
       .filter(r => {
         if (!needle) return true;
@@ -39,7 +46,9 @@ export const HoldingsScreen: React.FC<Props> = ({ onOpenAddHolding, onOpenHoldin
           .includes(needle);
       })
       .sort((a, b) => (a.m.value < b.m.value ? 1 : -1));
-  }, [filteredHoldings, derived, sgbValuationMode, q, bucket, familyMembers]);
+  }, [filteredHoldings, derived, sgbValuationMode, q, bucket, familyMembers, ledgerEvents, asOf]);
+
+  const hint = bucket === 'ALL' ? null : bucketMetricHint(bucket);
 
   return (
     <div className="space-y-5 pb-12">
@@ -78,6 +87,9 @@ export const HoldingsScreen: React.FC<Props> = ({ onOpenAddHolding, onOpenHoldin
           </Chip>
         ))}
       </div>
+      {hint && (
+        <p className="text-[11px] -mt-1" style={{ color: 'var(--muted)' }}>{hint}</p>
+      )}
 
       {rows.length === 0 ? (
         <div className="card p-8 text-center text-sm" style={{ color: 'var(--muted)' }}>
@@ -87,7 +99,7 @@ export const HoldingsScreen: React.FC<Props> = ({ onOpenAddHolding, onOpenHoldin
         </div>
       ) : (
         <div className="card divide-y overflow-hidden" style={{ borderColor: 'var(--border)' }}>
-          {rows.map(({ h, m }) => {
+          {rows.map(({ h, m, r }) => {
             const owner = familyMembers.find(fm => fm.id === h.ownerId);
             return (
               <button
@@ -109,8 +121,8 @@ export const HoldingsScreen: React.FC<Props> = ({ onOpenAddHolding, onOpenHoldin
                 <div className="text-right shrink-0">
                   <PrivacyValue minor={m.value} includePaise={false} className="text-sm font-bold" />
                   {h.category !== 'LIABILITY' && (
-                    <div className="text-[11px]">
-                      <PrivacyDelta minor={m.gain} className="text-[11px] font-medium" />
+                    <div className="text-[11px] font-medium" style={{ color: (r.primaryPct ?? 0) >= 0 ? 'var(--good)' : 'var(--bad)' }}>
+                      {r.profile.primaryLabel} {r.primaryText}
                     </div>
                   )}
                 </div>

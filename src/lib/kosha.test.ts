@@ -10,6 +10,7 @@ import { eventLabel, bucketOf, upcomingFromHoldings, displayHoldingName, account
 import { formatStatementDate, latestAsOfForOwner, statementAsOfByMember, parseCasLatest } from './casPython';
 import { addCalendarMonths, dueEmiDates, planEmiCatchUp, resumeEmiDate } from './emi';
 import { absoluteReturnPct, cagrPct, incomeByFinancialYear, buildGrowthModel, firstActivityDate, formatPct } from './growth';
+import { profileOf, holdingReturn } from './returnMetrics';
 import { checkImportPan, pansMatch, panBlocksCommit, findDuplicatePanMember, panFingerprint } from './pan';
 import { applyCatalogPrices, catalogToListed, searchListed, isEodPriceSource } from './eodPrices';
 import { findMatchingHolding, holdingIdentityKey } from './matchHolding';
@@ -430,6 +431,19 @@ eq('growth invested', Number(gModel.kpis.investedMinor)/10000, 1000);
 eq('growth abs +50%', Math.round(gModel.kpis.absoluteReturnPct || 0), 50);
 eq('shares slice present', gModel.buckets.some(s => s.id === 'SHARES'), true);
 eq('xirr not null with opening', gModel.kpis.xirrPct == null, false);
+
+console.log('\n--- T. Instrument return metrics ---');
+const mfSip = hold('mf1','MUTUAL_FUND',100,10,12);
+eq('MF 3 buys is XIRR', profileOf(mfSip, [ev('s1','BUY','2025-01-01',10,10,'mf1'), ev('s2','BUY','2025-02-01',10,10,'mf1'), ev('s3','BUY','2025-03-01',10,10,'mf1')], '2026-09-10').primaryLabel, 'XIRR');
+const mfLump = hold('mf2','MUTUAL_FUND',100,10,15);
+eq('MF lump >1y is CAGR', profileOf(mfLump, [ev('l1','OPENING_BALANCE','2024-01-01',100,10,'mf2')], '2026-09-10').primaryLabel, 'CAGR');
+eq('equity is XIRR', profileOf(hold('eq1','EQUITY',10,100,120), [ev('e','BUY','2024-01-01',10,100,'eq1')], '2026-09-10').key, 'EQUITY');
+eq('SGB key', profileOf({...hold('sg1','GOLD_SGB',10,5000,5500), name:'SGB 2020'}, [], '2026-09-10').key, 'SGB');
+const ppfH = {...hold('pp1','FIXED_INCOME',1,100000,110000), name:'PPF', couponRatePercent: 7.1};
+eq('PPF uses stated yield', profileOf(ppfH, [], '2026-09-10').key, 'PPF');
+const ppfRet = holdingReturn(ppfH, [], derivePositions([], [ppfH]), 'MARKET_TRADED', '2026-09-10');
+eq('PPF primary 7.1', ppfRet.primaryText, '+7.1%');
+eq('AIF is TVPI', profileOf({...hold('a1','SPECIALISED',1,100,150), name:'Cat II AIF'}, [], '2026-09-10').primaryLabel, 'TVPI');
 
 console.log('\n--- H. Encryption ---');
 (async()=>{
