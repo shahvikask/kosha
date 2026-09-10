@@ -44,9 +44,9 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddHolding, onOpenAddRecor
       className="sticky top-0 z-30 border-b backdrop-blur-md"
       style={{ background: 'color-mix(in srgb, var(--chrome) 92%, transparent)', borderColor: 'var(--border)' }}
     >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-[4.25rem] flex items-center justify-between gap-4">
-        <div className="flex items-center min-w-0">
-          <button type="button" onClick={() => setActiveScreen('HOME')} className="cursor-pointer min-w-0" aria-label="GrowUrDhan home">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <button type="button" onClick={() => setActiveScreen('HOME')} className="cursor-pointer">
             <BrandLogo />
           </button>
         </div>

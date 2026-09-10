@@ -15,8 +15,6 @@
   --chip: #1e293b;
   --input: #020617;
   --shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
-  --brand: #5ee0b0;
-  --brand-gold: #fbbf24;
 }
 
 html.theme-light {
@@ -34,8 +32,6 @@ html.theme-light {
   --chip: #f3ebe0;
   --input: #faf7f2;
   --shadow: 0 10px 30px rgba(28, 25, 23, 0.08);
-  --brand: #0a5c47;
-  --brand-gold: #c99612;
 }
 
 @layer base {
@@ -62,10 +58,6 @@ html.theme-light {
     background: var(--subtle);
     border-radius: 9999px;
   }
-}
-
-.font-brand {
-  font-family: Cinzel, "Times New Roman", serif;
 }
 
 .card {
