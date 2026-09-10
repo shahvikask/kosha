@@ -1,14 +1,13 @@
 import React from 'react';
 import { useKosha } from '../../context/KoshaContext';
 import { AppScreen } from '../../types';
-import { Home, TrendingUp, WalletCards, Landmark, FileText, Users, ShieldCheck } from 'lucide-react';
+import { Home, WalletCards, Landmark, FileText, Users, ShieldCheck } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
   const { activeScreen, setActiveScreen } = useKosha();
 
   const navItems: { id: AppScreen; label: string; description: string; icon: typeof Home }[] = [
-    { id: 'HOME', label: 'Home', description: 'Family money at a glance', icon: Home },
-    { id: 'GROWTH', label: 'Growth', description: 'Returns, mix and income', icon: TrendingUp },
+    { id: 'HOME', label: 'Home', description: 'Family money and growth', icon: Home },
     { id: 'HOLDINGS', label: 'Holdings', description: 'Everything you own', icon: WalletCards },
     { id: 'ACCOUNTS', label: 'Accounts', description: 'Demat and folios', icon: Landmark },
     { id: 'DOCUMENTS', label: 'Documents', description: 'Statements and tax', icon: FileText },

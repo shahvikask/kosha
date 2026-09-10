@@ -343,7 +343,7 @@ export interface EmergencyDossierItem {
   offlineActionSteps: string;
 }
 
-export type AppScreen = 'HOME' | 'GROWTH' | 'HOLDINGS' | 'ACCOUNTS' | 'DOCUMENTS' | 'FAMILY';
+export type AppScreen = 'HOME' | 'HOLDINGS' | 'ACCOUNTS' | 'DOCUMENTS' | 'FAMILY';
 
 export interface DematOrFolioAccount {
   id: string;
