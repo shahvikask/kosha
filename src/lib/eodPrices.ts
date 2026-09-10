@@ -1,6 +1,7 @@
 import { AssetCategory, Holding, ListedSecurity } from '../types';
 import { MoneyEngine } from './money';
 import { pingCasParser } from './casPython';
+import { isDesktop } from '../db/desktopStore';
 
 export interface EodCatalogRow {
   isin: string;
@@ -118,6 +119,21 @@ export function searchListed(
 }
 
 export async function refreshEodFromSidecar(): Promise<EodRefreshResult> {
+  if (isDesktop()) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const body = await invoke<EodRefreshResult>('cas_prices');
+      if (!body?.ok) {
+        return { ok: false, error: body?.error || 'Could not read end-of-day files.' };
+      }
+      return body;
+    } catch (e) {
+      return {
+        ok: false,
+        error: e instanceof Error ? e.message : 'The local price reader is not running.',
+      };
+    }
+  }
   const up = await pingCasParser();
   if (!up) {
     return {

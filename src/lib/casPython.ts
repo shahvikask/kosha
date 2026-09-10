@@ -1,5 +1,6 @@
 import { AssetCategory, StatementImportRecord } from '../types';
 import { CASParseResult, ParsedDematHolding } from './casParser';
+import { isDesktop } from '../db/desktopStore';
 
 export type CasFileType = 'CDSL' | 'NSDL' | 'CAMS' | 'KFINTECH';
 
@@ -126,8 +127,19 @@ export function upsertCasLatest(
   return { asOf, byOwner };
 }
 
-const PYTHON_DOWN =
+const PYTHON_DOWN_DEV =
   'The Python CAS reader is not running. From the project folder run npm run dev — it starts the reader automatically. Or run: python3 scripts/cas_parse_server.py';
+const PYTHON_DOWN_DESKTOP =
+  'The statement reader is not running. Close GrowUrDhan and open it again. If it continues, see %LOCALAPPDATA%\\GrowUrDhan\\engine.log or reinstall.';
+
+function pythonDownMessage(): string {
+  return isDesktop() ? PYTHON_DOWN_DESKTOP : PYTHON_DOWN_DEV;
+}
+
+async function desktopInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke<T>(cmd, args);
+}
 
 async function fileToBase64(file: File): Promise<string> {
   const buf = await file.arrayBuffer();
@@ -142,6 +154,9 @@ async function fileToBase64(file: File): Promise<string> {
 
 export async function pingCasParser(): Promise<boolean> {
   try {
+    if (isDesktop()) {
+      return await desktopInvoke<boolean>('cas_health');
+    }
     const res = await fetch('/api/cas/health', { method: 'GET' });
     if (!res.ok) return false;
     const body = await res.json();
@@ -155,9 +170,37 @@ export async function parseCasPdfWithPython(
   file: File,
   password?: string
 ): Promise<CASParseResult> {
+  if (isDesktop()) {
+    try {
+      await desktopInvoke('engine_ensure');
+    } catch (e) {
+      throw new Error(e instanceof Error ? e.message : pythonDownMessage());
+    }
+    const pdfBase64 = await fileToBase64(file);
+    let data: CasPythonResult;
+    try {
+      data = await desktopInvoke<CasPythonResult>('cas_parse', {
+        filename: file.name,
+        password: (password || '').trim(),
+        pdfBase64,
+      });
+    } catch (e) {
+      throw new Error(e instanceof Error ? e.message : pythonDownMessage());
+    }
+    if (!data?.ok) {
+      if (data?.code === 'BAD_PASSWORD' || /password/i.test(data?.error || '')) {
+        const err = new Error('Incorrect Password');
+        (err as Error & { name: string }).name = 'PasswordException';
+        throw err;
+      }
+      throw new Error(data?.error || 'The statement reader could not parse this file.');
+    }
+    return pythonResultToCasParseResult(data, file.name);
+  }
+
   const up = await pingCasParser();
   if (!up) {
-    throw new Error(PYTHON_DOWN);
+    throw new Error(pythonDownMessage());
   }
 
   const pdfBase64 = await fileToBase64(file);
@@ -173,7 +216,7 @@ export async function parseCasPdfWithPython(
       }),
     });
   } catch {
-    throw new Error(PYTHON_DOWN);
+    throw new Error(pythonDownMessage());
   }
 
   const data = (await res.json()) as CasPythonResult;

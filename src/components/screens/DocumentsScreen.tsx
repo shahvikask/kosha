@@ -27,6 +27,7 @@ import {
   panBlocksCommit,
   PanImportCheck,
 } from '../../lib/pan';
+import { isDesktop } from '../../db/desktopStore';
 import {
   UploadCloud,
   CheckCircle2,
@@ -121,7 +122,19 @@ export const DocumentsScreen: React.FC = () => {
   };
 
   useEffect(() => {
-    pingCasParser().then(setPythonReady);
+    let stop = false;
+    let n = 0;
+    const tick = () => {
+      if (stop) return;
+      pingCasParser().then(ok => {
+        if (stop) return;
+        setPythonReady(ok);
+        n += 1;
+        if (!ok && n < 30) setTimeout(tick, 700);
+      });
+    };
+    tick();
+    return () => { stop = true; };
   }, []);
 
   useEffect(() => {
@@ -625,12 +638,14 @@ export const DocumentsScreen: React.FC = () => {
                 </p>
                 {pythonReady === false && (
                   <p className="text-xs text-amber-300 pt-2">
-                    Python casparser is not running. Start the app with <span className="font-mono">npm run dev</span> so PDFs can be read on this computer.
+                    {isDesktop()
+                      ? 'Starting the statement reader on this computer… if this stays, close and reopen GrowUrDhan.'
+                      : <>Python casparser is not running. Start the app with <span className="font-mono">npm run dev</span> so PDFs can be read on this computer.</>}
                   </p>
                 )}
                 {pythonReady === true && (
                   <p className="text-[11px] text-emerald-400/90 pt-1">
-                    Python casparser is ready on this computer.
+                    {isDesktop() ? 'Statement reader is ready on this computer.' : 'Python casparser is ready on this computer.'}
                   </p>
                 )}
               </div>

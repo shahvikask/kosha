@@ -15,6 +15,7 @@ dest = OUT / name
 cmd = [
     sys.executable, "-m", "PyInstaller",
     "--noconfirm", "--clean", "--onefile",
+    "--noconsole",
     "--name", "gud-engine",
     "--distpath", str(OUT),
     "--workpath", str(ROOT / "target" / "pyinstaller"),

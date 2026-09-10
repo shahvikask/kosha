@@ -1,58 +1,7 @@
+mod engine;
 mod vault;
 
-use std::process::{Child, Command, Stdio};
-use std::sync::Mutex;
 use tauri::{Manager, RunEvent, State};
-
-struct Engine(Mutex<Option<Child>>);
-
-fn engine_cmd(app: &tauri::AppHandle) -> Option<Command> {
-    let resource = app.path().resource_dir().ok()?;
-    let exe = if cfg!(windows) {
-        resource.join("gud-engine.exe")
-    } else {
-        resource.join("gud-engine")
-    };
-    if !exe.exists() {
-        // Installed next to the exe as resources/gud-engine.exe
-        if let Ok(dir) = app.path().resource_dir() {
-            let alt = dir.join("resources").join(if cfg!(windows) { "gud-engine.exe" } else { "gud-engine" });
-            if alt.exists() {
-                let mut cmd = Command::new(alt);
-                cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
-                return Some(cmd);
-            }
-        }
-        return None;
-    }
-    let mut cmd = Command::new(exe);
-    cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
-    Some(cmd)
-}
-
-fn spawn_engine(app: &tauri::AppHandle) {
-    if cfg!(debug_assertions) {
-        return;
-    }
-    if let Some(mut cmd) = engine_cmd(app) {
-        match cmd.spawn() {
-            Ok(child) => {
-                if let Some(state) = app.try_state::<Engine>() {
-                    *state.0.lock().unwrap() = Some(child);
-                }
-            }
-            Err(e) => eprintln!("GrowUrDhan engine failed to start: {e}"),
-        }
-    }
-}
-
-fn kill_engine(app: &tauri::AppHandle) {
-    if let Some(state) = app.try_state::<Engine>() {
-        if let Some(mut child) = state.0.lock().unwrap().take() {
-            let _ = child.kill();
-        }
-    }
-}
 
 #[tauri::command]
 fn sql_open(vault: State<vault::Vault>) -> Result<String, String> {
@@ -78,21 +27,68 @@ fn sql_close(vault: State<vault::Vault>) -> Result<(), String> {
     vault::close(&vault)
 }
 
+#[tauri::command]
+fn cas_health(app: tauri::AppHandle, eng: State<engine::Engine>) -> bool {
+    if engine::sidecar_up() {
+        return true;
+    }
+    let _ = engine::spawn(&app, &eng);
+    engine::sidecar_up()
+}
+
+#[tauri::command]
+fn engine_ensure(app: tauri::AppHandle, eng: State<engine::Engine>) -> Result<(), String> {
+    engine::ensure(&app, &eng)
+}
+
+#[tauri::command]
+fn cas_parse(
+    app: tauri::AppHandle,
+    eng: State<engine::Engine>,
+    filename: String,
+    password: String,
+    pdf_base64: String,
+) -> Result<serde_json::Value, String> {
+    engine::ensure(&app, &eng)?;
+    engine::parse(serde_json::json!({
+        "filename": filename,
+        "password": password,
+        "pdfBase64": pdf_base64,
+    }))
+}
+
+#[tauri::command]
+fn cas_prices(app: tauri::AppHandle, eng: State<engine::Engine>) -> Result<serde_json::Value, String> {
+    engine::ensure(&app, &eng)?;
+    engine::prices()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .manage(Engine(Mutex::new(None)))
+        .manage(engine::Engine::new())
         .manage(vault::Vault::new())
-        .invoke_handler(tauri::generate_handler![sql_open, sql_exec, sql_query, sql_close])
+        .invoke_handler(tauri::generate_handler![
+            sql_open,
+            sql_exec,
+            sql_query,
+            sql_close,
+            cas_health,
+            engine_ensure,
+            cas_parse,
+            cas_prices
+        ])
         .setup(|app| {
-            spawn_engine(app.handle());
+            let handle = app.handle().clone();
+            let eng = app.state::<engine::Engine>();
+            let _ = engine::spawn(&handle, &*eng);
             Ok(())
         })
         .build(tauri::generate_context!())
         .expect("GrowUrDhan failed to start")
         .run(|app, event| {
             if let RunEvent::Exit = event {
-                kill_engine(app);
+                engine::kill(&*app.state::<engine::Engine>());
             }
         });
 }
