@@ -1,6 +1,8 @@
+mod vault;
+
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
-use tauri::{Manager, RunEvent};
+use tauri::{Manager, RunEvent, State};
 
 struct Engine(Mutex<Option<Child>>);
 
@@ -11,12 +13,21 @@ fn engine_cmd(app: &tauri::AppHandle) -> Option<Command> {
     } else {
         resource.join("gud-engine")
     };
-    if exe.exists() {
-        let mut cmd = Command::new(exe);
-        cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
-        return Some(cmd);
+    if !exe.exists() {
+        // Installed next to the exe as resources/gud-engine.exe
+        if let Ok(dir) = app.path().resource_dir() {
+            let alt = dir.join("resources").join(if cfg!(windows) { "gud-engine.exe" } else { "gud-engine" });
+            if alt.exists() {
+                let mut cmd = Command::new(alt);
+                cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+                return Some(cmd);
+            }
+        }
+        return None;
     }
-    None
+    let mut cmd = Command::new(exe);
+    cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    Some(cmd)
 }
 
 fn spawn_engine(app: &tauri::AppHandle) {
@@ -43,11 +54,36 @@ fn kill_engine(app: &tauri::AppHandle) {
     }
 }
 
+#[tauri::command]
+fn sql_open(vault: State<vault::Vault>) -> Result<String, String> {
+    vault::open(&vault)
+}
+
+#[tauri::command]
+fn sql_exec(vault: State<vault::Vault>, sql: String, params: Vec<serde_json::Value>) -> Result<(), String> {
+    vault::exec(&vault, &sql, &params)
+}
+
+#[tauri::command]
+fn sql_query(
+    vault: State<vault::Vault>,
+    sql: String,
+    params: Vec<serde_json::Value>,
+) -> Result<Vec<serde_json::Map<String, serde_json::Value>>, String> {
+    vault::query(&vault, &sql, &params)
+}
+
+#[tauri::command]
+fn sql_close(vault: State<vault::Vault>) -> Result<(), String> {
+    vault::close(&vault)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_fs::init())
         .manage(Engine(Mutex::new(None)))
+        .manage(vault::Vault::new())
+        .invoke_handler(tauri::generate_handler![sql_open, sql_exec, sql_query, sql_close])
         .setup(|app| {
             spawn_engine(app.handle());
             Ok(())

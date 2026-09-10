@@ -1,28 +1,19 @@
 # GrowUrDhan for Windows (personal / family)
 
-This is the **desktop** channel (`GUD-Windows`). Commercial Android stays on `main` with SQLite WASM.
+Desktop channel (`GUD-Windows`). Commercial Android stays on `main` with SQLite WASM.
 
-Vault file: `%LOCALAPPDATA%\GrowUrDhan\vault.db`  
-Uninstall does **not** delete that file.
+| What | Where |
+|---|---|
+| Program (all Windows users) | `%ProgramFiles%\GrowUrDhan\` (needs admin to install) |
+| Family vault (this Windows login) | `%LOCALAPPDATA%\GrowUrDhan\vault.db` — **native SQLite**, not IndexedDB |
+| CAS engine | Child process next to the exe. Not a Windows Service |
 
-The CAS reader is bundled as `gud-engine.exe` and started with the app. It is a child process, not a Windows Service.
+Uninstall removes Program Files. It does **not** delete `vault.db`.
 
-## Installer (CI)
+The vault is per Windows user on purpose: a guest account on the laptop does not see your books. Every profile can *launch* the app; they each get their own vault unless they log in as you.
 
-Push to `GUD-Windows` (or run the workflow by hand). GitHub Actions builds `GrowUrDhan_0.1.0_x64-setup.exe`.
+## Installer
 
-## Build on your PC
+Uninstall the previous (AppData) copy first, then run the new setup as administrator.
 
-Needs: Node 22, Rust stable, Python 3.12, WebView2 (already on Windows 11).
-
-```
-git checkout GUD-Windows
-git pull
-npm install
-pip install pyinstaller -r scripts/requirements-cas.txt
-pip install -e src/casparser-main
-python scripts/pack_engine.py
-npm run desktop:build
-```
-
-Installer: `src-tauri\target\release\bundle\nsis\GrowUrDhan_0.1.0_x64-setup.exe`
+Push to `GUD-Windows` builds `GrowUrDhan_*_x64-setup.exe` in Actions.

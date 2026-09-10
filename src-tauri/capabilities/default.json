@@ -5,22 +5,9 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "fs:default",
-    {
-      "identifier": "fs:allow-mkdir",
-      "allow": [{ "path": "$HOME/AppData/Local/GrowUrDhan/**" }, { "path": "$LOCALDATA/GrowUrDhan/**" }]
-    },
-    {
-      "identifier": "fs:allow-read-file",
-      "allow": [{ "path": "$HOME/AppData/Local/GrowUrDhan/**" }, { "path": "$LOCALDATA/GrowUrDhan/**" }]
-    },
-    {
-      "identifier": "fs:allow-write-file",
-      "allow": [{ "path": "$HOME/AppData/Local/GrowUrDhan/**" }, { "path": "$LOCALDATA/GrowUrDhan/**" }]
-    },
-    {
-      "identifier": "fs:allow-exists",
-      "allow": [{ "path": "$HOME/AppData/Local/GrowUrDhan/**" }, { "path": "$LOCALDATA/GrowUrDhan/**" }]
-    }
+    "allow-sql-open",
+    "allow-sql-exec",
+    "allow-sql-query",
+    "allow-sql-close"
   ]
 }

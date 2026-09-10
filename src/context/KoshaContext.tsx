@@ -42,8 +42,8 @@ import {
   clearRememberedEmail,
 } from '../lib/auth';
 import { ruleSetFor, classifyGain, grandfatheredCostMinor, applyRateMinor } from '../lib/taxRules';
-import { SqliteWasmDriver } from '../db/sqliteWasmDriver';
-import { createVaultStore, isDesktop } from '../db/desktopStore';
+import { openVaultDriver, errorMessage } from '../db/desktopStore';
+import { SqlDriver } from '../db/driver';
 import { Repository } from '../db/repository';
 import { migrateFromLocalStorage, MigrationReport } from '../db/migrate';
 import { reconcileStatement, eventsToCommit, SnapshotLine, ReconciliationResult, snapshotLinesToClose } from '../lib/snapshot';
@@ -276,7 +276,7 @@ export function sanitizeAndDeduplicateHoldings(rawHoldings: Holding[]): { holdin
 
 export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [repo, setRepo] = useState<Repository | null>(null);
-  const [dbDriver, setDbDriver] = useState<SqliteWasmDriver | null>(null);
+  const [dbDriver, setDbDriver] = useState<SqlDriver | null>(null);
   const [dbReady, setDbReady] = useState(false);
   const [dbError, setDbError] = useState<string | null>(null);
   const [migration, setMigration] = useState<MigrationReport | null>(null);
@@ -311,8 +311,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     (async () => {
       try {
-        const driver = new SqliteWasmDriver('kosha.db', await createVaultStore());
-        await driver.open();
+        const driver = await openVaultDriver();
         const r = new Repository(driver);
         await r.initialise();
         const report = await migrateFromLocalStorage(r, window.localStorage);
@@ -418,7 +417,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setDbReady(true);
       } catch (err: any) {
         console.error('Failed to initialize SQLite Database:', err);
-        setDbError(err?.message || 'Database initialization error');
+        setDbError(errorMessage(err));
         setFamilyMembers([EMPTY_SELF]);
         setHoldings([]);
         setLedgerEvents([]);

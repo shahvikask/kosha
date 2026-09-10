@@ -1,44 +1,36 @@
 import { BlobStore, IdbBlobStore } from './sqliteWasmDriver';
+import { SqlDriver } from './driver';
 
 export function isDesktop(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
 
-/** `%LOCALAPPDATA%\GrowUrDhan\vault.db` on Windows (localDataDir + GrowUrDhan). */
-export class TauriFileBlobStore implements BlobStore {
-  private pathPromise: Promise<string> | null = null;
-
-  private async vaultPath(): Promise<string> {
-    if (!this.pathPromise) {
-      this.pathPromise = (async () => {
-        const { localDataDir, join } = await import('@tauri-apps/api/path');
-        const { mkdir, exists } = await import('@tauri-apps/plugin-fs');
-        const dir = await join(await localDataDir(), 'GrowUrDhan');
-        if (!(await exists(dir))) {
-          await mkdir(dir, { recursive: true });
-        }
-        return await join(dir, 'vault.db');
-      })();
-    }
-    return this.pathPromise;
+export function errorMessage(err: unknown): string {
+  if (err instanceof Error && err.message) return err.message;
+  if (typeof err === 'string' && err.trim()) return err;
+  if (err && typeof err === 'object') {
+    const o = err as { message?: unknown; error?: unknown };
+    if (typeof o.message === 'string' && o.message.trim()) return o.message;
+    if (typeof o.error === 'string' && o.error.trim()) return o.error;
+    try { return JSON.stringify(err); } catch { /* ignore */ }
   }
-
-  async load(_key: string): Promise<Uint8Array | null> {
-    const { readFile, exists } = await import('@tauri-apps/plugin-fs');
-    const path = await this.vaultPath();
-    if (!(await exists(path))) return null;
-    const bytes = await readFile(path);
-    return bytes && bytes.length ? new Uint8Array(bytes) : null;
-  }
-
-  async save(_key: string, bytes: Uint8Array): Promise<void> {
-    const { writeFile } = await import('@tauri-apps/plugin-fs');
-    const path = await this.vaultPath();
-    await writeFile(path, bytes);
-  }
+  return 'Database initialization error';
 }
 
+/** Browser only. Desktop uses rusqlite via TauriSqlDriver. */
 export async function createVaultStore(): Promise<BlobStore> {
-  if (isDesktop()) return new TauriFileBlobStore();
   return new IdbBlobStore();
+}
+
+export async function openVaultDriver(): Promise<SqlDriver> {
+  if (isDesktop()) {
+    const { TauriSqlDriver } = await import('./tauriSqlDriver');
+    const d = new TauriSqlDriver();
+    await d.open();
+    return d;
+  }
+  const { SqliteWasmDriver } = await import('./sqliteWasmDriver');
+  const d = new SqliteWasmDriver('kosha.db', await createVaultStore());
+  await d.open();
+  return d;
 }
