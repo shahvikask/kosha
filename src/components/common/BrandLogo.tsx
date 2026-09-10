@@ -8,23 +8,36 @@ interface BrandLogoProps {
 
 export const BrandLogo: React.FC<BrandLogoProps> = ({
   className = '',
+  showTagline = false,
   size = 'md',
 }) => {
-  const height = { sm: 'h-8', md: 'h-10', lg: 'h-12' }[size];
+  const mark = { sm: 'h-8 w-8', md: 'h-10 w-10', lg: 'h-12 w-12' }[size];
+  const word = { sm: 'text-lg', md: 'text-[1.35rem]', lg: 'text-2xl' }[size];
+  const tag = { sm: 'text-[9px]', md: 'text-[10px]', lg: 'text-xs' }[size];
 
   return (
-    <div
-      className={`flex items-center rounded-xl px-1.5 py-0.5 ${className}`}
-      style={{ background: '#fffdf8' }}
-    >
-      <picture>
-        <source srcSet="/brand/growurdhan-logo.webp" type="image/webp" />
-        <img
-          src="/brand/growurdhan-logo.png"
-          alt="GrowUrDhan — Private Indian Family Wealth & Records"
-          className={`${height} w-auto max-w-[min(52vw,280px)] object-contain object-left`}
-        />
-      </picture>
+    <div className={`flex items-center gap-2.5 min-w-0 ${className}`}>
+      <img
+        src="/brand/growurdhan-mark.png"
+        alt=""
+        className={`${mark} object-contain flex-shrink-0`}
+      />
+      <div className="min-w-0 leading-none">
+        <div
+          className={`font-brand font-bold ${word} tracking-tight truncate`}
+          style={{ color: 'var(--brand)' }}
+        >
+          Grow<span style={{ color: 'var(--brand-gold)' }}>Ur</span>Dhan
+        </div>
+        {showTagline && (
+          <p
+            className={`${tag} mt-1 tracking-wide hidden sm:block`}
+            style={{ color: 'var(--muted)' }}
+          >
+            Private Indian Family Wealth & Records
+          </p>
+        )}
+      </div>
     </div>
   );
 };
