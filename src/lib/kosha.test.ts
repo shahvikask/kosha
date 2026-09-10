@@ -377,6 +377,12 @@ eq('qty unchanged', priced.holdings[0].quantityScaled, before.quantityScaled);
 const catalogRows = [tcs!];
 eq('search TCS', searchListed(catalogRows, 'tcs', 'EQUITY')[0]?.isin, 'INE467B01029');
 eq('search misses funds', searchListed(catalogRows, 'tcs', 'MUTUAL_FUND').length, 0);
+const mfCat = [
+  { isin: 'INF879O01118', name: 'Parag Parikh Liquid Fund — Direct Plan · Daily Reinvestment of IDCW', category: 'MUTUAL_FUND' as const, closeMinor: '10007489', priceDate: '2026-09-10', source: 'AMFI NAV' },
+  { isin: 'INF879O01027', name: 'Parag Parikh Flexi Cap Fund — Direct Plan · Growth', category: 'MUTUAL_FUND' as const, closeMinor: '893946', priceDate: '2026-09-09', source: 'AMFI NAV' },
+  { isin: 'INF879O01068', name: 'Parag Parikh Liquid Fund — Direct Plan · Growth', category: 'MUTUAL_FUND' as const, closeMinor: '15705718', priceDate: '2026-09-10', source: 'AMFI NAV' },
+];
+eq('flexi growth ranks first for parag', searchListed(mfCat, 'parag pari', 'MUTUAL_FUND')[0]?.isin, 'INF879O01027');
 
 console.log('\n--- R. Loan outstanding, SGB gold tab, loan labels ---');
 eq('SGB name detected', looksLikeSgb('2.5% SGB 2021-22 SERIES II 2029-LOAN CODE 30433'), true);

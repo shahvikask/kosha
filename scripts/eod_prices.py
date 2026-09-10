@@ -170,6 +170,16 @@ def fetch_bse(tmpdir: Path) -> tuple[Optional[str], list[dict], Optional[str]]:
     return None, [], "BSE bhavcopy not published for the last sessions (holiday or file delay)."
 
 
+def _fund_name(name: str, plan: str, option: str, isin_role: str) -> str:
+    extra = [x for x in (plan, option) if x and x.upper() not in ("-", "NA", "N/A")]
+    label = name
+    if extra:
+        label = f"{name} — {' · '.join(extra)}"
+    if isin_role:
+        label = f"{label} · {isin_role}"
+    return label
+
+
 def parse_amfi(text: str) -> tuple[str, list[dict]]:
     as_of = ""
     rows: list[dict] = []
@@ -178,28 +188,37 @@ def parse_amfi(text: str) -> tuple[str, list[dict]]:
         if ";" not in line:
             continue
         parts = [p.strip() for p in line.split(";")]
-        if len(parts) < 8:
+        if len(parts) < 6:
             continue
         if parts[0].lower().startswith("scheme"):
             continue
         code, isin_g, isin_r, name = parts[0], parts[1], parts[2], parts[3]
+        plan = parts[4] if len(parts) >= 8 else ""
+        option = parts[5] if len(parts) >= 8 else ""
         nav = _f(parts[-2])
         dt = _parse_date(parts[-1])
         if nav is None:
             continue
         if dt and dt > as_of:
             as_of = dt
-        for isin in (isin_g, isin_r):
-            isin = isin.upper()
-            if len(isin) < ISIN_RE_OK or isin in ("-", "NA", "N/A"):
-                continue
+        g_ok = isin_g.upper() if len(isin_g) >= ISIN_RE_OK and isin_g.upper() not in ("-", "NA", "N/A") else ""
+        r_ok = isin_r.upper() if len(isin_r) >= ISIN_RE_OK and isin_r.upper() not in ("-", "NA", "N/A") else ""
+        slots: list[tuple[str, str]] = []
+        if g_ok:
+            role = ""
+            if r_ok and "growth" not in (option or "").lower():
+                role = "Payout ISIN"
+            slots.append((g_ok, role))
+        if r_ok and r_ok != g_ok:
+            slots.append((r_ok, "Reinvestment ISIN"))
+        for isin, role in slots:
             if isin in seen:
                 continue
             seen.add(isin)
             rows.append(
                 {
                     "isin": isin,
-                    "name": name,
+                    "name": _fund_name(name, plan, option, role),
                     "symbol": code,
                     "nse": "",
                     "bse": "",

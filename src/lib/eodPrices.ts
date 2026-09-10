@@ -94,15 +94,27 @@ export function searchListed(
 ): ListedSecurity[] {
   const q = query.trim().toLowerCase();
   if (q.length < 2) return [];
-  const out: ListedSecurity[] = [];
+  const scored: { row: ListedSecurity; s: number }[] = [];
   for (const row of catalog) {
     if (category && row.category !== category) continue;
-    const blob = `${row.name} ${row.symbol || ''} ${row.nseSymbol || ''} ${row.bseSymbol || ''} ${row.isin} ${row.amfiCode || ''}`.toLowerCase();
-    if (!blob.includes(q)) continue;
-    out.push(row);
-    if (out.length >= limit) break;
+    const name = (row.name || '').toLowerCase();
+    const isin = (row.isin || '').toLowerCase();
+    const amfi = (row.amfiCode || '').toLowerCase();
+    const sym = `${row.symbol || ''} ${row.nseSymbol || ''} ${row.bseSymbol || ''}`.toLowerCase();
+    if (!name.includes(q) && !isin.includes(q) && !amfi.includes(q) && !sym.includes(q)) continue;
+    let s = 0;
+    if (isin === q) s += 1000;
+    else if (isin.startsWith(q)) s += 600;
+    if (amfi === q) s += 500;
+    if (name.startsWith(q)) s += 400;
+    else if (name.includes(q)) s += 200;
+    if (/\bgrowth\b/.test(name)) s += 40;
+    if (/\bdirect\b/.test(name)) s += 25;
+    if (/\bidcw\b|\bdividend\b|\breinvestment\b/.test(name)) s -= 50;
+    scored.push({ row, s });
   }
-  return out;
+  scored.sort((a, b) => b.s - a.s || a.row.name.localeCompare(b.row.name));
+  return scored.slice(0, limit).map(x => x.row);
 }
 
 export async function refreshEodFromSidecar(): Promise<EodRefreshResult> {

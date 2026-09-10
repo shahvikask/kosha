@@ -328,9 +328,11 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
                               onClick={() => pickSecurity(row)}
                               className="w-full text-left px-3 py-2 hover:bg-slate-800"
                             >
-                              <div className="text-sm font-semibold truncate">{row.name}</div>
-                              <div className="text-[11px] text-slate-400 font-mono">
-                                {row.symbol || row.nseSymbol || row.amfiCode} · {row.isin}
+                              <div className="text-sm font-semibold leading-snug">{row.name}</div>
+                              <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                                NAV {MoneyEngine.formatRupees(BigInt(row.closeMinor), false)}
+                                {' · '}{row.amfiCode || row.symbol || 'AMFI'}
+                                {' · '}{row.isin}
                               </div>
                             </button>
                           ))}
