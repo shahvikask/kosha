@@ -4,8 +4,10 @@ import path from 'path';
 import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
+  const tauri = !!process.env.TAURI_ENV_PLATFORM || !!process.env.TAURI_ENV_DEBUG;
   return {
     plugins: [react(), tailwindcss()],
+    base: tauri ? './' : '/',
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
@@ -14,6 +16,8 @@ export default defineConfig(() => {
     optimizeDeps: {
       exclude: ['@sqlite.org/sqlite-wasm'],
     },
+    envPrefix: ['VITE_', 'TAURI_ENV_'],
+    clearScreen: false,
     build: {
       rollupOptions: {
         output: {

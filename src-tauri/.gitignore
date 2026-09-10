@@ -1,0 +1,5 @@
+/target
+/gen
+WixTools
+resources/gud-engine
+resources/gud-engine.exe

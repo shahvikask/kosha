@@ -43,6 +43,7 @@ import {
 } from '../lib/auth';
 import { ruleSetFor, classifyGain, grandfatheredCostMinor, applyRateMinor } from '../lib/taxRules';
 import { SqliteWasmDriver } from '../db/sqliteWasmDriver';
+import { createVaultStore, isDesktop } from '../db/desktopStore';
 import { Repository } from '../db/repository';
 import { migrateFromLocalStorage, MigrationReport } from '../db/migrate';
 import { reconcileStatement, eventsToCommit, SnapshotLine, ReconciliationResult, snapshotLinesToClose } from '../lib/snapshot';
@@ -310,7 +311,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     (async () => {
       try {
-        const driver = new SqliteWasmDriver('kosha.db');
+        const driver = new SqliteWasmDriver('kosha.db', await createVaultStore());
         await driver.open();
         const r = new Repository(driver);
         await r.initialise();

@@ -22,11 +22,16 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Optional
 
-ROOT = Path(__file__).resolve().parent.parent
-CAS_SRC = ROOT / "src" / "casparser-main"
+if getattr(sys, "frozen", False):
+    ROOT = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+    CAS_SRC = ROOT / "casparser-main"
+    SCRIPTS = ROOT
+else:
+    ROOT = Path(__file__).resolve().parent.parent
+    CAS_SRC = ROOT / "src" / "casparser-main"
+    SCRIPTS = Path(__file__).resolve().parent
 if str(CAS_SRC) not in sys.path:
     sys.path.insert(0, str(CAS_SRC))
-SCRIPTS = Path(__file__).resolve().parent
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 

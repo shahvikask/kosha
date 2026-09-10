@@ -1,0 +1,26 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "GrowUrDhan desktop vault",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "fs:default",
+    {
+      "identifier": "fs:allow-mkdir",
+      "allow": [{ "path": "$HOME/AppData/Local/GrowUrDhan/**" }, { "path": "$LOCALDATA/GrowUrDhan/**" }]
+    },
+    {
+      "identifier": "fs:allow-read-file",
+      "allow": [{ "path": "$HOME/AppData/Local/GrowUrDhan/**" }, { "path": "$LOCALDATA/GrowUrDhan/**" }]
+    },
+    {
+      "identifier": "fs:allow-write-file",
+      "allow": [{ "path": "$HOME/AppData/Local/GrowUrDhan/**" }, { "path": "$LOCALDATA/GrowUrDhan/**" }]
+    },
+    {
+      "identifier": "fs:allow-exists",
+      "allow": [{ "path": "$HOME/AppData/Local/GrowUrDhan/**" }, { "path": "$LOCALDATA/GrowUrDhan/**" }]
+    }
+  ]
+}

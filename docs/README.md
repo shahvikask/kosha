@@ -12,6 +12,8 @@ This directory contains the architectural and engineering source of truth for Ko
 
 These documents are intentionally technology-independent where possible so the domain can be reused by the web application and future Android application.
 
+**Channels:** Android commercial = `main` (SQLite WASM). Windows personal = `GUD-Windows` (`%LOCALAPPDATA%\GrowUrDhan\vault.db`). See [RELEASE-CHANNELS.md](./RELEASE-CHANNELS.md) and [WINDOWS.md](./WINDOWS.md).
+
 ## Local Python CAS reader
 
 CAS PDFs (CDSL, NSDL, CAMS, KFintech) are parsed on the user's machine. They never leave the device.
