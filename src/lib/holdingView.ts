@@ -29,10 +29,15 @@ export const FAMILY_BUCKETS: {
   { id: 'LOAN', title: 'Loans', hint: 'What the family owes' },
 ];
 
+export function looksLikeSgb(name?: string | null): boolean {
+  const n = (name || '').toUpperCase();
+  return /\bSGB\b/.test(n) || n.includes('SOVEREIGN GOLD');
+}
+
 export function bucketOf(h: Holding): FamilyBucketId {
+  if (h.category === 'GOLD_SGB' || looksLikeSgb(h.name)) return 'GOLD';
   if (h.category === 'EQUITY') return 'SHARES';
   if (h.category === 'MUTUAL_FUND') return 'FUNDS';
-  if (h.category === 'GOLD_SGB') return 'GOLD';
   if (h.category === 'REAL_ESTATE') return 'PROPERTY';
   if (h.category === 'CASH_BANK') return 'BANK';
   if (h.category === 'LIABILITY') return 'LOAN';
@@ -68,7 +73,7 @@ export function plainCategory(category: AssetCategory): string {
   }
 }
 
-export function eventLabel(type: EventType | string): string {
+export function eventLabel(type: EventType | string, notes?: string): string {
   switch (type) {
     case 'OPENING_BALANCE':
       return 'Opening from statement';
@@ -87,7 +92,7 @@ export function eventLabel(type: EventType | string): string {
     case 'INTEREST':
       return 'Interest';
     case 'VALUATION_UPDATE':
-      return 'Value updated';
+      return notes && /loan/i.test(notes) ? 'Loan recorded' : 'Value updated';
     case 'REPAYMENT':
       return 'Loan repayment';
     case 'CORRECTION':
@@ -132,7 +137,7 @@ export function valueOf(
   derived: DerivedState,
   sgbMode: 'MARKET_TRADED' | 'RBI_BENCHMARK'
 ): bigint {
-  return marketValueMinor(qtyOf(h, derived), priceMinorOf(h, sgbMode));
+  return metricsOf(h, derived, sgbMode).value;
 }
 
 export interface HoldingMetrics {
@@ -148,6 +153,17 @@ export function metricsOf(
   derived: DerivedState,
   sgbMode: 'MARKET_TRADED' | 'RBI_BENCHMARK'
 ): HoldingMetrics {
+  if (h.category === 'LIABILITY') {
+    const outstanding = BigInt(h.currentPriceMinor || '0');
+    const sanctioned = BigInt(h.averageCostPerUnitMinor || '0');
+    return {
+      qty: 0n,
+      price: outstanding,
+      value: outstanding,
+      cost: sanctioned > 0n ? sanctioned : outstanding,
+      gain: 0n,
+    };
+  }
   const qty = qtyOf(h, derived);
   const price = priceMinorOf(h, sgbMode);
   const value = marketValueMinor(qty, price);

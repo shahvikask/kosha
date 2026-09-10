@@ -199,7 +199,9 @@ export function pythonResultToCasParseResult(
   let i = 1;
 
   for (const h of data.holdings || []) {
-    const category = (h.category || 'MUTUAL_FUND') as AssetCategory;
+    let category = (h.category || 'MUTUAL_FUND') as AssetCategory;
+    const nm = (h.name || '').toUpperCase();
+    if (/\bSGB\b/.test(nm) || nm.includes('SOVEREIGN GOLD')) category = 'GOLD_SGB';
     importRecords.push({
       id: `py_${data.fileType}_${i++}`,
       date: periodTo,

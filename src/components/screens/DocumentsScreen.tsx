@@ -1452,13 +1452,13 @@ export const DocumentsScreen: React.FC = () => {
                           : 'bg-slate-800 text-slate-300 border-slate-700'
                       }`}
                     >
-                      {eventLabel(ev.eventType).split(' ')[0]}
+                      {eventLabel(ev.eventType, ev.notes).split(' ')[0]}
                     </div>
 
                     <div>
                       <div className="font-semibold text-sm text-slate-100">{displayHoldingName(ev.holdingName)}</div>
                       <div className="text-xs text-slate-400">
-                        {eventLabel(ev.eventType)} · {ev.eventDate}
+                        {eventLabel(ev.eventType, ev.notes)} · {ev.eventDate}
                         {ev.notes ? ` · ${ev.notes}` : ''}
                       </div>
                     </div>

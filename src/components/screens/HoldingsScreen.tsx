@@ -108,9 +108,11 @@ export const HoldingsScreen: React.FC<Props> = ({ onOpenAddHolding, onOpenHoldin
                 </div>
                 <div className="text-right shrink-0">
                   <PrivacyValue minor={m.value} includePaise={false} className="text-sm font-bold" />
-                  <div className="text-[11px]">
-                    <PrivacyDelta minor={m.gain} className="text-[11px] font-medium" />
-                  </div>
+                  {h.category !== 'LIABILITY' && (
+                    <div className="text-[11px]">
+                      <PrivacyDelta minor={m.gain} className="text-[11px] font-medium" />
+                    </div>
+                  )}
                 </div>
               </button>
             );

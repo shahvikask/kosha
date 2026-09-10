@@ -41,7 +41,8 @@ export const AddRecordModal: React.FC<AddRecordModalProps> = ({
         ? preselectedHoldingId
         : pickerHoldings[0]?.id || '';
     setHoldingId(fallback);
-    setEventType('BUY');
+    const h = holdings.find(x => x.id === fallback);
+    setEventType(h?.category === 'LIABILITY' ? 'REPAYMENT' : 'BUY');
     setEventDate(new Date().toISOString().split('T')[0]);
     setQuantity('1');
     setUnitPriceRupees('');

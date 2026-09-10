@@ -25,6 +25,7 @@ export const AccountsScreen: React.FC<Props> = ({ onOpenHoldingDetail }) => {
   } = useKosha();
 
   const [openIds, setOpenIds] = useState<Set<string>>(() => new Set());
+  const [kindFilter, setKindFilter] = useState<'ALL' | 'MF' | 'DEMAT'>('ALL');
 
   const toggle = (id: string) => {
     setOpenIds(prev => {
@@ -58,16 +59,44 @@ export const AccountsScreen: React.FC<Props> = ({ onOpenHoldingDetail }) => {
           number: a.identifierMasked || (a.dpId && a.clientId ? `${a.dpId} ${a.clientId}` : a.boId) || '',
         };
       })
+      .filter(r => {
+        if (kindFilter === 'ALL') return true;
+        if (kindFilter === 'MF') return r.kind === 'Mutual fund';
+        return r.kind === 'Demat';
+      })
       .sort((x, y) => (x.value < y.value ? 1 : -1));
-  }, [accounts, holdings, familyMembers, derived, sgbValuationMode, selectedMemberId]);
+  }, [accounts, holdings, familyMembers, derived, sgbValuationMode, selectedMemberId, kindFilter]);
 
   return (
     <div className="space-y-4 pb-12">
-      <div>
-        <h1 className="text-2xl font-bold">Accounts</h1>
-        <p className="text-sm" style={{ color: 'var(--muted)' }}>
-          Demat accounts and mutual-fund folios from your statements. Tap the holding count to see what sits on that folio.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">Accounts</h1>
+          <p className="text-sm" style={{ color: 'var(--muted)' }}>
+            Demat accounts and mutual-fund folios from your statements. Tap the holding count to see what sits on that folio.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {([
+            ['ALL', 'All'],
+            ['MF', 'Mutual fund'],
+            ['DEMAT', 'Demat'],
+          ] as const).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setKindFilter(id)}
+              className="px-3 py-1.5 rounded-full text-xs font-semibold border"
+              style={{
+                background: kindFilter === id ? 'var(--accent)' : 'var(--card)',
+                color: kindFilter === id ? 'var(--accent-fg)' : 'var(--text)',
+                borderColor: kindFilter === id ? 'var(--accent)' : 'var(--border)',
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {rows.length === 0 ? (

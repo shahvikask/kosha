@@ -104,6 +104,9 @@ def _fill_investor_from_password(result: dict, password: str) -> dict:
 def _category(kind: str, scheme_type: Optional[str], name: str) -> str:
     st = (scheme_type or "").upper()
     nm = (name or "").upper()
+    # SGB sits in the CDSL equity section; name must win before kind==equity.
+    if kind == "gold" or "SGB" in nm or "SOVEREIGN GOLD" in nm:
+        return "GOLD_SGB"
     if kind == "equity":
         return "EQUITY"
     if kind in ("bond", "nps"):
@@ -112,8 +115,6 @@ def _category(kind: str, scheme_type: Optional[str], name: str) -> str:
         return "SPECIALISED"
     if st == "ETF" or "ETF" in nm:
         return "MUTUAL_FUND"
-    if kind == "gold" or "SGB" in nm or "SOVEREIGN GOLD" in nm:
-        return "GOLD_SGB"
     return "MUTUAL_FUND"
 
 

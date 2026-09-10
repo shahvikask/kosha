@@ -6,7 +6,7 @@ import { xirr } from './returns';
 import { classifyHolding, EXPOSURES, WRAPPERS, exposureLabel, l2Label } from './taxonomy';
 import { resolveSplit, apportion, buildTree, isHybrid, activeWrappers } from './lookthrough';
 import { LedgerEvent, Holding } from '../types';
-import { eventLabel, bucketOf, upcomingFromHoldings, displayHoldingName, accountTitle, inferAmcFromSchemeName } from './holdingView';
+import { eventLabel, bucketOf, upcomingFromHoldings, displayHoldingName, accountTitle, inferAmcFromSchemeName, looksLikeSgb, metricsOf } from './holdingView';
 import { formatStatementDate, latestAsOfForOwner, statementAsOfByMember, parseCasLatest } from './casPython';
 import { addCalendarMonths, dueEmiDates, planEmiCatchUp, resumeEmiDate } from './emi';
 import { checkImportPan, pansMatch, panBlocksCommit, findDuplicatePanMember, panFingerprint } from './pan';
@@ -376,6 +376,23 @@ eq('qty unchanged', priced.holdings[0].quantityScaled, before.quantityScaled);
 const catalogRows = [tcs!];
 eq('search TCS', searchListed(catalogRows, 'tcs', 'EQUITY')[0]?.isin, 'INE467B01029');
 eq('search misses funds', searchListed(catalogRows, 'tcs', 'MUTUAL_FUND').length, 0);
+
+console.log('\n--- R. Loan outstanding, SGB gold tab, loan labels ---');
+eq('SGB name detected', looksLikeSgb('2.5% SGB 2021-22 SERIES II 2029-LOAN CODE 30433'), true);
+eq('SGB bucket even if tagged equity', bucketOf({ ...hold('h_sgb','EQUITY',10,5000,5000), name: '2.5% SGB 2021-22 SERIES II' }), 'GOLD');
+const loanH: Holding = {
+  ...hold('h_loan','LIABILITY',1,850000,612000),
+  name: 'HDFC Car Loan',
+  monthlyEmiMinor: String(18500*10000),
+  remainingEmiCount: 36,
+};
+const emptyDerived = derivePositions([], [loanH]);
+const lm = metricsOf(loanH, emptyDerived, 'MARKET_TRADED');
+eq('loan list is outstanding not zero', Number(lm.value) / 10000, 612000);
+eq('loan original amount', Number(lm.cost) / 10000, 850000);
+eq('loan has no share-style gain', lm.gain, 0n);
+eq('loan recorded label', eventLabel('VALUATION_UPDATE', 'Loan recorded — outstanding at start'), 'Loan recorded');
+eq('repayment label', eventLabel('REPAYMENT'), 'Loan repayment');
 
 console.log('\n--- H. Encryption ---');
 (async()=>{

@@ -88,6 +88,7 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
     pricesRefreshing,
     pricesAsOf,
     pricesError,
+    holdings,
   } = useKosha();
 
   const [category, setCategory] = useState<AssetCategory>('EQUITY');
@@ -119,6 +120,12 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
     () => (listedPicker ? searchListed(listedSecurities, searchQ, category, 20) : []),
     [listedPicker, listedSecurities, searchQ, category],
   );
+  const existingSameIsin = useMemo(() => {
+    if (!picked?.isin) return undefined;
+    return holdings.find(
+      h => h.ownerId === ownerId && (h.isin || '').toUpperCase() === picked.isin.toUpperCase()
+    );
+  }, [picked, holdings, ownerId]);
 
   if (!isOpen) return null;
 
@@ -276,6 +283,12 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
                             Close {MoneyEngine.formatRupees(BigInt(picked.closeMinor), false)} as on{' '}
                             {formatStatementDate(picked.priceDate)}
                           </div>
+                          {existingSameIsin && (
+                            <p className="text-[11px] text-amber-300 mt-1">
+                              {existingSameIsin.name} is already on this profile. Saving records a buy on
+                              that holding — not a second line.
+                            </p>
+                          )}
                         </div>
                         <button type="button" onClick={() => { setPicked(null); setName(''); }} className="text-xs text-amber-300">
                           Change
@@ -577,7 +590,7 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
               Cancel
             </button>
             <button type="submit" className="px-5 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 text-sm font-bold rounded-xl cursor-pointer">
-              Save Holding
+              {existingSameIsin ? 'Record buy on existing' : 'Save Holding'}
             </button>
           </div>
         </form>

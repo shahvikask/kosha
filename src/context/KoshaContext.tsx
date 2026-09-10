@@ -16,14 +16,14 @@ import {
   ListedSecurity,
 } from '../types';
 import { INITIAL_FAMILY_MEMBERS } from '../data/initialData';
-import { EMPTY_SELF, ThemeName } from '../lib/holdingView';
+import { EMPTY_SELF, ThemeName, looksLikeSgb, metricsOf } from '../lib/holdingView';
 import { applyTheme, readStoredTheme, writeStoredTheme } from '../lib/theme';
 import { findMatchingHolding, holdingIdentityKey } from '../lib/matchHolding';
 export { findMatchingHolding, normalizeHoldingName } from '../lib/matchHolding';
 import { MoneyEngine, MONEY_SCALE, QTY_SCALE } from '../lib/money';
 import { xirr, buildCashFlows, totalGainPercent } from '../lib/returns';
 import { foldHolding, financialYearOf, assessmentYearOf } from '../lib/lots';
-import { derivePositions, marketValueMinor, DerivedState } from '../lib/positions';
+import { derivePositions, DerivedState } from '../lib/positions';
 import { encryptJson, decryptJson, isEncryptedBlob, generateRecoveryKey, maskPan, WrongPassphraseError } from '../lib/vault';
 import { ruleSetFor, classifyGain, grandfatheredCostMinor, applyRateMinor } from '../lib/taxRules';
 import { SqliteWasmDriver } from '../db/sqliteWasmDriver';
@@ -340,6 +340,17 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         setFamilyMembers(entities);
         const asOf = new Date().toISOString().slice(0, 10);
+        const sgbFixed: Holding[] = [];
+        for (const h of currentHoldings) {
+          if (looksLikeSgb(h.name) && h.category !== 'GOLD_SGB') {
+            const fixed = { ...h, category: 'GOLD_SGB' as const, subCategory: h.subCategory || 'SGB' };
+            if (r) await r.upsertHolding(fixed);
+            sgbFixed.push(fixed);
+          } else {
+            sgbFixed.push(h);
+          }
+        }
+        currentHoldings = sgbFixed;
         const caught = await catchUpHoldings(r, currentHoldings, currentEvents, asOf);
         setHoldings(caught.holdings);
         setLedgerEvents(caught.events);
@@ -423,22 +434,12 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     let totalRealisedGainsMinor = 0n;
 
     filteredHoldings.forEach(h => {
-      const pos = derived.positions.get(h.id);
-      const qty = pos ? pos.quantityScaled : BigInt(h.quantityScaled || '0');
-
-      let price = BigInt(h.currentPriceMinor || '0');
-      if (h.category === 'GOLD_SGB' && sgbValuationMode === 'RBI_BENCHMARK' && h.benchmarkPriceMinor) {
-        price = BigInt(h.benchmarkPriceMinor);
-      }
-
-      const val = marketValueMinor(qty, price);
-      const cost = pos ? pos.costMinor : (qty * BigInt(h.averageCostPerUnitMinor || h.currentPriceMinor || '0')) / QTY_SCALE;
-
+      const m = metricsOf(h, derived, sgbValuationMode);
       if (h.category === 'LIABILITY') {
-        totalLiabilitiesMinor += val > 0n ? val : cost;
+        totalLiabilitiesMinor += m.value;
       } else {
-        totalAssetsMinor += val;
-        totalInvestedMinor += cost;
+        totalAssetsMinor += m.value;
+        totalInvestedMinor += m.cost;
       }
     });
 
@@ -511,6 +512,41 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const addHolding = async (holdingData: Omit<Holding, 'id' | 'lastPriceUpdated' | 'isPriceStale'>): Promise<Holding> => {
+    const isin = (holdingData.isin || '').trim().toUpperCase();
+    if (isin.length >= 12 && holdingData.category !== 'LIABILITY') {
+      const existing = holdings.find(
+        h => h.ownerId === holdingData.ownerId && (h.isin || '').toUpperCase() === isin
+      );
+      if (existing) {
+        await appendLedgerEvent({
+          holdingId: existing.id,
+          holdingName: existing.name,
+          ownerId: existing.ownerId,
+          eventType: 'BUY',
+          eventDate: new Date().toISOString().split('T')[0],
+          quantityScaled: holdingData.quantityScaled,
+          unitPriceMinor: holdingData.averageCostPerUnitMinor,
+          totalAmountMinor: (
+            (BigInt(holdingData.quantityScaled) * BigInt(holdingData.averageCostPerUnitMinor)) / QTY_SCALE
+          ).toString(),
+          notes: 'Buy on existing holding (same ISIN)',
+        });
+        if (holdingData.currentPriceMinor && holdingData.currentPriceMinor !== existing.currentPriceMinor) {
+          const priced: Holding = {
+            ...existing,
+            currentPriceMinor: holdingData.currentPriceMinor,
+            lastPriceUpdated: new Date().toISOString(),
+            priceSource: holdingData.priceSource || existing.priceSource,
+            isin: existing.isin || isin,
+          };
+          if (repo) await repo.upsertHolding(priced);
+          setHoldings(prev => prev.map(h => (h.id === existing.id ? priced : h)));
+          return priced;
+        }
+        return existing;
+      }
+    }
+
     const newId = `h_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const newHolding: Holding = {
       ...holdingData,
@@ -523,17 +559,22 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       await repo.upsertHolding(newHolding);
     }
 
-    const initialAmount = (BigInt(holdingData.quantityScaled) * BigInt(holdingData.averageCostPerUnitMinor)) / QTY_SCALE;
+    const isLoan = holdingData.category === 'LIABILITY';
+    const initialAmount = isLoan
+      ? (holdingData.currentPriceMinor || '0')
+      : (BigInt(holdingData.quantityScaled) * BigInt(holdingData.averageCostPerUnitMinor)) / QTY_SCALE;
     await appendLedgerEvent({
       holdingId: newId,
       holdingName: holdingData.name,
       ownerId: holdingData.ownerId,
-      eventType: holdingData.category === 'LIABILITY' ? 'VALUATION_UPDATE' : 'BUY',
+      eventType: isLoan ? 'VALUATION_UPDATE' : 'BUY',
       eventDate: new Date().toISOString().split('T')[0],
-      quantityScaled: holdingData.quantityScaled,
-      unitPriceMinor: holdingData.averageCostPerUnitMinor,
+      quantityScaled: isLoan ? '0' : holdingData.quantityScaled,
+      unitPriceMinor: isLoan
+        ? (holdingData.currentPriceMinor || holdingData.averageCostPerUnitMinor)
+        : holdingData.averageCostPerUnitMinor,
       totalAmountMinor: initialAmount.toString(),
-      notes: 'Initial holding record creation',
+      notes: isLoan ? 'Loan recorded — outstanding at start' : 'Initial holding record creation',
     });
 
     let saved = newHolding;

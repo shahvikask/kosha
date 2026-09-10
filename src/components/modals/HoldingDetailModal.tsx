@@ -299,15 +299,20 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
             <PrivacyValue minor={m.value} className="text-xl font-bold" showCompact includePaise={false} />
           </div>
           <div className="p-4 rounded-2xl border" style={{ borderColor: 'var(--border)', background: 'var(--input)' }}>
-            <div className="text-xs mb-1" style={{ color: 'var(--muted)' }}>Put in (Invested)</div>
+            <div className="text-xs mb-1" style={{ color: 'var(--muted)' }}>
+              {catInfo.isLiability ? 'Original loan' : 'Put in (Invested)'}
+            </div>
             <PrivacyValue minor={m.cost} className="text-xl font-bold" includePaise={false} />
           </div>
+          {!catInfo.isLiability && (
           <div className="p-4 rounded-2xl border" style={{ borderColor: 'var(--border)', background: 'var(--input)' }}>
             <div className="text-xs mb-1" style={{ color: 'var(--muted)' }}>Gain or loss</div>
             <PrivacyDelta minor={m.gain} className="text-xl font-bold" />
           </div>
+          )}
         </div>
 
+        {!catInfo.isLiability && (
         <div className="text-sm" style={{ color: 'var(--muted)' }}>
           {unitWord(holding) && m.qty > 0n
             ? `${MoneyEngine.toQty(m.qty).toLocaleString('en-IN')} ${unitWord(holding)} · `
@@ -331,7 +336,8 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
             </button>
           )}
         </div>
-        {holding.lastPriceUpdated && (
+        )}
+        {holding.lastPriceUpdated && !catInfo.isLiability && (
           <div className="text-[11px] -mt-1" style={{ color: 'var(--muted)' }}>
             {holding.priceSource || 'Price'} as on {holding.lastPriceUpdated.slice(0, 10)}
             {/NSE|BSE|AMFI/i.test(holding.priceSource || '') ? ' — last close, not live' : ''}
@@ -476,7 +482,7 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
             className="px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5"
             style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}
           >
-            <Plus className="w-3.5 h-3.5" /> Record a buy or sell
+            <Plus className="w-3.5 h-3.5" /> {catInfo.isLiability ? 'Record an extra payment' : 'Record a buy or sell'}
           </button>
           <button
             onClick={() => {
@@ -503,7 +509,7 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
               {holdingEvents.slice(0, 20).map(ev => (
                 <div key={ev.id} className="py-2 flex items-center justify-between text-sm gap-3">
                   <div>
-                    <div className="font-medium">{eventLabel(ev.eventType)}</div>
+                    <div className="font-medium">{eventLabel(ev.eventType, ev.notes)}</div>
                     <div className="text-[11px]" style={{ color: 'var(--muted)' }}>
                       {formatCalendarDate(ev.eventDate)}
                       {ev.notes ? ` · ${ev.notes}` : ''}
