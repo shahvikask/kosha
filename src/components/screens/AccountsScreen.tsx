@@ -45,6 +45,7 @@ export const AccountsScreen: React.FC<Props> = ({ onOpenHoldingDetail }) => {
         ));
         const valued = hs
           .map(h => ({ h, m: metricsOf(h, derived, sgbValuationMode) }))
+          .filter(r => r.h.category === 'LIABILITY' || r.m.qty > 0n)
           .sort((x, y) => (x.m.value < y.m.value ? 1 : -1));
         const value = valued.reduce((s, r) => s + r.m.value, 0n);
         const owner = familyMembers.find(m => m.id === a.ownerId);

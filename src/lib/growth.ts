@@ -260,6 +260,8 @@ export function buildGrowthModel(
     const pos = derived.positions.get(h.id);
     const real = pos ? pos.realisedGainMinor : 0n;
     realised += real;
+    const closed = h.category !== 'LIABILITY' && m.qty <= 0n;
+    if (closed) continue;
     const bucket = bucketOf(h);
     if (h.category === 'LIABILITY') {
       liabilities += m.value;

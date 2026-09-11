@@ -159,11 +159,9 @@ export function foldHolding(
           p.totalCostMinor -= cost;
           toRemove -= take;
         }
-        errors.push(
-          `Units were removed on ${ev.eventDate} to match a statement. ` +
-          `We do not know the sale price, so this is NOT counted in your ` +
-          `capital gains. Add the actual sale if you have it.`
-        );
+        // Downward snapshot is a holdings-statement close, not a sale.
+        // Do not warn on every fold — that flooded Documents after JAN–JUL
+        // CDSL re-imports. Only flag when the statement exceeds units held.
         if (toRemove > 0n) {
           errors.push(`Statement adjustment on ${ev.eventDate} exceeds units held.`);
         }

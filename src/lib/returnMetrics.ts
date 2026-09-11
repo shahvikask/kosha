@@ -44,6 +44,8 @@ const WHY = {
   SIF: 'Absolute, risk-aware return for long-short / hedge-style books. XIRR from your cash flows.',
   REIT: 'Rental or dividend yield plus price change. IRR needs the buy date and today’s value.',
   OTHER: 'Absolute change versus what you put in, until we have a fuller cash-flow history.',
+  STATEMENT: 'We only have the first statement date, not your original SIPs or purchase lots. This is growth since that statement — not lifetime return.',
+  CLOSED: 'This holding is no longer on the latest statement. Quantity is zero.',
 } as const;
 
 function blob(h: Holding): string {
@@ -51,7 +53,17 @@ function blob(h: Holding): string {
 }
 
 function buyCount(events: LedgerEvent[]): number {
-  return events.filter(e => e.eventType === 'BUY' || e.eventType === 'OPENING_BALANCE').length;
+  return events.filter(e => e.eventType === 'BUY').length;
+}
+
+/** True when the ledger has a statement opening and no real buys/sells. */
+export function isStatementOnlyHistory(events: LedgerEvent[]): boolean {
+  let open = false;
+  for (const e of events) {
+    if (e.eventType === 'BUY' || e.eventType === 'SELL') return false;
+    if (e.eventType === 'OPENING_BALANCE') open = true;
+  }
+  return open;
 }
 
 export function profileOf(h: Holding, events: LedgerEvent[], asOf: string): InstrumentProfile {
@@ -112,6 +124,17 @@ export function holdingReturn(
   const own = events.filter(e => e.holdingId === h.id);
   const profile = profileOf(h, own, asOf);
   const m = metricsOf(h, derived, sgbMode);
+
+  if (h.category !== 'LIABILITY' && m.qty <= 0n) {
+    return {
+      profile: { ...profile, primaryLabel: 'Closed', why: WHY.CLOSED },
+      primaryPct: null,
+      primaryText: 'Closed',
+      secondaryPct: null,
+      secondaryText: '—',
+    };
+  }
+
   const first = firstActivityDate(own);
   const abs = absoluteReturnPct(m.cost, m.value);
   const cagr = first ? cagrPct(m.cost, m.value, first, asOf) : null;
@@ -151,8 +174,20 @@ export function holdingReturn(
 
   const p = pick(primaryKind);
   const s = pick(secondaryKind);
+
+  let labelled = profile;
+  if (isStatementOnlyHistory(own)) {
+    if (primaryKind === 'xirr') {
+      labelled = { ...profile, primaryLabel: 'XIRR since statement', why: WHY.STATEMENT };
+    } else if (primaryKind === 'cagr') {
+      labelled = { ...profile, primaryLabel: 'CAGR since statement', why: WHY.STATEMENT };
+    } else {
+      labelled = { ...profile, why: WHY.STATEMENT };
+    }
+  }
+
   return {
-    profile,
+    profile: labelled,
     primaryPct: p.pct,
     primaryText: p.text,
     secondaryPct: s.pct,

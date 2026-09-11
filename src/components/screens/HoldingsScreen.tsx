@@ -10,6 +10,7 @@ import {
   unitWord,
   whereHeld,
   displayHoldingName,
+  isOpenPosition,
 } from '../../lib/holdingView';
 import { MoneyEngine } from '../../lib/money';
 import { Search, Plus } from 'lucide-react';
@@ -24,8 +25,14 @@ export const HoldingsScreen: React.FC<Props> = ({ onOpenAddHolding, onOpenHoldin
   const { filteredHoldings, familyMembers, derived, sgbValuationMode, ledgerEvents } = useKosha();
   const [q, setQ] = useState('');
   const [bucket, setBucket] = useState<FamilyBucketId | 'ALL'>('ALL');
+  const [showClosed, setShowClosed] = useState(false);
 
   const asOf = new Date().toISOString().slice(0, 10);
+  const closedCount = useMemo(
+    () => filteredHoldings.filter(h => !isOpenPosition(h, derived)).length,
+    [filteredHoldings, derived]
+  );
+
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return filteredHoldings
@@ -35,6 +42,7 @@ export const HoldingsScreen: React.FC<Props> = ({ onOpenAddHolding, onOpenHoldin
         b: bucketOf(h),
         r: holdingReturn(h, ledgerEvents, derived, sgbValuationMode, asOf),
       }))
+      .filter(r => showClosed || isOpenPosition(r.h, derived))
       .filter(r => (bucket === 'ALL' ? true : r.b === bucket))
       .filter(r => {
         if (!needle) return true;
@@ -46,7 +54,7 @@ export const HoldingsScreen: React.FC<Props> = ({ onOpenAddHolding, onOpenHoldin
           .includes(needle);
       })
       .sort((a, b) => (a.m.value < b.m.value ? 1 : -1));
-  }, [filteredHoldings, derived, sgbValuationMode, q, bucket, familyMembers, ledgerEvents, asOf]);
+  }, [filteredHoldings, derived, sgbValuationMode, q, bucket, familyMembers, ledgerEvents, asOf, showClosed]);
 
   const hint = bucket === 'ALL' ? null : bucketMetricHint(bucket);
 
@@ -86,6 +94,11 @@ export const HoldingsScreen: React.FC<Props> = ({ onOpenAddHolding, onOpenHoldin
             {b.title}
           </Chip>
         ))}
+        {closedCount > 0 && (
+          <Chip active={showClosed} onClick={() => setShowClosed(v => !v)}>
+            {showClosed ? 'Hide closed' : `Show closed (${closedCount})`}
+          </Chip>
+        )}
       </div>
       {hint && (
         <p className="text-[11px] -mt-1" style={{ color: 'var(--muted)' }}>{hint}</p>
@@ -95,7 +108,9 @@ export const HoldingsScreen: React.FC<Props> = ({ onOpenAddHolding, onOpenHoldin
         <div className="card p-8 text-center text-sm" style={{ color: 'var(--muted)' }}>
           {filteredHoldings.length === 0
             ? 'Nothing here yet. Read a statement or add PPF / property manually.'
-            : 'No holding matches that search.'}
+            : closedCount > 0 && !showClosed && !q.trim() && bucket === 'ALL'
+              ? `Closed holdings are hidden. Show closed (${closedCount}) to review them.`
+              : 'No holding matches that search.'}
         </div>
       ) : (
         <div className="card divide-y overflow-hidden" style={{ borderColor: 'var(--border)' }}>
