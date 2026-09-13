@@ -1,22 +1,15 @@
 /**
- * Return metric by Indian instrument. Numbers come from the vault
- * (ledger + last close). Index / category / G-sec benchmarks are labelled
- * only — we do not invent a Nifty or CRISIL figure.
+ * Holding return presentation.
+ *
+ * Kosha intentionally exposes one return metric in the UI: absolute return.
+ * This module keeps the existing API shape used by the holding detail modal,
+ * but no longer calculates or imports XIRR, CAGR, TVPI, or yield metrics.
  */
 import { Holding, LedgerEvent } from '../types';
 import { DerivedState } from './positions';
-import { calendarDays } from './lots';
-import { xirr } from './returns';
 import { classifyHolding } from './taxonomy';
 import { metricsOf } from './holdingView';
-import {
-  absoluteReturnPct,
-  cagrPct,
-  firstActivityDate,
-  formatPct,
-  investmentCashFlows,
-} from './growth';
-import { MONEY_SCALE } from './money';
+import { absoluteReturnPct, formatPct } from './growth';
 
 export interface InstrumentProfile {
   key: string;
@@ -34,26 +27,21 @@ export interface HoldingReturn {
 }
 
 const WHY = {
-  MF_SIP: 'Cash goes in on many dates. XIRR is the money-weighted rate for each instalment.',
-  MF_LUMP: 'Point-to-point annualised growth, for a lump sum held more than a year.',
-  FD: 'Stated interest is pre-tax. Interest is taxed at your slab (TDS may apply), so post-tax yield is the true earning. We do not store your slab.',
-  EQUITY: 'Buys, sells and dividends happen on different dates. XIRR includes all of that.',
-  SGB: '2.5% p.a. simple interest (half-yearly) plus gold price. Interest is in the record book when posted.',
-  PPF: 'EEE — the compounded rate is already post-tax. Compare with 10-year G-sec when you look it up.',
-  AIF: 'Capital calls and distributions. TVPI is total value plus cash back, divided by money paid in.',
-  SIF: 'Absolute, risk-aware return for long-short / hedge-style books. XIRR from your cash flows.',
-  REIT: 'Rental or dividend yield plus price change. IRR needs the buy date and today’s value.',
-  OTHER: 'Absolute change versus what you put in, until we have a fuller cash-flow history.',
-  STATEMENT: 'We only have the first statement date, not your original SIPs or purchase lots. This is growth since that statement — not lifetime return.',
+  SGB: 'Absolute return compares today’s value with the amount invested in this holding.',
+  REIT: 'Absolute return compares today’s value with the amount invested in this holding.',
+  SIF: 'Absolute return compares today’s value with the amount invested in this holding.',
+  AIF: 'Absolute return compares today’s value with the amount invested in this holding.',
+  PPF: 'Absolute return compares today’s value with the amount invested in this holding.',
+  FD: 'Absolute return compares today’s value with the amount invested in this holding.',
+  MF: 'Absolute return compares today’s value with the amount invested in this holding.',
+  EQUITY: 'Absolute return compares today’s value with the amount invested in this holding.',
+  OTHER: 'Absolute return compares today’s value with the amount invested in this holding.',
+  STATEMENT: 'This is the change in value versus the invested value recorded in Kosha.',
   CLOSED: 'This holding is no longer on the latest statement. Quantity is zero.',
 } as const;
 
 function blob(h: Holding): string {
   return `${h.name} ${h.subCategory || ''} ${h.schemeType || ''} ${h.tag || ''}`.toLowerCase();
-}
-
-function buyCount(events: LedgerEvent[]): number {
-  return events.filter(e => e.eventType === 'BUY').length;
 }
 
 /** True when the ledger has a statement opening and no real buys/sells. */
@@ -66,52 +54,26 @@ export function isStatementOnlyHistory(events: LedgerEvent[]): boolean {
   return open;
 }
 
-export function profileOf(h: Holding, events: LedgerEvent[], asOf: string): InstrumentProfile {
+export function profileOf(h: Holding, _events: LedgerEvent[], _asOf: string): InstrumentProfile {
   const t = blob(h);
   const place = classifyHolding(h);
-  const buys = buyCount(events);
-  const first = firstActivityDate(events);
-  const years = first ? calendarDays(first, asOf) / 365.25 : 0;
 
-  if (h.category === 'GOLD_SGB' || /\bsgb\b|sovereign gold/.test(t)) {
-    return { key: 'SGB', primaryLabel: 'XIRR (price + coupon)', secondaryLabel: 'CAGR', why: WHY.SGB };
-  }
-  if (h.category === 'REAL_ESTATE' || place.l2 === 'REIT' || /\breit\b|\binvit\b/.test(t)) {
-    return { key: 'REIT', primaryLabel: 'XIRR', secondaryLabel: 'Income yield', why: WHY.REIT };
-  }
-  if (place.wrapper === 'SIF' || /\bsif\b|specialised investment/.test(t)) {
-    return { key: 'SIF', primaryLabel: 'XIRR', secondaryLabel: 'Absolute return', why: WHY.SIF };
-  }
-  if (place.wrapper === 'AIF' || h.category === 'SPECIALISED' || /\baif\b|pms\b|category ii|cat ii/.test(t)) {
-    return { key: 'AIF', primaryLabel: 'TVPI', secondaryLabel: 'XIRR', why: WHY.AIF };
-  }
-  if (h.category === 'FIXED_INCOME' && /\bppf|epf|vpf|provident|sukanya|\bssy\b/.test(t)) {
-    return { key: 'PPF', primaryLabel: 'Stated compounded yield', secondaryLabel: 'CAGR on the books', why: WHY.PPF };
-  }
-  if (
-    h.category === 'FIXED_INCOME' ||
-    h.category === 'CASH_BANK' ||
-    /\bfd\b|fixed deposit|term deposit|post office|\btd\b|recurring/.test(t)
-  ) {
-    return { key: 'FD', primaryLabel: 'Stated yield (pre-tax)', secondaryLabel: 'Absolute return', why: WHY.FD };
-  }
-  if (h.category === 'MUTUAL_FUND') {
-    if (buys >= 3 || /\bsip\b|\bstp\b|\bswp\b/.test(t)) {
-      return { key: 'MF_SIP', primaryLabel: 'XIRR', secondaryLabel: 'Absolute return', why: WHY.MF_SIP };
-    }
-    if (years >= 1) {
-      return { key: 'MF_LUMP', primaryLabel: 'CAGR', secondaryLabel: 'Absolute return', why: WHY.MF_LUMP };
-    }
-    return { key: 'MF_SIP', primaryLabel: 'XIRR', secondaryLabel: 'Absolute return', why: WHY.MF_SIP };
-  }
-  if (h.category === 'EQUITY') {
-    return { key: 'EQUITY', primaryLabel: 'XIRR', secondaryLabel: 'Absolute return', why: WHY.EQUITY };
-  }
-  return { key: 'OTHER', primaryLabel: 'Absolute return', secondaryLabel: 'XIRR', why: WHY.OTHER };
-}
+  let key = 'OTHER';
+  if (h.category === 'GOLD_SGB' || /\bsgb\b|sovereign gold/.test(t)) key = 'SGB';
+  else if (h.category === 'REAL_ESTATE' || place.l2 === 'REIT' || /\breit\b|\binvit\b/.test(t)) key = 'REIT';
+  else if (place.wrapper === 'SIF' || /\bsif\b|specialised investment/.test(t)) key = 'SIF';
+  else if (place.wrapper === 'AIF' || h.category === 'SPECIALISED' || /\baif\b|\bpms\b|category ii|cat ii/.test(t)) key = 'AIF';
+  else if (h.category === 'FIXED_INCOME' && /\bppf\b|\bepf\b|\bvpf\b|provident|sukanya|\bssy\b/.test(t)) key = 'PPF';
+  else if (h.category === 'FIXED_INCOME' || h.category === 'CASH_BANK' || /\bfd\b|fixed deposit|term deposit|post office|\btd\b|recurring/.test(t)) key = 'FD';
+  else if (h.category === 'MUTUAL_FUND') key = 'MF';
+  else if (h.category === 'EQUITY') key = 'EQUITY';
 
-function rupees(minor: bigint): number {
-  return Number(minor) / Number(MONEY_SCALE);
+  return {
+    key,
+    primaryLabel: 'Absolute return',
+    secondaryLabel: 'Gain / loss',
+    why: WHY[key as keyof typeof WHY] || WHY.OTHER,
+  };
 }
 
 export function holdingReturn(
@@ -135,75 +97,20 @@ export function holdingReturn(
     };
   }
 
-  const first = firstActivityDate(own);
   const abs = absoluteReturnPct(m.cost, m.value);
-  const cagr = first ? cagrPct(m.cost, m.value, first, asOf) : null;
-  const flows = investmentCashFlows(own, rupees(m.value), asOf);
-  const x = xirr(flows);
-  const income = own
-    .filter(e => e.eventType === 'DIVIDEND' || e.eventType === 'INTEREST')
-    .reduce((s, e) => s + BigInt(e.totalAmountMinor || '0'), 0n);
-  const tvpi = m.cost > 0n ? Number(m.value + income) / Number(m.cost) : null;
-  const years = first ? calendarDays(first, asOf) / 365.25 : 0;
-  const yieldPct =
-    m.value > 0n && years >= 0.25 ? (rupees(income) / Math.max(years, 1 / 12) / rupees(m.value)) * 100 : null;
-  const coupon = h.couponRatePercent ?? h.interestRatePercent ?? null;
-
-  const pick = (kind: 'xirr' | 'cagr' | 'abs' | 'tvpi' | 'yield' | 'coupon'): { pct: number | null; text: string } => {
-    if (kind === 'xirr') return { pct: x, text: x == null ? 'Need a buy date and today’s value' : formatPct(x) };
-    if (kind === 'cagr') return { pct: cagr, text: cagr == null ? 'Need ≥ 30 days of history' : formatPct(cagr) };
-    if (kind === 'abs') return { pct: abs, text: abs == null ? '—' : formatPct(abs) };
-    if (kind === 'tvpi') return { pct: tvpi, text: tvpi == null ? '—' : `${tvpi.toFixed(2)}×` };
-    if (kind === 'yield') return { pct: yieldPct, text: yieldPct == null ? 'No income rows yet' : formatPct(yieldPct) };
-    return { pct: coupon, text: coupon == null ? 'Add the rate on the holding' : formatPct(coupon) };
-  };
-
-  const primaryKind =
-    profile.key === 'MF_LUMP' ? 'cagr'
-    : profile.key === 'AIF' ? 'tvpi'
-    : profile.key === 'FD' || profile.key === 'PPF' ? 'coupon'
-    : profile.key === 'OTHER' ? 'abs'
-    : 'xirr';
-  const secondaryKind =
-    profile.key === 'REIT' ? 'yield'
-    : profile.key === 'AIF' ? 'xirr'
-    : profile.key === 'SGB' ? 'cagr'
-    : profile.key === 'PPF' ? 'cagr'
-    : profile.key === 'OTHER' ? 'xirr'
-    : 'abs';
-
-  const p = pick(primaryKind);
-  const s = pick(secondaryKind);
-
-  let labelled = profile;
-  if (isStatementOnlyHistory(own)) {
-    if (primaryKind === 'xirr') {
-      labelled = { ...profile, primaryLabel: 'XIRR since statement', why: WHY.STATEMENT };
-    } else if (primaryKind === 'cagr') {
-      labelled = { ...profile, primaryLabel: 'CAGR since statement', why: WHY.STATEMENT };
-    } else {
-      labelled = { ...profile, why: WHY.STATEMENT };
-    }
-  }
+  const labelled = isStatementOnlyHistory(own)
+    ? { ...profile, why: WHY.STATEMENT }
+    : profile;
 
   return {
     profile: labelled,
-    primaryPct: p.pct,
-    primaryText: p.text,
-    secondaryPct: s.pct,
-    secondaryText: s.text,
+    primaryPct: abs,
+    primaryText: formatPct(abs),
+    secondaryPct: null,
+    secondaryText: '—',
   };
 }
 
-export function bucketMetricHint(bucket: string): string | null {
-  switch (bucket) {
-    case 'FUNDS': return 'SIPs: XIRR · lump sum > 1 year: CAGR';
-    case 'SHARES': return 'XIRR from buys, sells and dividends';
-    case 'GOLD': return 'SGB: XIRR of price plus 2.5% coupon';
-    case 'GOVT': return 'PPF/EPF: compounded EEE yield · FD: pre-tax stated rate';
-    case 'PROPERTY': return 'XIRR + rental / REIT dividend yield';
-    case 'SPECIAL': return 'AIF: TVPI · SIF: XIRR';
-    case 'BANK': return 'FD / deposit: stated yield (pre-tax)';
-    default: return null;
-  }
+export function bucketMetricHint(_bucket: string): string | null {
+  return 'Absolute return = (current value − invested value) ÷ invested value.';
 }
