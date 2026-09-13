@@ -1,13 +1,12 @@
 /**
  * Growth engine. Pure view over holdings + ledger already in SQLite.
- * Indian FY (Apr–Mar). XIRR is money-weighted; CAGR is point-to-point
- * from the first record. Prices are last close / NAV, not live.
+ * Indian FY (Apr–Mar). Return is intentionally absolute only.
+ * Prices are last close / NAV, not live.
  */
 import { FamilyMember, Holding, LedgerEvent } from '../types';
 import { DerivedState } from './positions';
 import { MONEY_SCALE, QTY_SCALE } from './money';
-import { calendarDays, financialYearOf } from './lots';
-import { buildCashFlows, xirr, CashFlow } from './returns';
+import { financialYearOf } from './lots';
 import {
   FamilyBucketId,
   FAMILY_BUCKETS,
@@ -84,10 +83,6 @@ export interface GrowthKpis {
   netWorthMinor: bigint;
   absoluteGainMinor: bigint;
   absoluteReturnPct: number | null;
-  xirrPct: number | null;
-  cagrPct: number | null;
-  firstDate: string | null;
-  yearsHeld: number | null;
   incomeThisFyMinor: bigint;
   realisedMinor: bigint;
   unrealisedMinor: bigint;
@@ -117,52 +112,9 @@ function eventCashMinor(ev: LedgerEvent): bigint {
   return v < 0n ? -v : v;
 }
 
-export function firstActivityDate(events: LedgerEvent[]): string | null {
-  let min: string | null = null;
-  for (const ev of events) {
-    if (!ev.eventDate) continue;
-    if (!min || ev.eventDate < min) min = ev.eventDate;
-  }
-  return min;
-}
-
 export function absoluteReturnPct(invested: bigint, current: bigint): number | null {
   if (invested <= 0n) return null;
   return (rupees(current - invested) / rupees(invested)) * 100;
-}
-
-export function cagrPct(
-  startMinor: bigint,
-  endMinor: bigint,
-  fromIso: string,
-  toIso: string,
-): number | null {
-  if (startMinor <= 0n || endMinor <= 0n) return null;
-  const days = calendarDays(fromIso, toIso);
-  if (days < 30) return null;
-  const years = days / 365.25;
-  const start = rupees(startMinor);
-  const end = rupees(endMinor);
-  if (start <= 0 || end <= 0) return null;
-  return (Math.pow(end / start, 1 / years) - 1) * 100;
-}
-
-export function formatPct(n: number | null, digits = 1): string {
-  if (n == null || !Number.isFinite(n)) return '—';
-  const sign = n > 0 ? '+' : '';
-  return `${sign}${n.toFixed(digits)}%`;
-}
-
-/** OPENING_BALANCE is treated as money put in (CAS has no buy history). */
-export function investmentCashFlows(
-  events: LedgerEvent[],
-  currentValueRupees: number,
-  asOf: string,
-): CashFlow[] {
-  const extra: LedgerEvent[] = events.map(ev =>
-    ev.eventType === 'OPENING_BALANCE' ? { ...ev, eventType: 'BUY' as const } : ev,
-  );
-  return buildCashFlows(extra, currentValueRupees, asOf);
 }
 
 export function incomeByFinancialYear(
@@ -190,7 +142,8 @@ export function incomeByFinancialYear(
 }
 
 export function cumulativeByMonth(events: LedgerEvent[], asOf: string): MonthPoint[] {
-  const start = firstActivityDate(events);
+  const dates = events.map(e => e.eventDate).filter(Boolean).sort();
+  const start = dates[0];
   if (!start) return [];
   const from = start.slice(0, 7);
   const to = asOf.slice(0, 7);
@@ -203,10 +156,7 @@ export function cumulativeByMonth(events: LedgerEvent[], asOf: string): MonthPoi
   while ((y < endY || (y === endY && m <= endM)) && guard++ < 240) {
     months.push(`${y}-${String(m).padStart(2, '0')}`);
     m += 1;
-    if (m > 12) {
-      m = 1;
-      y += 1;
-    }
+    if (m > 12) { m = 1; y += 1; }
   }
 
   const investedAt = new Map<string, bigint>();
@@ -306,24 +256,12 @@ export function buildGrowthModel(
 
   const buckets: GrowthSlice[] = FAMILY_BUCKETS
     .filter(b => b.id !== 'LOAN')
-    .map(b => ({
-      id: b.id,
-      label: b.title,
-      valueMinor: bucketMap.get(b.id)?.value || 0n,
-      color: BUCKET_COLORS[b.id],
-      count: bucketMap.get(b.id)?.count || 0,
-    }))
+    .map(b => ({ id: b.id, label: b.title, valueMinor: bucketMap.get(b.id)?.value || 0n, color: BUCKET_COLORS[b.id], count: bucketMap.get(b.id)?.count || 0 }))
     .filter(s => s.valueMinor > 0n);
 
   const exposures: GrowthSlice[] = EXPOSURES
     .filter(e => e.id !== 'LIABILITY')
-    .map(e => ({
-      id: e.id,
-      label: e.label,
-      valueMinor: exposureMap.get(e.id)?.value || 0n,
-      color: EXPOSURE_COLORS[e.id],
-      count: exposureMap.get(e.id)?.count || 0,
-    }))
+    .map(e => ({ id: e.id, label: e.label, valueMinor: exposureMap.get(e.id)?.value || 0n, color: EXPOSURE_COLORS[e.id], count: exposureMap.get(e.id)?.count || 0 }))
     .filter(s => s.valueMinor > 0n);
 
   const membersSlices: GrowthSlice[] = members.map((mem, i) => ({
@@ -336,12 +274,7 @@ export function buildGrowthModel(
 
   const assetIds = new Set(holdings.filter(h => h.category !== 'LIABILITY').map(h => h.id));
   const assetEvents = events.filter(e => assetIds.has(e.holdingId));
-  const first = firstActivityDate(assetEvents);
-  const yearsHeld = first ? calendarDays(first, asOf) / 365.25 : null;
   const absPct = absoluteReturnPct(invested, assets);
-  const cagr = first ? cagrPct(invested, assets, first, asOf) : null;
-  const flows = investmentCashFlows(assetEvents, rupees(assets), asOf);
-  const x = xirr(flows);
   const incomeYears = incomeByFinancialYear(events, byId);
   const currentFy = financialYearOf(asOf);
   const incomeThisFy = incomeYears.find(y => y.fy === currentFy)?.totalMinor || 0n;
@@ -356,10 +289,6 @@ export function buildGrowthModel(
       netWorthMinor: assets - liabilities,
       absoluteGainMinor: assets - invested,
       absoluteReturnPct: absPct,
-      xirrPct: x,
-      cagrPct: cagr,
-      firstDate: first,
-      yearsHeld,
       incomeThisFyMinor: incomeThisFy,
       realisedMinor: realised,
       unrealisedMinor: unrealised,
