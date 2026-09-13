@@ -10,7 +10,6 @@ import { ExposureNode, EXPOSURES } from '../../lib/taxonomy';
 
 interface HomeScreenProps {
   onOpenAddHolding: () => void;
-  onOpenAddRecord: () => void;
   onOpenHoldingDetail: (holdingId: string) => void;
 }
 
