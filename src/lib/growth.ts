@@ -117,6 +117,13 @@ export function absoluteReturnPct(invested: bigint, current: bigint): number | n
   return (rupees(current - invested) / rupees(invested)) * 100;
 }
 
+/** Display helper retained as a presentation concern; no annualised return is calculated. */
+export function formatPct(n: number | null, digits = 1): string {
+  if (n == null || !Number.isFinite(n)) return '—';
+  const sign = n > 0 ? '+' : '';
+  return `${sign}${n.toFixed(digits)}%`;
+}
+
 export function incomeByFinancialYear(
   events: LedgerEvent[],
   holdingsById: Map<string, Holding>,
