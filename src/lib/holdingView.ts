@@ -125,6 +125,14 @@ export function qtyOf(h: Holding, derived: DerivedState): bigint {
   return BigInt(h.quantityScaled || '0');
 }
 
+/** True when the holding still has units (or a loan still has outstanding). */
+export function isOpenPosition(h: Holding, derived: DerivedState): boolean {
+  if (h.category === 'LIABILITY') {
+    return BigInt(h.currentPriceMinor || '0') > 0n;
+  }
+  return qtyOf(h, derived) > 0n;
+}
+
 export function costOf(h: Holding, derived: DerivedState): bigint {
   const pos = derived.positions.get(h.id);
   if (pos) return pos.costMinor;
@@ -251,10 +259,12 @@ export function formatCalendarDate(iso?: string | null): string {
 export function displayHoldingName(name: string | null | undefined): string {
   const n = (name || '').trim();
   if (!n) return '';
-  const m = n.match(/^([A-Z0-9]{1,8})\s*-\s+(.+)$/);
-  if (!m) return n;
+  const hash = n.indexOf('#');
+  const afterHash = hash >= 0 && hash < n.length - 3 ? n.slice(hash + 1).trim() : n;
+  const m = afterHash.match(/^([A-Z0-9]{1,8})\s*-\s+(.+)$/);
+  if (!m) return afterHash;
   const rest = m[2].trim();
-  return rest || n;
+  return rest || afterHash;
 }
 
 const GENERIC_CUSTODIAN = /^(mutual fund folios?|mf folios?|cas)$/i;

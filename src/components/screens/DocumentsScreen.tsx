@@ -467,12 +467,13 @@ export const DocumentsScreen: React.FC = () => {
 
   // Derived or Tax computation unmatched / conflict errors
   const matchErrors = useMemo(() => {
+    const noisy = /Units were removed on .+ to match a statement|NOT counted in your capital gains/i;
     const list: string[] = [];
     if (derived?.errors && derived.errors.length > 0) {
-      list.push(...derived.errors);
+      list.push(...derived.errors.filter(e => !noisy.test(e)));
     }
     if (taxSummary?.errors && taxSummary.errors.length > 0) {
-      list.push(...taxSummary.errors);
+      list.push(...taxSummary.errors.filter(e => !noisy.test(e)));
     }
     return Array.from(new Set(list));
   }, [derived?.errors, taxSummary?.errors]);

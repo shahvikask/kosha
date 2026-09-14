@@ -6,15 +6,15 @@ import { xirr } from './returns';
 import { classifyHolding, EXPOSURES, WRAPPERS, exposureLabel, l2Label } from './taxonomy';
 import { resolveSplit, apportion, buildTree, isHybrid, activeWrappers } from './lookthrough';
 import { LedgerEvent, Holding } from '../types';
-import { eventLabel, bucketOf, upcomingFromHoldings, displayHoldingName, accountTitle, inferAmcFromSchemeName, looksLikeSgb, metricsOf } from './holdingView';
+import { eventLabel, bucketOf, upcomingFromHoldings, displayHoldingName, accountTitle, inferAmcFromSchemeName, looksLikeSgb, metricsOf, isOpenPosition } from './holdingView';
 import { formatStatementDate, latestAsOfForOwner, statementAsOfByMember, parseCasLatest } from './casPython';
 import { addCalendarMonths, dueEmiDates, planEmiCatchUp, resumeEmiDate } from './emi';
 import { absoluteReturnPct, cagrPct, incomeByFinancialYear, buildGrowthModel, firstActivityDate, formatPct } from './growth';
-import { profileOf, holdingReturn } from './returnMetrics';
+import { profileOf, holdingReturn, isStatementOnlyHistory } from './returnMetrics';
 import { titleCaseName, passwordIssues, isValidPan, isValidEmail, normaliseAnswer, needsPasswordRotation, packHash, unpackHash, hashSecret, verifySecret } from './auth';
 import { checkImportPan, pansMatch, panBlocksCommit, findDuplicatePanMember, panFingerprint } from './pan';
 import { applyCatalogPrices, catalogToListed, searchListed, isEodPriceSource } from './eodPrices';
-import { findMatchingHolding, holdingIdentityKey } from './matchHolding';
+import { findMatchingHolding, holdingIdentityKey, isPlaceholderName, preferSchemeName } from './matchHolding';
 import { StatementImportRecord } from '../types';
 
 let pass=0, fail=0;
@@ -92,6 +92,18 @@ eq('loss included', Number(rl.disposals[0].gainMinor)/1e4, -2000);
 const ro=foldHolding([ev('o1','BUY','2024-01-01',10,100),ev('o2','SELL','2024-06-01',50,120)],'EQUITY');
 eq('oversell flagged', ro.errors.length>0, true);
 eq('xirr null on no outflow', xirr([{date:'2024-01-01',amount:100},{date:'2025-01-01',amount:100}]), null);
+
+const adjEv: LedgerEvent = {
+  ...ev('adj1','SNAPSHOT_ADJUSTMENT','2026-02-28',-10,0,'h1'),
+};
+// quantityScaled for negative: ev() uses Math.round(q*1e8) so -10 works
+const adjFold = foldHolding([ev('b1','BUY','2026-01-31',10,100,'h1'), adjEv], 'MUTUAL_FUND');
+eq('snapshot close leaves zero qty', Number(adjFold.totalQtyScaled), 0);
+eq('snapshot close is silent (no units-removed wall)', adjFold.errors.some(e => /Units were removed|capital gains/i.test(e)), false);
+const adjOver = foldHolding([ev('b2','BUY','2026-01-31',5,100,'h1'), {
+  ...ev('adj2','SNAPSHOT_ADJUSTMENT','2026-02-28',-10,0,'h1'),
+}], 'MUTUAL_FUND');
+eq('snapshot oversell still flagged', adjOver.errors.some(e => /exceeds units held/.test(e)), true);
 
 
 const H=(name:string,cat:any,sub:string,val=100000,extra:Partial<Holding>={}):Holding=>({
@@ -278,6 +290,21 @@ eq('dedup key not folio-only',
   holdingIdentityKey(mfHold('a', momentum)) === holdingIdentityKey(mfHold('b', multiAsset)),
   false);
 
+eq('placeholder mutual fund units', isPlaceholderName('MUTUAL FUND UNITS'), true);
+eq('placeholder scheme code', isPlaceholderName('MURG'), true);
+eq('placeholder folio', isPlaceholderName('17001385/94'), true);
+eq('real scheme not placeholder', isPlaceholderName('MURG - Edelweiss Multi Cap Fund - Regular Plan Growth'), false);
+eq('prefer real over placeholder', preferSchemeName('MUTUAL FUND UNITS', 'MURG - Edelweiss Multi Cap Fund'), 'MURG - Edelweiss Multi Cap Fund');
+eq('keep real over later placeholder', preferSchemeName('Edelweiss Multi Cap Fund', 'MUTUAL FUND UNITS'), 'Edelweiss Multi Cap Fund');
+
+const stubHold = mfHold('h_stub', { ...edel1, isin: undefined, holdingName: 'MUTUAL FUND UNITS' });
+eq('placeholder folio stub matches the only unnamed row',
+  findMatchingHolding([stubHold], { ...edel1, isin: undefined, holdingName: 'MUTUAL FUND UNITS' }, 'f1')?.id,
+  'h_stub');
+eq('placeholder does not merge two named schemes on same folio',
+  findMatchingHolding([mfHold('h_cyrg', edel1), mfHold('h_murg', edel2)], { ...edel1, isin: undefined, holdingName: 'MUTUAL FUND UNITS' }, 'f1') ? 'hit' : 'none',
+  'none');
+
 console.log('\n--- L. Display name strips CDSL scheme-code prefix ---');
 eq('MURG prefix', displayHoldingName('MURG - Edelweiss Multi Cap Fund - Regular Plan Growth'), 'Edelweiss Multi Cap Fund - Regular Plan Growth');
 eq('3572 prefix', displayHoldingName('3572 - ICICI Prudential Active Momentum Fund'), 'ICICI Prudential Active Momentum Fund');
@@ -287,6 +314,8 @@ eq('no prefix share', displayHoldingName('HDFC Bank Ltd'), 'HDFC Bank Ltd');
 eq('SGB year-dash kept', displayHoldingName('Sovereign Gold Bond 2018-19 Series VI'), 'Sovereign Gold Bond 2018-19 Series VI');
 eq('code only unchanged', displayHoldingName('AVAP'), 'AVAP');
 eq('empty', displayHoldingName(''), '');
+eq('AMC#scheme uses scheme', displayHoldingName('NIPPON LIFE INDIA AM LTD#NIPPON INDIA MF-NIPPON INDIA ETF NIFTY 1D RATE'), 'NIPPON INDIA MF-NIPPON INDIA ETF NIFTY 1D RATE');
+eq('hash then code prefix', displayHoldingName('AMC#MURG - Edelweiss Multi Cap Fund'), 'Edelweiss Multi Cap Fund');
 
 console.log('\n--- M. Account card title from AMC / broker, not CDSL bucket ---');
 eq('infer Edelweiss', inferAmcFromSchemeName('MURG - Edelweiss Multi Cap Fund - Regular Plan Growth'), 'Edelweiss');
@@ -445,6 +474,40 @@ eq('PPF uses stated yield', profileOf(ppfH, [], '2026-09-10').key, 'PPF');
 const ppfRet = holdingReturn(ppfH, [], derivePositions([], [ppfH]), 'MARKET_TRADED', '2026-09-10');
 eq('PPF primary 7.1', ppfRet.primaryText, '+7.1%');
 eq('AIF is TVPI', profileOf({...hold('a1','SPECIALISED',1,100,150), name:'Cat II AIF'}, [], '2026-09-10').primaryLabel, 'TVPI');
+
+const closedH = hold('cl1','MUTUAL_FUND',0,10,12);
+const closedEv = ev('cl_adj','SNAPSHOT_ADJUSTMENT','2026-02-28',-10,10,'cl1');
+const closedOpen = ev('cl_ob','OPENING_BALANCE','2026-01-31',10,10,'cl1');
+const closedDer = derivePositions([closedOpen, closedEv], [closedH]);
+eq('closed qty is zero', Number(closedDer.positions.get('cl1')!.quantityScaled), 0);
+eq('isOpenPosition false for closed', isOpenPosition(closedH, closedDer), false);
+const closedRet = holdingReturn(closedH, [closedOpen, closedEv], closedDer, 'MARKET_TRADED', '2026-09-10');
+eq('closed return label', closedRet.primaryText, 'Closed');
+eq('closed return primary', closedRet.profile.primaryLabel, 'Closed');
+
+eq('opening only is statement history', isStatementOnlyHistory([ev('ob','OPENING_BALANCE','2026-01-31',100,10,'mf2')]), true);
+eq('real buy is not statement-only', isStatementOnlyHistory([ev('b','BUY','2025-01-01',10,10,'mf1')]), false);
+const stmtH = hold('st1','MUTUAL_FUND',100,10,12);
+const stmtEv = ev('st_ob','OPENING_BALANCE','2026-01-31',100,10,'st1');
+const stmtDer = derivePositions([stmtEv], [stmtH]);
+const stmtRet = holdingReturn(stmtH, [stmtEv], stmtDer, 'MARKET_TRADED', '2026-09-10');
+eq('statement-only XIRR labelled since statement', stmtRet.profile.primaryLabel.includes('since statement'), true);
+eq('open position with qty', isOpenPosition(stmtH, stmtDer), true);
+
+const ghostH = hold('gh0','MUTUAL_FUND',0,10,12);
+const ghostEv = ev('gh_adj','SNAPSHOT_ADJUSTMENT','2026-02-28',-5,10,'gh0');
+const ghostOpen = ev('gh_ob','OPENING_BALANCE','2026-01-31',5,10,'gh0');
+const ghostDer = derivePositions([ghostOpen, ghostEv], [ghostH, stmtH]);
+const ghostModel = buildGrowthModel(
+  [ghostH, stmtH],
+  [ghostOpen, ghostEv, stmtEv],
+  ghostDer,
+  [{ id:'f1', name:'Vikas', relation:'Self', color:'#f59e0b', isPrimary:true }],
+  'MARKET_TRADED',
+  '2026-09-10',
+);
+eq('growth skips qty-0 ghost rows', ghostModel.holdings.some(r => r.id === 'gh0'), false);
+eq('growth keeps live row', ghostModel.holdings.some(r => r.id === 'st1'), true);
 
 console.log('\n--- U. Local vault login ---');
 eq('title Vikas', titleCaseName('vIKAS'), 'Vikas');

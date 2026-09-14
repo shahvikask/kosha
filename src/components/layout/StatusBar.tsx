@@ -1,10 +1,15 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useKosha } from '../../context/KoshaContext';
 import { formatStatementDate } from '../../lib/casPython';
+import { isOpenPosition } from '../../lib/holdingView';
 import { Shield, CheckCircle2 } from 'lucide-react';
 
 export const StatusBar: React.FC = () => {
-  const { holdings, lastStatementAsOf, pricesAsOf } = useKosha();
+  const { holdings, lastStatementAsOf, pricesAsOf, derived } = useKosha();
+  const openCount = useMemo(
+    () => holdings.filter(h => isOpenPosition(h, derived)).length,
+    [holdings, derived]
+  );
 
   return (
     <footer
@@ -24,7 +29,7 @@ export const StatusBar: React.FC = () => {
         {pricesAsOf && (
           <span className="hidden sm:inline">Prices as on {formatStatementDate(pricesAsOf)}</span>
         )}
-        <span className="hidden sm:inline">{holdings.length} holdings</span>
+        <span className="hidden sm:inline">{openCount} holdings</span>
         <span className="flex items-center gap-1 font-semibold" style={{ color: 'var(--good)' }}>
           <CheckCircle2 className="w-3.5 h-3.5" />
           Vault OK

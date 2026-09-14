@@ -18,7 +18,7 @@ import {
 import { INITIAL_FAMILY_MEMBERS } from '../data/initialData';
 import { EMPTY_SELF, ThemeName, looksLikeSgb, metricsOf } from '../lib/holdingView';
 import { applyTheme, readStoredTheme, writeStoredTheme } from '../lib/theme';
-import { findMatchingHolding, holdingIdentityKey } from '../lib/matchHolding';
+import { findMatchingHolding, holdingIdentityKey, preferSchemeName } from '../lib/matchHolding';
 export { findMatchingHolding, normalizeHoldingName } from '../lib/matchHolding';
 import { MoneyEngine, MONEY_SCALE, QTY_SCALE } from '../lib/money';
 import { xirr, buildCashFlows, totalGainPercent } from '../lib/returns';
@@ -1119,17 +1119,26 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           currentWorkingHoldings = [newH, ...currentWorkingHoldings];
           if (repo) await repo.upsertHolding(newH);
         } else {
-          // Rule 6: Record price observation, but only update holding.currentPriceMinor if statement date is newer
+          // Rule 6: Record price observation, but only update holding.currentPriceMinor if statement date is newer.
+          // Name/ISIN upgrades are independent — a later CDSL row with a real scheme
+          // name must replace a "MUTUAL FUND UNITS" placeholder even if NAV is older.
           const isEod = isEodPriceSource(matched.priceSource);
           const isNewer =
             !isEod &&
             (!matched.lastPriceUpdated || rec.date >= matched.lastPriceUpdated.split('T')[0]);
-          if (isNewer) {
+          const betterName = preferSchemeName(matched.name, rec.holdingName);
+          const nameUpgrade = betterName !== matched.name;
+          const isinUpgrade = Boolean(!matched.isin && rec.isin);
+          const amfiUpgrade = Boolean(!matched.amfiCode && rec.amfiCode);
+          if (isNewer || nameUpgrade || isinUpgrade || amfiUpgrade) {
             const updatedH: Holding = {
               ...matched,
-              currentPriceMinor: priceMinor,
-              lastPriceUpdated: rec.date ? `${rec.date}T00:00:00.000Z` : new Date().toISOString(),
-              priceSource: 'CAS Statement Snapshot',
+              name: betterName,
+              currentPriceMinor: isNewer ? priceMinor : matched.currentPriceMinor,
+              lastPriceUpdated: isNewer
+                ? (rec.date ? `${rec.date}T00:00:00.000Z` : new Date().toISOString())
+                : matched.lastPriceUpdated,
+              priceSource: isNewer ? 'CAS Statement Snapshot' : matched.priceSource,
               accountId: matched.accountId || acctId,
               accountNumberMasked: matched.accountNumberMasked || rec.folio || rec.dematAccount,
               amc: matched.amc || rec.amc,
