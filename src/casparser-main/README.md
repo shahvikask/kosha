@@ -277,7 +277,8 @@ Demat statements return holdings (no transactions), grouped per demat account:
   nps: {                                 // National Pension System (CDSL section, or standalone CRA PDF)
     pran: string | null,                 // PRAN (as printed; often masked)
     nps_sp: string | null,               // NPS service provider / CRA, e.g. "PROT"
-    value: decimal,                      // reported NPS portfolio value
+    value: decimal,                      // reported NPS portfolio value (A)
+    contribution: decimal | null,        // CRA "Total Contribution" (B); standalone statements only
     schemes: {
       scheme: string, fund_manager: string | null,
       tier: string | null,               // "I" | "II"

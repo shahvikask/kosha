@@ -55,6 +55,23 @@ def _s(v: Any) -> Optional[str]:
     return t or None
 
 
+def _apportion_rupees(weights: list[float], total: float) -> list[float]:
+    """Split `total` across `weights` so the parts sum exactly (paisa
+    remainder on the largest slice). NPS contribution (B) is a portfolio
+    total; we allocate it in proportion to current scheme value."""
+    if total <= 0 or not weights:
+        return [0.0] * len(weights)
+    s = sum(weights)
+    if s <= 0:
+        return [0.0] * len(weights)
+    parts = [round(total * w / s, 2) for w in weights]
+    drift = round(total - sum(parts), 2)
+    if drift and parts:
+        i = max(range(len(parts)), key=lambda k: weights[k])
+        parts[i] = round(parts[i] + drift, 2)
+    return parts
+
+
 def _iso_date(raw: Any) -> Optional[str]:
     if raw is None:
         return None
@@ -283,12 +300,21 @@ def _from_demat(data: Any, file_type: str) -> dict:
     nps = d.get("nps")
     if nps:
         pdf_total += _dec(nps.get("value"))
+        nps_rows = []
         for sch in nps.get("schemes") or []:
             qty = _dec(sch.get("units"))
             val = _dec(sch.get("value"))
             if qty <= 0 and val <= 0:
                 skipped_nil += 1
                 continue
+            nps_rows.append((sch, qty, val))
+        contrib = _dec(nps.get("contribution"))
+        costs = (
+            _apportion_rupees([val for _, _, val in nps_rows], contrib)
+            if contrib > 0 and nps_rows
+            else [None] * len(nps_rows)
+        )
+        for (sch, qty, val), cost in zip(nps_rows, costs):
             holdings.append({
                 "kind": "nps",
                 "name": _clean_name(sch.get("scheme")),
@@ -296,7 +322,7 @@ def _from_demat(data: Any, file_type: str) -> dict:
                 "quantity": qty,
                 "price": _dec(sch.get("nav")),
                 "value": round(val, 2),
-                "cost": None,
+                "cost": cost,
                 "folio": _s(nps.get("pran")),
                 "amfi": None,
                 "schemeType": "NPS",

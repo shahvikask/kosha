@@ -2,6 +2,7 @@
 import { reconcileStatement, SnapshotLine, ReconciliationResult, snapshotLinesToClose, coalesceSnapshotLines } from './snapshot';
 import { getSampleCdslSep2024, getSampleCdslJune2026, getSampleCdslJuly2026 } from './casFixtures';
 import { derivePositions } from './positions';
+import { foldHolding } from './lots';
 import { QTY_SCALE } from './money';
 import { LedgerEvent, Holding, StatementImportRecord } from '../types';
 import { formatStatementDate, formatInrAmount } from './casPython';
@@ -45,7 +46,11 @@ function importStatement(res: ReturnType<typeof getSampleCdslJuly2026>, label: s
   for (const h of toHoldings(res)) if (!holdings.find(x=>x.id===h.id)) holdings.push(h);
   else holdings = holdings.map(x=>x.id===h.id ? {...x, currentPriceMinor:h.currentPriceMinor} : x);
   const rec = reconcileStatement(lines, events, holdings, 'f1');
-  const commit = rec.lines.filter(l=>l.suggestedEvent).map(l=>l.suggestedEvent!);
+  const commit = rec.lines.flatMap(l =>
+    l.suggestedEvents && l.suggestedEvents.length
+      ? l.suggestedEvents
+      : l.suggestedEvent ? [l.suggestedEvent] : []
+  );
   events = [...events, ...commit];
   const c = rec.counts;
   console.log(`  ${label}: match=${c.MATCH} new=${c.NEW_POSITION} up=${c.ADJUST_UP} down=${c.ADJUST_DOWN} closed=${c.CLOSED} -> ${commit.length} events appended`);
@@ -159,6 +164,46 @@ console.log('\n=== H. Same-ISIN lots on one statement coalesce, re-import is MAT
   const again = reconcileStatement([lot(38.415), lot(11703.407)], evs, [avapHold], 'f1');
   eq('re-import MATCH not zeroed', again.counts.MATCH, 1);
   eq('re-import no extra events', again.counts.ADJUST_DOWN + again.counts.ADJUST_UP, 0);
+}
+
+console.log('\n=== I. Printed contribution rebases invested on re-import ===');
+{
+  const npsLine = (invested?: number): SnapshotLine => ({
+    holdingId: 'h_nps_e',
+    holdingName: 'NPS TRUST A/C ICICI PENSION FUND SCHEME E',
+    category: 'FIXED_INCOME',
+    statementDate: '2026-08-31',
+    quantityScaled: BigInt(Math.round(6418.7052 * 1e8)),
+    unitPriceMinor: BigInt(Math.round(75.0840 * 1e4)),
+    cumulativeInvestedMinor: invested != null ? BigInt(Math.round(invested * 1e4)) : undefined,
+    folio: '110123981321',
+  });
+  const npsHold: Holding = {
+    id: 'h_nps_e', name: 'NPS TRUST A/C ICICI PENSION FUND SCHEME E',
+    symbolOrFolio: '110123981321', category: 'FIXED_INCOME', subCategory: 'NPS',
+    ownerId: 'f1', quantityScaled: '0', averageCostPerUnitMinor: '0',
+    currentPriceMinor: String(Math.round(75.0840 * 1e4)),
+    lastPriceUpdated: '2026-08-31', isPriceStale: false, priceSource: 'CAS',
+  };
+  let npsEvs: LedgerEvent[] = [];
+  const firstNps = reconcileStatement([npsLine()], npsEvs, [npsHold], 'f1');
+  eq('first NPS import is NEW', firstNps.counts.NEW_POSITION, 1);
+  npsEvs = [...npsEvs, ...firstNps.lines.filter(l => l.suggestedEvent).map(l => l.suggestedEvent!)];
+  const firstFold = foldHolding(npsEvs, 'FIXED_INCOME');
+  eq('first cost used market value', Math.round(Number(firstFold.totalCostMinor) / 1e4), 481942);
+
+  const rebase = reconcileStatement([npsLine(317909.45)], npsEvs, [npsHold], 'f1');
+  eq('re-import with contribution is COST_UPDATE', rebase.counts.COST_UPDATE, 1);
+  eq('qty still MATCH-like (no adj)', rebase.counts.ADJUST_UP + rebase.counts.ADJUST_DOWN, 0);
+  const rebaseEvents = rebase.lines.flatMap(l => l.suggestedEvents || (l.suggestedEvent ? [l.suggestedEvent] : []));
+  npsEvs = [...npsEvs, ...rebaseEvents];
+  const after = foldHolding(npsEvs, 'FIXED_INCOME');
+  eq('qty unchanged after cost rebase', Number(after.totalQtyScaled) / 1e8, 6418.7052);
+  eq('cost now contribution slice', Math.abs(Number(after.totalCostMinor) / 1e4 - 317909.45) < 1, true);
+
+  const againNps = reconcileStatement([npsLine(317909.45)], npsEvs, [npsHold], 'f1');
+  eq('second re-import is MATCH', againNps.counts.MATCH, 1);
+  eq('second re-import appends nothing', againNps.lines.every(l => !l.suggestedEvent), true);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

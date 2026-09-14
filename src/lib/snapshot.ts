@@ -24,6 +24,7 @@ export type SnapshotOutcome =
   | 'ADJUST_UP'      // statement holds more than the ledger knows about
   | 'ADJUST_DOWN'    // statement holds less
   | 'CLOSED'         // statement shows nil; position was exited
+  | 'COST_UPDATE'    // units match; printed invested/contribution rebases cost
   | 'CONFLICT';      // cannot be resolved automatically; ask the user
 
 export interface SnapshotLine {
@@ -51,6 +52,8 @@ export interface ReconciledLine {
   message: string;
   /** The single event to append, or null when nothing should be recorded. */
   suggestedEvent: LedgerEvent | null;
+  /** All events to append (cost rebase may emit several CORRECTIONs). */
+  suggestedEvents?: LedgerEvent[];
   priceMinor: bigint;
 }
 
@@ -64,9 +67,84 @@ export interface ReconciliationResult {
 
 /** Quantity tolerance: 1e-6 units, absorbing registrar rounding. */
 const QTY_TOLERANCE = 100n;
+/** Cost rebase fires when printed invested differs by more than ₹1. */
+const COST_TOLERANCE_MINOR = 10_000n;
+
+const PARCEL_TYPES = new Set(['BUY', 'OPENING_BALANCE', 'SNAPSHOT_ADJUSTMENT']);
 
 function newId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function activeParcelEvents(events: LedgerEvent[]): LedgerEvent[] {
+  const superseded = new Set(
+    events.filter(e => e.supersedesEventId).map(e => e.supersedesEventId as string)
+  );
+  return events.filter(e => {
+    if (superseded.has(e.id)) return false;
+    const qty = BigInt(e.quantityScaled || '0');
+    if (qty === 0n) return false;
+    if (PARCEL_TYPES.has(e.eventType)) return true;
+    return e.eventType === 'CORRECTION';
+  });
+}
+
+/** When the statement prints a contribution/invested total, rebase cost. */
+function costRebaseEvents(
+  line: SnapshotLine,
+  events: LedgerEvent[],
+  ownerId: string
+): LedgerEvent[] {
+  if (!line.cumulativeInvestedMinor || line.quantityScaled <= 0n) return [];
+  const asOf = events.filter(e => e.eventDate <= line.statementDate);
+  if (asOf.length === 0) return [];
+  const fold = foldHolding(asOf, line.category);
+  const want = line.cumulativeInvestedMinor;
+  const have = fold.totalCostMinor;
+  const drift = have > want ? have - want : want - have;
+  if (drift <= COST_TOLERANCE_MINOR) return [];
+
+  const stated = line.quantityScaled;
+  const derived = (want * QTY_SCALE) / stated;
+  if (derived <= 0n) return [];
+
+  const parcels = activeParcelEvents(asOf);
+  if (parcels.length === 0) return [];
+
+  const now = new Date().toISOString();
+  const out: LedgerEvent[] = [];
+  const first = parcels[0];
+  out.push({
+    id: newId('cor'),
+    holdingId: line.holdingId,
+    holdingName: line.holdingName,
+    ownerId,
+    eventType: 'CORRECTION',
+    eventDate: first.eventDate,
+    quantityScaled: stated.toString(),
+    unitPriceMinor: derived.toString(),
+    totalAmountMinor: want.toString(),
+    notes: 'Invested updated from the printed statement contribution',
+    supersedesEventId: first.id,
+    createdAt: now,
+  } as LedgerEvent);
+  for (const ev of parcels.slice(1)) {
+    out.push({
+      id: newId('cor'),
+      holdingId: line.holdingId,
+      holdingName: line.holdingName,
+      ownerId,
+      eventType: 'CORRECTION',
+      eventDate: ev.eventDate,
+      quantityScaled: '0',
+      unitPriceMinor: '0',
+      totalAmountMinor: '0',
+      notes: 'Superseded; invested taken from the statement contribution',
+      supersedesEventId: ev.id,
+      createdAt: now,
+    } as LedgerEvent);
+  }
+  return out;
 }
 
 /**
@@ -113,6 +191,13 @@ export function reconcileLine(
     { maximumFractionDigits: 3 });
 
   if (absDelta <= QTY_TOLERANCE) {
+    const rebase = hasHistory ? costRebaseEvents(line, events, ownerId) : [];
+    if (rebase.length > 0) {
+      return { ...base, outcome: 'COST_UPDATE',
+        message: `Units already match. Invested will be updated to the amount printed on the statement.`,
+        suggestedEvent: rebase[0],
+        suggestedEvents: rebase };
+    }
     return { ...base, outcome: 'MATCH',
       message: `Already up to date — ${units(stated)} units.`,
       suggestedEvent: null };
@@ -213,7 +298,7 @@ export function reconcileStatement(
   }
 
   const counts: Record<SnapshotOutcome, number> = {
-    MATCH: 0, NEW_POSITION: 0, ADJUST_UP: 0, ADJUST_DOWN: 0, CLOSED: 0, CONFLICT: 0,
+    MATCH: 0, NEW_POSITION: 0, ADJUST_UP: 0, ADJUST_DOWN: 0, CLOSED: 0, COST_UPDATE: 0, CONFLICT: 0,
   };
   const warnings: string[] = [];
   const out: ReconciledLine[] = [];
@@ -253,8 +338,11 @@ export function eventsToCommit(
   acceptedHoldingIds: Set<string>
 ): LedgerEvent[] {
   return result.lines
-    .filter(l => l.suggestedEvent && acceptedHoldingIds.has(l.line.holdingId))
-    .map(l => l.suggestedEvent as LedgerEvent);
+    .filter(l => acceptedHoldingIds.has(l.line.holdingId))
+    .flatMap(l => {
+      if (l.suggestedEvents && l.suggestedEvents.length > 0) return l.suggestedEvents;
+      return l.suggestedEvent ? [l.suggestedEvent] : [];
+    });
 }
 
 /**

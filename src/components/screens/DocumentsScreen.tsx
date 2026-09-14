@@ -92,6 +92,7 @@ export const DocumentsScreen: React.FC = () => {
     ADJUST_UP: true,
     ADJUST_DOWN: true,
     CLOSED: true,
+    COST_UPDATE: true,
     CONFLICT: true,
   });
 
@@ -912,6 +913,69 @@ export const DocumentsScreen: React.FC = () => {
                               </div>
                               <span className="text-slate-400 font-mono">
                                 {Number(l.statementQtyScaled) / Number(QTY_SCALE)} units
+                              </span>
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 1b. COST_UPDATE — units match, printed contribution rebases invested */}
+                {reconciliation.counts.COST_UPDATE > 0 && (
+                  <div className="rounded-2xl bg-amber-950/30 border border-amber-800/40 overflow-hidden transition-all">
+                    <div className="p-3.5 flex items-center justify-between gap-3 text-xs sm:text-sm">
+                      <div className="flex items-center gap-3">
+                        <span className="px-2.5 py-0.5 rounded-md font-mono font-bold bg-amber-900/60 text-amber-200 border border-amber-700/60">
+                          COST
+                        </span>
+                        <span className="font-semibold text-slate-200">
+                          {reconciliation.counts.COST_UPDATE} invested amount{reconciliation.counts.COST_UPDATE === 1 ? '' : 's'} will be updated from this statement
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setShowOutcomeGroup(prev => ({ ...prev, COST_UPDATE: !prev.COST_UPDATE }))
+                        }
+                        className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1"
+                      >
+                        <span>{showOutcomeGroup.COST_UPDATE ? 'Hide' : 'Show'}</span>
+                        {showOutcomeGroup.COST_UPDATE ? (
+                          <ChevronUp className="w-3.5 h-3.5" />
+                        ) : (
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                    </div>
+
+                    {showOutcomeGroup.COST_UPDATE && (
+                      <div className="border-t border-amber-900/40 divide-y divide-slate-900 bg-slate-950/40 px-3.5 py-1">
+                        {reconciliation.lines
+                          .filter(l => l.outcome === 'COST_UPDATE')
+                          .map(l => (
+                            <div
+                              key={l.line.holdingId}
+                              className="py-2.5 flex items-center justify-between gap-3 text-xs"
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <input
+                                  type="checkbox"
+                                  checked={acceptedHoldingIds.has(l.line.holdingId)}
+                                  onChange={() => handleToggleLine(l.line.holdingId)}
+                                  className="rounded border-slate-600"
+                                />
+                                <div>
+                                  <span className="font-semibold text-slate-200">
+                                    {displayHoldingName(l.line.holdingName)}
+                                  </span>
+                                  <span className="text-slate-500 ml-2">({l.message})</span>
+                                </div>
+                              </div>
+                              <span className="text-slate-400 font-mono">
+                                {l.line.cumulativeInvestedMinor
+                                  ? `₹ ${MoneyEngine.groupIndian(MoneyEngine.toRupees(l.line.cumulativeInvestedMinor))}`
+                                  : ''}
                               </span>
                             </div>
                           ))}

@@ -312,7 +312,10 @@ class NPSAccount(BaseModel):
 
     pran: Optional[str] = None  # PRAN as printed (often masked)
     nps_sp: Optional[str] = None  # NPS Service Provider / CRA (e.g. "PROT" = Protean)
-    value: Decimal  # reported "Portfolio Value" total for the PRAN
+    value: Decimal  # reported "Portfolio Value" / holdings total (A)
+    # Printed "Total Contribution" (B) on a CRA statement — lifetime
+    # amount paid in, not a per-scheme cost. None on CDSL CAS sections.
+    contribution: Optional[Decimal] = None
     schemes: List[NPSScheme] = []
 
 

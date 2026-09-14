@@ -1088,18 +1088,23 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         if (!matched) {
           holdingId = `h_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+          const avgCostMinor = rec.cumulativeInvested && rec.quantity > 0
+            ? String(Math.round((rec.cumulativeInvested / rec.quantity) * 1e4))
+            : priceMinor;
           const newH: Holding = {
             id: holdingId,
             name: rec.holdingName,
             symbolOrFolio: rec.folio || rec.isin || rec.holdingName.substring(0, 12).toUpperCase(),
             isin: rec.isin,
             category: rec.category,
-            subCategory: rec.schemeType === 'AIF'
+            subCategory: rec.schemeType === 'NPS'
+              ? 'NPS'
+              : rec.schemeType === 'AIF'
               ? 'AIF Category II'
               : rec.category === 'SPECIALISED' ? 'AIF Category II' : rec.category === 'EQUITY' ? 'Listed Equity' : 'Mutual Fund',
             ownerId: effectiveOwnerId,
             quantityScaled: '0',
-            averageCostPerUnitMinor: priceMinor,
+            averageCostPerUnitMinor: avgCostMinor,
             currentPriceMinor: priceMinor,
             lastPriceUpdated: rec.date || new Date().toISOString(),
             isPriceStale: false,
@@ -1190,7 +1195,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         .map(e => ({ ...e, importBatchId, sourceRef: e.holdingId }));
       newEventsToCommit.push(...reconciledEvents);
 
-      importedCount += reconciliationResult.counts.NEW_POSITION + reconciliationResult.counts.ADJUST_UP + reconciliationResult.counts.ADJUST_DOWN + reconciliationResult.counts.CLOSED;
+      importedCount += reconciliationResult.counts.NEW_POSITION + reconciliationResult.counts.ADJUST_UP + reconciliationResult.counts.ADJUST_DOWN + reconciliationResult.counts.CLOSED + reconciliationResult.counts.COST_UPDATE;
       updatedCount += reconciliationResult.counts.MATCH;
 
       // Step 7: Record the batch and statement_position audit rows

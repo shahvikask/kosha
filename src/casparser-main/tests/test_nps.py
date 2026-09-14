@@ -219,6 +219,31 @@ class TestSpatialParse:
         assert contrib == Decimal("415000.00")
 
 
+def _apportion_rupees(weights, total):
+    """Mirror scripts/cas_parse_server.py — keep the split exact."""
+    if total <= 0 or not weights:
+        return [0.0] * len(weights)
+    s = sum(weights)
+    if s <= 0:
+        return [0.0] * len(weights)
+    parts = [round(total * w / s, 2) for w in weights]
+    drift = round(total - sum(parts), 2)
+    if drift and parts:
+        i = max(range(len(parts)), key=lambda k: weights[k])
+        parts[i] = round(parts[i] + drift, 2)
+    return parts
+
+
+class TestContributionApportion:
+    def test_aug_vikas_splits_to_the_paisa(self):
+        parts = _apportion_rupees(
+            [481942.06, 59635.90, 87550.73],
+            415000.00,
+        )
+        assert parts == [317909.45, 39338.37, 57752.18]
+        assert round(sum(parts), 2) == 415000.00
+
+
 # Live Protean samples live outside the repo (PII). Skip on CI.
 _SAMPLES = Path("/tmp/nps/NPS")
 _AUG = _SAMPLES / "Vikas" / "1113981321_Aug2026.pdf"
@@ -235,6 +260,7 @@ class TestLiveProteanPdfs:
         assert data.nps.pran == "110123981321"
         assert data.nps.nps_sp == "PROT"
         assert data.nps.value == Decimal("629128.69")
+        assert data.nps.contribution == Decimal("415000.00")
         assert data.investor_info.name.startswith("VIKAS")
         assert len(data.nps.schemes) == 3
         by_class = {s.asset_class: s for s in data.nps.schemes}
@@ -257,12 +283,14 @@ class TestLiveProteanPdfs:
         assert s.units == Decimal("7671.5543")
         assert s.nav == Decimal("9.2324")
         assert s.value == Decimal("70826.85")
+        assert data.nps.contribution == Decimal("76500.00")
 
     def test_may_vikas_empty_table_falls_back_to_total(self):
         data = parse_nps(str(_MAY), "vika2203")
         assert data.nps is not None
         assert data.nps.pran == "110123981321"
         assert data.nps.value == Decimal("609669.77")
+        assert data.nps.contribution == Decimal("415000.00")
         assert data.nps.schemes
         assert any("scheme-wise" in w.lower() for w in data.parse_warnings)
 

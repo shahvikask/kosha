@@ -17,6 +17,8 @@ STATEMENT" emailed by the CRA — Protean samples look like:
 
 Holdings snapshot only. The contribution / transaction ledger is
 intentionally not parsed as buys (same policy as CDSL's NPS section).
+The printed "Total Contribution" (B) is stored on ``NPSAccount.contribution``
+and used as invested cost — split across schemes by current value.
 
 Password convention used by Protean CRA (and documented for the
 Kosha UI): first four letters of the subscriber's first name,
@@ -618,7 +620,7 @@ def parse_nps(
     address = _parse_address(p1)
     header_tier = _parse_tier_from_header(p1)
     cra = _detect_cra(pages)
-    total_a, _contrib_b = _parse_investment_summary(p1)
+    total_a, contrib_b = _parse_investment_summary(p1)
     preference = _parse_scheme_preference(p1)
     schemes = _parse_scheme_wise_table(p1)
 
@@ -713,6 +715,7 @@ def parse_nps(
         pran=pran,
         nps_sp=cra,
         value=(value or Decimal(0)).quantize(Decimal("0.01")),
+        contribution=contrib_b.quantize(Decimal("0.01")) if contrib_b and contrib_b > 0 else None,
         schemes=schemes,
     )
     return NSDLCASData(

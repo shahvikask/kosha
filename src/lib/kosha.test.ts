@@ -105,6 +105,24 @@ const adjOver = foldHolding([ev('b2','BUY','2026-01-31',5,100,'h1'), {
 }], 'MUTUAL_FUND');
 eq('snapshot oversell still flagged', adjOver.errors.some(e => /exceeds units held/.test(e)), true);
 
+const corOb = ev('obc','OPENING_BALANCE','2026-05-31',6418.7052,75.0840,'hnps');
+const corQty = BigInt(Math.round(6418.7052 * 1e8));
+const corWant = BigInt(Math.round(317909.45 * 1e4));
+const corUnit = (corWant * 100_000_000n) / corQty;
+const corFix: LedgerEvent = {
+  ...ev('cor1','CORRECTION','2026-05-31',6418.7052,49.5288,'hnps'),
+  eventType: 'CORRECTION',
+  supersedesEventId: 'obc',
+  quantityScaled: corQty.toString(),
+  unitPriceMinor: corUnit.toString(),
+  totalAmountMinor: corWant.toString(),
+  notes: 'Invested updated from the printed statement contribution',
+};
+const corFold = foldHolding([corOb, corFix], 'FIXED_INCOME');
+eq('correction replaces opening cost', Math.abs(Number(corFold.totalCostMinor)/1e4 - 317909.45) < 1, true);
+eq('correction keeps units', Number(corFold.totalQtyScaled)/1e8, 6418.7052);
+eq('superseded opening is not double-counted', corFold.openParcels.length, 1);
+
 
 const H=(name:string,cat:any,sub:string,val=100000,extra:Partial<Holding>={}):Holding=>({
   id:'h'+name.slice(0,6),name,symbolOrFolio:'X',category:cat,subCategory:sub,ownerId:'f1',

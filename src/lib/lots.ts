@@ -76,6 +76,18 @@ export function foldHolding(
     events.filter(e => e.supersedesEventId).map(e => e.supersedesEventId as string)
   );
 
+  const byId = new Map(events.map(e => [e.id, e]));
+  const effectiveType = (ev: LedgerEvent): string => {
+    if (ev.eventType !== 'CORRECTION') return ev.eventType;
+    const seen = new Set<string>([ev.id]);
+    let cur: LedgerEvent | undefined = byId.get(ev.supersedesEventId || '');
+    while (cur && cur.eventType === 'CORRECTION' && cur.supersedesEventId && !seen.has(cur.id)) {
+      seen.add(cur.id);
+      cur = byId.get(cur.supersedesEventId);
+    }
+    return cur?.eventType ?? 'OPENING_BALANCE';
+  };
+
   const precedence: Record<string, number> = {
     OPENING_BALANCE: 0, BUY: 1, BONUS: 2, SPLIT: 3, CORRECTION: 4,
     SNAPSHOT_ADJUSTMENT: 4.5,
@@ -88,8 +100,8 @@ export function foldHolding(
     .slice()
     .sort((x, y) => {
       if (x.eventDate !== y.eventDate) return x.eventDate < y.eventDate ? -1 : 1;
-      const px = precedence[x.eventType] ?? 99;
-      const py = precedence[y.eventType] ?? 99;
+      const px = precedence[effectiveType(x)] ?? 99;
+      const py = precedence[effectiveType(y)] ?? 99;
       if (px !== py) return px - py;
       return x.id < y.id ? -1 : x.id > y.id ? 1 : 0;
     });
@@ -101,9 +113,13 @@ export function foldHolding(
     const qty = BigInt(ev.quantityScaled || '0');
     const unit = BigInt(ev.unitPriceMinor || '0');
     const charges = BigInt(ev.chargesMinor || '0');
+    const kind = effectiveType(ev);
 
-    if (ev.eventType === 'BUY' || ev.eventType === 'OPENING_BALANCE') {
-      if (qty <= 0n) { errors.push(`${ev.eventType} ${ev.id} has no quantity`); continue; }
+    if (kind === 'BUY' || kind === 'OPENING_BALANCE') {
+      if (qty <= 0n) {
+        if (ev.eventType !== 'CORRECTION') errors.push(`${kind} ${ev.id} has no quantity`);
+        continue;
+      }
       parcels.push({
         eventId: ev.id,
         purchaseDate: ev.eventDate,
@@ -112,7 +128,7 @@ export function foldHolding(
         purchasePriceMinor: unit,
         totalCostMinor: (qty * unit) / QTY_SCALE + charges,
       });
-    } else if (ev.eventType === 'BONUS') {
+    } else if (kind === 'BONUS') {
       if (qty <= 0n) continue;
       const earliest = parcels.find(p => p.remainingQtyScaled > 0n);
       parcels.push({
@@ -123,7 +139,7 @@ export function foldHolding(
         purchasePriceMinor: 0n,
         totalCostMinor: 0n,
       });
-    } else if (ev.eventType === 'SPLIT') {
+    } else if (kind === 'SPLIT') {
       const num = qty;
       const den = unit;
       if (num <= 0n || den <= 0n) { errors.push(`SPLIT ${ev.id} has a bad ratio`); continue; }
@@ -134,7 +150,7 @@ export function foldHolding(
           p.purchasePriceMinor = (p.totalCostMinor * QTY_SCALE) / p.remainingQtyScaled;
         }
       }
-    } else if (ev.eventType === 'SNAPSHOT_ADJUSTMENT') {
+    } else if (kind === 'SNAPSHOT_ADJUSTMENT') {
       // A statement said we hold more or less than the ledger knew.
       // Upward: open a parcel at the statement price, dated to the statement.
       // Downward: reduce parcels FIFO WITHOUT recording a taxable disposal —
@@ -166,7 +182,7 @@ export function foldHolding(
           errors.push(`Statement adjustment on ${ev.eventDate} exceeds units held.`);
         }
       }
-    } else if (ev.eventType === 'SELL') {
+    } else if (kind === 'SELL') {
       let toSell = qty > 0n ? qty : -qty;
       if (toSell <= 0n) { errors.push(`SELL ${ev.id} has no quantity`); continue; }
       const proceedsPerUnit = unit;
