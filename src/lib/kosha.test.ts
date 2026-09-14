@@ -7,7 +7,7 @@ import { classifyHolding, EXPOSURES, WRAPPERS, exposureLabel, l2Label } from './
 import { resolveSplit, apportion, buildTree, isHybrid, activeWrappers } from './lookthrough';
 import { LedgerEvent, Holding } from '../types';
 import { eventLabel, bucketOf, upcomingFromHoldings, displayHoldingName, accountTitle, inferAmcFromSchemeName, looksLikeSgb, metricsOf, isOpenPosition } from './holdingView';
-import { formatStatementDate, latestAsOfForOwner, statementAsOfByMember, parseCasLatest } from './casPython';
+import { formatStatementDate, latestAsOfForOwner, statementAsOfByMember, parseCasLatest, npsStatementPassword, statementPasswordsToTry } from './casPython';
 import { addCalendarMonths, dueEmiDates, planEmiCatchUp, resumeEmiDate } from './emi';
 import { absoluteReturnPct, cagrPct, incomeByFinancialYear, buildGrowthModel, firstActivityDate, formatPct } from './growth';
 import { profileOf, holdingReturn, isStatementOnlyHistory } from './returnMetrics';
@@ -347,6 +347,25 @@ const listed = statementAsOfByMember(casState, [
   { id: 'fam_3', name: 'HUF' },
 ]);
 eq('three profiles listed', listed.map(x => x.name + ':' + x.asOf).join('|'), 'Vikas:2026-01-31|Nancy:2026-02-28|HUF:2026-01-31');
+
+console.log('\n--- N2. NPS CRA PDF password convention ---');
+eq('vikas 22 Mar', npsStatementPassword('Vikas Kunjbihari Shah', '1986-03-22'), 'vika2203');
+eq('kiah 4-letter first name', npsStatementPassword('Kiah Vikas Shah', '2018-02-07'), 'kiah0702');
+eq('short first name', npsStatementPassword('Om Shah', '2020-01-05'), 'om0501');
+eq('dd/mm/yyyy', npsStatementPassword('Amit', '15/08/1990'), 'amit1508');
+eq('missing dob', npsStatementPassword('Vikas', undefined), null);
+const tried = statementPasswordsToTry({
+  typed: 'ABCPS1234K',
+  pan: 'ABCPS1234K',
+  name: 'Vikas Shah',
+  dateOfBirth: '1986-03-22',
+});
+eq('tries pan then nps', tried.join(','), 'ABCPS1234K,vika2203');
+eq('nps first when no pan', statementPasswordsToTry({
+  name: 'Kiah Vikas Shah',
+  dateOfBirth: '2018-02-07',
+}).join(','), 'kiah0702');
+
 
 console.log('\n--- O. Loan EMI catch-up ---');
 eq('Jan 31 plus 1 month', addCalendarMonths('2026-01-31', 1), '2026-02-28');

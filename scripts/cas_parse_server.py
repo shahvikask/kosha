@@ -2,7 +2,7 @@
 """Local CAS parse sidecar for Kosha.
 
 Runs on the user's machine. PDFs are parsed in-process with the vendored
-Python casparser (CDSL / NSDL / CAMS / KFin) and never leave the device.
+Python casparser (CDSL / NSDL / CAMS / KFin / NPS CRA) and never leave the device.
 
   python3 scripts/cas_parse_server.py              # HTTP on 127.0.0.1:8765
   python3 scripts/cas_parse_server.py --file X.pdf --password PAN
@@ -141,7 +141,7 @@ def parse_pdf_path(pdf_path: str, password: str) -> dict:
         file_type = detect_file_type(pdf_path, password or "", _doc=doc)
         if file_type == FileType.UNKNOWN:
             raise CASParseError(
-                "Could not identify the CAS issuer. Supported: CAMS, KFintech, NSDL, CDSL."
+                "Could not identify the statement. Supported: CAMS, KFintech, NSDL, CDSL, NPS."
             )
 
         if file_type in (FileType.CAMS, FileType.KFINTECH):
@@ -156,6 +156,10 @@ def parse_pdf_path(pdf_path: str, password: str) -> dict:
             from casparser.parsers import nsdl as parser
             data = parser.parse_nsdl(pdf_path, password or "", file_type=file_type, _doc=doc)
             return _fill_investor_from_password(_from_demat(data, "NSDL"), password)
+        if file_type == FileType.NPS:
+            from casparser.parsers import nps as parser
+            data = parser.parse_nps(pdf_path, password or "", file_type=file_type, _doc=doc)
+            return _fill_investor_from_password(_from_demat(data, "NPS"), password)
         from casparser.parsers import cdsl as parser
         data = parser.parse_cdsl(pdf_path, password or "", file_type=file_type, _doc=doc)
         return _fill_investor_from_password(_from_demat(data, "CDSL"), password)

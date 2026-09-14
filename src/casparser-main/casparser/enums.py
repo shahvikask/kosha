@@ -19,6 +19,7 @@ class FileType(AutoEnum):
     KFINTECH = auto()
     CDSL = auto()
     NSDL = auto()
+    NPS = auto()
 
 
 class CASFileType(AutoEnum):

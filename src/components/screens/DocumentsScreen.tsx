@@ -19,6 +19,8 @@ import {
   CasImportMeta,
   formatStatementDate,
   pingCasParser,
+  npsStatementPassword,
+  statementPasswordsToTry,
 } from '../../lib/casPython';
 import { CasConfirmPanel } from './CasConfirmPanel';
 import {
@@ -106,7 +108,9 @@ export const DocumentsScreen: React.FC = () => {
   const handleTargetMemberChange = (newMemberId: string) => {
     setTargetMemberId(newMemberId);
     const m = familyMembers.find(fm => fm.id === newMemberId);
-    setPdfPassword(m?.panForStatements || '');
+    setPdfPassword(
+      m?.panForStatements || npsStatementPassword(m?.name, m?.dateOfBirth) || ''
+    );
     if (parseResult) {
       buildReconciliation(parseResult, rawRecords, newMemberId);
       setImportNotification(null);
@@ -127,6 +131,12 @@ export const DocumentsScreen: React.FC = () => {
   useEffect(() => {
     if (activeTargetMember?.panForStatements) {
       setPdfPassword(activeTargetMember.panForStatements);
+    } else {
+      const nps = npsStatementPassword(
+        activeTargetMember?.name,
+        activeTargetMember?.dateOfBirth
+      );
+      if (nps) setPdfPassword(nps);
     }
   }, [targetMemberId]);
 
@@ -222,48 +232,74 @@ export const DocumentsScreen: React.FC = () => {
     const isPdf = file.name.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf';
 
     if (!isPdf) {
-      processFile(file, '', false);
+      processFile(file, [''], false);
     } else {
-      const initialPass = (pdfPassword || activeTargetMember?.panForStatements || '').trim();
-      if (initialPass) {
-        processFile(file, initialPass, true);
+      const passwords = statementPasswordsToTry({
+        typed: pdfPassword,
+        pan: activeTargetMember?.panForStatements,
+        name: activeTargetMember?.name,
+        dateOfBirth: activeTargetMember?.dateOfBirth,
+      });
+      if (passwords.length) {
+        processFile(file, passwords, true);
       } else {
         const memberName = activeTargetMember?.name || 'the primary holder';
         setImportNotification({
           type: 'info',
-          message: `PDF file selected. If password-protected, enter the 10-character PAN of ${memberName} in capitals below and click "Read Statement".`,
+          message: `PDF file selected. Enter the password below — CAS uses the PAN of ${memberName} in capitals; NPS statements use the first 4 letters of the first name plus DDMM of birth (e.g. amit1508).`,
         });
       }
     }
   };
 
   // Process statement file (PDF or CSV)
-  const processFile = async (file: File, passwordToUse: string, isAutoAttempt = false) => {
+  const processFile = async (file: File, passwordsToUse: string[], isAutoAttempt = false) => {
     setIsParsing(true);
     setParseError(null);
     setImportNotification(null);
 
+    const memberLedger = ledgerEvents
+      .filter(ev => ev.ownerId === targetMemberId)
+      .map(ev => ({
+        holdingName: ev.holdingName,
+        eventDate: ev.eventDate,
+        totalAmountMinor: ev.totalAmountMinor,
+      }));
+
+    const uniquePasswords = passwordsToUse.length ? passwordsToUse : [''];
+
     try {
-      const memberLedger = ledgerEvents
-        .filter(ev => ev.ownerId === targetMemberId)
-        .map(ev => ({
-          holdingName: ev.holdingName,
-          eventDate: ev.eventDate,
-          totalAmountMinor: ev.totalAmountMinor,
-        }));
+      for (let i = 0; i < uniquePasswords.length; i += 1) {
+        const passwordToUse = uniquePasswords[i];
+        try {
+          const result = await parseStatementFile(file, passwordToUse, memberLedger, targetMemberId);
 
-      const result = await parseStatementFile(file, passwordToUse, memberLedger, targetMemberId);
+          if (result.importRecords.length === 0) {
+            setParseError(
+              'Python casparser did not find any valued holdings in this statement. Closed / nil lines are skipped. Check that the PDF is a CDSL, NSDL, CAMS, KFintech or NPS statement.'
+            );
+            return;
+          }
 
-      if (result.importRecords.length === 0) {
-        setParseError(
-          'Python casparser did not find any valued holdings in this statement. Closed / nil lines are skipped. Check that the PDF is a CDSL, NSDL, CAMS or KFintech CAS.'
-        );
-        return;
+          if (passwordToUse && passwordToUse !== pdfPassword) {
+            setPdfPassword(passwordToUse);
+          }
+          setParseResult(result);
+          setRawRecords(result.importRecords);
+          buildReconciliation(result, result.importRecords, targetMemberId);
+          return;
+        } catch (err: any) {
+          const errString = err?.message || String(err);
+          const isPasswordIssue =
+            errString.includes('Password') ||
+            errString.includes('password') ||
+            errString.includes('Incorrect') ||
+            err?.name === 'PasswordException';
+          if (!isPasswordIssue || i === uniquePasswords.length - 1) {
+            throw err;
+          }
+        }
       }
-
-      setParseResult(result);
-      setRawRecords(result.importRecords);
-      buildReconciliation(result, result.importRecords, targetMemberId);
     } catch (err: any) {
       console.error('Statement Parse Attempt:', err);
 
@@ -275,15 +311,15 @@ export const DocumentsScreen: React.FC = () => {
         err?.name === 'PasswordException';
 
       if (isPasswordIssue) {
+        const memberName = activeTargetMember?.name || 'the primary holder';
         if (isAutoAttempt) {
-          const memberName = activeTargetMember?.name || 'the primary holder';
           setImportNotification({
             type: 'info',
-            message: `"${file.name}" is password-protected. Enter the 10-character PAN of ${memberName} in capitals below and click "Read Statement".`,
+            message: `"${file.name}" is password-protected. CAS uses the PAN of ${memberName} in capitals. NPS statements from Protean CRA use the first 4 letters of the first name plus DDMM of birth (e.g. amit1508).`,
           });
         } else {
           setParseError(
-            "That password did not open the file. CAS statements use the primary holder's PAN in capital letters."
+            "That password did not open the file. CAS statements use the holder's PAN in capitals. NPS (Protean) statements use the first 4 letters of the first name plus DDMM of birth."
           );
         }
       } else {
@@ -298,7 +334,16 @@ export const DocumentsScreen: React.FC = () => {
   const handleDecryptAndParse = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedFile) return;
-    processFile(selectedFile, pdfPassword.trim(), false);
+    processFile(
+      selectedFile,
+      statementPasswordsToTry({
+        typed: pdfPassword.trim(),
+        pan: activeTargetMember?.panForStatements,
+        name: activeTargetMember?.name,
+        dateOfBirth: activeTargetMember?.dateOfBirth,
+      }),
+      false
+    );
   };
 
   // Toggle individual line checkbox
@@ -684,7 +729,7 @@ export const DocumentsScreen: React.FC = () => {
                   <div className="flex items-center gap-2">
                     <Lock className="w-4 h-4 text-amber-400 flex-shrink-0" />
                     <span className="text-xs sm:text-sm font-bold text-slate-200">
-                      PDF Password (PAN / Statement Password)
+                      PDF Password (PAN or NPS)
                     </span>
                   </div>
                   <span className="text-[11px] text-slate-400">
@@ -701,8 +746,8 @@ export const DocumentsScreen: React.FC = () => {
                       type={showPassword ? 'text' : 'password'}
                       placeholder={
                         activeTargetMember?.name
-                          ? `Enter the 10-character PAN of ${activeTargetMember.name} in capitals`
-                          : 'Enter the 10-character PAN in capitals'
+                          ? `PAN of ${activeTargetMember.name}, or NPS first4+DDMM`
+                          : 'PAN in capitals, or NPS first4+DDMM'
                       }
                       value={pdfPassword}
                       onChange={e => setPdfPassword(e.target.value)}
@@ -737,10 +782,10 @@ export const DocumentsScreen: React.FC = () => {
                 </div>
 
                 <p className="text-[11px] text-slate-400">
-                  🔒 {activeTargetMember?.name
-                    ? `Enter the 10-character PAN of ${activeTargetMember.name} in capitals.`
-                    : 'Enter the 10-character PAN of the primary holder in capitals.'}{' '}
-                  Python casparser reads the PDF on this computer. The file does not leave your machine.
+                  🔒 CAS uses the 10-character PAN in capitals.
+                  NPS statements from Protean CRA use the first 4 letters of the
+                  first name plus DDMM of birth (e.g. amit1508). GrowUrDhan
+                  tries both automatically. The file stays on this computer.
                 </p>
               </form>
             )}

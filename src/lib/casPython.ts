@@ -1,13 +1,14 @@
 import { AssetCategory, StatementImportRecord } from '../types';
 import { CASParseResult, ParsedDematHolding } from './casParser';
 
-export type CasFileType = 'CDSL' | 'NSDL' | 'CAMS' | 'KFINTECH';
+export type CasFileType = 'CDSL' | 'NSDL' | 'CAMS' | 'KFINTECH' | 'NPS';
 
 export const CAS_FILE_TYPE_LABEL: Record<CasFileType, string> = {
   CDSL: 'CDSL (Demat + Mutual Funds)',
   NSDL: 'NSDL (Demat + Mutual Funds)',
   CAMS: 'CAMS Mutual Funds',
   KFINTECH: 'KFintech Mutual Funds',
+  NPS: 'NPS (Protean / CRA statement)',
 };
 
 export interface CasAccountSummary {
@@ -87,6 +88,46 @@ export interface CasLatestState {
 }
 
 export const EMPTY_CAS_LATEST: CasLatestState = { asOf: null, byOwner: {} };
+
+/** Protean / CRA NPS PDF password: first 4 letters of first name + DDMM of DOB.
+ *  Example: "Vikas Shah", "1986-03-22" → "vika2203". */
+export function npsStatementPassword(
+  name?: string | null,
+  dateOfBirth?: string | null
+): string | null {
+  if (!name || !dateOfBirth) return null;
+  const first = name.trim().split(/\s+/)[0] || '';
+  const letters = first.replace(/[^A-Za-z]/g, '').slice(0, 4).toLowerCase();
+  if (!letters) return null;
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateOfBirth.trim());
+  let ddmm: string | null = null;
+  if (iso) ddmm = `${iso[3]}${iso[2]}`;
+  else {
+    const dmy = /^(\d{2})[/-](\d{2})[/-](\d{4})/.exec(dateOfBirth.trim());
+    if (dmy) ddmm = `${dmy[1]}${dmy[2]}`;
+  }
+  if (!ddmm) return null;
+  return `${letters}${ddmm}`;
+}
+
+/** Passwords to try for a statement PDF: typed value, then NPS convention, then PAN. */
+export function statementPasswordsToTry(opts: {
+  typed?: string | null;
+  pan?: string | null;
+  name?: string | null;
+  dateOfBirth?: string | null;
+}): string[] {
+  const out: string[] = [];
+  const add = (s?: string | null) => {
+    const t = (s || '').trim();
+    if (t && !out.includes(t)) out.push(t);
+  };
+  add(opts.typed);
+  add(npsStatementPassword(opts.name, opts.dateOfBirth));
+  add(opts.pan);
+  return out;
+}
+
 
 export function parseCasLatest(raw: string | null | undefined): CasLatestState {
   if (!raw) return { ...EMPTY_CAS_LATEST, byOwner: {} };
@@ -216,6 +257,7 @@ export function pythonResultToCasParseResult(
         h.isin ? `ISIN ${h.isin}` : null,
         h.folio ? `Folio ${h.folio}` : null,
         h.schemeType ? h.schemeType : null,
+        h.kind === 'nps' ? 'NPS' : null,
       ].filter(Boolean).join(' • ') || 'CAS holding',
       selected: true,
       isin: h.isin || undefined,

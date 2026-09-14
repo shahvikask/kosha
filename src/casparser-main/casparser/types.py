@@ -304,7 +304,11 @@ class NPSScheme(BaseModel):
 
 
 class NPSAccount(BaseModel):
-    """NPS holdings for a single PRAN, as printed in the depository CAS."""
+    """NPS holdings for a single PRAN.
+
+    Printed either as a section inside a depository CAS, or as a
+    standalone monthly CRA statement (Protean / CAMS / KFin CRA).
+    """
 
     pran: Optional[str] = None  # PRAN as printed (often masked)
     nps_sp: Optional[str] = None  # NPS Service Provider / CRA (e.g. "PROT" = Protean)
@@ -318,7 +322,8 @@ class NSDLCASData(BaseModel):
     investor_info: InvestorInfo
     file_type: FileType
     # National Pension System holdings, when the CAS includes an NPS
-    # section (holdings only — the transaction ledger is not parsed).
+    # section or the file is a standalone NPS CRA statement (holdings
+    # only — the transaction ledger is not parsed).
     nps: Optional[NPSAccount] = None
     # Non-fatal data-quality warnings from NSDL demat parsing (e.g. a
     # holdings row whose nav/value could not be confirmed arithmetically).

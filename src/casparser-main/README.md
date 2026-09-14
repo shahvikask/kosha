@@ -20,8 +20,8 @@ CAMS, KFintech, NSDL, and CDSL.
 
 ## Supported inputs
 
-`casparser` parses **original** CAS PDFs delivered by the four
-recognised issuers:
+`casparser` parses **original** CAS PDFs delivered by the recognised
+issuers, plus standalone NPS CRA statements:
 
 | Issuer    | Variant(s)              | Source                              |
 |-----------|-------------------------|-------------------------------------|
@@ -29,6 +29,7 @@ recognised issuers:
 | KFintech  | Detailed, Summary       | `mfs.kfintech.com` request          |
 | NSDL      | Demat consolidated      | NSDL CAS email (monthly)            |
 | CDSL      | Demat consolidated      | CDSL CAS email (monthly)            |
+| NPS       | CRA transaction stmt    | Protean / CAMS / KFin CRA (monthly) |
 
 ### Known unsupported inputs
 
@@ -241,7 +242,7 @@ Demat statements return holdings (no transactions), grouped per demat account:
 ```ts
 {
   statement_period: { from: string, to: string },
-  file_type: "NSDL" | "CDSL",
+  file_type: "NSDL" | "CDSL" | "NPS",
   investor_info: { name: string, email: string, address: string, mobile: string },
   accounts: {
     name: string,                        // account / DP name
@@ -273,7 +274,7 @@ Demat statements return holdings (no transactions), grouped per demat account:
     }[],
   }[],
   parse_warnings: string[],              // non-fatal demat data-quality warnings
-  nps: {                                 // National Pension System, if present (CDSL)
+  nps: {                                 // National Pension System (CDSL section, or standalone CRA PDF)
     pran: string | null,                 // PRAN (as printed; often masked)
     nps_sp: string | null,               // NPS service provider / CRA, e.g. "PROT"
     value: decimal,                      // reported NPS portfolio value

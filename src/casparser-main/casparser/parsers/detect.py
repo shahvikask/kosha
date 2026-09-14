@@ -1,8 +1,8 @@
 """Detect the CAS issuer and statement variant from a PDF.
 
 We look at the first 1-2 pages of text for unambiguous source markers
-(CAMS / KFin watermark, NSDL / CDSL header strings) and the
-`Consolidated Account (Statement|Summary)` heading.
+(CAMS / KFin watermark, NSDL / CDSL header strings, NPS CRA title)
+and the `Consolidated Account (Statement|Summary)` heading.
 
 All public functions accept an optional pre-opened `pdfium.PdfDocument`
 so the dispatcher can open the PDF exactly once per `read_cas_pdf`
@@ -66,9 +66,24 @@ def detect_file_type(
     *,
     _doc: Optional[pdfium.PdfDocument] = None,
 ) -> FileType:
-    """Identify the issuer (CAMS / KFin / NSDL / CDSL) from the PDF
+    """Identify the issuer (CAMS / KFin / NSDL / CDSL / NPS) from the PDF
     text. Raises nothing — returns `FileType.UNKNOWN` on no match."""
     text = _read_text_sample(pdf_path, password, _doc=_doc)
+    return file_type_from_text(text)
+
+
+def file_type_from_text(text: str) -> FileType:
+    """Issuer sniff from already-extracted page text.
+
+    NPS is checked first: a Protean CRA statement can mention CAMS/KFin
+    as the POP without being a mutual-fund CAS.
+    """
+    if re.search(r"NPS\s+TRANSACTION\s+STATEMENT", text, re.I):
+        return FileType.NPS
+    if re.search(r"NPS Transaction Statement for Tier", text, re.I):
+        return FileType.NPS
+    if "npscra.proteantech.in" in text.lower():
+        return FileType.NPS
     if "CAMSCASWS" in text:
         return FileType.CAMS
     if "KFINCASWS" in text:

@@ -278,7 +278,8 @@
         "CAMS",
         "KFINTECH",
         "CDSL",
-        "NSDL"
+        "NSDL",
+        "NPS"
       ],
       "title": "FileType",
       "type": "string"
@@ -456,7 +457,7 @@
       "type": "object"
     },
     "NPSAccount": {
-      "description": "NPS holdings for a single PRAN, as printed in the depository CAS.",
+      "description": "NPS holdings for a single PRAN.\n\nPrinted either as a section inside a depository CAS, or as a\nstandalone monthly CRA statement (Protean / CAMS / KFin CRA).",
       "properties": {
         "nps_sp": {
           "anyOf": [

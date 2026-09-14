@@ -330,7 +330,7 @@ export interface StatementImportRecord {
   dpName?: string;
   dpId?: string;
   clientId?: string;
-  casFileType?: 'CDSL' | 'NSDL' | 'CAMS' | 'KFINTECH';
+  casFileType?: 'CDSL' | 'NSDL' | 'CAMS' | 'KFINTECH' | 'NPS';
 }
 
 export interface EmergencyDossierItem {
