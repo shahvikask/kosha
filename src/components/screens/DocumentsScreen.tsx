@@ -662,11 +662,11 @@ export const DocumentsScreen: React.FC = () => {
 
               <div className="max-w-lg mx-auto space-y-1">
                 <h3 className="text-base font-bold text-slate-100">
-                  Drop Encrypted CAS PDF or Statement CSV
+                  Drop Encrypted CAS or NPS PDF, or Statement CSV
                 </h3>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  Supports password-protected <strong>CDSL, NSDL, CAMS and KFintech</strong> CAS
-                  PDFs via Python casparser, plus broker CSV exports. Same issuer overwrites
+                  Supports password-protected <strong>CDSL, NSDL, CAMS, KFintech and NPS</strong> PDFs
+                  via Python casparser, plus broker CSV exports. Same issuer overwrites
                   the previous file — later months replace earlier ones.
                 </p>
                 {pythonReady === false && (

@@ -2,8 +2,12 @@
 /**
  * Start the local Python CAS sidecar, then Vite.
  * CAS PDFs are parsed on this machine and never leave the device.
+ *
+ * Always (re)starts the sidecar so a `git pull` of casparser is picked
+ * up. Reusing whatever is already on 8765 left people on a stale reader
+ * (no NPS) after the UI had already updated.
  */
-import { spawn } from 'node:child_process';
+import { spawn, execSync } from 'node:child_process';
 import { createServer } from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,6 +26,59 @@ function portInUse(port) {
     s.once('listening', () => s.close(() => resolve(false)));
     s.listen(port, '127.0.0.1');
   });
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function killSidecarPort(port) {
+  if (process.platform === 'win32') {
+    let out = '';
+    try {
+      out = execSync('netstat -ano', { encoding: 'utf8', windowsHide: true });
+    } catch {
+      return;
+    }
+    const pids = new Set();
+    const re = new RegExp(`:${port}(?:\\s|$)`);
+    for (const line of out.split(/\r?\n/)) {
+      if (!/LISTENING/i.test(line) || !re.test(line)) continue;
+      const pid = line.trim().split(/\s+/).pop();
+      if (pid && /^\d+$/.test(pid) && pid !== '0') pids.add(pid);
+    }
+    for (const pid of pids) {
+      try {
+        execSync(`taskkill /PID ${pid} /F`, { stdio: 'ignore', windowsHide: true });
+        console.log(`[cas-parser] stopped stale reader (pid ${pid})`);
+      } catch {
+        /* ignore */
+      }
+    }
+    return;
+  }
+  try {
+    const out = execSync(`lsof -ti tcp:${port} -sTCP:LISTEN`, { encoding: 'utf8' });
+    for (const pid of out.split(/\s+/).filter(Boolean)) {
+      try {
+        process.kill(Number(pid), 'SIGTERM');
+        console.log(`[cas-parser] stopped stale reader (pid ${pid})`);
+      } catch {
+        /* ignore */
+      }
+    }
+  } catch {
+    /* lsof missing or nothing listening */
+  }
+}
+
+async function waitPortFree(port, ms = 2500) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    if (!(await portInUse(port))) return true;
+    await sleep(150);
+  }
+  return !(await portInUse(port));
 }
 
 function spawnPython(bin) {
@@ -61,7 +118,14 @@ function spawnPython(bin) {
 
 async function startSidecar() {
   if (await portInUse(SIDECAR_PORT)) {
-    console.log(`[cas-parser] already running on 127.0.0.1:${SIDECAR_PORT}`);
+    console.log(`[cas-parser] restarting reader on 127.0.0.1:${SIDECAR_PORT}`);
+    killSidecarPort(SIDECAR_PORT);
+    await waitPortFree(SIDECAR_PORT);
+  }
+  if (await portInUse(SIDECAR_PORT)) {
+    console.warn(
+      '[cas-parser] could not replace the process on 8765; it may be a stale reader. Close other python/GrowUrDhan windows and run npm run dev again.'
+    );
     return null;
   }
   let lastErr;

@@ -440,7 +440,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path.split("?", 1)[0] in ("/health", "/api/cas/health"):
-            self._json(200, {"ok": True, "engine": "PYTHON_CASPARSER", "eod": True})
+            self._json(200, {
+                "ok": True,
+                "engine": "PYTHON_CASPARSER",
+                "eod": True,
+                "issuers": ["CAMS", "KFINTECH", "NSDL", "CDSL", "NPS"],
+            })
             return
         self._json(404, {"ok": False, "error": "Not found"})
 
@@ -493,7 +498,11 @@ class Handler(BaseHTTPRequestHandler):
 
 def serve(host: str = HOST, port: int = PORT) -> None:
     httpd = ThreadingHTTPServer((host, port), Handler)
-    print(f"[cas-parser] Python CAS parser listening on http://{host}:{port}", flush=True)
+    print(
+        f"[cas-parser] Python CAS parser listening on http://{host}:{port} "
+        "(CAMS, KFintech, NSDL, CDSL, NPS)",
+        flush=True,
+    )
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
