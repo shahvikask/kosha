@@ -9,7 +9,7 @@ import { LedgerEvent, Holding } from '../types';
 import { eventLabel, bucketOf, upcomingFromHoldings, displayHoldingName, accountTitle, inferAmcFromSchemeName, looksLikeSgb, metricsOf, isOpenPosition } from './holdingView';
 import { formatStatementDate, latestAsOfForOwner, statementAsOfByMember, parseCasLatest } from './casPython';
 import { addCalendarMonths, dueEmiDates, planEmiCatchUp, resumeEmiDate } from './emi';
-import { absoluteReturnPct, cagrPct, incomeByFinancialYear, buildGrowthModel, firstActivityDate, formatPct } from './growth';
+import { absoluteReturnPct, incomeByFinancialYear, buildGrowthModel, formatPct } from './growth';
 import { profileOf, holdingReturn, isStatementOnlyHistory } from './returnMetrics';
 import { titleCaseName, passwordIssues, isValidPan, isValidEmail, normaliseAnswer, needsPasswordRotation, packHash, unpackHash, hashSecret, verifySecret } from './auth';
 import { checkImportPan, pansMatch, panBlocksCommit, findDuplicatePanMember, panFingerprint } from './pan';
@@ -434,15 +434,12 @@ eq('repayment label', eventLabel('REPAYMENT'), 'Loan repayment');
 
 console.log('\n--- S. Growth engine ---');
 eq('absolute 50%', Math.round(absoluteReturnPct(1_000_000_000n, 1_500_000_000n)!), 50);
-eq('cagr ~10% over 2y', Math.round(cagrPct(1_000_000_000n, 1_210_000_000n, '2024-09-10', '2026-09-10')!), 10);
-eq('cagr refuses short window', cagrPct(1_000_000_000n, 1_100_000_000n, '2026-09-01', '2026-09-10'), null);
 eq('format pct', formatPct(12.54), '+12.5%');
 eq('FY of May is next label', financialYearOf('2026-05-01'), '2026-27');
 const divEv = ev('dv1','DIVIDEND','2026-05-10',1,5000,'h_g');
 const inc = incomeByFinancialYear([divEv], new Map());
 eq('dividend in FY 2026-27', inc[0]?.fy, '2026-27');
 eq('dividend amount', Number(inc[0]?.dividendMinor)/10000, 5000);
-eq('first date', firstActivityDate([ev('a','BUY','2025-01-02',1,1), ev('b','BUY','2024-06-01',1,1)]), '2024-06-01');
 const gh = hold('h_g','EQUITY',10,100,150);
 const openEv: LedgerEvent = {
   ...ev('op1','OPENING_BALANCE','2024-09-10',10,100,'h_g'),
@@ -460,20 +457,20 @@ eq('growth assets', Number(gModel.kpis.assetsMinor)/10000, 1500);
 eq('growth invested', Number(gModel.kpis.investedMinor)/10000, 1000);
 eq('growth abs +50%', Math.round(gModel.kpis.absoluteReturnPct || 0), 50);
 eq('shares slice present', gModel.buckets.some(s => s.id === 'SHARES'), true);
-eq('xirr not null with opening', gModel.kpis.xirrPct == null, false);
+eq('growth xirr removed from kpis', 'xirrPct' in gModel.kpis, false);
 
 console.log('\n--- T. Instrument return metrics ---');
 const mfSip = hold('mf1','MUTUAL_FUND',100,10,12);
-eq('MF 3 buys is XIRR', profileOf(mfSip, [ev('s1','BUY','2025-01-01',10,10,'mf1'), ev('s2','BUY','2025-02-01',10,10,'mf1'), ev('s3','BUY','2025-03-01',10,10,'mf1')], '2026-09-10').primaryLabel, 'XIRR');
+eq('MF shows absolute return', profileOf(mfSip, [ev('s1','BUY','2025-01-01',10,10,'mf1'), ev('s2','BUY','2025-02-01',10,10,'mf1'), ev('s3','BUY','2025-03-01',10,10,'mf1')], '2026-09-10').primaryLabel, 'Absolute return');
 const mfLump = hold('mf2','MUTUAL_FUND',100,10,15);
-eq('MF lump >1y is CAGR', profileOf(mfLump, [ev('l1','OPENING_BALANCE','2024-01-01',100,10,'mf2')], '2026-09-10').primaryLabel, 'CAGR');
-eq('equity is XIRR', profileOf(hold('eq1','EQUITY',10,100,120), [ev('e','BUY','2024-01-01',10,100,'eq1')], '2026-09-10').key, 'EQUITY');
+eq('MF lump is also absolute', profileOf(mfLump, [ev('l1','OPENING_BALANCE','2024-01-01',100,10,'mf2')], '2026-09-10').primaryLabel, 'Absolute return');
+eq('equity key', profileOf(hold('eq1','EQUITY',10,100,120), [ev('e','BUY','2024-01-01',10,100,'eq1')], '2026-09-10').key, 'EQUITY');
 eq('SGB key', profileOf({...hold('sg1','GOLD_SGB',10,5000,5500), name:'SGB 2020'}, [], '2026-09-10').key, 'SGB');
 const ppfH = {...hold('pp1','FIXED_INCOME',1,100000,110000), name:'PPF', couponRatePercent: 7.1};
-eq('PPF uses stated yield', profileOf(ppfH, [], '2026-09-10').key, 'PPF');
+eq('PPF key', profileOf(ppfH, [], '2026-09-10').key, 'PPF');
 const ppfRet = holdingReturn(ppfH, [], derivePositions([], [ppfH]), 'MARKET_TRADED', '2026-09-10');
-eq('PPF primary 7.1', ppfRet.primaryText, '+7.1%');
-eq('AIF is TVPI', profileOf({...hold('a1','SPECIALISED',1,100,150), name:'Cat II AIF'}, [], '2026-09-10').primaryLabel, 'TVPI');
+eq('PPF primary is absolute not coupon', ppfRet.primaryText, '+10.0%');
+eq('AIF is absolute not TVPI', profileOf({...hold('a1','SPECIALISED',1,100,150), name:'Cat II AIF'}, [], '2026-09-10').primaryLabel, 'Absolute return');
 
 const closedH = hold('cl1','MUTUAL_FUND',0,10,12);
 const closedEv = ev('cl_adj','SNAPSHOT_ADJUSTMENT','2026-02-28',-10,10,'cl1');
@@ -491,7 +488,8 @@ const stmtH = hold('st1','MUTUAL_FUND',100,10,12);
 const stmtEv = ev('st_ob','OPENING_BALANCE','2026-01-31',100,10,'st1');
 const stmtDer = derivePositions([stmtEv], [stmtH]);
 const stmtRet = holdingReturn(stmtH, [stmtEv], stmtDer, 'MARKET_TRADED', '2026-09-10');
-eq('statement-only XIRR labelled since statement', stmtRet.profile.primaryLabel.includes('since statement'), true);
+eq('statement-only still labelled absolute', stmtRet.profile.primaryLabel, 'Absolute return');
+eq('statement-only why is honest', stmtRet.profile.why.includes('recorded in Kosha'), true);
 eq('open position with qty', isOpenPosition(stmtH, stmtDer), true);
 
 const ghostH = hold('gh0','MUTUAL_FUND',0,10,12);
