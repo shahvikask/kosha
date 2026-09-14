@@ -47,6 +47,31 @@ html.theme-light {
     min-height: 100%;
   }
 
+  body {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+
+  button,
+  select {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -71,6 +96,31 @@ html.theme-light {
   background: var(--chip);
   color: var(--text);
   border: 1px solid var(--border);
+}
+
+/* Shared UX polish. Keep motion subtle and respect reduced-motion preferences. */
+button,
+a,
+input,
+select {
+  transition: opacity 120ms ease, background-color 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+@media (max-width: 767px) {
+  .card {
+    border-radius: 1.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }
 
 /* Light-theme remap of leftover dark utility classes on older screens. */
