@@ -1,10 +1,24 @@
 import React, { useMemo, useState } from 'react';
 import { useKosha } from '../../context/KoshaContext';
-import { ASSET_CATEGORIES, ASSET_SUBCATEGORIES, AssetCategory, ListedSecurity } from '../../types';
+import {
+  ASSET_CATEGORIES,
+  ASSET_SUBCATEGORIES,
+  AssetCategory,
+  HoldingDetails,
+  ListedSecurity,
+} from '../../types';
 import { MoneyEngine } from '../../lib/money';
 import { addCalendarMonths } from '../../lib/emi';
 import { searchListed } from '../../lib/eodPrices';
 import { formatStatementDate } from '../../lib/casPython';
+import {
+  acquiredOnLabel,
+  defaultSgbCoupon,
+  identifierLabel,
+  namePlaceholder,
+  suggestLockInDates,
+  usesUnits,
+} from '../../lib/holdingForm';
 import { X, Tag, Target, Check } from 'lucide-react';
 
 interface AddHoldingModalProps {
@@ -25,10 +39,7 @@ const COMMON_GOAL_TAGS = [
 const inp =
   'w-full px-3.5 py-2 bg-slate-950 border border-slate-700 rounded-xl text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-400/50';
 const lbl = 'text-xs font-bold text-slate-300 block mb-1';
-
-function usesUnits(category: AssetCategory): boolean {
-  return category === 'EQUITY' || category === 'MUTUAL_FUND' || category === 'GOLD_SGB';
-}
+const panel = 'grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 bg-slate-950/80 rounded-2xl border border-slate-800';
 
 function defaultNextEmiDate(): string {
   const now = new Date();
@@ -39,42 +50,10 @@ function defaultNextEmiDate(): string {
   return fifth > today ? fifth : addCalendarMonths(fifth, 1);
 }
 
-function identifierLabel(category: AssetCategory): string {
-  switch (category) {
-    case 'EQUITY':
-      return 'NSE/BSE Symbol';
-    case 'MUTUAL_FUND':
-      return 'Folio Number';
-    case 'GOLD_SGB':
-      return 'SGB Certificate / Series';
-    case 'LIABILITY':
-      return 'Loan account number';
-    case 'REAL_ESTATE':
-      return 'Survey / door number (optional)';
-    default:
-      return 'Account number';
-  }
-}
-
-function namePlaceholder(category: AssetCategory): string {
-  switch (category) {
-    case 'EQUITY':
-      return 'e.g. State Bank of India';
-    case 'MUTUAL_FUND':
-      return 'e.g. Parag Parikh Flexi Cap';
-    case 'GOLD_SGB':
-      return 'e.g. SGB 2021-22 Series V';
-    case 'REAL_ESTATE':
-      return 'e.g. 2BHK Flat Indiranagar';
-    case 'LIABILITY':
-      return 'e.g. HDFC Car Loan';
-    case 'FIXED_INCOME':
-      return 'e.g. SBI PPF';
-    case 'CASH_BANK':
-      return 'e.g. HDFC Savings';
-    default:
-      return 'e.g. PMS mandate';
-  }
+function rupeesToMinor(raw: string): string | undefined {
+  const n = parseFloat(raw);
+  if (!raw.trim() || isNaN(n) || n < 0) return undefined;
+  return MoneyEngine.fromRupees(n).toString();
 }
 
 export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClose }) => {
@@ -94,6 +73,7 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
   const [category, setCategory] = useState<AssetCategory>('EQUITY');
   const [name, setName] = useState('');
   const [symbolOrFolio, setSymbolOrFolio] = useState('');
+  const [isinManual, setIsinManual] = useState('');
   const [picked, setPicked] = useState<ListedSecurity | null>(null);
   const [searchQ, setSearchQ] = useState('');
   const [subCategory, setSubCategory] = useState(ASSET_SUBCATEGORIES.EQUITY[0]);
@@ -114,8 +94,18 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
   const [monthlyEmiRupees, setMonthlyEmiRupees] = useState('');
   const [remainingEmis, setRemainingEmis] = useState('');
   const [nextEmiDate, setNextEmiDate] = useState('');
+  const [acquiredOn, setAcquiredOn] = useState('');
+  const [fyContributionRupees, setFyContributionRupees] = useState('');
+  const [commitmentRupees, setCommitmentRupees] = useState('');
+  const [capitalCalledRupees, setCapitalCalledRupees] = useState('');
+  const [faceValueRupees, setFaceValueRupees] = useState('');
+  const [extra, setExtra] = useState<HoldingDetails>({});
 
   const listedPicker = category === 'EQUITY' || category === 'MUTUAL_FUND';
+  const unitAsset = usesUnits(category, subCategory);
+  const isAif = category === 'SPECIALISED' && subCategory === 'AIF';
+  const isPms = category === 'SPECIALISED' && subCategory === 'PMS';
+  const showAcquiredOn = !listedPicker;
   const matches = useMemo(
     () => (listedPicker ? searchListed(listedSecurities, searchQ, category, 20) : []),
     [listedPicker, listedSecurities, searchQ, category],
@@ -126,6 +116,15 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
       h => h.ownerId === ownerId && (h.isin || '').toUpperCase() === picked.isin.toUpperCase()
     );
   }, [picked, holdings, ownerId]);
+
+  const linkable = holdings.filter(h => {
+    if (h.ownerId !== ownerId) return false;
+    if (category === 'LIABILITY') return h.category === 'REAL_ESTATE' && !/reit/i.test(h.subCategory);
+    if (category === 'REAL_ESTATE' && !/reit/i.test(subCategory)) return h.category === 'LIABILITY';
+    return false;
+  });
+
+  const patchExtra = (p: Partial<HoldingDetails>) => setExtra(prev => ({ ...prev, ...p }));
 
   if (!isOpen) return null;
 
@@ -145,14 +144,56 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
     setSelectedTags(selectedTags.includes(tag) ? selectedTags.filter(t => t !== tag) : [...selectedTags, tag]);
   };
 
+  const applySubDefaults = (cat: AssetCategory, sub: string) => {
+    if (cat === 'GOLD_SGB' && sub.startsWith('Sovereign')) {
+      setCouponOrInterestRate(String(defaultSgbCoupon()));
+    } else if (cat === 'GOLD_SGB') {
+      setCouponOrInterestRate('');
+      setIssuePriceRupees('');
+    }
+  };
+
   const handleCategory = (next: AssetCategory) => {
     setCategory(next);
-    setSubCategory(ASSET_SUBCATEGORIES[next][0]);
+    const sub = ASSET_SUBCATEGORIES[next][0];
+    setSubCategory(sub);
     setPicked(null);
     setSearchQ('');
     setName('');
     setSymbolOrFolio('');
+    setIsinManual('');
     setCurrentPriceRupees('');
+    setQuantity('');
+    setCostPerUnitRupees('');
+    setInstitutionName('');
+    setLocation('');
+    setMaturityDate('');
+    setAcquiredOn('');
+    setExtra({});
+    setFyContributionRupees('');
+    setCommitmentRupees('');
+    setCapitalCalledRupees('');
+    setFaceValueRupees('');
+    applySubDefaults(next, sub);
+  };
+
+  const handleSubCategory = (sub: string) => {
+    setSubCategory(sub);
+    applySubDefaults(category, sub);
+    if (acquiredOn) {
+      const suggested = suggestLockInDates(category, sub, acquiredOn);
+      if (suggested.maturity && !maturityDate) setMaturityDate(suggested.maturity);
+      if (suggested.earlyExit && !extra.earlyExitDate) patchExtra({ earlyExitDate: suggested.earlyExit });
+    }
+  };
+
+  const handleAcquiredOn = (iso: string) => {
+    setAcquiredOn(iso);
+    const suggested = suggestLockInDates(category, subCategory, iso);
+    if (suggested.maturity) setMaturityDate(prev => prev || suggested.maturity!);
+    if (suggested.earlyExit) {
+      setExtra(prev => ({ ...prev, earlyExitDate: prev.earlyExitDate || suggested.earlyExit }));
+    }
   };
 
   const pickSecurity = (row: ListedSecurity) => {
@@ -168,12 +209,17 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
     if (listedPicker && !picked) return;
     if (!name.trim()) return;
 
-    const unitAsset = usesUnits(category);
     const qtyNum = unitAsset ? parseFloat(quantity) || 0 : 1;
     if (unitAsset && qtyNum <= 0) return;
 
-    const costNum = parseFloat(costPerUnitRupees) || 0;
-    const currentPriceNum = parseFloat(currentPriceRupees) || costNum;
+    let costNum = parseFloat(costPerUnitRupees) || 0;
+    let currentPriceNum = parseFloat(currentPriceRupees) || costNum;
+    if (isAif) {
+      const called = parseFloat(capitalCalledRupees);
+      const commit = parseFloat(commitmentRupees);
+      if (!costNum) costNum = (!isNaN(called) && called > 0 ? called : (!isNaN(commit) ? commit : 0));
+      if (!currentPriceNum) currentPriceNum = costNum;
+    }
     if (costNum < 0 || currentPriceNum < 0) return;
 
     const qtyScaled = MoneyEngine.fromQty(qtyNum).toString();
@@ -192,11 +238,38 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
     const hasEmi = category === 'LIABILITY' && emiNum > 0 && remainNum > 0;
     const nextEmi = hasEmi ? (nextEmiDate || defaultNextEmiDate()) : undefined;
     const issueNum = parseFloat(issuePriceRupees);
+    const isin = (picked?.isin || isinManual.trim() || (subCategory.startsWith('Bond') ? symbolOrFolio.trim() : '') || '').toUpperCase() || undefined;
+
+    const details: HoldingDetails = { ...extra };
+    const fy = rupeesToMinor(fyContributionRupees);
+    if (fy) details.annualContributionMinor = fy;
+    const commit = rupeesToMinor(commitmentRupees);
+    if (commit) details.commitmentMinor = commit;
+    const called = rupeesToMinor(capitalCalledRupees);
+    if (called) details.capitalCalledMinor = called;
+    const face = rupeesToMinor(faceValueRupees);
+    if (face) details.faceValueMinor = face;
+    if (category === 'GOLD_SGB' && subCategory.startsWith('Physical') && !details.goldPurity) {
+      details.goldPurity = '24K';
+    }
+    if (category === 'FIXED_INCOME' && subCategory === 'NPS' && !details.npsTier) {
+      details.npsTier = 'I';
+    }
+    if (category === 'LIABILITY' && !details.originalTenorMonths && remainNum > 0) {
+      details.originalTenorMonths = remainNum;
+    }
+    (Object.keys(details) as (keyof HoldingDetails)[]).forEach(k => {
+      const v = details[k];
+      if (v === undefined || v === '' || v === null) delete details[k];
+    });
+
+    const sgb = category === 'GOLD_SGB' && subCategory.startsWith('Sovereign');
+    const couponNum = parseFloat(couponOrInterestRate);
 
     addHolding({
       name: name.trim(),
       symbolOrFolio: symbolOrFolio.trim() || name.substring(0, 8).toUpperCase(),
-      isin: picked?.isin,
+      isin: isin && isin.length >= 12 ? isin : undefined,
       category,
       subCategory: subCategory.trim() || ASSET_CATEGORIES[category].name,
       ownerId,
@@ -205,13 +278,12 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
       currentPriceMinor,
       priceSource: picked?.source || 'Manual Initial Entry',
       amfiCode: picked?.amfiCode,
-      institutionName: institutionName.trim() || undefined,
+      institutionName: institutionName.trim() || extra.custodian || undefined,
       accountNumberMasked: symbolOrFolio.trim() || undefined,
       notes: notes.trim() || undefined,
       tag: finalTags[0],
       tags: finalTags.length > 0 ? finalTags : undefined,
-      couponRatePercent:
-        category === 'GOLD_SGB' && couponOrInterestRate ? parseFloat(couponOrInterestRate) : undefined,
+      couponRatePercent: sgb ? (isNaN(couponNum) ? defaultSgbCoupon() : couponNum) : undefined,
       interestRatePercent:
         (category === 'FIXED_INCOME' || category === 'LIABILITY') && couponOrInterestRate
           ? parseFloat(couponOrInterestRate)
@@ -224,14 +296,29 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
       nextCouponDate:
         category === 'LIABILITY'
           ? nextEmi
-          : category === 'GOLD_SGB' && nextEmiDate
+          : sgb && nextEmiDate
             ? nextEmiDate
             : undefined,
       emiStatus: hasEmi ? 'PAYING' : undefined,
+      acquiredOn: acquiredOn || undefined,
+      details: Object.keys(details).length ? details : undefined,
     });
 
     onClose();
   };
+
+  const qtyLabel =
+    category === 'GOLD_SGB' ? 'Quantity (grams) *'
+    : category === 'EQUITY' || /unlisted|esop/i.test(subCategory) ? 'Shares *'
+    : 'Units *';
+  const buyLabel =
+    category === 'MUTUAL_FUND' || /reit/i.test(subCategory) ? 'Buy NAV (₹) *'
+    : category === 'GOLD_SGB' ? 'Buy price per gram (₹) *'
+    : 'Buy price per unit (₹) *';
+  const nowLabel =
+    category === 'MUTUAL_FUND' || /reit/i.test(subCategory) ? 'Current NAV (₹)'
+    : category === 'GOLD_SGB' ? 'Current price (₹ / g)'
+    : 'Current price (₹)';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in">
@@ -319,6 +406,9 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
                         </div>
                       )}
                       {pricesError && <div className="text-[11px] text-rose-300">{pricesError}</div>}
+                      {pricesAsOf && listedSecurities.length > 0 && (
+                        <div className="text-[11px] text-slate-500">Closes as on {formatStatementDate(pricesAsOf)}</div>
+                      )}
                       {matches.length > 0 && (
                         <div className="max-h-48 overflow-y-auto rounded-xl border border-slate-700 divide-y divide-slate-800">
                           {matches.map(row => (
@@ -345,7 +435,7 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
                   )}
                 </div>
               ) : (
-                <input type="text" required placeholder={namePlaceholder(category)} value={name} onChange={e => setName(e.target.value)} className={inp} />
+                <input type="text" required placeholder={namePlaceholder(category, subCategory)} value={name} onChange={e => setName(e.target.value)} className={inp} />
               )}
             </div>
             <div>
@@ -363,7 +453,7 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-semibold text-slate-400 block mb-1">
-                {listedPicker ? (category === 'MUTUAL_FUND' ? 'Folio Number' : 'Exchange symbol') : identifierLabel(category)}
+                {listedPicker ? (category === 'MUTUAL_FUND' ? 'Folio Number' : 'Exchange symbol') : identifierLabel(category, subCategory)}
               </label>
               <input
                 type="text"
@@ -376,7 +466,7 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
             </div>
             <div>
               <label className="text-xs font-semibold text-slate-400 block mb-1">Subcategory *</label>
-              <select value={subCategory} onChange={e => setSubCategory(e.target.value)} className={inp}>
+              <select value={subCategory} onChange={e => handleSubCategory(e.target.value)} className={inp}>
                 {ASSET_SUBCATEGORIES[category].map(s => (
                   <option key={s} value={s}>{s}</option>
                 ))}
@@ -384,8 +474,15 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
             </div>
           </div>
 
+          {showAcquiredOn && (
+            <div>
+              <label className={lbl}>{acquiredOnLabel(category, subCategory)}</label>
+              <input type="date" value={acquiredOn} onChange={e => handleAcquiredOn(e.target.value)} className={inp} />
+            </div>
+          )}
+
           {category === 'LIABILITY' ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 bg-slate-950/80 rounded-2xl border border-slate-800">
+            <div className={panel}>
               <div>
                 <label className={lbl}>Total loan amount (₹) *</label>
                 <input type="number" step="any" required placeholder="e.g. 850000" value={costPerUnitRupees} onChange={e => setCostPerUnitRupees(e.target.value)} className={inp} />
@@ -403,6 +500,18 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
                 <input type="number" step="0.01" placeholder="e.g. 9.25" value={couponOrInterestRate} onChange={e => setCouponOrInterestRate(e.target.value)} className={inp} />
               </div>
               <div>
+                <label className={lbl}>Rate type</label>
+                <select value={extra.rateType || ''} onChange={e => patchExtra({ rateType: (e.target.value || undefined) as HoldingDetails['rateType'] })} className={inp}>
+                  <option value="">Not sure</option>
+                  <option value="FLOATING">Floating</option>
+                  <option value="FIXED">Fixed</option>
+                </select>
+              </div>
+              <div>
+                <label className={lbl}>Original tenor (months)</label>
+                <input type="number" step="1" min="1" placeholder="e.g. 240" value={extra.originalTenorMonths ?? ''} onChange={e => patchExtra({ originalTenorMonths: e.target.value ? parseInt(e.target.value, 10) : undefined })} className={inp} />
+              </div>
+              <div>
                 <label className={lbl}>Remaining EMI months *</label>
                 <input type="number" step="1" min="1" required placeholder="e.g. 36" value={remainingEmis} onChange={e => setRemainingEmis(e.target.value)} className={inp} />
               </div>
@@ -410,26 +519,65 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
                 <label className={lbl}>Next EMI date *</label>
                 <input type="date" required value={nextEmiDate} onChange={e => setNextEmiDate(e.target.value)} className={inp} />
               </div>
-              <div className="sm:col-span-2">
+              <div>
                 <label className="text-xs font-semibold text-slate-400 block mb-1">Lender</label>
                 <input type="text" placeholder="e.g. HDFC Bank" value={institutionName} onChange={e => setInstitutionName(e.target.value)} className={inp} />
               </div>
+              {linkable.length > 0 && (
+                <div>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">Linked property</label>
+                  <select value={extra.linkedHoldingId || ''} onChange={e => patchExtra({ linkedHoldingId: e.target.value || undefined })} className={inp}>
+                    <option value="">None</option>
+                    {linkable.map(h => (
+                      <option key={h.id} value={h.id}>{h.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <p className="sm:col-span-2 text-[11px] text-slate-500">
                 EMI is recorded automatically each due month and outstanding is reduced, unless you pause or stop it on the loan page.
               </p>
             </div>
-          ) : usesUnits(category) ? (
+          ) : isAif ? (
+            <div className={panel}>
+              <div>
+                <label className={lbl}>AIF category *</label>
+                <select required value={extra.aifCategory || ''} onChange={e => patchExtra({ aifCategory: (e.target.value || undefined) as HoldingDetails['aifCategory'] })} className={inp}>
+                  <option value="">Select</option>
+                  <option value="I">Category I (venture / SME / infra / social)</option>
+                  <option value="II">Category II (PE / debt, no leverage)</option>
+                  <option value="III">Category III (hedge / listed)</option>
+                </select>
+              </div>
+              <div>
+                <label className={lbl}>Commitment (₹) *</label>
+                <input type="number" step="any" required placeholder="e.g. 2500000" value={commitmentRupees} onChange={e => setCommitmentRupees(e.target.value)} className={inp} />
+              </div>
+              <div>
+                <label className={lbl}>Capital called (₹)</label>
+                <input type="number" step="any" placeholder="Drawn so far" value={capitalCalledRupees} onChange={e => { setCapitalCalledRupees(e.target.value); if (!costPerUnitRupees) setCostPerUnitRupees(e.target.value); }} className={inp} />
+              </div>
+              <div>
+                <label className={lbl}>Current NAV / value (₹) *</label>
+                <input type="number" step="any" required placeholder="From the last statement" value={currentPriceRupees} onChange={e => setCurrentPriceRupees(e.target.value)} className={inp} />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-xs font-semibold text-slate-400 block mb-1">Fund manager / AIF</label>
+                <input type="text" placeholder="e.g. Blume Ventures" value={institutionName} onChange={e => setInstitutionName(e.target.value)} className={inp} />
+              </div>
+            </div>
+          ) : unitAsset ? (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <label className={lbl}>{category === 'GOLD_SGB' ? 'Quantity (grams) *' : category === 'EQUITY' ? 'Shares *' : 'Units *'}</label>
+                <label className={lbl}>{qtyLabel}</label>
                 <input type="number" step="any" required placeholder="e.g. 100" value={quantity} onChange={e => setQuantity(e.target.value)} className={inp} />
               </div>
               <div>
-                <label className={lbl}>{category === 'MUTUAL_FUND' ? 'Buy NAV (₹) *' : 'Buy price per unit (₹) *'}</label>
+                <label className={lbl}>{buyLabel}</label>
                 <input type="number" step="any" required placeholder="e.g. 1450.50" value={costPerUnitRupees} onChange={e => setCostPerUnitRupees(e.target.value)} className={inp} />
               </div>
               <div>
-                <label className={lbl}>{category === 'MUTUAL_FUND' ? 'Current NAV (₹)' : 'Current price (₹)'}</label>
+                <label className={lbl}>{nowLabel}</label>
                 <input
                   type="number"
                   step="any"
@@ -450,30 +598,206 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className={lbl}>
-                  {category === 'REAL_ESTATE' ? 'Current value (₹) *' : 'Current balance (₹) *'}
+                  {category === 'REAL_ESTATE' ? 'Current value (₹) *' : isPms ? 'Current value (₹) *' : 'Current balance (₹) *'}
                 </label>
                 <input type="number" step="any" required placeholder="e.g. 250000" value={currentPriceRupees} onChange={e => { setCurrentPriceRupees(e.target.value); if (!costPerUnitRupees) setCostPerUnitRupees(e.target.value); }} className={inp} />
               </div>
               <div>
-                <label className={lbl}>Amount put in (₹)</label>
+                <label className={lbl}>{isPms ? 'Amount invested (₹)' : 'Amount put in (₹)'}</label>
                 <input type="number" step="any" placeholder="Same as current if blank" value={costPerUnitRupees} onChange={e => setCostPerUnitRupees(e.target.value)} className={inp} />
               </div>
             </div>
           )}
 
-          {category === 'GOLD_SGB' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 bg-slate-950/80 rounded-2xl border border-slate-800">
+          {category === 'GOLD_SGB' && subCategory.startsWith('Sovereign') && (
+            <div className={panel}>
               <div>
                 <label className="text-xs font-semibold text-slate-300 block mb-1">Issue price (₹ / g)</label>
-                <input type="number" step="any" placeholder="e.g. 3119" value={issuePriceRupees} onChange={e => setIssuePriceRupees(e.target.value)} className={inp} />
+                <input type="number" step="any" placeholder="e.g. 5117" value={issuePriceRupees} onChange={e => setIssuePriceRupees(e.target.value)} className={inp} />
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-300 block mb-1">SGB coupon (% p.a.)</label>
-                <input type="number" step="0.01" placeholder="2.5" value={couponOrInterestRate} onChange={e => setCouponOrInterestRate(e.target.value)} className={inp} />
+                <input type="number" step="0.01" value={couponOrInterestRate} onChange={e => setCouponOrInterestRate(e.target.value)} className={inp} />
+                <p className="text-[11px] text-slate-500 mt-1">RBI SGBs pay 2.5% on the issue price, twice a year.</p>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Held as</label>
+                <select value={extra.goldHoldMode || ''} onChange={e => patchExtra({ goldHoldMode: (e.target.value || undefined) as HoldingDetails['goldHoldMode'] })} className={inp}>
+                  <option value="">Not sure</option>
+                  <option value="DEMAT">Demat</option>
+                  <option value="CERTIFICATE">RBI / bank certificate</option>
+                </select>
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-300 block mb-1">Next interest date</label>
                 <input type="date" value={nextEmiDate} onChange={e => setNextEmiDate(e.target.value)} className={inp} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">First exit (after year 5)</label>
+                <input type="date" value={extra.earlyExitDate || ''} onChange={e => patchExtra({ earlyExitDate: e.target.value || undefined })} className={inp} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Matures (8 years)</label>
+                <input type="date" value={maturityDate} onChange={e => setMaturityDate(e.target.value)} className={inp} />
+              </div>
+            </div>
+          )}
+
+          {category === 'GOLD_SGB' && subCategory.startsWith('Physical') && (
+            <div className={panel}>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Purity</label>
+                <select value={extra.goldPurity || '24K'} onChange={e => patchExtra({ goldPurity: e.target.value as HoldingDetails['goldPurity'] })} className={inp}>
+                  <option value="24K">24K</option>
+                  <option value="22K">22K</option>
+                  <option value="999">999 fine</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Jeweller</label>
+                <input type="text" placeholder="e.g. Tanishq" value={institutionName} onChange={e => setInstitutionName(e.target.value)} className={inp} />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Hallmark / invoice no.</label>
+                <input type="text" placeholder="optional" value={extra.goldHallmark || ''} onChange={e => patchExtra({ goldHallmark: e.target.value || undefined })} className={inp} />
+              </div>
+            </div>
+          )}
+
+          {category === 'GOLD_SGB' && subCategory.startsWith('Digital') && (
+            <div className={panel}>
+              <div className="sm:col-span-2">
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Provider</label>
+                <input type="text" placeholder="e.g. SafeGold, MMTC-PAMP, Digital Gold India" value={institutionName} onChange={e => setInstitutionName(e.target.value)} className={inp} />
+              </div>
+            </div>
+          )}
+
+          {category === 'FIXED_INCOME' && subCategory === 'PPF' && (
+            <div className={panel}>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Interest rate (% p.a.)</label>
+                <input type="number" step="0.01" placeholder="7.1" value={couponOrInterestRate} onChange={e => setCouponOrInterestRate(e.target.value)} className={inp} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">15-year block ends</label>
+                <input type="date" value={maturityDate} onChange={e => setMaturityDate(e.target.value)} className={inp} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">This FY contribution (₹)</label>
+                <input type="number" step="any" placeholder="Max ₹1.5 lakh" value={fyContributionRupees} onChange={e => setFyContributionRupees(e.target.value)} className={inp} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Bank / post office</label>
+                <input type="text" placeholder="e.g. SBI" value={institutionName} onChange={e => setInstitutionName(e.target.value)} className={inp} />
+              </div>
+            </div>
+          )}
+
+          {category === 'FIXED_INCOME' && subCategory === 'EPF' && (
+            <div className={panel}>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Interest rate (% p.a.)</label>
+                <input type="number" step="0.01" placeholder="8.25" value={couponOrInterestRate} onChange={e => setCouponOrInterestRate(e.target.value)} className={inp} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Employer / EPFO</label>
+                <input type="text" placeholder="e.g. Current employer" value={institutionName} onChange={e => setInstitutionName(e.target.value)} className={inp} />
+              </div>
+              <p className="sm:col-span-2 text-[11px] text-slate-500">Use the 12-digit UAN, not the old office member ID. All jobs sit under one UAN.</p>
+            </div>
+          )}
+
+          {category === 'FIXED_INCOME' && subCategory === 'NPS' && (
+            <div className={panel}>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Tier</label>
+                <select value={extra.npsTier || 'I'} onChange={e => patchExtra({ npsTier: e.target.value as HoldingDetails['npsTier'] })} className={inp}>
+                  <option value="I">Tier I (retirement)</option>
+                  <option value="II">Tier II (withdrawable)</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">CRA</label>
+                <select value={extra.npsCra || ''} onChange={e => patchExtra({ npsCra: (e.target.value || undefined) as HoldingDetails['npsCra'] })} className={inp}>
+                  <option value="">Not sure</option>
+                  <option value="PROT">Protean</option>
+                  <option value="CAMS">CAMS</option>
+                  <option value="KFIN">KFin</option>
+                </select>
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Pension fund (PFM)</label>
+                <input type="text" placeholder="e.g. ICICI Prudential / HDFC / LIC" value={extra.npsPfm || ''} onChange={e => patchExtra({ npsPfm: e.target.value || undefined })} className={inp} />
+              </div>
+            </div>
+          )}
+
+          {category === 'FIXED_INCOME' && subCategory.startsWith('Sukanya') && (
+            <div className={panel}>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Interest rate (% p.a.)</label>
+                <input type="number" step="0.01" placeholder="8.2" value={couponOrInterestRate} onChange={e => setCouponOrInterestRate(e.target.value)} className={inp} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Matures (21 years)</label>
+                <input type="date" value={maturityDate} onChange={e => setMaturityDate(e.target.value)} className={inp} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">This FY contribution (₹)</label>
+                <input type="number" step="any" placeholder="Max ₹1.5 lakh" value={fyContributionRupees} onChange={e => setFyContributionRupees(e.target.value)} className={inp} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Bank / post office</label>
+                <input type="text" placeholder="e.g. SBI" value={institutionName} onChange={e => setInstitutionName(e.target.value)} className={inp} />
+              </div>
+            </div>
+          )}
+
+          {category === 'FIXED_INCOME' && subCategory === 'Bank FD' && (
+            <div className={panel}>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Interest rate (% p.a.)</label>
+                <input type="number" step="0.01" placeholder="7.1" value={couponOrInterestRate} onChange={e => setCouponOrInterestRate(e.target.value)} className={inp} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Compounding</label>
+                <select value={extra.compounding || ''} onChange={e => patchExtra({ compounding: (e.target.value || undefined) as HoldingDetails['compounding'] })} className={inp}>
+                  <option value="">Not sure</option>
+                  <option value="CUMULATIVE">Cumulative (paid at maturity)</option>
+                  <option value="QUARTERLY">Quarterly payout</option>
+                  <option value="MONTHLY">Monthly payout</option>
+                  <option value="YEARLY">Yearly payout</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Matures</label>
+                <input type="date" value={maturityDate} onChange={e => setMaturityDate(e.target.value)} className={inp} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Bank</label>
+                <input type="text" placeholder="e.g. HDFC Bank" value={institutionName} onChange={e => setInstitutionName(e.target.value)} className={inp} />
+              </div>
+              <label className="sm:col-span-2 flex items-center gap-2 text-xs text-slate-300">
+                <input type="checkbox" checked={!!extra.tdsApplicable} onChange={e => patchExtra({ tdsApplicable: e.target.checked || undefined })} />
+                TDS deducted (interest above the 194A limit)
+              </label>
+            </div>
+          )}
+
+          {category === 'FIXED_INCOME' && subCategory.startsWith('Bond') && (
+            <div className={panel}>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">ISIN</label>
+                <input type="text" placeholder="IN0020…" value={isinManual} onChange={e => setIsinManual(e.target.value)} className={inp + ' font-mono uppercase'} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Face value (₹)</label>
+                <input type="number" step="any" placeholder="100" value={faceValueRupees} onChange={e => setFaceValueRupees(e.target.value)} className={inp} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Coupon (% p.a.)</label>
+                <input type="number" step="0.01" placeholder="7.10" value={couponOrInterestRate} onChange={e => setCouponOrInterestRate(e.target.value)} className={inp} />
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-300 block mb-1">Matures</label>
@@ -482,8 +806,8 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
             </div>
           )}
 
-          {category === 'FIXED_INCOME' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 bg-slate-950/80 rounded-2xl border border-slate-800">
+          {category === 'FIXED_INCOME' && subCategory === 'Other' && (
+            <div className={panel}>
               <div>
                 <label className="text-xs font-semibold text-slate-300 block mb-1">Interest rate (% p.a.)</label>
                 <input type="number" step="0.01" placeholder="7.1" value={couponOrInterestRate} onChange={e => setCouponOrInterestRate(e.target.value)} className={inp} />
@@ -499,17 +823,102 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
             </div>
           )}
 
-          {category === 'REAL_ESTATE' && (
-            <div>
-              <label className="text-xs font-semibold text-slate-300 block mb-1">Property location / address</label>
-              <input type="text" placeholder="e.g. Flat 402, Green Glen Layout, Bengaluru" value={location} onChange={e => setLocation(e.target.value)} className={inp} />
+          {category === 'REAL_ESTATE' && /reit/i.test(subCategory) && (
+            <div className={panel}>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">ISIN</label>
+                <input type="text" placeholder="INE0410…" value={isinManual} onChange={e => setIsinManual(e.target.value)} className={inp + ' font-mono uppercase'} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Exchange / AMC</label>
+                <input type="text" placeholder="e.g. NSE" value={institutionName} onChange={e => setInstitutionName(e.target.value)} className={inp} />
+              </div>
             </div>
           )}
 
-          {(category === 'CASH_BANK' || category === 'EQUITY' || category === 'MUTUAL_FUND' || category === 'SPECIALISED') && (
+          {category === 'REAL_ESTATE' && !/reit/i.test(subCategory) && (
+            <div className={panel}>
+              <div className="sm:col-span-2">
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Property location / address</label>
+                <input type="text" placeholder="e.g. Flat 402, Green Glen Layout, Bengaluru" value={location} onChange={e => setLocation(e.target.value)} className={inp} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Carpet / built-up (sq ft)</label>
+                <input type="number" step="any" placeholder="e.g. 1250" value={extra.areaSqFt ?? ''} onChange={e => patchExtra({ areaSqFt: e.target.value ? parseFloat(e.target.value) : undefined })} className={inp} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Ownership</label>
+                <select value={extra.ownership || 'SELF'} onChange={e => patchExtra({ ownership: e.target.value as HoldingDetails['ownership'] })} className={inp}>
+                  <option value="SELF">Self</option>
+                  <option value="JOINT">Joint</option>
+                  <option value="SPOUSE">Spouse</option>
+                  <option value="HUF">HUF</option>
+                </select>
+              </div>
+              {(extra.ownership === 'JOINT' || extra.ownership === 'SPOUSE') && (
+                <div>
+                  <label className="text-xs font-semibold text-slate-300 block mb-1">Your share (%)</label>
+                  <input type="number" step="1" min="1" max="100" placeholder="50" value={extra.ownershipPercent ?? ''} onChange={e => patchExtra({ ownershipPercent: e.target.value ? parseFloat(e.target.value) : undefined })} className={inp} />
+                </div>
+              )}
+              {linkable.length > 0 && (
+                <div className="sm:col-span-2">
+                  <label className="text-xs font-semibold text-slate-300 block mb-1">Linked home loan</label>
+                  <select value={extra.linkedHoldingId || ''} onChange={e => patchExtra({ linkedHoldingId: e.target.value || undefined })} className={inp}>
+                    <option value="">None</option>
+                    {linkable.map(h => (
+                      <option key={h.id} value={h.id}>{h.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          )}
+
+          {isPms && (
+            <div className={panel}>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Strategy name</label>
+                <input type="text" placeholder="e.g. Indian Entrepreneur Portfolio" value={extra.strategyName || ''} onChange={e => patchExtra({ strategyName: e.target.value || undefined })} className={inp} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">PMS house</label>
+                <input type="text" placeholder="e.g. ASK / Marcellus" value={institutionName} onChange={e => setInstitutionName(e.target.value)} className={inp} />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Custodian</label>
+                <input type="text" placeholder="e.g. ICICI Bank custody" value={extra.custodian || ''} onChange={e => patchExtra({ custodian: e.target.value || undefined })} className={inp} />
+              </div>
+            </div>
+          )}
+
+          {category === 'CASH_BANK' && (
+            <div className={panel}>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">
+                  {/liquid/i.test(subCategory) ? 'AMC' : 'Bank'}
+                </label>
+                <input type="text" placeholder={/liquid/i.test(subCategory) ? 'e.g. HDFC Mutual Fund' : 'e.g. HDFC Bank'} value={institutionName} onChange={e => setInstitutionName(e.target.value)} className={inp} />
+              </div>
+              {!/liquid/i.test(subCategory) && (
+                <div>
+                  <label className="text-xs font-semibold text-slate-300 block mb-1">IFSC</label>
+                  <input type="text" placeholder="HDFC0000123" value={extra.ifsc || ''} onChange={e => patchExtra({ ifsc: e.target.value.toUpperCase() || undefined })} className={inp + ' font-mono uppercase'} />
+                </div>
+              )}
+              {/liquid/i.test(subCategory) && (
+                <div>
+                  <label className="text-xs font-semibold text-slate-300 block mb-1">ISIN (optional)</label>
+                  <input type="text" placeholder="INF…" value={isinManual} onChange={e => setIsinManual(e.target.value)} className={inp + ' font-mono uppercase'} />
+                </div>
+              )}
+            </div>
+          )}
+
+          {(category === 'EQUITY' || category === 'MUTUAL_FUND' || (category === 'SPECIALISED' && !isAif && !isPms)) && (
             <div>
               <label className="text-xs font-semibold text-slate-400 block mb-1">
-                {category === 'EQUITY' ? 'Broker' : category === 'CASH_BANK' ? 'Bank' : 'Institution / AMC'}
+                {category === 'EQUITY' ? 'Broker' : category === 'SPECIALISED' ? 'Company / manager' : 'Institution / AMC'}
               </label>
               <input type="text" placeholder="e.g. Zerodha / HDFC Bank" value={institutionName} onChange={e => setInstitutionName(e.target.value)} className={inp} />
             </div>

@@ -16,6 +16,7 @@ import { checkImportPan, pansMatch, panBlocksCommit, findDuplicatePanMember, pan
 import { applyCatalogPrices, catalogToListed, searchListed, isEodPriceSource } from './eodPrices';
 import { findMatchingHolding, holdingIdentityKey, isPlaceholderName, preferSchemeName } from './matchHolding';
 import { StatementImportRecord } from '../types';
+import { usesUnits, identifierLabel, suggestLockInDates, looksLikeUan, looksLikePran, defaultSgbCoupon } from './holdingForm';
 
 let pass=0, fail=0;
 const eq=(n:string,a:any,b:any)=>{const ok=String(a)===String(b);ok?pass++:fail++;console.log(`${ok?'ok  ':'FAIL'} ${n}: ${a}${ok?'':' | want '+b}`)};
@@ -556,6 +557,32 @@ eq('answer case', normaliseAnswer('  Blue  Dog '), 'blue dog');
 eq('rotate 181d', needsPasswordRotation(new Date(Date.now()-181*86400000).toISOString()), true);
 eq('rotate fresh', needsPasswordRotation(new Date().toISOString()), false);
 eq('unpack hash', unpackHash(packHash({salt:'s',hash:'h',iterations:3}))?.hash, 'h');
+
+console.log('\n--- V. Add-holding fields follow Indian instrument type ---');
+eq('equity still uses units', usesUnits('EQUITY'), true);
+eq('gold uses grams', usesUnits('GOLD_SGB', 'Sovereign Gold Bond'), true);
+eq('PPF is a balance not units', usesUnits('FIXED_INCOME', 'PPF'), false);
+eq('G-sec uses units', usesUnits('FIXED_INCOME', 'Bond / GOI'), true);
+eq('flat is not units', usesUnits('REAL_ESTATE', 'Residential'), false);
+eq('REIT uses units', usesUnits('REAL_ESTATE', 'REIT'), true);
+eq('PMS is a mandate not units', usesUnits('SPECIALISED', 'PMS'), false);
+eq('AIF is commitment not units', usesUnits('SPECIALISED', 'AIF'), false);
+eq('unlisted uses shares', usesUnits('SPECIALISED', 'Unlisted equity'), true);
+eq('ESOP uses shares', usesUnits('SPECIALISED', 'ESOP'), true);
+eq('NPS id is PRAN', identifierLabel('FIXED_INCOME', 'NPS'), 'PRAN (12 digits)');
+eq('EPF id is UAN', identifierLabel('FIXED_INCOME', 'EPF'), 'UAN (12 digits)');
+eq('SGB id is series', identifierLabel('GOLD_SGB', 'Sovereign Gold Bond'), 'SGB series');
+eq('physical gold id is invoice', identifierLabel('GOLD_SGB', 'Physical gold (24K)'), 'Invoice / hallmark no.');
+eq('loan id is account', identifierLabel('LIABILITY', 'Home loan'), 'Loan account number');
+eq('12-digit UAN', looksLikeUan('100012345678'), true);
+eq('short UAN rejected', looksLikeUan('12345'), false);
+eq('12-digit PRAN', looksLikePran('110123981321'), true);
+eq('SGB coupon default', defaultSgbCoupon(), 2.5);
+const sgbDates = suggestLockInDates('GOLD_SGB', 'Sovereign Gold Bond', '2020-09-08');
+eq('SGB matures in 8 years', sgbDates.maturity, '2028-09-08');
+eq('SGB first exit in 5 years', sgbDates.earlyExit, '2025-09-08');
+eq('PPF 15-year block', suggestLockInDates('FIXED_INCOME', 'PPF', '2011-04-01').maturity, '2026-04-01');
+eq('SSY 21 years', suggestLockInDates('FIXED_INCOME', 'Sukanya Samriddhi (SSY)', '2018-02-07').maturity, '2039-02-07');
 
 console.log('\n--- H. Encryption ---');
 (async()=>{

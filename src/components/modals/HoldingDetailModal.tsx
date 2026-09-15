@@ -14,6 +14,7 @@ import {
 import { X, Edit3, Plus, Trash2, Calendar, Coins } from 'lucide-react';
 import { resumeEmiDate } from '../../lib/emi';
 import { holdingReturn } from '../../lib/returnMetrics';
+import { detailsLines } from '../../lib/holdingForm';
 
 interface HoldingDetailModalProps {
   holdingId: string | null;
@@ -360,6 +361,19 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
           {field('Exchange', holding.exchange)}
           {field('Advisor', holding.advisor)}
           {acct?.nominee && field('Family note (not the registrar nominee)', acct.nominee)}
+          {holding.institutionName && field(
+            holding.category === 'LIABILITY' ? 'Lender' : holding.category === 'CASH_BANK' ? 'Bank' : 'Institution',
+            holding.institutionName
+          )}
+          {holding.location && field('Location', holding.location)}
+          {detailsLines(holding).map(row => {
+            const looksDate = /^\d{4}-\d{2}-\d{2}$/.test(row.value);
+            return field(row.label, looksDate ? formatCalendarDate(row.value) : row.value);
+          })}
+          {holding.details?.linkedHoldingId && (() => {
+            const linked = holdings.find(x => x.id === holding.details?.linkedHoldingId);
+            return field(holding.category === 'LIABILITY' ? 'Linked property' : 'Linked loan', linked?.name || 'Linked holding');
+          })()}
         </div>
 
         {holding.category === 'LIABILITY' && (

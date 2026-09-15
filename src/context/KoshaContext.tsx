@@ -610,12 +610,13 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const initialAmount = isLoan
       ? (holdingData.currentPriceMinor || '0')
       : (BigInt(holdingData.quantityScaled) * BigInt(holdingData.averageCostPerUnitMinor)) / QTY_SCALE;
+    const eventDate = holdingData.acquiredOn || new Date().toISOString().split('T')[0];
     await appendLedgerEvent({
       holdingId: newId,
       holdingName: holdingData.name,
       ownerId: holdingData.ownerId,
       eventType: isLoan ? 'VALUATION_UPDATE' : 'BUY',
-      eventDate: new Date().toISOString().split('T')[0],
+      eventDate,
       quantityScaled: isLoan ? '0' : holdingData.quantityScaled,
       unitPriceMinor: isLoan
         ? (holdingData.currentPriceMinor || holdingData.averageCostPerUnitMinor)

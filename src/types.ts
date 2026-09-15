@@ -15,6 +15,42 @@ export type AssetCategory =
 
 export type EmiStatus = 'PAYING' | 'PAUSED' | 'STOPPED';
 
+export type GoldHoldMode = 'DEMAT' | 'CERTIFICATE';
+export type GoldPurity = '24K' | '22K' | '999';
+export type NpsTier = 'I' | 'II';
+export type NpsCra = 'PROT' | 'CAMS' | 'KFIN';
+export type AifCategory = 'I' | 'II' | 'III';
+export type OwnershipKind = 'SELF' | 'JOINT' | 'HUF' | 'SPOUSE';
+export type Compounding = 'MONTHLY' | 'QUARTERLY' | 'YEARLY' | 'CUMULATIVE';
+export type RateType = 'FLOATING' | 'FIXED';
+
+/** Sparse, subcategory-specific facts. Persisted as details_json. */
+export interface HoldingDetails {
+  goldHoldMode?: GoldHoldMode;
+  goldPurity?: GoldPurity;
+  goldHallmark?: string;
+  earlyExitDate?: string;
+  annualContributionMinor?: string;
+  compounding?: Compounding;
+  tdsApplicable?: boolean;
+  npsTier?: NpsTier;
+  npsCra?: NpsCra;
+  npsPfm?: string;
+  faceValueMinor?: string;
+  areaSqFt?: number;
+  ownership?: OwnershipKind;
+  ownershipPercent?: number;
+  aifCategory?: AifCategory;
+  commitmentMinor?: string;
+  capitalCalledMinor?: string;
+  ifsc?: string;
+  strategyName?: string;
+  custodian?: string;
+  originalTenorMonths?: number;
+  rateType?: RateType;
+  linkedHoldingId?: string;
+}
+
 export interface CategoryInfo {
   id: AssetCategory;
   name: string;
@@ -106,7 +142,7 @@ export const ASSET_SUBCATEGORIES: Record<AssetCategory, string[]> = {
   GOLD_SGB: ['Sovereign Gold Bond', 'Physical gold (24K)', 'Digital gold', 'Other'],
   FIXED_INCOME: ['PPF', 'EPF', 'NPS', 'Sukanya Samriddhi (SSY)', 'Bank FD', 'Bond / GOI', 'Other'],
   REAL_ESTATE: ['Residential', 'Commercial', 'Land', 'REIT', 'Other'],
-  SPECIALISED: ['PMS', 'AIF', 'Unlisted equity', 'Other'],
+  SPECIALISED: ['PMS', 'AIF', 'Unlisted equity', 'ESOP', 'Other'],
   CASH_BANK: ['Savings account', 'Current account', 'Liquid / overnight', 'Other'],
   LIABILITY: ['Home loan', 'Car loan', 'Education loan', 'Personal loan', 'Other'],
 };
@@ -221,6 +257,10 @@ export interface Holding {
   /** Paying = auto EMI on vault open. Paused / Stopped skip catch-up. */
   emiStatus?: EmiStatus;
   remainingEmiCount?: number;
+
+  /** First buy / account opened / loan start / property purchase. */
+  acquiredOn?: string;
+  details?: HoldingDetails;
 
   lastPriceUpdated: string;
   isPriceStale: boolean;

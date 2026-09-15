@@ -104,7 +104,9 @@ export function eventLabel(type: EventType | string, notes?: string): string {
 
 export function unitWord(h: Holding): string {
   if (h.category === 'GOLD_SGB') return 'grams';
+  if (h.category === 'REAL_ESTATE' && /\breit\b/i.test(h.subCategory || '')) return 'units';
   if (h.category === 'REAL_ESTATE') return '';
+  if (h.category === 'SPECIALISED' && /unlisted|esop/i.test(h.subCategory || '')) return 'shares';
   if (h.category === 'CASH_BANK' || h.category === 'LIABILITY') return '';
   return 'units';
 }

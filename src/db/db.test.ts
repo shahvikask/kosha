@@ -25,7 +25,7 @@ const famSpouse:FamilyMember = {id:'f2',name:'Spouse',relation:'Spouse',color:'#
   const drv = new NodeSqlDriver();
   const repo = new Repository(drv);
   await repo.initialise();
-  eq('schema version', await repo.schemaVersion(), 6);
+  eq('schema version', await repo.schemaVersion(), 7);
   const tables = await drv.query<{name:string}>(
     `SELECT name FROM sqlite_master WHERE type='table' ORDER BY name`);
   eq('tables created', tables.length >= 13, true);
@@ -264,6 +264,28 @@ const famSpouse:FamilyMember = {id:'f2',name:'Spouse',relation:'Spouse',color:'#
   eq('rate stored', loan.interestRatePercent, 9.25);
   eq('next emi stored', loan.nextCouponDate, '2026-10-05');
   await drv6.close();
+
+  console.log('\n--- P. Subcategory details and bought-on date persist ---');
+  const drv7 = new NodeSqlDriver();
+  const repo7 = new Repository(drv7);
+  await repo7.initialise();
+  await repo7.upsertEntity(fam);
+  await repo7.upsertHolding({
+    ...hold('h_nps', 'NPS Tier I', 629129),
+    category: 'FIXED_INCOME',
+    subCategory: 'NPS',
+    acquiredOn: '2018-03-22',
+    accountNumberMasked: '110123981321',
+    details: { npsTier: 'I', npsCra: 'PROT', npsPfm: 'ICICI' },
+  } as Holding);
+  const nps = (await repo7.allHoldings()).find(h => h.id === 'h_nps')!;
+  eq('acquired on stored', nps.acquiredOn, '2018-03-22');
+  eq('PRAN stored', nps.accountNumberMasked, '110123981321');
+  eq('NPS tier stored', nps.details?.npsTier, 'I');
+  eq('CRA stored', nps.details?.npsCra, 'PROT');
+  await repo7.initialise();
+  eq('v7 migrate is idempotent', await repo7.schemaVersion(), 7);
+  await drv7.close();
 
   console.log(`\n${pass} passed, ${fail} failed`);
   await drv.close(); await drv2.close();

@@ -13,7 +13,7 @@
  * casparser emits (CDSL, NSDL, CAMS, KFin) has a home.
  */
 
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 export const SCHEMA_V1 = `
 PRAGMA foreign_keys = ON;
@@ -114,6 +114,8 @@ CREATE TABLE IF NOT EXISTS holding (
   monthly_emi_minor        INTEGER,
   emi_status               TEXT,
   remaining_emi_count      INTEGER,
+  acquired_on              TEXT,
+  details_json             TEXT,
   created_at        TEXT NOT NULL,
   CONSTRAINT ck_holding__price CHECK (current_price_minor >= 0)
 );
@@ -389,3 +391,9 @@ CREATE TABLE IF NOT EXISTS vault_account (
   created_at            TEXT NOT NULL
 );
 `;
+
+/** Subcategory facts on a holding (SGB hold-mode, PRAN extras, AIF commitment, …). */
+export const SCHEMA_V7_COLUMNS: [string, string, string][] = [
+  ['holding', 'acquired_on', 'acquired_on TEXT'],
+  ['holding', 'details_json', 'details_json TEXT'],
+];
