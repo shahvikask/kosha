@@ -15,6 +15,56 @@ export type AssetCategory =
 
 export type EmiStatus = 'PAYING' | 'PAUSED' | 'STOPPED';
 
+export type GoldHoldMode = 'DEMAT' | 'CERTIFICATE';
+export type GoldPurity = '24K' | '22K' | '999';
+export type NpsTier = 'I' | 'II';
+export type NpsCra = 'PROT' | 'CAMS' | 'KFIN';
+export type AifCategory = 'I' | 'II' | 'III';
+export type OwnershipKind = 'SELF' | 'JOINT' | 'HUF' | 'SPOUSE';
+export type Compounding = 'MONTHLY' | 'QUARTERLY' | 'YEARLY' | 'CUMULATIVE';
+export type RateType = 'FLOATING' | 'FIXED';
+export type MfPlan = 'DIRECT' | 'REGULAR';
+export type MfOption = 'GROWTH' | 'IDCW';
+export type MfHeldAs = 'FOLIO' | 'DEMAT';
+export type Depository = 'NSDL' | 'CDSL';
+export type AltHoldMode = 'DEMAT' | 'LUMPSUM';
+
+/** Sparse, subcategory-specific facts. Persisted as details_json. */
+export interface HoldingDetails {
+  goldHoldMode?: GoldHoldMode;
+  goldPurity?: GoldPurity;
+  goldHallmark?: string;
+  earlyExitDate?: string;
+  annualContributionMinor?: string;
+  compounding?: Compounding;
+  tdsApplicable?: boolean;
+  npsTier?: NpsTier;
+  npsCra?: NpsCra;
+  npsPfm?: string;
+  faceValueMinor?: string;
+  areaSqFt?: number;
+  ownership?: OwnershipKind;
+  ownershipPercent?: number;
+  aifCategory?: AifCategory;
+  commitmentMinor?: string;
+  capitalCalledMinor?: string;
+  ifsc?: string;
+  strategyName?: string;
+  custodian?: string;
+  originalTenorMonths?: number;
+  rateType?: RateType;
+  linkedHoldingId?: string;
+  mfPlan?: MfPlan;
+  mfOption?: MfOption;
+  mfHeldAs?: MfHeldAs;
+  depository?: Depository;
+  dpId?: string;
+  clientId?: string;
+  boId?: string;
+  /** REIT / AIF: demat units (CAS) vs direct lumpsum (no NAV). */
+  altHoldMode?: AltHoldMode;
+}
+
 export interface CategoryInfo {
   id: AssetCategory;
   name: string;
@@ -105,8 +155,8 @@ export const ASSET_SUBCATEGORIES: Record<AssetCategory, string[]> = {
   MUTUAL_FUND: ['Equity fund', 'Debt fund', 'Hybrid fund', 'Index / ETF', 'ELSS (tax saving)', 'Other'],
   GOLD_SGB: ['Sovereign Gold Bond', 'Physical gold (24K)', 'Digital gold', 'Other'],
   FIXED_INCOME: ['PPF', 'EPF', 'NPS', 'Sukanya Samriddhi (SSY)', 'Bank FD', 'Bond / GOI', 'Other'],
-  REAL_ESTATE: ['Residential', 'Commercial', 'Land', 'REIT', 'Other'],
-  SPECIALISED: ['PMS', 'AIF', 'Unlisted equity', 'Other'],
+  REAL_ESTATE: ['Residential', 'Commercial', 'Land', 'REIT', 'InvIT', 'Other'],
+  SPECIALISED: ['PMS', 'AIF', 'Unlisted equity', 'ESOP', 'Other'],
   CASH_BANK: ['Savings account', 'Current account', 'Liquid / overnight', 'Other'],
   LIABILITY: ['Home loan', 'Car loan', 'Education loan', 'Personal loan', 'Other'],
 };
@@ -222,6 +272,10 @@ export interface Holding {
   emiStatus?: EmiStatus;
   remainingEmiCount?: number;
 
+  /** First buy / account opened / loan start / property purchase. */
+  acquiredOn?: string;
+  details?: HoldingDetails;
+
   lastPriceUpdated: string;
   isPriceStale: boolean;
   priceSource: string; // e.g. "NSE Live Close", "AMFI NAV", "RBI Gold Rate", "Self Valuation"
@@ -249,6 +303,11 @@ export interface Holding {
   dpName?: string;
   accountId?: string;
 }
+
+/** Payload for a new holding. chargesMinor lands on the opening BUY, not a holding column. */
+export type NewHoldingInput = Omit<Holding, 'id' | 'lastPriceUpdated' | 'isPriceStale'> & {
+  chargesMinor?: string;
+};
 
 export interface PortfolioSummary {
   totalAssetsMinor: bigint;
@@ -330,7 +389,7 @@ export interface StatementImportRecord {
   dpName?: string;
   dpId?: string;
   clientId?: string;
-  casFileType?: 'CDSL' | 'NSDL' | 'CAMS' | 'KFINTECH';
+  casFileType?: 'CDSL' | 'NSDL' | 'CAMS' | 'KFINTECH' | 'NPS';
 }
 
 export interface EmergencyDossierItem {

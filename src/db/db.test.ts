@@ -25,7 +25,7 @@ const famSpouse:FamilyMember = {id:'f2',name:'Spouse',relation:'Spouse',color:'#
   const drv = new NodeSqlDriver();
   const repo = new Repository(drv);
   await repo.initialise();
-  eq('schema version', await repo.schemaVersion(), 6);
+  eq('schema version', await repo.schemaVersion(), 7);
   const tables = await drv.query<{name:string}>(
     `SELECT name FROM sqlite_master WHERE type='table' ORDER BY name`);
   eq('tables created', tables.length >= 13, true);
@@ -264,6 +264,80 @@ const famSpouse:FamilyMember = {id:'f2',name:'Spouse',relation:'Spouse',color:'#
   eq('rate stored', loan.interestRatePercent, 9.25);
   eq('next emi stored', loan.nextCouponDate, '2026-10-05');
   await drv6.close();
+
+  console.log('\n--- P. Subcategory details and bought-on date persist ---');
+  const drv7 = new NodeSqlDriver();
+  const repo7 = new Repository(drv7);
+  await repo7.initialise();
+  await repo7.upsertEntity(fam);
+  await repo7.upsertHolding({
+    ...hold('h_nps', 'NPS Tier I', 629129),
+    category: 'FIXED_INCOME',
+    subCategory: 'NPS',
+    acquiredOn: '2018-03-22',
+    accountNumberMasked: '110123981321',
+    details: { npsTier: 'I', npsCra: 'PROT', npsPfm: 'ICICI' },
+  } as Holding);
+  const nps = (await repo7.allHoldings()).find(h => h.id === 'h_nps')!;
+  eq('acquired on stored', nps.acquiredOn, '2018-03-22');
+  eq('PRAN stored', nps.accountNumberMasked, '110123981321');
+  eq('NPS tier stored', nps.details?.npsTier, 'I');
+  eq('CRA stored', nps.details?.npsCra, 'PROT');
+  await repo7.initialise();
+  eq('v7 migrate is idempotent', await repo7.schemaVersion(), 7);
+  await drv7.close();
+
+  console.log('\n--- Q. Equity / MF registrar fields persist ---');
+  const drv8 = new NodeSqlDriver();
+  const repo8 = new Repository(drv8);
+  await repo8.initialise();
+  await repo8.upsertEntity(fam);
+  await repo8.upsertHolding({
+    ...hold('h_eq', 'TCS', 3500),
+    category: 'EQUITY',
+    subCategory: 'Large cap',
+    acquiredOn: '2024-06-12',
+    exchange: 'NSE',
+    dpName: 'NSDL',
+    accountNumberMasked: 'IN300214 12345678',
+    details: { depository: 'NSDL', dpId: 'IN300214', clientId: '12345678' },
+  } as Holding);
+  await repo8.upsertHolding({
+    ...hold('h_mf', 'Parag Parikh Flexi Cap', 80),
+    category: 'MUTUAL_FUND',
+    subCategory: 'Equity fund',
+    acquiredOn: '2024-01-15',
+    rta: 'CAMS',
+    amc: 'PPFAS Mutual Fund',
+    details: { mfPlan: 'DIRECT', mfOption: 'GROWTH', mfHeldAs: 'FOLIO' },
+  } as Holding);
+  const eqty = (await repo8.allHoldings()).find(h => h.id === 'h_eq')!;
+  const mfund = (await repo8.allHoldings()).find(h => h.id === 'h_mf')!;
+  eq('equity exchange stored', eqty.exchange, 'NSE');
+  eq('equity DP stored', eqty.details?.dpId, 'IN300214');
+  eq('equity client stored', eqty.details?.clientId, '12345678');
+  eq('MF RTA stored', mfund.rta, 'CAMS');
+  eq('MF Direct stored', mfund.details?.mfPlan, 'DIRECT');
+  eq('MF Growth stored', mfund.details?.mfOption, 'GROWTH');
+  eq('MF SOA folio stored', mfund.details?.mfHeldAs, 'FOLIO');
+  await repo8.upsertHolding({
+    ...hold('h_reit', 'Embassy Office Parks REIT', 350),
+    category: 'REAL_ESTATE',
+    subCategory: 'REIT',
+    exchange: 'NSE',
+    details: { altHoldMode: 'DEMAT' },
+  } as Holding);
+  await repo8.upsertHolding({
+    ...hold('h_aifd', 'Blume Ventures Fund IV', 2500000),
+    category: 'SPECIALISED',
+    subCategory: 'AIF',
+    details: { altHoldMode: 'LUMPSUM', aifCategory: 'I', commitmentMinor: String(2500000 * 10000) },
+  } as Holding);
+  const reit = (await repo8.allHoldings()).find(h => h.id === 'h_reit')!;
+  const aifd = (await repo8.allHoldings()).find(h => h.id === 'h_aifd')!;
+  eq('REIT demat mode stored', reit.details?.altHoldMode, 'DEMAT');
+  eq('AIF lumpsum mode stored', aifd.details?.altHoldMode, 'LUMPSUM');
+  await drv8.close();
 
   console.log(`\n${pass} passed, ${fail} failed`);
   await drv.close(); await drv2.close();

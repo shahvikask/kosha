@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### New
+
+- **Standalone NPS CRA statements.** `FileType.NPS` parses Protean (and
+  future CAMS/KFin CRA) "NPS TRANSACTION STATEMENT" PDFs that are not
+  part of a CDSL CAS. Holdings come from the scheme-wise summary
+  (units, NAV, value). Password helper: first 4 letters of the first
+  name, lowercase, plus DDMM of date of birth (`vika2203`). Some
+  Protean months leave the scheme-wise cells blank in the text layer;
+  those fall back to the printed portfolio total with a warning.
+
 ## 1.4.1
 
 ### Hotfix

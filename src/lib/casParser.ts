@@ -51,7 +51,7 @@ export interface ParsedDematHolding {
 export interface CASParseResult {
   statementType: 'CAMS_KFIN_MF' | 'CDSL_NSDL_DEMAT' | 'GENERIC_CSV_OR_PDF';
   engine?: 'PYTHON_CASPARSER';
-  fileType?: 'CDSL' | 'NSDL' | 'CAMS' | 'KFINTECH';
+  fileType?: 'CDSL' | 'NSDL' | 'CAMS' | 'KFINTECH' | 'NPS';
   filename?: string;
   investorName?: string;
   investorPan?: string;

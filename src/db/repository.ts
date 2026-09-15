@@ -17,6 +17,7 @@ import {
   SCHEMA_V4_COLUMNS,
   SCHEMA_V5_SQL,
   SCHEMA_V6_SQL,
+  SCHEMA_V7_COLUMNS,
   LEDGER_NO_DELETE_TRIGGER,
 } from './schema';
 import { LedgerEvent, Holding, FamilyMember, FamilyRelation, isPrimaryFamilyMember, DematOrFolioAccount, FamilyGoal, ImportBatchInfo, ListedSecurity } from '../types';
@@ -52,6 +53,9 @@ export class Repository {
     }
     if (current < 6) {
       await this.db.exec(SCHEMA_V6_SQL);
+    }
+    if (current < 7) {
+      await this.applyColumns(SCHEMA_V7_COLUMNS);
     }
 
     if (rows.length === 0) {
@@ -194,8 +198,8 @@ export class Repository {
          price_source, needs_review, review_reasons, institution_name, account_number_masked,
          notes, location, tag, tags_json, coupon_rate_bps, interest_rate_bps,
          maturity_date, next_coupon_date, monthly_emi_minor, emi_status,
-         remaining_emi_count, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         remaining_emi_count, acquired_on, details_json, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON CONFLICT(holding_id) DO UPDATE SET
          account_id=COALESCE(excluded.account_id, holding.account_id),
          current_price_minor=excluded.current_price_minor,
@@ -218,7 +222,9 @@ export class Repository {
          next_coupon_date=excluded.next_coupon_date,
          monthly_emi_minor=COALESCE(excluded.monthly_emi_minor, holding.monthly_emi_minor),
          emi_status=excluded.emi_status,
-         remaining_emi_count=excluded.remaining_emi_count`,
+         remaining_emi_count=excluded.remaining_emi_count,
+         acquired_on=COALESCE(excluded.acquired_on, holding.acquired_on),
+         details_json=COALESCE(excluded.details_json, holding.details_json)`,
       [h.id, h.id, h.ownerId, h.accountId ?? null, h.currentPriceMinor ?? '0',
        h.benchmarkPriceMinor ?? null, h.issuePriceMinor ?? null, null,
        h.lastPriceUpdated ?? null, h.priceSource ?? null,
@@ -231,6 +237,8 @@ export class Repository {
        h.maturityDate ?? null, h.nextCouponDate ?? null,
        h.monthlyEmiMinor ?? null, h.emiStatus ?? null,
        h.remainingEmiCount ?? null,
+       h.acquiredOn ?? null,
+       h.details && Object.keys(h.details).length ? JSON.stringify(h.details) : null,
        new Date().toISOString()] as SqlValue[]);
   }
 
@@ -242,7 +250,7 @@ export class Repository {
               h.institution_name, h.account_number_masked, h.notes AS holding_notes,
               h.location, h.tag, h.tags_json, h.coupon_rate_bps, h.interest_rate_bps,
               h.maturity_date, h.next_coupon_date, h.monthly_emi_minor,
-              h.emi_status, h.remaining_emi_count,
+              h.emi_status, h.remaining_emi_count, h.acquired_on, h.details_json,
               i.name, i.category, i.sub_category, i.symbol_or_folio, i.isin,
               i.exposure_node, i.l2_node, i.wrapper, i.allocation_split,
               i.fmv_31jan2018_minor, i.amc, i.rta, i.amfi_code, i.advisor,
@@ -751,6 +759,8 @@ function rowToHolding(r: Record<string, SqlValue>): Holding {
     remainingEmiCount: r.remaining_emi_count != null && r.remaining_emi_count !== ''
       ? Number(r.remaining_emi_count)
       : undefined,
+    acquiredOn: r.acquired_on ? s(r.acquired_on) : undefined,
+    details: r.details_json ? JSON.parse(s(r.details_json)) : undefined,
     amc: r.amc ? s(r.amc) : undefined,
     rta: r.rta ? s(r.rta) : undefined,
     amfiCode: r.amfi_code ? s(r.amfi_code) : undefined,

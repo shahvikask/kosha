@@ -19,6 +19,8 @@ import {
   CasImportMeta,
   formatStatementDate,
   pingCasParser,
+  npsStatementPassword,
+  statementPasswordsToTry,
 } from '../../lib/casPython';
 import { CasConfirmPanel } from './CasConfirmPanel';
 import {
@@ -91,6 +93,7 @@ export const DocumentsScreen: React.FC = () => {
     ADJUST_UP: true,
     ADJUST_DOWN: true,
     CLOSED: true,
+    COST_UPDATE: true,
     CONFLICT: true,
   });
 
@@ -107,7 +110,9 @@ export const DocumentsScreen: React.FC = () => {
   const handleTargetMemberChange = (newMemberId: string) => {
     setTargetMemberId(newMemberId);
     const m = familyMembers.find(fm => fm.id === newMemberId);
-    setPdfPassword(m?.panForStatements || '');
+    setPdfPassword(
+      m?.panForStatements || npsStatementPassword(m?.name, m?.dateOfBirth) || ''
+    );
     if (parseResult) {
       buildReconciliation(parseResult, rawRecords, newMemberId);
       setImportNotification(null);
@@ -140,6 +145,12 @@ export const DocumentsScreen: React.FC = () => {
   useEffect(() => {
     if (activeTargetMember?.panForStatements) {
       setPdfPassword(activeTargetMember.panForStatements);
+    } else {
+      const nps = npsStatementPassword(
+        activeTargetMember?.name,
+        activeTargetMember?.dateOfBirth
+      );
+      if (nps) setPdfPassword(nps);
     }
   }, [targetMemberId]);
 
@@ -235,48 +246,74 @@ export const DocumentsScreen: React.FC = () => {
     const isPdf = file.name.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf';
 
     if (!isPdf) {
-      processFile(file, '', false);
+      processFile(file, [''], false);
     } else {
-      const initialPass = (pdfPassword || activeTargetMember?.panForStatements || '').trim();
-      if (initialPass) {
-        processFile(file, initialPass, true);
+      const passwords = statementPasswordsToTry({
+        typed: pdfPassword,
+        pan: activeTargetMember?.panForStatements,
+        name: activeTargetMember?.name,
+        dateOfBirth: activeTargetMember?.dateOfBirth,
+      });
+      if (passwords.length) {
+        processFile(file, passwords, true);
       } else {
         const memberName = activeTargetMember?.name || 'the primary holder';
         setImportNotification({
           type: 'info',
-          message: `PDF file selected. If password-protected, enter the 10-character PAN of ${memberName} in capitals below and click "Read Statement".`,
+          message: `PDF file selected. Enter the password below — CAS uses the PAN of ${memberName} in capitals; NPS statements use the first 4 letters of the first name plus DDMM of birth (e.g. amit1508).`,
         });
       }
     }
   };
 
   // Process statement file (PDF or CSV)
-  const processFile = async (file: File, passwordToUse: string, isAutoAttempt = false) => {
+  const processFile = async (file: File, passwordsToUse: string[], isAutoAttempt = false) => {
     setIsParsing(true);
     setParseError(null);
     setImportNotification(null);
 
+    const memberLedger = ledgerEvents
+      .filter(ev => ev.ownerId === targetMemberId)
+      .map(ev => ({
+        holdingName: ev.holdingName,
+        eventDate: ev.eventDate,
+        totalAmountMinor: ev.totalAmountMinor,
+      }));
+
+    const uniquePasswords = passwordsToUse.length ? passwordsToUse : [''];
+
     try {
-      const memberLedger = ledgerEvents
-        .filter(ev => ev.ownerId === targetMemberId)
-        .map(ev => ({
-          holdingName: ev.holdingName,
-          eventDate: ev.eventDate,
-          totalAmountMinor: ev.totalAmountMinor,
-        }));
+      for (let i = 0; i < uniquePasswords.length; i += 1) {
+        const passwordToUse = uniquePasswords[i];
+        try {
+          const result = await parseStatementFile(file, passwordToUse, memberLedger, targetMemberId);
 
-      const result = await parseStatementFile(file, passwordToUse, memberLedger, targetMemberId);
+          if (result.importRecords.length === 0) {
+            setParseError(
+              'Python casparser did not find any valued holdings in this statement. Closed / nil lines are skipped. Check that the PDF is a CDSL, NSDL, CAMS, KFintech or NPS statement.'
+            );
+            return;
+          }
 
-      if (result.importRecords.length === 0) {
-        setParseError(
-          'Python casparser did not find any valued holdings in this statement. Closed / nil lines are skipped. Check that the PDF is a CDSL, NSDL, CAMS or KFintech CAS.'
-        );
-        return;
+          if (passwordToUse && passwordToUse !== pdfPassword) {
+            setPdfPassword(passwordToUse);
+          }
+          setParseResult(result);
+          setRawRecords(result.importRecords);
+          buildReconciliation(result, result.importRecords, targetMemberId);
+          return;
+        } catch (err: any) {
+          const errString = err?.message || String(err);
+          const isPasswordIssue =
+            errString.includes('Password') ||
+            errString.includes('password') ||
+            errString.includes('Incorrect') ||
+            err?.name === 'PasswordException';
+          if (!isPasswordIssue || i === uniquePasswords.length - 1) {
+            throw err;
+          }
+        }
       }
-
-      setParseResult(result);
-      setRawRecords(result.importRecords);
-      buildReconciliation(result, result.importRecords, targetMemberId);
     } catch (err: any) {
       console.error('Statement Parse Attempt:', err);
 
@@ -288,15 +325,15 @@ export const DocumentsScreen: React.FC = () => {
         err?.name === 'PasswordException';
 
       if (isPasswordIssue) {
+        const memberName = activeTargetMember?.name || 'the primary holder';
         if (isAutoAttempt) {
-          const memberName = activeTargetMember?.name || 'the primary holder';
           setImportNotification({
             type: 'info',
-            message: `"${file.name}" is password-protected. Enter the 10-character PAN of ${memberName} in capitals below and click "Read Statement".`,
+            message: `"${file.name}" is password-protected. CAS uses the PAN of ${memberName} in capitals. NPS statements from Protean CRA use the first 4 letters of the first name plus DDMM of birth (e.g. amit1508).`,
           });
         } else {
           setParseError(
-            "That password did not open the file. CAS statements use the primary holder's PAN in capital letters."
+            "That password did not open the file. CAS statements use the holder's PAN in capitals. NPS (Protean) statements use the first 4 letters of the first name plus DDMM of birth."
           );
         }
       } else {
@@ -311,7 +348,16 @@ export const DocumentsScreen: React.FC = () => {
   const handleDecryptAndParse = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedFile) return;
-    processFile(selectedFile, pdfPassword.trim(), false);
+    processFile(
+      selectedFile,
+      statementPasswordsToTry({
+        typed: pdfPassword.trim(),
+        pan: activeTargetMember?.panForStatements,
+        name: activeTargetMember?.name,
+        dateOfBirth: activeTargetMember?.dateOfBirth,
+      }),
+      false
+    );
   };
 
   // Toggle individual line checkbox
@@ -630,11 +676,11 @@ export const DocumentsScreen: React.FC = () => {
 
               <div className="max-w-lg mx-auto space-y-1">
                 <h3 className="text-base font-bold text-slate-100">
-                  Drop Encrypted CAS PDF or Statement CSV
+                  Drop Encrypted CAS or NPS PDF, or Statement CSV
                 </h3>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  Supports password-protected <strong>CDSL, NSDL, CAMS and KFintech</strong> CAS
-                  PDFs via Python casparser, plus broker CSV exports. Same issuer overwrites
+                  Supports password-protected <strong>CDSL, NSDL, CAMS, KFintech and NPS</strong> PDFs
+                  via Python casparser, plus broker CSV exports. Same issuer overwrites
                   the previous file — later months replace earlier ones.
                 </p>
                 {pythonReady === false && (
@@ -699,7 +745,7 @@ export const DocumentsScreen: React.FC = () => {
                   <div className="flex items-center gap-2">
                     <Lock className="w-4 h-4 text-amber-400 flex-shrink-0" />
                     <span className="text-xs sm:text-sm font-bold text-slate-200">
-                      PDF Password (PAN / Statement Password)
+                      PDF Password (PAN or NPS)
                     </span>
                   </div>
                   <span className="text-[11px] text-slate-400">
@@ -716,8 +762,8 @@ export const DocumentsScreen: React.FC = () => {
                       type={showPassword ? 'text' : 'password'}
                       placeholder={
                         activeTargetMember?.name
-                          ? `Enter the 10-character PAN of ${activeTargetMember.name} in capitals`
-                          : 'Enter the 10-character PAN in capitals'
+                          ? `PAN of ${activeTargetMember.name}, or NPS first4+DDMM`
+                          : 'PAN in capitals, or NPS first4+DDMM'
                       }
                       value={pdfPassword}
                       onChange={e => setPdfPassword(e.target.value)}
@@ -752,10 +798,10 @@ export const DocumentsScreen: React.FC = () => {
                 </div>
 
                 <p className="text-[11px] text-slate-400">
-                  🔒 {activeTargetMember?.name
-                    ? `Enter the 10-character PAN of ${activeTargetMember.name} in capitals.`
-                    : 'Enter the 10-character PAN of the primary holder in capitals.'}{' '}
-                  Python casparser reads the PDF on this computer. The file does not leave your machine.
+                  🔒 CAS uses the 10-character PAN in capitals.
+                  NPS statements from Protean CRA use the first 4 letters of the
+                  first name plus DDMM of birth (e.g. amit1508). GrowUrDhan
+                  tries both automatically. The file stays on this computer.
                 </p>
               </form>
             )}
@@ -882,6 +928,69 @@ export const DocumentsScreen: React.FC = () => {
                               </div>
                               <span className="text-slate-400 font-mono">
                                 {Number(l.statementQtyScaled) / Number(QTY_SCALE)} units
+                              </span>
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 1b. COST_UPDATE — units match, printed contribution rebases invested */}
+                {reconciliation.counts.COST_UPDATE > 0 && (
+                  <div className="rounded-2xl bg-amber-950/30 border border-amber-800/40 overflow-hidden transition-all">
+                    <div className="p-3.5 flex items-center justify-between gap-3 text-xs sm:text-sm">
+                      <div className="flex items-center gap-3">
+                        <span className="px-2.5 py-0.5 rounded-md font-mono font-bold bg-amber-900/60 text-amber-200 border border-amber-700/60">
+                          COST
+                        </span>
+                        <span className="font-semibold text-slate-200">
+                          {reconciliation.counts.COST_UPDATE} invested amount{reconciliation.counts.COST_UPDATE === 1 ? '' : 's'} will be updated from this statement
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setShowOutcomeGroup(prev => ({ ...prev, COST_UPDATE: !prev.COST_UPDATE }))
+                        }
+                        className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1"
+                      >
+                        <span>{showOutcomeGroup.COST_UPDATE ? 'Hide' : 'Show'}</span>
+                        {showOutcomeGroup.COST_UPDATE ? (
+                          <ChevronUp className="w-3.5 h-3.5" />
+                        ) : (
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                    </div>
+
+                    {showOutcomeGroup.COST_UPDATE && (
+                      <div className="border-t border-amber-900/40 divide-y divide-slate-900 bg-slate-950/40 px-3.5 py-1">
+                        {reconciliation.lines
+                          .filter(l => l.outcome === 'COST_UPDATE')
+                          .map(l => (
+                            <div
+                              key={l.line.holdingId}
+                              className="py-2.5 flex items-center justify-between gap-3 text-xs"
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <input
+                                  type="checkbox"
+                                  checked={acceptedHoldingIds.has(l.line.holdingId)}
+                                  onChange={() => handleToggleLine(l.line.holdingId)}
+                                  className="rounded border-slate-600"
+                                />
+                                <div>
+                                  <span className="font-semibold text-slate-200">
+                                    {displayHoldingName(l.line.holdingName)}
+                                  </span>
+                                  <span className="text-slate-500 ml-2">({l.message})</span>
+                                </div>
+                              </div>
+                              <span className="text-slate-400 font-mono">
+                                {l.line.cumulativeInvestedMinor
+                                  ? `₹ ${MoneyEngine.groupIndian(MoneyEngine.toRupees(l.line.cumulativeInvestedMinor))}`
+                                  : ''}
                               </span>
                             </div>
                           ))}

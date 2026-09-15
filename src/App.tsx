@@ -111,7 +111,6 @@ const KoshaMainApp: React.FC = () => {
           {activeScreen === 'HOME' && (
             <HomeScreen
               onOpenAddHolding={() => setIsAddHoldingOpen(true)}
-              onOpenAddRecord={() => handleOpenAddRecord()}
               onOpenHoldingDetail={id => setSelectedHoldingIdForDetail(id)}
             />
           )}

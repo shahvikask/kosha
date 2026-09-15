@@ -17,7 +17,8 @@
         "CAMS",
         "KFINTECH",
         "CDSL",
-        "NSDL"
+        "NSDL",
+        "NPS"
       ],
       "title": "FileType",
       "type": "string"

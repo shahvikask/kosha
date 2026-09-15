@@ -3,6 +3,7 @@ import {
   FamilyMember,
   Holding,
   LedgerEvent,
+  NewHoldingInput,
   PortfolioSummary,
   AssetCategory,
   TaxSummary,
@@ -60,6 +61,7 @@ import {
 import { planEmiCatchUp, applyEmiPlan } from '../lib/emi';
 import { findDuplicatePanMember } from '../lib/pan';
 import { applyCatalogPrices, catalogToListed, isEodPriceSource, refreshEodFromSidecar } from '../lib/eodPrices';
+import { casHoldingSubCategory, casImportDetails } from '../lib/holdingForm';
 
 interface KoshaContextType {
   familyMembers: FamilyMember[];
@@ -90,7 +92,7 @@ interface KoshaContextType {
   migration: MigrationReport | null;
 
   // Actions
-  addHolding: (holding: Omit<Holding, 'id' | 'lastPriceUpdated' | 'isPriceStale'>) => Promise<Holding>;
+  addHolding: (holding: NewHoldingInput) => Promise<Holding>;
   updateHolding: (id: string, updates: Partial<Holding>) => Promise<void>;
   deleteHolding: (id: string) => Promise<void>;
   appendLedgerEvent: (event: Omit<LedgerEvent, 'id' | 'createdAt'>) => Promise<LedgerEvent>;
@@ -558,11 +560,13 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return newEvent;
   };
 
-  const addHolding = async (holdingData: Omit<Holding, 'id' | 'lastPriceUpdated' | 'isPriceStale'>): Promise<Holding> => {
-    const isin = (holdingData.isin || '').trim().toUpperCase();
-    if (isin.length >= 12 && holdingData.category !== 'LIABILITY') {
+  const addHolding = async (holdingData: NewHoldingInput): Promise<Holding> => {
+    const { chargesMinor: buyChargesRaw, ...rest } = holdingData;
+    const buyCharges = buyChargesRaw && buyChargesRaw !== '0' ? buyChargesRaw : undefined;
+    const isin = (rest.isin || '').trim().toUpperCase();
+    if (isin.length >= 12 && rest.category !== 'LIABILITY') {
       const existing = holdings.find(
-        h => h.ownerId === holdingData.ownerId && (h.isin || '').toUpperCase() === isin
+        h => h.ownerId === rest.ownerId && (h.isin || '').toUpperCase() === isin
       );
       if (existing) {
         await appendLedgerEvent({
@@ -570,20 +574,21 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           holdingName: existing.name,
           ownerId: existing.ownerId,
           eventType: 'BUY',
-          eventDate: new Date().toISOString().split('T')[0],
-          quantityScaled: holdingData.quantityScaled,
-          unitPriceMinor: holdingData.averageCostPerUnitMinor,
+          eventDate: rest.acquiredOn || new Date().toISOString().split('T')[0],
+          quantityScaled: rest.quantityScaled,
+          unitPriceMinor: rest.averageCostPerUnitMinor,
           totalAmountMinor: (
-            (BigInt(holdingData.quantityScaled) * BigInt(holdingData.averageCostPerUnitMinor)) / QTY_SCALE
+            (BigInt(rest.quantityScaled) * BigInt(rest.averageCostPerUnitMinor)) / QTY_SCALE
           ).toString(),
+          chargesMinor: buyCharges,
           notes: 'Buy on existing holding (same ISIN)',
         });
-        if (holdingData.currentPriceMinor && holdingData.currentPriceMinor !== existing.currentPriceMinor) {
+        if (rest.currentPriceMinor && rest.currentPriceMinor !== existing.currentPriceMinor) {
           const priced: Holding = {
             ...existing,
-            currentPriceMinor: holdingData.currentPriceMinor,
+            currentPriceMinor: rest.currentPriceMinor,
             lastPriceUpdated: new Date().toISOString(),
-            priceSource: holdingData.priceSource || existing.priceSource,
+            priceSource: rest.priceSource || existing.priceSource,
             isin: existing.isin || isin,
           };
           if (repo) await repo.upsertHolding(priced);
@@ -596,7 +601,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const newId = `h_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const newHolding: Holding = {
-      ...holdingData,
+      ...rest,
       id: newId,
       lastPriceUpdated: new Date().toISOString(),
       isPriceStale: false,
@@ -606,26 +611,28 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       await repo.upsertHolding(newHolding);
     }
 
-    const isLoan = holdingData.category === 'LIABILITY';
+    const isLoan = rest.category === 'LIABILITY';
     const initialAmount = isLoan
-      ? (holdingData.currentPriceMinor || '0')
-      : (BigInt(holdingData.quantityScaled) * BigInt(holdingData.averageCostPerUnitMinor)) / QTY_SCALE;
+      ? (rest.currentPriceMinor || '0')
+      : (BigInt(rest.quantityScaled) * BigInt(rest.averageCostPerUnitMinor)) / QTY_SCALE;
+    const eventDate = rest.acquiredOn || new Date().toISOString().split('T')[0];
     await appendLedgerEvent({
       holdingId: newId,
-      holdingName: holdingData.name,
-      ownerId: holdingData.ownerId,
+      holdingName: rest.name,
+      ownerId: rest.ownerId,
       eventType: isLoan ? 'VALUATION_UPDATE' : 'BUY',
-      eventDate: new Date().toISOString().split('T')[0],
-      quantityScaled: isLoan ? '0' : holdingData.quantityScaled,
+      eventDate,
+      quantityScaled: isLoan ? '0' : rest.quantityScaled,
       unitPriceMinor: isLoan
-        ? (holdingData.currentPriceMinor || holdingData.averageCostPerUnitMinor)
-        : holdingData.averageCostPerUnitMinor,
+        ? (rest.currentPriceMinor || rest.averageCostPerUnitMinor)
+        : rest.averageCostPerUnitMinor,
       totalAmountMinor: initialAmount.toString(),
+      chargesMinor: isLoan ? undefined : buyCharges,
       notes: isLoan ? 'Loan recorded — outstanding at start' : 'Initial holding record creation',
     });
 
     let saved = newHolding;
-    if (holdingData.category === 'LIABILITY' && repo) {
+    if (rest.category === 'LIABILITY' && repo) {
       const plan = planEmiCatchUp(newHolding, new Date().toISOString().slice(0, 10));
       if (plan) {
         const rows = emiEventsFromPlan(newId, plan);
@@ -994,9 +1001,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           symbolOrFolio: rec.folio || rec.isin || rec.holdingName.substring(0, 12).toUpperCase(),
           isin: rec.isin,
           category: rec.category,
-          subCategory: rec.schemeType === 'AIF'
-            ? 'AIF Category II'
-            : rec.category === 'SPECIALISED' ? 'AIF Category II' : rec.category === 'EQUITY' ? 'Listed Equity' : 'Mutual Fund',
+          subCategory: casHoldingSubCategory(rec.category, rec.holdingName, rec.schemeType),
           ownerId: effectiveOwnerId,
           quantityScaled: '0',
           averageCostPerUnitMinor: priceMinor,
@@ -1014,6 +1019,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           dpName: rec.dpName,
           institutionName: rec.dpName,
           accountNumberMasked: rec.folio || rec.dematAccount,
+          details: casImportDetails({ category: rec.category, casFileType: rec.casFileType }),
         };
         currentWorkingHoldings = [newHolding, ...currentWorkingHoldings];
         if (repo) await repo.upsertHolding(newHolding);
@@ -1088,18 +1094,19 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         if (!matched) {
           holdingId = `h_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+          const avgCostMinor = rec.cumulativeInvested && rec.quantity > 0
+            ? String(Math.round((rec.cumulativeInvested / rec.quantity) * 1e4))
+            : priceMinor;
           const newH: Holding = {
             id: holdingId,
             name: rec.holdingName,
             symbolOrFolio: rec.folio || rec.isin || rec.holdingName.substring(0, 12).toUpperCase(),
             isin: rec.isin,
             category: rec.category,
-            subCategory: rec.schemeType === 'AIF'
-              ? 'AIF Category II'
-              : rec.category === 'SPECIALISED' ? 'AIF Category II' : rec.category === 'EQUITY' ? 'Listed Equity' : 'Mutual Fund',
+            subCategory: casHoldingSubCategory(rec.category, rec.holdingName, rec.schemeType),
             ownerId: effectiveOwnerId,
             quantityScaled: '0',
-            averageCostPerUnitMinor: priceMinor,
+            averageCostPerUnitMinor: avgCostMinor,
             currentPriceMinor: priceMinor,
             lastPriceUpdated: rec.date || new Date().toISOString(),
             isPriceStale: false,
@@ -1115,6 +1122,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             institutionName: rec.dpName,
             accountNumberMasked: rec.folio || rec.dematAccount,
             accountId: acctId,
+            details: casImportDetails({ category: rec.category, casFileType: rec.casFileType }),
           };
           currentWorkingHoldings = [newH, ...currentWorkingHoldings];
           if (repo) await repo.upsertHolding(newH);
@@ -1130,10 +1138,19 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           const nameUpgrade = betterName !== matched.name;
           const isinUpgrade = Boolean(!matched.isin && rec.isin);
           const amfiUpgrade = Boolean(!matched.amfiCode && rec.amfiCode);
-          if (isNewer || nameUpgrade || isinUpgrade || amfiUpgrade) {
+          const importedDetails = casImportDetails({ category: rec.category, casFileType: rec.casFileType });
+          const categoryUpgrade =
+            (rec.category === 'REAL_ESTATE' || rec.category === 'SPECIALISED') &&
+            matched.category !== rec.category;
+          const detailsUpgrade = Boolean(importedDetails && !matched.details?.altHoldMode);
+          if (isNewer || nameUpgrade || isinUpgrade || amfiUpgrade || categoryUpgrade || detailsUpgrade) {
             const updatedH: Holding = {
               ...matched,
               name: betterName,
+              category: categoryUpgrade ? rec.category : matched.category,
+              subCategory: categoryUpgrade
+                ? casHoldingSubCategory(rec.category, rec.holdingName, rec.schemeType)
+                : matched.subCategory,
               currentPriceMinor: isNewer ? priceMinor : matched.currentPriceMinor,
               lastPriceUpdated: isNewer
                 ? (rec.date ? `${rec.date}T00:00:00.000Z` : new Date().toISOString())
@@ -1146,6 +1163,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               amfiCode: matched.amfiCode || rec.amfiCode,
               dpName: matched.dpName || rec.dpName,
               isin: matched.isin || rec.isin,
+              details: importedDetails ? { ...matched.details, ...importedDetails } : matched.details,
             };
             if (repo) await repo.upsertHolding(updatedH);
             currentWorkingHoldings = currentWorkingHoldings.map(h => h.id === matched!.id ? updatedH : h);
@@ -1190,7 +1208,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         .map(e => ({ ...e, importBatchId, sourceRef: e.holdingId }));
       newEventsToCommit.push(...reconciledEvents);
 
-      importedCount += reconciliationResult.counts.NEW_POSITION + reconciliationResult.counts.ADJUST_UP + reconciliationResult.counts.ADJUST_DOWN + reconciliationResult.counts.CLOSED;
+      importedCount += reconciliationResult.counts.NEW_POSITION + reconciliationResult.counts.ADJUST_UP + reconciliationResult.counts.ADJUST_DOWN + reconciliationResult.counts.CLOSED + reconciliationResult.counts.COST_UPDATE;
       updatedCount += reconciliationResult.counts.MATCH;
 
       // Step 7: Record the batch and statement_position audit rows

@@ -2,7 +2,7 @@
 """Local CAS parse sidecar for Kosha.
 
 Runs on the user's machine. PDFs are parsed in-process with the vendored
-Python casparser (CDSL / NSDL / CAMS / KFin) and never leave the device.
+Python casparser (CDSL / NSDL / CAMS / KFin / NPS CRA) and never leave the device.
 
   python3 scripts/cas_parse_server.py              # HTTP on 127.0.0.1:8765
   python3 scripts/cas_parse_server.py --file X.pdf --password PAN
@@ -60,6 +60,23 @@ def _s(v: Any) -> Optional[str]:
     return t or None
 
 
+def _apportion_rupees(weights: list[float], total: float) -> list[float]:
+    """Split `total` across `weights` so the parts sum exactly (paisa
+    remainder on the largest slice). NPS contribution (B) is a portfolio
+    total; we allocate it in proportion to current scheme value."""
+    if total <= 0 or not weights:
+        return [0.0] * len(weights)
+    s = sum(weights)
+    if s <= 0:
+        return [0.0] * len(weights)
+    parts = [round(total * w / s, 2) for w in weights]
+    drift = round(total - sum(parts), 2)
+    if drift and parts:
+        i = max(range(len(parts)), key=lambda k: weights[k])
+        parts[i] = round(parts[i] + drift, 2)
+    return parts
+
+
 def _iso_date(raw: Any) -> Optional[str]:
     if raw is None:
         return None
@@ -106,18 +123,30 @@ def _fill_investor_from_password(result: dict, password: str) -> dict:
     return result
 
 
+_REIT_RE = re.compile(
+    r"\bREITs?\b|\bINVITs?\b|REAL ESTATE INVESTMENT TRUST|INFRASTRUCTURE INVESTMENT TRUST",
+    re.I,
+)
+_AIF_RE = re.compile(
+    r"\bAIF\b|ALTERNATIVE INVESTMENT|INDIA DISCOVERY FUND|CATEGORY III|\bCAT\s*III\b",
+    re.I,
+)
+
+
 def _category(kind: str, scheme_type: Optional[str], name: str) -> str:
     st = (scheme_type or "").upper()
     nm = (name or "").upper()
     # SGB sits in the CDSL equity section; name must win before kind==equity.
     if kind == "gold" or "SGB" in nm or "SOVEREIGN GOLD" in nm:
         return "GOLD_SGB"
+    if st in ("REIT", "INVIT") or _REIT_RE.search(nm):
+        return "REAL_ESTATE"
+    if st == "AIF" or _AIF_RE.search(nm):
+        return "SPECIALISED"
     if kind == "equity":
         return "EQUITY"
     if kind in ("bond", "nps"):
         return "FIXED_INCOME"
-    if st == "AIF" or "AIF" in nm or "DISCOVERY FUND" in nm:
-        return "SPECIALISED"
     if st == "ETF" or "ETF" in nm:
         return "MUTUAL_FUND"
     return "MUTUAL_FUND"
@@ -146,7 +175,7 @@ def parse_pdf_path(pdf_path: str, password: str) -> dict:
         file_type = detect_file_type(pdf_path, password or "", _doc=doc)
         if file_type == FileType.UNKNOWN:
             raise CASParseError(
-                "Could not identify the CAS issuer. Supported: CAMS, KFintech, NSDL, CDSL."
+                "Could not identify the statement. Supported: CAMS, KFintech, NSDL, CDSL, NPS."
             )
 
         if file_type in (FileType.CAMS, FileType.KFINTECH):
@@ -161,6 +190,10 @@ def parse_pdf_path(pdf_path: str, password: str) -> dict:
             from casparser.parsers import nsdl as parser
             data = parser.parse_nsdl(pdf_path, password or "", file_type=file_type, _doc=doc)
             return _fill_investor_from_password(_from_demat(data, "NSDL"), password)
+        if file_type == FileType.NPS:
+            from casparser.parsers import nps as parser
+            data = parser.parse_nps(pdf_path, password or "", file_type=file_type, _doc=doc)
+            return _fill_investor_from_password(_from_demat(data, "NPS"), password)
         from casparser.parsers import cdsl as parser
         data = parser.parse_cdsl(pdf_path, password or "", file_type=file_type, _doc=doc)
         return _fill_investor_from_password(_from_demat(data, "CDSL"), password)
@@ -284,12 +317,21 @@ def _from_demat(data: Any, file_type: str) -> dict:
     nps = d.get("nps")
     if nps:
         pdf_total += _dec(nps.get("value"))
+        nps_rows = []
         for sch in nps.get("schemes") or []:
             qty = _dec(sch.get("units"))
             val = _dec(sch.get("value"))
             if qty <= 0 and val <= 0:
                 skipped_nil += 1
                 continue
+            nps_rows.append((sch, qty, val))
+        contrib = _dec(nps.get("contribution"))
+        costs = (
+            _apportion_rupees([val for _, _, val in nps_rows], contrib)
+            if contrib > 0 and nps_rows
+            else [None] * len(nps_rows)
+        )
+        for (sch, qty, val), cost in zip(nps_rows, costs):
             holdings.append({
                 "kind": "nps",
                 "name": _clean_name(sch.get("scheme")),
@@ -297,7 +339,7 @@ def _from_demat(data: Any, file_type: str) -> dict:
                 "quantity": qty,
                 "price": _dec(sch.get("nav")),
                 "value": round(val, 2),
-                "cost": None,
+                "cost": cost,
                 "folio": _s(nps.get("pran")),
                 "amfi": None,
                 "schemeType": "NPS",
@@ -441,7 +483,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path.split("?", 1)[0] in ("/health", "/api/cas/health"):
-            self._json(200, {"ok": True, "engine": "PYTHON_CASPARSER", "eod": True})
+            self._json(200, {
+                "ok": True,
+                "engine": "PYTHON_CASPARSER",
+                "eod": True,
+                "issuers": ["CAMS", "KFINTECH", "NSDL", "CDSL", "NPS"],
+            })
             return
         self._json(404, {"ok": False, "error": "Not found"})
 
@@ -494,7 +541,11 @@ class Handler(BaseHTTPRequestHandler):
 
 def serve(host: str = HOST, port: int = PORT) -> None:
     httpd = ThreadingHTTPServer((host, port), Handler)
-    print(f"[cas-parser] Python CAS parser listening on http://{host}:{port}", flush=True)
+    print(
+        f"[cas-parser] Python CAS parser listening on http://{host}:{port} "
+        "(CAMS, KFintech, NSDL, CDSL, NPS)",
+        flush=True,
+    )
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

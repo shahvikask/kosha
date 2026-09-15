@@ -7,7 +7,7 @@ import { classifyHolding, EXPOSURES, WRAPPERS, exposureLabel, l2Label } from './
 import { resolveSplit, apportion, buildTree, isHybrid, activeWrappers } from './lookthrough';
 import { LedgerEvent, Holding } from '../types';
 import { eventLabel, bucketOf, upcomingFromHoldings, displayHoldingName, accountTitle, inferAmcFromSchemeName, looksLikeSgb, metricsOf, isOpenPosition } from './holdingView';
-import { formatStatementDate, latestAsOfForOwner, statementAsOfByMember, parseCasLatest } from './casPython';
+import { formatStatementDate, latestAsOfForOwner, statementAsOfByMember, parseCasLatest, npsStatementPassword, statementPasswordsToTry } from './casPython';
 import { addCalendarMonths, dueEmiDates, planEmiCatchUp, resumeEmiDate } from './emi';
 import { absoluteReturnPct, incomeByFinancialYear, buildGrowthModel, formatPct } from './growth';
 import { profileOf, holdingReturn, isStatementOnlyHistory } from './returnMetrics';
@@ -16,6 +16,7 @@ import { checkImportPan, pansMatch, panBlocksCommit, findDuplicatePanMember, pan
 import { applyCatalogPrices, catalogToListed, searchListed, isEodPriceSource } from './eodPrices';
 import { findMatchingHolding, holdingIdentityKey, isPlaceholderName, preferSchemeName } from './matchHolding';
 import { StatementImportRecord } from '../types';
+import { usesUnits, identifierLabel, suggestLockInDates, looksLikeUan, looksLikePran, looksLikeNsdlDpId, looksLikeNsdlClientId, looksLikeBoid, defaultSgbCoupon, inferMfPlan, inferMfOption, nameLooksLikeEtf, dematAccountMask, detailsLines, recategorizeCasAsset, casHoldingSubCategory, casImportDetails, nameLooksLikeReit, nameLooksLikeAif } from './holdingForm';
 
 let pass=0, fail=0;
 const eq=(n:string,a:any,b:any)=>{const ok=String(a)===String(b);ok?pass++:fail++;console.log(`${ok?'ok  ':'FAIL'} ${n}: ${a}${ok?'':' | want '+b}`)};
@@ -104,6 +105,24 @@ const adjOver = foldHolding([ev('b2','BUY','2026-01-31',5,100,'h1'), {
   ...ev('adj2','SNAPSHOT_ADJUSTMENT','2026-02-28',-10,0,'h1'),
 }], 'MUTUAL_FUND');
 eq('snapshot oversell still flagged', adjOver.errors.some(e => /exceeds units held/.test(e)), true);
+
+const corOb = ev('obc','OPENING_BALANCE','2026-05-31',6418.7052,75.0840,'hnps');
+const corQty = BigInt(Math.round(6418.7052 * 1e8));
+const corWant = BigInt(Math.round(317909.45 * 1e4));
+const corUnit = (corWant * 100_000_000n) / corQty;
+const corFix: LedgerEvent = {
+  ...ev('cor1','CORRECTION','2026-05-31',6418.7052,49.5288,'hnps'),
+  eventType: 'CORRECTION',
+  supersedesEventId: 'obc',
+  quantityScaled: corQty.toString(),
+  unitPriceMinor: corUnit.toString(),
+  totalAmountMinor: corWant.toString(),
+  notes: 'Invested updated from the printed statement contribution',
+};
+const corFold = foldHolding([corOb, corFix], 'FIXED_INCOME');
+eq('correction replaces opening cost', Math.abs(Number(corFold.totalCostMinor)/1e4 - 317909.45) < 1, true);
+eq('correction keeps units', Number(corFold.totalQtyScaled)/1e8, 6418.7052);
+eq('superseded opening is not double-counted', corFold.openParcels.length, 1);
 
 
 const H=(name:string,cat:any,sub:string,val=100000,extra:Partial<Holding>={}):Holding=>({
@@ -348,6 +367,25 @@ const listed = statementAsOfByMember(casState, [
 ]);
 eq('three profiles listed', listed.map(x => x.name + ':' + x.asOf).join('|'), 'Vikas:2026-01-31|Nancy:2026-02-28|HUF:2026-01-31');
 
+console.log('\n--- N2. NPS CRA PDF password convention ---');
+eq('vikas 22 Mar', npsStatementPassword('Vikas Kunjbihari Shah', '1986-03-22'), 'vika2203');
+eq('kiah 4-letter first name', npsStatementPassword('Kiah Vikas Shah', '2018-02-07'), 'kiah0702');
+eq('short first name', npsStatementPassword('Om Shah', '2020-01-05'), 'om0501');
+eq('dd/mm/yyyy', npsStatementPassword('Amit', '15/08/1990'), 'amit1508');
+eq('missing dob', npsStatementPassword('Vikas', undefined), null);
+const tried = statementPasswordsToTry({
+  typed: 'ABCPS1234K',
+  pan: 'ABCPS1234K',
+  name: 'Vikas Shah',
+  dateOfBirth: '1986-03-22',
+});
+eq('tries pan then nps', tried.join(','), 'ABCPS1234K,vika2203');
+eq('nps first when no pan', statementPasswordsToTry({
+  name: 'Kiah Vikas Shah',
+  dateOfBirth: '2018-02-07',
+}).join(','), 'kiah0702');
+
+
 console.log('\n--- O. Loan EMI catch-up ---');
 eq('Jan 31 plus 1 month', addCalendarMonths('2026-01-31', 1), '2026-02-28');
 eq('due dates three months', dueEmiDates('2026-03-05', 3, '2026-05-10').join(','), '2026-03-05,2026-04-05,2026-05-05');
@@ -519,6 +557,82 @@ eq('answer case', normaliseAnswer('  Blue  Dog '), 'blue dog');
 eq('rotate 181d', needsPasswordRotation(new Date(Date.now()-181*86400000).toISOString()), true);
 eq('rotate fresh', needsPasswordRotation(new Date().toISOString()), false);
 eq('unpack hash', unpackHash(packHash({salt:'s',hash:'h',iterations:3}))?.hash, 'h');
+
+console.log('\n--- V. Add-holding fields follow Indian instrument type ---');
+eq('equity still uses units', usesUnits('EQUITY'), true);
+eq('gold uses grams', usesUnits('GOLD_SGB', 'Sovereign Gold Bond'), true);
+eq('PPF is a balance not units', usesUnits('FIXED_INCOME', 'PPF'), false);
+eq('G-sec uses units', usesUnits('FIXED_INCOME', 'Bond / GOI'), true);
+eq('flat is not units', usesUnits('REAL_ESTATE', 'Residential'), false);
+eq('REIT uses units', usesUnits('REAL_ESTATE', 'REIT'), true);
+eq('direct REIT is lumpsum', usesUnits('REAL_ESTATE', 'REIT', { altHoldMode: 'LUMPSUM' }), false);
+eq('InvIT uses units', usesUnits('REAL_ESTATE', 'InvIT'), true);
+eq('PMS is a mandate not units', usesUnits('SPECIALISED', 'PMS'), false);
+eq('AIF is commitment not units', usesUnits('SPECIALISED', 'AIF'), false);
+eq('demat AIF uses units', usesUnits('SPECIALISED', 'AIF', { altHoldMode: 'DEMAT' }), true);
+eq('unlisted uses shares', usesUnits('SPECIALISED', 'Unlisted equity'), true);
+eq('ESOP uses shares', usesUnits('SPECIALISED', 'ESOP'), true);
+eq('NPS id is PRAN', identifierLabel('FIXED_INCOME', 'NPS'), 'PRAN (12 digits)');
+eq('EPF id is UAN', identifierLabel('FIXED_INCOME', 'EPF'), 'UAN (12 digits)');
+eq('SGB id is series', identifierLabel('GOLD_SGB', 'Sovereign Gold Bond'), 'SGB series');
+eq('physical gold id is invoice', identifierLabel('GOLD_SGB', 'Physical gold (24K)'), 'Invoice / hallmark no.');
+eq('loan id is account', identifierLabel('LIABILITY', 'Home loan'), 'Loan account number');
+eq('12-digit UAN', looksLikeUan('100012345678'), true);
+eq('short UAN rejected', looksLikeUan('12345'), false);
+eq('12-digit PRAN', looksLikePran('110123981321'), true);
+eq('SGB coupon default', defaultSgbCoupon(), 2.5);
+const sgbDates = suggestLockInDates('GOLD_SGB', 'Sovereign Gold Bond', '2020-09-08');
+eq('SGB matures in 8 years', sgbDates.maturity, '2028-09-08');
+eq('SGB first exit in 5 years', sgbDates.earlyExit, '2025-09-08');
+eq('PPF 15-year block', suggestLockInDates('FIXED_INCOME', 'PPF', '2011-04-01').maturity, '2026-04-01');
+eq('SSY 21 years', suggestLockInDates('FIXED_INCOME', 'Sukanya Samriddhi (SSY)', '2018-02-07').maturity, '2039-02-07');
+eq('equity id is symbol', identifierLabel('EQUITY', 'Large cap'), 'NSE/BSE Symbol');
+eq('MF id is folio', identifierLabel('MUTUAL_FUND', 'Equity fund'), 'Folio Number');
+eq('index/ETF id is mixed until held-as', identifierLabel('MUTUAL_FUND', 'Index / ETF'), 'Symbol or folio');
+eq('ETF demat uses symbol', identifierLabel('MUTUAL_FUND', 'Index / ETF', 'DEMAT'), 'NSE/BSE Symbol');
+eq('index fund folio', identifierLabel('MUTUAL_FUND', 'Index / ETF', 'FOLIO'), 'Folio Number');
+eq('demat open-end folio is optional', identifierLabel('MUTUAL_FUND', 'Equity fund', 'DEMAT'), 'Folio (optional)');
+eq('ELSS 3-year lock-in', suggestLockInDates('MUTUAL_FUND', 'ELSS (tax saving)', '2023-03-14').maturity, '2026-03-14');
+eq('NSDL DP ID', looksLikeNsdlDpId('IN300214'), true);
+eq('NSDL DP ID needs IN', looksLikeNsdlDpId('300214'), false);
+eq('NSDL client 8 digits', looksLikeNsdlClientId('12345678'), true);
+eq('CDSL 16-digit BOID', looksLikeBoid('1208160012345678'), true);
+eq('short BOID rejected', looksLikeBoid('12081600'), false);
+eq('Direct from scheme name', inferMfPlan('Parag Parikh Flexi Cap Fund - Direct Growth'), 'DIRECT');
+eq('Regular from scheme name', inferMfPlan('HDFC Flexi Cap Fund Regular Plan'), 'REGULAR');
+eq('IDCW from scheme name', inferMfOption('SBI Bluechip Fund Direct IDCW'), 'IDCW');
+eq('Growth from scheme name', inferMfOption('Axis ELSS Tax Saver Direct Growth'), 'GROWTH');
+eq('Nippon BeES is an ETF', nameLooksLikeEtf('Nippon India ETF Nifty BeES'), true);
+eq('flexi cap is not an ETF', nameLooksLikeEtf('Parag Parikh Flexi Cap Fund'), false);
+eq('NSDL mask is DP + client', dematAccountMask({ dpId: 'in300214', clientId: '12345678' }), 'IN300214 12345678');
+eq('CDSL mask is BOID', dematAccountMask({ boId: '1208160012345678' }), '1208160012345678');
+const mfLines = detailsLines({
+  id: 'h_mf', name: 'Parag Parikh Flexi Cap', symbolOrFolio: '12345678',
+  category: 'MUTUAL_FUND', subCategory: 'Equity fund', ownerId: 'f1',
+  quantityScaled: '0', averageCostPerUnitMinor: '0', currentPriceMinor: '0',
+  lastPriceUpdated: '', isPriceStale: false, priceSource: 't',
+  acquiredOn: '2024-01-15',
+  details: { mfPlan: 'DIRECT', mfOption: 'GROWTH', mfHeldAs: 'FOLIO' },
+} as Holding);
+eq('MF plan on sheet', mfLines.some(r => r.label === 'Plan' && r.value === 'Direct'), true);
+eq('MF option on sheet', mfLines.some(r => r.label === 'Option' && r.value === 'Growth'), true);
+eq('MF held as SOA', mfLines.some(r => r.label === 'Held as' && r.value === 'SOA folio'), true);
+const buyCh: LedgerEvent = { ...ev('ch1','BUY','2024-01-02',10,100), chargesMinor: String(25 * 10000) };
+const chFold = foldHolding([buyCh], 'EQUITY');
+eq('STT/brokerage added to cost', Number(chFold.totalCostMinor)/1e4, 1025);
+eq('Embassy is a REIT', nameLooksLikeReit('Embassy Office Parks REIT'), true);
+eq('TCS is not a REIT', nameLooksLikeReit('Tata Consultancy Services'), false);
+eq('Discovery Fund is AIF', nameLooksLikeAif('IIFL India Discovery Fund'), true);
+eq('CAS Embassy → Real Estate', recategorizeCasAsset('Embassy Office Parks REIT', 'EQUITY'), 'REAL_ESTATE');
+eq('CAS IndiGrid → Real Estate', recategorizeCasAsset('IndiGrid InvIT Fund', 'EQUITY'), 'REAL_ESTATE');
+eq('CAS TCS stays equity', recategorizeCasAsset('Tata Consultancy Services Ltd', 'EQUITY'), 'EQUITY');
+eq('CAS AIF from MF type', recategorizeCasAsset('Blume Ventures Fund IV', 'MUTUAL_FUND', 'AIF'), 'SPECIALISED');
+eq('CAS REIT sub', casHoldingSubCategory('REAL_ESTATE', 'Embassy Office Parks REIT'), 'REIT');
+eq('CAS InvIT sub', casHoldingSubCategory('REAL_ESTATE', 'IndiGrid InvIT'), 'InvIT');
+eq('CAS AIF sub not Category II', casHoldingSubCategory('SPECIALISED', 'Edelweiss Crossover', 'AIF'), 'AIF');
+eq('CAS REIT details are demat', casImportDetails({ category: 'REAL_ESTATE', casFileType: 'CDSL' })?.altHoldMode, 'DEMAT');
+eq('direct REIT id is agreement', identifierLabel('REAL_ESTATE', 'REIT', undefined, { altHoldMode: 'LUMPSUM' }), 'Agreement / folio (optional)');
+eq('demat AIF id is ISIN', identifierLabel('SPECIALISED', 'AIF', undefined, { altHoldMode: 'DEMAT' }), 'ISIN');
 
 console.log('\n--- H. Encryption ---');
 (async()=>{

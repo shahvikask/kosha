@@ -5,17 +5,18 @@ runs on pypdfium2 with parsers that consume structured page-object
 data directly (no text-rendering / regex round-trip for NSDL+CDSL,
 column-aware layout reading for CAMS+KFin).
 
-The four issuer-specific parsers live alongside this file:
+The issuer-specific parsers live alongside this file:
 
   cams_detailed.py  → CAMS / KFin DETAILED statements
   cams_summary.py   → CAMS / KFin SUMMARY statements
   nsdl.py           → NSDL Consolidated Account Statement
   cdsl.py           → CDSL Consolidated Account Statement
+  nps.py            → Standalone NPS CRA transaction statement (Protean / CAMS / KFin CRA)
 
 `read_cas_pdf` sniffs the issuer + statement variant from the PDF's
 first page, dispatches to the right parser, optionally sorts
 transactions chronologically, and returns either `CASData` (CAMS/KFin)
-or `NSDLCASData` (NSDL/CDSL).
+or `NSDLCASData` (NSDL/CDSL/NPS).
 """
 
 from __future__ import annotations
@@ -120,7 +121,7 @@ def read_cas_pdf(
                           emits a `DeprecationWarning` and is otherwise
                           ignored.
     :return: `CASData` for CAMS/KFin issuers, `NSDLCASData` for
-             NSDL/CDSL issuers, or a serialised form of either when
+             NSDL/CDSL/NPS issuers, or a serialised form of either when
              `output` is `"json"` / `"csv"`.
     """
     if force_pdfminer:
@@ -148,7 +149,7 @@ def read_cas_pdf(
         if file_type == FileType.UNKNOWN:
             raise CASParseError(
                 "Could not identify the CAS issuer. Supported issuers are "
-                "CAMS, KFintech, NSDL, and CDSL."
+                "CAMS, KFintech, NSDL, CDSL, and NPS (CRA)."
             )
 
         if file_type in (FileType.CAMS, FileType.KFINTECH):
@@ -194,6 +195,15 @@ def read_cas_pdf(
                 filename,
                 password,
                 file_type=FileType.CDSL,
+                _doc=doc,
+            )
+        elif file_type == FileType.NPS:
+            from . import nps
+
+            data = nps.parse_nps(
+                filename,
+                password,
+                file_type=FileType.NPS,
                 _doc=doc,
             )
         else:  # pragma: no cover — handled above
