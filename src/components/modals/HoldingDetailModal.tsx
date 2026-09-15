@@ -14,7 +14,7 @@ import {
 import { X, Edit3, Plus, Trash2, Calendar, Coins } from 'lucide-react';
 import { resumeEmiDate } from '../../lib/emi';
 import { holdingReturn } from '../../lib/returnMetrics';
-import { detailsLines } from '../../lib/holdingForm';
+import { detailsLines, nameLooksLikeEtf } from '../../lib/holdingForm';
 
 interface HoldingDetailModalProps {
   holdingId: string | null;
@@ -355,7 +355,10 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
           {field('RTA', holding.rta)}
           {field('AMFI code', holding.amfiCode)}
           {field('ISIN', holding.isin)}
-          {field('Folio', holding.symbolOrFolio)}
+          {field(
+            holding.category === 'EQUITY' || nameLooksLikeEtf(holding.name) ? 'Symbol' : 'Folio',
+            holding.symbolOrFolio
+          )}
           {field('Demat / BOID', holding.accountNumberMasked)}
           {field('Depository', holding.dpName)}
           {field('Exchange', holding.exchange)}

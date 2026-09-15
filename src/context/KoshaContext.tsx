@@ -3,6 +3,7 @@ import {
   FamilyMember,
   Holding,
   LedgerEvent,
+  NewHoldingInput,
   PortfolioSummary,
   AssetCategory,
   TaxSummary,
@@ -89,7 +90,7 @@ interface KoshaContextType {
   migration: MigrationReport | null;
 
   // Actions
-  addHolding: (holding: Omit<Holding, 'id' | 'lastPriceUpdated' | 'isPriceStale'>) => Promise<Holding>;
+  addHolding: (holding: NewHoldingInput) => Promise<Holding>;
   updateHolding: (id: string, updates: Partial<Holding>) => Promise<void>;
   deleteHolding: (id: string) => Promise<void>;
   appendLedgerEvent: (event: Omit<LedgerEvent, 'id' | 'createdAt'>) => Promise<LedgerEvent>;
@@ -558,11 +559,13 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return newEvent;
   };
 
-  const addHolding = async (holdingData: Omit<Holding, 'id' | 'lastPriceUpdated' | 'isPriceStale'>): Promise<Holding> => {
-    const isin = (holdingData.isin || '').trim().toUpperCase();
-    if (isin.length >= 12 && holdingData.category !== 'LIABILITY') {
+  const addHolding = async (holdingData: NewHoldingInput): Promise<Holding> => {
+    const { chargesMinor: buyChargesRaw, ...rest } = holdingData;
+    const buyCharges = buyChargesRaw && buyChargesRaw !== '0' ? buyChargesRaw : undefined;
+    const isin = (rest.isin || '').trim().toUpperCase();
+    if (isin.length >= 12 && rest.category !== 'LIABILITY') {
       const existing = holdings.find(
-        h => h.ownerId === holdingData.ownerId && (h.isin || '').toUpperCase() === isin
+        h => h.ownerId === rest.ownerId && (h.isin || '').toUpperCase() === isin
       );
       if (existing) {
         await appendLedgerEvent({
@@ -570,20 +573,21 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           holdingName: existing.name,
           ownerId: existing.ownerId,
           eventType: 'BUY',
-          eventDate: new Date().toISOString().split('T')[0],
-          quantityScaled: holdingData.quantityScaled,
-          unitPriceMinor: holdingData.averageCostPerUnitMinor,
+          eventDate: rest.acquiredOn || new Date().toISOString().split('T')[0],
+          quantityScaled: rest.quantityScaled,
+          unitPriceMinor: rest.averageCostPerUnitMinor,
           totalAmountMinor: (
-            (BigInt(holdingData.quantityScaled) * BigInt(holdingData.averageCostPerUnitMinor)) / QTY_SCALE
+            (BigInt(rest.quantityScaled) * BigInt(rest.averageCostPerUnitMinor)) / QTY_SCALE
           ).toString(),
+          chargesMinor: buyCharges,
           notes: 'Buy on existing holding (same ISIN)',
         });
-        if (holdingData.currentPriceMinor && holdingData.currentPriceMinor !== existing.currentPriceMinor) {
+        if (rest.currentPriceMinor && rest.currentPriceMinor !== existing.currentPriceMinor) {
           const priced: Holding = {
             ...existing,
-            currentPriceMinor: holdingData.currentPriceMinor,
+            currentPriceMinor: rest.currentPriceMinor,
             lastPriceUpdated: new Date().toISOString(),
-            priceSource: holdingData.priceSource || existing.priceSource,
+            priceSource: rest.priceSource || existing.priceSource,
             isin: existing.isin || isin,
           };
           if (repo) await repo.upsertHolding(priced);
@@ -596,7 +600,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const newId = `h_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const newHolding: Holding = {
-      ...holdingData,
+      ...rest,
       id: newId,
       lastPriceUpdated: new Date().toISOString(),
       isPriceStale: false,
@@ -606,27 +610,28 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       await repo.upsertHolding(newHolding);
     }
 
-    const isLoan = holdingData.category === 'LIABILITY';
+    const isLoan = rest.category === 'LIABILITY';
     const initialAmount = isLoan
-      ? (holdingData.currentPriceMinor || '0')
-      : (BigInt(holdingData.quantityScaled) * BigInt(holdingData.averageCostPerUnitMinor)) / QTY_SCALE;
-    const eventDate = holdingData.acquiredOn || new Date().toISOString().split('T')[0];
+      ? (rest.currentPriceMinor || '0')
+      : (BigInt(rest.quantityScaled) * BigInt(rest.averageCostPerUnitMinor)) / QTY_SCALE;
+    const eventDate = rest.acquiredOn || new Date().toISOString().split('T')[0];
     await appendLedgerEvent({
       holdingId: newId,
-      holdingName: holdingData.name,
-      ownerId: holdingData.ownerId,
+      holdingName: rest.name,
+      ownerId: rest.ownerId,
       eventType: isLoan ? 'VALUATION_UPDATE' : 'BUY',
       eventDate,
-      quantityScaled: isLoan ? '0' : holdingData.quantityScaled,
+      quantityScaled: isLoan ? '0' : rest.quantityScaled,
       unitPriceMinor: isLoan
-        ? (holdingData.currentPriceMinor || holdingData.averageCostPerUnitMinor)
-        : holdingData.averageCostPerUnitMinor,
+        ? (rest.currentPriceMinor || rest.averageCostPerUnitMinor)
+        : rest.averageCostPerUnitMinor,
       totalAmountMinor: initialAmount.toString(),
+      chargesMinor: isLoan ? undefined : buyCharges,
       notes: isLoan ? 'Loan recorded — outstanding at start' : 'Initial holding record creation',
     });
 
     let saved = newHolding;
-    if (holdingData.category === 'LIABILITY' && repo) {
+    if (rest.category === 'LIABILITY' && repo) {
       const plan = planEmiCatchUp(newHolding, new Date().toISOString().slice(0, 10));
       if (plan) {
         const rows = emiEventsFromPlan(newId, plan);

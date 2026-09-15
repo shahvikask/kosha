@@ -16,7 +16,7 @@ import { checkImportPan, pansMatch, panBlocksCommit, findDuplicatePanMember, pan
 import { applyCatalogPrices, catalogToListed, searchListed, isEodPriceSource } from './eodPrices';
 import { findMatchingHolding, holdingIdentityKey, isPlaceholderName, preferSchemeName } from './matchHolding';
 import { StatementImportRecord } from '../types';
-import { usesUnits, identifierLabel, suggestLockInDates, looksLikeUan, looksLikePran, defaultSgbCoupon } from './holdingForm';
+import { usesUnits, identifierLabel, suggestLockInDates, looksLikeUan, looksLikePran, looksLikeNsdlDpId, looksLikeNsdlClientId, looksLikeBoid, defaultSgbCoupon, inferMfPlan, inferMfOption, nameLooksLikeEtf, dematAccountMask, detailsLines } from './holdingForm';
 
 let pass=0, fail=0;
 const eq=(n:string,a:any,b:any)=>{const ok=String(a)===String(b);ok?pass++:fail++;console.log(`${ok?'ok  ':'FAIL'} ${n}: ${a}${ok?'':' | want '+b}`)};
@@ -583,6 +583,40 @@ eq('SGB matures in 8 years', sgbDates.maturity, '2028-09-08');
 eq('SGB first exit in 5 years', sgbDates.earlyExit, '2025-09-08');
 eq('PPF 15-year block', suggestLockInDates('FIXED_INCOME', 'PPF', '2011-04-01').maturity, '2026-04-01');
 eq('SSY 21 years', suggestLockInDates('FIXED_INCOME', 'Sukanya Samriddhi (SSY)', '2018-02-07').maturity, '2039-02-07');
+eq('equity id is symbol', identifierLabel('EQUITY', 'Large cap'), 'NSE/BSE Symbol');
+eq('MF id is folio', identifierLabel('MUTUAL_FUND', 'Equity fund'), 'Folio Number');
+eq('index/ETF id is mixed until held-as', identifierLabel('MUTUAL_FUND', 'Index / ETF'), 'Symbol or folio');
+eq('ETF demat uses symbol', identifierLabel('MUTUAL_FUND', 'Index / ETF', 'DEMAT'), 'NSE/BSE Symbol');
+eq('index fund folio', identifierLabel('MUTUAL_FUND', 'Index / ETF', 'FOLIO'), 'Folio Number');
+eq('demat open-end folio is optional', identifierLabel('MUTUAL_FUND', 'Equity fund', 'DEMAT'), 'Folio (optional)');
+eq('ELSS 3-year lock-in', suggestLockInDates('MUTUAL_FUND', 'ELSS (tax saving)', '2023-03-14').maturity, '2026-03-14');
+eq('NSDL DP ID', looksLikeNsdlDpId('IN300214'), true);
+eq('NSDL DP ID needs IN', looksLikeNsdlDpId('300214'), false);
+eq('NSDL client 8 digits', looksLikeNsdlClientId('12345678'), true);
+eq('CDSL 16-digit BOID', looksLikeBoid('1208160012345678'), true);
+eq('short BOID rejected', looksLikeBoid('12081600'), false);
+eq('Direct from scheme name', inferMfPlan('Parag Parikh Flexi Cap Fund - Direct Growth'), 'DIRECT');
+eq('Regular from scheme name', inferMfPlan('HDFC Flexi Cap Fund Regular Plan'), 'REGULAR');
+eq('IDCW from scheme name', inferMfOption('SBI Bluechip Fund Direct IDCW'), 'IDCW');
+eq('Growth from scheme name', inferMfOption('Axis ELSS Tax Saver Direct Growth'), 'GROWTH');
+eq('Nippon BeES is an ETF', nameLooksLikeEtf('Nippon India ETF Nifty BeES'), true);
+eq('flexi cap is not an ETF', nameLooksLikeEtf('Parag Parikh Flexi Cap Fund'), false);
+eq('NSDL mask is DP + client', dematAccountMask({ dpId: 'in300214', clientId: '12345678' }), 'IN300214 12345678');
+eq('CDSL mask is BOID', dematAccountMask({ boId: '1208160012345678' }), '1208160012345678');
+const mfLines = detailsLines({
+  id: 'h_mf', name: 'Parag Parikh Flexi Cap', symbolOrFolio: '12345678',
+  category: 'MUTUAL_FUND', subCategory: 'Equity fund', ownerId: 'f1',
+  quantityScaled: '0', averageCostPerUnitMinor: '0', currentPriceMinor: '0',
+  lastPriceUpdated: '', isPriceStale: false, priceSource: 't',
+  acquiredOn: '2024-01-15',
+  details: { mfPlan: 'DIRECT', mfOption: 'GROWTH', mfHeldAs: 'FOLIO' },
+} as Holding);
+eq('MF plan on sheet', mfLines.some(r => r.label === 'Plan' && r.value === 'Direct'), true);
+eq('MF option on sheet', mfLines.some(r => r.label === 'Option' && r.value === 'Growth'), true);
+eq('MF held as SOA', mfLines.some(r => r.label === 'Held as' && r.value === 'SOA folio'), true);
+const buyCh: LedgerEvent = { ...ev('ch1','BUY','2024-01-02',10,100), chargesMinor: String(25 * 10000) };
+const chFold = foldHolding([buyCh], 'EQUITY');
+eq('STT/brokerage added to cost', Number(chFold.totalCostMinor)/1e4, 1025);
 
 console.log('\n--- H. Encryption ---');
 (async()=>{

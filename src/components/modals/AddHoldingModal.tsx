@@ -14,7 +14,13 @@ import { formatStatementDate } from '../../lib/casPython';
 import {
   acquiredOnLabel,
   defaultSgbCoupon,
+  dematAccountMask,
   identifierLabel,
+  inferMfOption,
+  inferMfPlan,
+  isElssSub,
+  isIndexOrEtfSub,
+  nameLooksLikeEtf,
   namePlaceholder,
   suggestLockInDates,
   usesUnits,
@@ -100,12 +106,19 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
   const [capitalCalledRupees, setCapitalCalledRupees] = useState('');
   const [faceValueRupees, setFaceValueRupees] = useState('');
   const [extra, setExtra] = useState<HoldingDetails>({});
+  const [listedExchange, setListedExchange] = useState('');
+  const [rta, setRta] = useState('');
+  const [chargesRupees, setChargesRupees] = useState('');
 
   const listedPicker = category === 'EQUITY' || category === 'MUTUAL_FUND';
   const unitAsset = usesUnits(category, subCategory);
   const isAif = category === 'SPECIALISED' && subCategory === 'AIF';
   const isPms = category === 'SPECIALISED' && subCategory === 'PMS';
-  const showAcquiredOn = !listedPicker;
+  const isEtf = category === 'MUTUAL_FUND' && (nameLooksLikeEtf(name) || nameLooksLikeEtf(picked?.name));
+  const heldAsDemat = extra.mfHeldAs === 'DEMAT' || isEtf;
+  const showAcquiredOn = true;
+  const showDematIds = category === 'EQUITY' || heldAsDemat;
+  const showExchange = category === 'EQUITY' || isEtf || (category === 'MUTUAL_FUND' && heldAsDemat && isIndexOrEtfSub(subCategory));
   const matches = useMemo(
     () => (listedPicker ? searchListed(listedSecurities, searchQ, category, 20) : []),
     [listedPicker, listedSecurities, searchQ, category],
@@ -174,6 +187,9 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
     setCommitmentRupees('');
     setCapitalCalledRupees('');
     setFaceValueRupees('');
+    setListedExchange('');
+    setRta('');
+    setChargesRupees('');
     applySubDefaults(next, sub);
   };
 
@@ -196,10 +212,38 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
     }
   };
 
+  const tickerFromPick = (row: ListedSecurity, exch: string) => {
+    if (exch === 'BSE') return row.bseSymbol || row.symbol || row.nseSymbol || '';
+    return row.nseSymbol || row.symbol || row.bseSymbol || '';
+  };
+
+  const applyExchange = (ex: string) => {
+    setListedExchange(ex);
+    if (picked && (category === 'EQUITY' || heldAsDemat)) {
+      const sym = tickerFromPick(picked, ex);
+      if (sym) setSymbolOrFolio(sym);
+    }
+  };
+
   const pickSecurity = (row: ListedSecurity) => {
     setPicked(row);
     setName(row.name);
-    setSymbolOrFolio(row.symbol || row.nseSymbol || row.amfiCode || '');
+    const exch = row.nseSymbol ? 'NSE' : row.bseSymbol ? 'BSE' : '';
+    setListedExchange(exch);
+    if (category === 'EQUITY') {
+      setSymbolOrFolio(tickerFromPick(row, exch) || '');
+    } else {
+      const etf = nameLooksLikeEtf(row.name);
+      setSymbolOrFolio(etf ? tickerFromPick(row, exch) || row.amfiCode || '' : '');
+      const plan = inferMfPlan(row.name);
+      const option = inferMfOption(row.name);
+      setExtra(prev => ({
+        ...prev,
+        mfPlan: plan || prev.mfPlan,
+        mfOption: option || prev.mfOption,
+        mfHeldAs: etf ? 'DEMAT' : (prev.mfHeldAs || 'FOLIO'),
+      }));
+    }
     setCurrentPriceRupees(MoneyEngine.toRupees(BigInt(row.closeMinor)).toString());
     setSearchQ('');
   };
@@ -258,6 +302,10 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
     if (category === 'LIABILITY' && !details.originalTenorMonths && remainNum > 0) {
       details.originalTenorMonths = remainNum;
     }
+    if (isEtf && !details.mfHeldAs) details.mfHeldAs = 'DEMAT';
+    if (details.dpId) details.dpId = details.dpId.replace(/\s/g, '').toUpperCase();
+    if (details.clientId) details.clientId = details.clientId.replace(/\s/g, '');
+    if (details.boId) details.boId = details.boId.replace(/\s/g, '');
     (Object.keys(details) as (keyof HoldingDetails)[]).forEach(k => {
       const v = details[k];
       if (v === undefined || v === '' || v === null) delete details[k];
@@ -265,6 +313,8 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
 
     const sgb = category === 'GOLD_SGB' && subCategory.startsWith('Sovereign');
     const couponNum = parseFloat(couponOrInterestRate);
+    const chargesNum = parseFloat(chargesRupees);
+    const dematMask = dematAccountMask(details);
 
     addHolding({
       name: name.trim(),
@@ -279,7 +329,7 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
       priceSource: picked?.source || 'Manual Initial Entry',
       amfiCode: picked?.amfiCode,
       institutionName: institutionName.trim() || extra.custodian || undefined,
-      accountNumberMasked: symbolOrFolio.trim() || undefined,
+      accountNumberMasked: dematMask || symbolOrFolio.trim() || undefined,
       notes: notes.trim() || undefined,
       tag: finalTags[0],
       tags: finalTags.length > 0 ? finalTags : undefined,
@@ -302,6 +352,11 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
       emiStatus: hasEmi ? 'PAYING' : undefined,
       acquiredOn: acquiredOn || undefined,
       details: Object.keys(details).length ? details : undefined,
+      exchange: listedExchange || undefined,
+      rta: rta || undefined,
+      amc: category === 'MUTUAL_FUND' ? (institutionName.trim() || undefined) : undefined,
+      dpName: extra.depository || undefined,
+      chargesMinor: !isNaN(chargesNum) && chargesNum > 0 ? MoneyEngine.fromRupees(chargesNum).toString() : undefined,
     });
 
     onClose();
@@ -310,13 +365,18 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
   const qtyLabel =
     category === 'GOLD_SGB' ? 'Quantity (grams) *'
     : category === 'EQUITY' || /unlisted|esop/i.test(subCategory) ? 'Shares *'
+    : isEtf ? 'Units *'
     : 'Units *';
   const buyLabel =
-    category === 'MUTUAL_FUND' || /reit/i.test(subCategory) ? 'Buy NAV (₹) *'
+    category === 'EQUITY' || /unlisted|esop/i.test(subCategory) ? 'Buy price per share (₹) *'
+    : isEtf ? 'Buy price per unit (₹) *'
+    : category === 'MUTUAL_FUND' || /reit/i.test(subCategory) ? 'Buy NAV (₹) *'
     : category === 'GOLD_SGB' ? 'Buy price per gram (₹) *'
     : 'Buy price per unit (₹) *';
   const nowLabel =
-    category === 'MUTUAL_FUND' || /reit/i.test(subCategory) ? 'Current NAV (₹)'
+    category === 'EQUITY' || /unlisted|esop/i.test(subCategory) ? 'Current price (₹)'
+    : isEtf ? 'Current price (₹)'
+    : category === 'MUTUAL_FUND' || /reit/i.test(subCategory) ? 'Current NAV (₹)'
     : category === 'GOLD_SGB' ? 'Current price (₹ / g)'
     : 'Current price (₹)';
 
@@ -453,12 +513,22 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-semibold text-slate-400 block mb-1">
-                {listedPicker ? (category === 'MUTUAL_FUND' ? 'Folio Number' : 'Exchange symbol') : identifierLabel(category, subCategory)}
+                {listedPicker
+                  ? identifierLabel(category, subCategory, extra.mfHeldAs)
+                  : identifierLabel(category, subCategory)}
               </label>
               <input
                 type="text"
                 readOnly={listedPicker && category === 'EQUITY'}
-                placeholder={category === 'EQUITY' ? 'from bhavcopy' : category === 'MUTUAL_FUND' ? 'folio on the statement' : 'optional'}
+                placeholder={
+                  category === 'EQUITY'
+                    ? 'from bhavcopy'
+                    : extra.mfHeldAs === 'DEMAT' || isEtf
+                      ? 'from bhavcopy / AMFI'
+                      : category === 'MUTUAL_FUND'
+                        ? 'folio on the statement'
+                        : 'optional'
+                }
                 value={symbolOrFolio}
                 onChange={e => setSymbolOrFolio(e.target.value)}
                 className={inp + ' font-mono'}
@@ -606,6 +676,242 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
                 <label className={lbl}>{isPms ? 'Amount invested (₹)' : 'Amount put in (₹)'}</label>
                 <input type="number" step="any" placeholder="Same as current if blank" value={costPerUnitRupees} onChange={e => setCostPerUnitRupees(e.target.value)} className={inp} />
               </div>
+            </div>
+          )}
+
+          {category === 'EQUITY' && (
+            <div className={panel}>
+              {showExchange && (
+                <div>
+                  <label className="text-xs font-semibold text-slate-300 block mb-1">Exchange</label>
+                  <select value={listedExchange} onChange={e => applyExchange(e.target.value)} className={inp}>
+                    <option value="">Not sure</option>
+                    <option value="NSE">NSE</option>
+                    <option value="BSE">BSE</option>
+                  </select>
+                </div>
+              )}
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Depository</label>
+                <select
+                  value={extra.depository || ''}
+                  onChange={e => patchExtra({ depository: (e.target.value || undefined) as HoldingDetails['depository'] })}
+                  className={inp}
+                >
+                  <option value="">Not sure</option>
+                  <option value="NSDL">NSDL (DP ID + Client ID)</option>
+                  <option value="CDSL">CDSL (16-digit BOID)</option>
+                </select>
+              </div>
+              {extra.depository === 'NSDL' && (
+                <>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-300 block mb-1">DP ID</label>
+                    <input
+                      type="text"
+                      placeholder="IN300214"
+                      value={extra.dpId || ''}
+                      onChange={e => patchExtra({ dpId: e.target.value.toUpperCase() || undefined })}
+                      className={inp + ' font-mono uppercase'}
+                    />
+                    <p className="text-[11px] text-slate-500 mt-1">IN + 6 digits</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-300 block mb-1">Client ID</label>
+                    <input
+                      type="text"
+                      placeholder="12345678"
+                      value={extra.clientId || ''}
+                      onChange={e => patchExtra({ clientId: e.target.value.replace(/\D/g, '').slice(0, 8) || undefined })}
+                      className={inp + ' font-mono'}
+                    />
+                    <p className="text-[11px] text-slate-500 mt-1">8 digits</p>
+                  </div>
+                </>
+              )}
+              {extra.depository === 'CDSL' && (
+                <div className="sm:col-span-2">
+                  <label className="text-xs font-semibold text-slate-300 block mb-1">BOID</label>
+                  <input
+                    type="text"
+                    placeholder="1208160012345678"
+                    value={extra.boId || ''}
+                    onChange={e => patchExtra({ boId: e.target.value.replace(/\D/g, '').slice(0, 16) || undefined })}
+                    className={inp + ' font-mono'}
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1">16-digit CDSL beneficiary ID</p>
+                </div>
+              )}
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Buy charges (₹)</label>
+                <input
+                  type="number"
+                  step="any"
+                  placeholder="STT, brokerage, stamp"
+                  value={chargesRupees}
+                  onChange={e => setChargesRupees(e.target.value)}
+                  className={inp}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Broker</label>
+                <input type="text" placeholder="e.g. Zerodha" value={institutionName} onChange={e => setInstitutionName(e.target.value)} className={inp} />
+              </div>
+              <p className="sm:col-span-2 text-[11px] text-slate-500">
+                Charges are added to cost. Cap bucket is a style tag — it does not change tax treatment.
+              </p>
+            </div>
+          )}
+
+          {category === 'MUTUAL_FUND' && (
+            <div className={panel}>
+              {!isEtf && (
+                <>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-300 block mb-1">Plan</label>
+                    <select
+                      value={extra.mfPlan || ''}
+                      onChange={e => patchExtra({ mfPlan: (e.target.value || undefined) as HoldingDetails['mfPlan'] })}
+                      className={inp}
+                    >
+                      <option value="">Not sure</option>
+                      <option value="DIRECT">Direct</option>
+                      <option value="REGULAR">Regular</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-300 block mb-1">Option</label>
+                    <select
+                      value={extra.mfOption || ''}
+                      onChange={e => patchExtra({ mfOption: (e.target.value || undefined) as HoldingDetails['mfOption'] })}
+                      className={inp}
+                    >
+                      <option value="">Not sure</option>
+                      <option value="GROWTH">Growth</option>
+                      <option value="IDCW">IDCW</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-300 block mb-1">RTA</label>
+                    <select value={rta} onChange={e => setRta(e.target.value)} className={inp}>
+                      <option value="">Not sure</option>
+                      <option value="CAMS">CAMS</option>
+                      <option value="KFINTECH">KFin</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-300 block mb-1">Held as</label>
+                    <select
+                      value={isEtf ? 'DEMAT' : (extra.mfHeldAs || '')}
+                      onChange={e => {
+                        const next = (e.target.value || undefined) as HoldingDetails['mfHeldAs'];
+                        patchExtra({ mfHeldAs: next });
+                        if (next === 'DEMAT' && picked) {
+                          const sym = tickerFromPick(picked, listedExchange);
+                          if (sym) setSymbolOrFolio(sym);
+                        }
+                      }}
+                      className={inp}
+                    >
+                      <option value="">Not sure</option>
+                      <option value="FOLIO">SOA folio (CAMS / KFin)</option>
+                      <option value="DEMAT">Demat units</option>
+                    </select>
+                  </div>
+                </>
+              )}
+              {showExchange && (
+                <div>
+                  <label className="text-xs font-semibold text-slate-300 block mb-1">Exchange</label>
+                  <select value={listedExchange} onChange={e => applyExchange(e.target.value)} className={inp}>
+                    <option value="">Not sure</option>
+                    <option value="NSE">NSE</option>
+                    <option value="BSE">BSE</option>
+                  </select>
+                </div>
+              )}
+              {showDematIds && (
+                <>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-300 block mb-1">Depository</label>
+                    <select
+                      value={extra.depository || ''}
+                      onChange={e => patchExtra({ depository: (e.target.value || undefined) as HoldingDetails['depository'] })}
+                      className={inp}
+                    >
+                      <option value="">Not sure</option>
+                      <option value="NSDL">NSDL (DP ID + Client ID)</option>
+                      <option value="CDSL">CDSL (16-digit BOID)</option>
+                    </select>
+                  </div>
+                  {extra.depository === 'NSDL' && (
+                    <>
+                      <div>
+                        <label className="text-xs font-semibold text-slate-300 block mb-1">DP ID</label>
+                        <input
+                          type="text"
+                          placeholder="IN300214"
+                          value={extra.dpId || ''}
+                          onChange={e => patchExtra({ dpId: e.target.value.toUpperCase() || undefined })}
+                          className={inp + ' font-mono uppercase'}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-slate-300 block mb-1">Client ID</label>
+                        <input
+                          type="text"
+                          placeholder="12345678"
+                          value={extra.clientId || ''}
+                          onChange={e => patchExtra({ clientId: e.target.value.replace(/\D/g, '').slice(0, 8) || undefined })}
+                          className={inp + ' font-mono'}
+                        />
+                      </div>
+                    </>
+                  )}
+                  {extra.depository === 'CDSL' && (
+                    <div className="sm:col-span-2">
+                      <label className="text-xs font-semibold text-slate-300 block mb-1">BOID</label>
+                      <input
+                        type="text"
+                        placeholder="1208160012345678"
+                        value={extra.boId || ''}
+                        onChange={e => patchExtra({ boId: e.target.value.replace(/\D/g, '').slice(0, 16) || undefined })}
+                        className={inp + ' font-mono'}
+                      />
+                    </div>
+                  )}
+                </>
+              )}
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">AMC</label>
+                <input type="text" placeholder="e.g. PPFAS Mutual Fund" value={institutionName} onChange={e => setInstitutionName(e.target.value)} className={inp} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Buy charges (₹)</label>
+                <input
+                  type="number"
+                  step="any"
+                  placeholder={isEtf ? 'STT, brokerage, stamp' : 'Stamp duty (optional)'}
+                  value={chargesRupees}
+                  onChange={e => setChargesRupees(e.target.value)}
+                  className={inp}
+                />
+              </div>
+              {isElssSub(subCategory) && (
+                <div>
+                  <label className="text-xs font-semibold text-slate-300 block mb-1">Lock-in ends (3 years)</label>
+                  <input type="date" value={maturityDate} onChange={e => setMaturityDate(e.target.value)} className={inp} />
+                </div>
+              )}
+              <p className="sm:col-span-2 text-[11px] text-slate-500">
+                {isEtf
+                  ? 'ETFs trade like shares on NSE or BSE and sit in demat.'
+                  : isElssSub(subCategory)
+                    ? 'ELSS units lock for 3 years from this trade date (FIFO per lot).'
+                    : extra.mfHeldAs === 'DEMAT'
+                      ? 'Demat units have no CAMS/KFin SOA folio — use the BOID instead.'
+                      : 'Direct has no distributor. Growth reinvests; IDCW pays out.'}
+              </p>
             </div>
           )}
 
@@ -915,10 +1221,10 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
             </div>
           )}
 
-          {(category === 'EQUITY' || category === 'MUTUAL_FUND' || (category === 'SPECIALISED' && !isAif && !isPms)) && (
+          {category === 'SPECIALISED' && !isAif && !isPms && (
             <div>
               <label className="text-xs font-semibold text-slate-400 block mb-1">
-                {category === 'EQUITY' ? 'Broker' : category === 'SPECIALISED' ? 'Company / manager' : 'Institution / AMC'}
+                Company / manager
               </label>
               <input type="text" placeholder="e.g. Zerodha / HDFC Bank" value={institutionName} onChange={e => setInstitutionName(e.target.value)} className={inp} />
             </div>

@@ -1,9 +1,9 @@
 /**
  * Subcategory-driven Add Holding fields for Indian instruments.
- * Equities and open-end mutual funds keep their listed picker; this module
- * covers gold, govt schemes, property, alternatives, bank cash and loans.
+ * Equities and funds keep the listed picker; this module also covers
+ * gold, govt schemes, property, alternatives, bank cash and loans.
  */
-import { AssetCategory, Holding, HoldingDetails } from '../types';
+import { AssetCategory, Holding, HoldingDetails, MfHeldAs, MfOption, MfPlan } from '../types';
 import { addCalendarMonths } from './emi';
 
 export function usesUnits(category: AssetCategory, subCategory?: string): boolean {
@@ -15,10 +15,31 @@ export function usesUnits(category: AssetCategory, subCategory?: string): boolea
   return false;
 }
 
-export function identifierLabel(category: AssetCategory, subCategory?: string): string {
+export function isElssSub(subCategory?: string): boolean {
+  return /elss/i.test(subCategory || '');
+}
+
+export function isIndexOrEtfSub(subCategory?: string): boolean {
+  return /index|etf/i.test(subCategory || '');
+}
+
+export function nameLooksLikeEtf(name?: string): boolean {
+  return /\bETF\b/i.test(name || '');
+}
+
+export function identifierLabel(
+  category: AssetCategory,
+  subCategory?: string,
+  heldAs?: MfHeldAs
+): string {
   const sub = subCategory || '';
   if (category === 'EQUITY') return 'NSE/BSE Symbol';
-  if (category === 'MUTUAL_FUND') return 'Folio Number';
+  if (category === 'MUTUAL_FUND') {
+    if (heldAs === 'DEMAT') return isIndexOrEtfSub(sub) ? 'NSE/BSE Symbol' : 'Folio (optional)';
+    if (heldAs === 'FOLIO') return 'Folio Number';
+    if (isIndexOrEtfSub(sub)) return 'Symbol or folio';
+    return 'Folio Number';
+  }
   if (category === 'GOLD_SGB') {
     if (sub.startsWith('Physical')) return 'Invoice / hallmark no.';
     if (sub.startsWith('Digital')) return 'Provider account (optional)';
@@ -54,7 +75,11 @@ export function identifierLabel(category: AssetCategory, subCategory?: string): 
 export function namePlaceholder(category: AssetCategory, subCategory?: string): string {
   const sub = subCategory || '';
   if (category === 'EQUITY') return 'e.g. State Bank of India';
-  if (category === 'MUTUAL_FUND') return 'e.g. Parag Parikh Flexi Cap';
+  if (category === 'MUTUAL_FUND') {
+    if (isIndexOrEtfSub(sub)) return 'e.g. Nippon India ETF Nifty BeES';
+    if (isElssSub(sub)) return 'e.g. Axis ELSS Tax Saver';
+    return 'e.g. Parag Parikh Flexi Cap';
+  }
   if (category === 'GOLD_SGB') {
     if (sub.startsWith('Physical')) return 'e.g. 24K jewellery / coins';
     if (sub.startsWith('Digital')) return 'e.g. SafeGold vault';
@@ -86,6 +111,7 @@ export function namePlaceholder(category: AssetCategory, subCategory?: string): 
 }
 
 export function acquiredOnLabel(category: AssetCategory, subCategory?: string): string {
+  if (category === 'EQUITY' || category === 'MUTUAL_FUND') return 'Trade date';
   if (category === 'LIABILITY') return 'Loan start date';
   if (category === 'REAL_ESTATE' && !/\breit\b/i.test(subCategory || '')) return 'Purchase date';
   if (category === 'CASH_BANK' || category === 'FIXED_INCOME') {
@@ -118,6 +144,9 @@ export function suggestLockInDates(
   if (category === 'FIXED_INCOME' && subCategory.startsWith('Sukanya')) {
     return { maturity: addCalendarMonths(acquiredOn, 252) };
   }
+  if (category === 'MUTUAL_FUND' && isElssSub(subCategory)) {
+    return { maturity: addCalendarMonths(acquiredOn, 36) };
+  }
   return {};
 }
 
@@ -133,6 +162,44 @@ export function looksLikeIsin(raw: string): boolean {
   return /^[A-Z]{2}[A-Z0-9]{9}[0-9]$/i.test(raw.trim());
 }
 
+/** NSDL DP ID: IN + 6 digits (e.g. IN300214). */
+export function looksLikeNsdlDpId(raw: string): boolean {
+  return /^IN\d{6}$/i.test(raw.replace(/\s/g, ''));
+}
+
+/** NSDL Client ID: 8 digits. */
+export function looksLikeNsdlClientId(raw: string): boolean {
+  return /^\d{8}$/.test(raw.replace(/\s/g, ''));
+}
+
+/** CDSL BOID: 16 digits. */
+export function looksLikeBoid(raw: string): boolean {
+  return /^\d{16}$/.test(raw.replace(/\s/g, ''));
+}
+
+export function inferMfPlan(name?: string): MfPlan | undefined {
+  const n = (name || '').toUpperCase();
+  if (/\bDIRECT\b/.test(n)) return 'DIRECT';
+  if (/\bREGULAR\b/.test(n)) return 'REGULAR';
+  return undefined;
+}
+
+export function inferMfOption(name?: string): MfOption | undefined {
+  const n = (name || '').toUpperCase();
+  if (/\bIDCW\b/.test(n) || /\bDIVIDEND\b/.test(n)) return 'IDCW';
+  if (/\bGROWTH\b/.test(n)) return 'GROWTH';
+  return undefined;
+}
+
+export function dematAccountMask(d: HoldingDetails): string | undefined {
+  const bo = (d.boId || '').replace(/\s/g, '');
+  if (bo) return bo;
+  const dp = (d.dpId || '').replace(/\s/g, '').toUpperCase();
+  const client = (d.clientId || '').replace(/\s/g, '');
+  if (dp && client) return `${dp} ${client}`;
+  return undefined;
+}
+
 export function detailsLines(h: Holding): { label: string; value: string }[] {
   const d: HoldingDetails = h.details || {};
   const out: { label: string; value: string }[] = [];
@@ -143,6 +210,12 @@ export function detailsLines(h: Holding): { label: string; value: string }[] {
     return `₹ ${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
   };
   if (h.acquiredOn) out.push({ label: 'From', value: h.acquiredOn });
+  if (d.mfPlan) out.push({ label: 'Plan', value: d.mfPlan === 'DIRECT' ? 'Direct' : 'Regular' });
+  if (d.mfOption) out.push({ label: 'Option', value: d.mfOption === 'IDCW' ? 'IDCW' : 'Growth' });
+  if (d.mfHeldAs) out.push({ label: 'Held as', value: d.mfHeldAs === 'DEMAT' ? 'Demat' : 'SOA folio' });
+  if (d.dpId) out.push({ label: 'DP ID', value: d.dpId.toUpperCase() });
+  if (d.clientId) out.push({ label: 'Client ID', value: d.clientId });
+  if (d.boId) out.push({ label: 'BOID', value: d.boId });
   if (d.goldHoldMode) out.push({ label: 'Held as', value: d.goldHoldMode === 'DEMAT' ? 'Demat' : 'RBI / bank certificate' });
   if (d.goldPurity) out.push({ label: 'Purity', value: d.goldPurity });
   if (d.goldHallmark) out.push({ label: 'Hallmark / invoice', value: d.goldHallmark });

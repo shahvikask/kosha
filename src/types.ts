@@ -23,6 +23,10 @@ export type AifCategory = 'I' | 'II' | 'III';
 export type OwnershipKind = 'SELF' | 'JOINT' | 'HUF' | 'SPOUSE';
 export type Compounding = 'MONTHLY' | 'QUARTERLY' | 'YEARLY' | 'CUMULATIVE';
 export type RateType = 'FLOATING' | 'FIXED';
+export type MfPlan = 'DIRECT' | 'REGULAR';
+export type MfOption = 'GROWTH' | 'IDCW';
+export type MfHeldAs = 'FOLIO' | 'DEMAT';
+export type Depository = 'NSDL' | 'CDSL';
 
 /** Sparse, subcategory-specific facts. Persisted as details_json. */
 export interface HoldingDetails {
@@ -49,6 +53,13 @@ export interface HoldingDetails {
   originalTenorMonths?: number;
   rateType?: RateType;
   linkedHoldingId?: string;
+  mfPlan?: MfPlan;
+  mfOption?: MfOption;
+  mfHeldAs?: MfHeldAs;
+  depository?: Depository;
+  dpId?: string;
+  clientId?: string;
+  boId?: string;
 }
 
 export interface CategoryInfo {
@@ -289,6 +300,11 @@ export interface Holding {
   dpName?: string;
   accountId?: string;
 }
+
+/** Payload for a new holding. chargesMinor lands on the opening BUY, not a holding column. */
+export type NewHoldingInput = Omit<Holding, 'id' | 'lastPriceUpdated' | 'isPriceStale'> & {
+  chargesMinor?: string;
+};
 
 export interface PortfolioSummary {
   totalAssetsMinor: bigint;

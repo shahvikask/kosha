@@ -287,6 +287,41 @@ const famSpouse:FamilyMember = {id:'f2',name:'Spouse',relation:'Spouse',color:'#
   eq('v7 migrate is idempotent', await repo7.schemaVersion(), 7);
   await drv7.close();
 
+  console.log('\n--- Q. Equity / MF registrar fields persist ---');
+  const drv8 = new NodeSqlDriver();
+  const repo8 = new Repository(drv8);
+  await repo8.initialise();
+  await repo8.upsertEntity(fam);
+  await repo8.upsertHolding({
+    ...hold('h_eq', 'TCS', 3500),
+    category: 'EQUITY',
+    subCategory: 'Large cap',
+    acquiredOn: '2024-06-12',
+    exchange: 'NSE',
+    dpName: 'NSDL',
+    accountNumberMasked: 'IN300214 12345678',
+    details: { depository: 'NSDL', dpId: 'IN300214', clientId: '12345678' },
+  } as Holding);
+  await repo8.upsertHolding({
+    ...hold('h_mf', 'Parag Parikh Flexi Cap', 80),
+    category: 'MUTUAL_FUND',
+    subCategory: 'Equity fund',
+    acquiredOn: '2024-01-15',
+    rta: 'CAMS',
+    amc: 'PPFAS Mutual Fund',
+    details: { mfPlan: 'DIRECT', mfOption: 'GROWTH', mfHeldAs: 'FOLIO' },
+  } as Holding);
+  const eqty = (await repo8.allHoldings()).find(h => h.id === 'h_eq')!;
+  const mfund = (await repo8.allHoldings()).find(h => h.id === 'h_mf')!;
+  eq('equity exchange stored', eqty.exchange, 'NSE');
+  eq('equity DP stored', eqty.details?.dpId, 'IN300214');
+  eq('equity client stored', eqty.details?.clientId, '12345678');
+  eq('MF RTA stored', mfund.rta, 'CAMS');
+  eq('MF Direct stored', mfund.details?.mfPlan, 'DIRECT');
+  eq('MF Growth stored', mfund.details?.mfOption, 'GROWTH');
+  eq('MF SOA folio stored', mfund.details?.mfHeldAs, 'FOLIO');
+  await drv8.close();
+
   console.log(`\n${pass} passed, ${fail} failed`);
   await drv.close(); await drv2.close();
   process.exit(fail?1:0);
