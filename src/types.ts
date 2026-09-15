@@ -27,6 +27,7 @@ export type MfPlan = 'DIRECT' | 'REGULAR';
 export type MfOption = 'GROWTH' | 'IDCW';
 export type MfHeldAs = 'FOLIO' | 'DEMAT';
 export type Depository = 'NSDL' | 'CDSL';
+export type AltHoldMode = 'DEMAT' | 'LUMPSUM';
 
 /** Sparse, subcategory-specific facts. Persisted as details_json. */
 export interface HoldingDetails {
@@ -60,6 +61,8 @@ export interface HoldingDetails {
   dpId?: string;
   clientId?: string;
   boId?: string;
+  /** REIT / AIF: demat units (CAS) vs direct lumpsum (no NAV). */
+  altHoldMode?: AltHoldMode;
 }
 
 export interface CategoryInfo {
@@ -152,7 +155,7 @@ export const ASSET_SUBCATEGORIES: Record<AssetCategory, string[]> = {
   MUTUAL_FUND: ['Equity fund', 'Debt fund', 'Hybrid fund', 'Index / ETF', 'ELSS (tax saving)', 'Other'],
   GOLD_SGB: ['Sovereign Gold Bond', 'Physical gold (24K)', 'Digital gold', 'Other'],
   FIXED_INCOME: ['PPF', 'EPF', 'NPS', 'Sukanya Samriddhi (SSY)', 'Bank FD', 'Bond / GOI', 'Other'],
-  REAL_ESTATE: ['Residential', 'Commercial', 'Land', 'REIT', 'Other'],
+  REAL_ESTATE: ['Residential', 'Commercial', 'Land', 'REIT', 'InvIT', 'Other'],
   SPECIALISED: ['PMS', 'AIF', 'Unlisted equity', 'ESOP', 'Other'],
   CASH_BANK: ['Savings account', 'Current account', 'Liquid / overnight', 'Other'],
   LIABILITY: ['Home loan', 'Car loan', 'Education loan', 'Personal loan', 'Other'],

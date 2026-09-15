@@ -16,7 +16,7 @@ import { checkImportPan, pansMatch, panBlocksCommit, findDuplicatePanMember, pan
 import { applyCatalogPrices, catalogToListed, searchListed, isEodPriceSource } from './eodPrices';
 import { findMatchingHolding, holdingIdentityKey, isPlaceholderName, preferSchemeName } from './matchHolding';
 import { StatementImportRecord } from '../types';
-import { usesUnits, identifierLabel, suggestLockInDates, looksLikeUan, looksLikePran, looksLikeNsdlDpId, looksLikeNsdlClientId, looksLikeBoid, defaultSgbCoupon, inferMfPlan, inferMfOption, nameLooksLikeEtf, dematAccountMask, detailsLines } from './holdingForm';
+import { usesUnits, identifierLabel, suggestLockInDates, looksLikeUan, looksLikePran, looksLikeNsdlDpId, looksLikeNsdlClientId, looksLikeBoid, defaultSgbCoupon, inferMfPlan, inferMfOption, nameLooksLikeEtf, dematAccountMask, detailsLines, recategorizeCasAsset, casHoldingSubCategory, casImportDetails, nameLooksLikeReit, nameLooksLikeAif } from './holdingForm';
 
 let pass=0, fail=0;
 const eq=(n:string,a:any,b:any)=>{const ok=String(a)===String(b);ok?pass++:fail++;console.log(`${ok?'ok  ':'FAIL'} ${n}: ${a}${ok?'':' | want '+b}`)};
@@ -565,8 +565,11 @@ eq('PPF is a balance not units', usesUnits('FIXED_INCOME', 'PPF'), false);
 eq('G-sec uses units', usesUnits('FIXED_INCOME', 'Bond / GOI'), true);
 eq('flat is not units', usesUnits('REAL_ESTATE', 'Residential'), false);
 eq('REIT uses units', usesUnits('REAL_ESTATE', 'REIT'), true);
+eq('direct REIT is lumpsum', usesUnits('REAL_ESTATE', 'REIT', { altHoldMode: 'LUMPSUM' }), false);
+eq('InvIT uses units', usesUnits('REAL_ESTATE', 'InvIT'), true);
 eq('PMS is a mandate not units', usesUnits('SPECIALISED', 'PMS'), false);
 eq('AIF is commitment not units', usesUnits('SPECIALISED', 'AIF'), false);
+eq('demat AIF uses units', usesUnits('SPECIALISED', 'AIF', { altHoldMode: 'DEMAT' }), true);
 eq('unlisted uses shares', usesUnits('SPECIALISED', 'Unlisted equity'), true);
 eq('ESOP uses shares', usesUnits('SPECIALISED', 'ESOP'), true);
 eq('NPS id is PRAN', identifierLabel('FIXED_INCOME', 'NPS'), 'PRAN (12 digits)');
@@ -617,6 +620,19 @@ eq('MF held as SOA', mfLines.some(r => r.label === 'Held as' && r.value === 'SOA
 const buyCh: LedgerEvent = { ...ev('ch1','BUY','2024-01-02',10,100), chargesMinor: String(25 * 10000) };
 const chFold = foldHolding([buyCh], 'EQUITY');
 eq('STT/brokerage added to cost', Number(chFold.totalCostMinor)/1e4, 1025);
+eq('Embassy is a REIT', nameLooksLikeReit('Embassy Office Parks REIT'), true);
+eq('TCS is not a REIT', nameLooksLikeReit('Tata Consultancy Services'), false);
+eq('Discovery Fund is AIF', nameLooksLikeAif('IIFL India Discovery Fund'), true);
+eq('CAS Embassy → Real Estate', recategorizeCasAsset('Embassy Office Parks REIT', 'EQUITY'), 'REAL_ESTATE');
+eq('CAS IndiGrid → Real Estate', recategorizeCasAsset('IndiGrid InvIT Fund', 'EQUITY'), 'REAL_ESTATE');
+eq('CAS TCS stays equity', recategorizeCasAsset('Tata Consultancy Services Ltd', 'EQUITY'), 'EQUITY');
+eq('CAS AIF from MF type', recategorizeCasAsset('Blume Ventures Fund IV', 'MUTUAL_FUND', 'AIF'), 'SPECIALISED');
+eq('CAS REIT sub', casHoldingSubCategory('REAL_ESTATE', 'Embassy Office Parks REIT'), 'REIT');
+eq('CAS InvIT sub', casHoldingSubCategory('REAL_ESTATE', 'IndiGrid InvIT'), 'InvIT');
+eq('CAS AIF sub not Category II', casHoldingSubCategory('SPECIALISED', 'Edelweiss Crossover', 'AIF'), 'AIF');
+eq('CAS REIT details are demat', casImportDetails({ category: 'REAL_ESTATE', casFileType: 'CDSL' })?.altHoldMode, 'DEMAT');
+eq('direct REIT id is agreement', identifierLabel('REAL_ESTATE', 'REIT', undefined, { altHoldMode: 'LUMPSUM' }), 'Agreement / folio (optional)');
+eq('demat AIF id is ISIN', identifierLabel('SPECIALISED', 'AIF', undefined, { altHoldMode: 'DEMAT' }), 'ISIN');
 
 console.log('\n--- H. Encryption ---');
 (async()=>{

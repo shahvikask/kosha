@@ -118,18 +118,30 @@ def _fill_investor_from_password(result: dict, password: str) -> dict:
     return result
 
 
+_REIT_RE = re.compile(
+    r"\bREITs?\b|\bINVITs?\b|REAL ESTATE INVESTMENT TRUST|INFRASTRUCTURE INVESTMENT TRUST",
+    re.I,
+)
+_AIF_RE = re.compile(
+    r"\bAIF\b|ALTERNATIVE INVESTMENT|INDIA DISCOVERY FUND|CATEGORY III|\bCAT\s*III\b",
+    re.I,
+)
+
+
 def _category(kind: str, scheme_type: Optional[str], name: str) -> str:
     st = (scheme_type or "").upper()
     nm = (name or "").upper()
     # SGB sits in the CDSL equity section; name must win before kind==equity.
     if kind == "gold" or "SGB" in nm or "SOVEREIGN GOLD" in nm:
         return "GOLD_SGB"
+    if st in ("REIT", "INVIT") or _REIT_RE.search(nm):
+        return "REAL_ESTATE"
+    if st == "AIF" or _AIF_RE.search(nm):
+        return "SPECIALISED"
     if kind == "equity":
         return "EQUITY"
     if kind in ("bond", "nps"):
         return "FIXED_INCOME"
-    if st == "AIF" or "AIF" in nm or "DISCOVERY FUND" in nm:
-        return "SPECIALISED"
     if st == "ETF" or "ETF" in nm:
         return "MUTUAL_FUND"
     return "MUTUAL_FUND"

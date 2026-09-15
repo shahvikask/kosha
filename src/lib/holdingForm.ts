@@ -6,13 +6,97 @@
 import { AssetCategory, Holding, HoldingDetails, MfHeldAs, MfOption, MfPlan } from '../types';
 import { addCalendarMonths } from './emi';
 
-export function usesUnits(category: AssetCategory, subCategory?: string): boolean {
+export function usesUnits(
+  category: AssetCategory,
+  subCategory?: string,
+  details?: HoldingDetails | null
+): boolean {
   if (category === 'EQUITY' || category === 'MUTUAL_FUND' || category === 'GOLD_SGB') return true;
   const sub = (subCategory || '').toLowerCase();
-  if (category === 'REAL_ESTATE') return /\breit\b/.test(sub);
-  if (category === 'SPECIALISED') return /unlisted|esop/.test(sub);
+  if (category === 'REAL_ESTATE') {
+    if (!isReitLike(subCategory)) return false;
+    return details?.altHoldMode !== 'LUMPSUM';
+  }
+  if (category === 'SPECIALISED') {
+    if (/unlisted|esop/.test(sub)) return true;
+    if (isAifSub(subCategory)) return details?.altHoldMode === 'DEMAT';
+    return false;
+  }
   if (category === 'FIXED_INCOME') return /bond|goi/.test(sub);
   return false;
+}
+
+export function isReitLike(subCategory?: string): boolean {
+  return /\breit\b|\binvit\b/i.test(subCategory || '');
+}
+
+export function isAifSub(subCategory?: string): boolean {
+  return /\baif\b/i.test(subCategory || '');
+}
+
+export function nameLooksLikeReit(name?: string): boolean {
+  return /\bREITs?\b|REAL ESTATE INVESTMENT TRUST|REAL ESTATE TRUST/i.test(name || '');
+}
+
+export function nameLooksLikeInvit(name?: string): boolean {
+  return /\bINVITs?\b|INFRASTRUCTURE INVESTMENT TRUST/i.test(name || '');
+}
+
+export function nameLooksLikeAif(name?: string): boolean {
+  return /\bAIF\b|ALTERNATIVE INVESTMENT|DISCOVERY FUND|CATEGORY III|\bCAT\s*III\b/i.test(name || '');
+}
+
+export function recategorizeCasAsset(
+  name: string,
+  category: AssetCategory,
+  schemeType?: string | null
+): AssetCategory {
+  const st = (schemeType || '').toUpperCase();
+  if (nameLooksLikeSgbName(name)) return 'GOLD_SGB';
+  if (nameLooksLikeReit(name) || nameLooksLikeInvit(name) || st === 'REIT' || st === 'INVIT') {
+    return 'REAL_ESTATE';
+  }
+  if (st === 'AIF' || nameLooksLikeAif(name)) return 'SPECIALISED';
+  return category;
+}
+
+function nameLooksLikeSgbName(name?: string): boolean {
+  const n = (name || '').toUpperCase();
+  return /\bSGB\b/.test(n) || n.includes('SOVEREIGN GOLD');
+}
+
+export function casHoldingSubCategory(
+  category: AssetCategory,
+  name: string,
+  schemeType?: string | null
+): string {
+  const n = name || '';
+  const st = schemeType || '';
+  if (category === 'REAL_ESTATE') return nameLooksLikeInvit(n) || st.toUpperCase() === 'INVIT' ? 'InvIT' : 'REIT';
+  if (category === 'SPECIALISED' || st.toUpperCase() === 'AIF') return 'AIF';
+  if (category === 'GOLD_SGB') return 'Sovereign Gold Bond';
+  if (category === 'FIXED_INCOME') {
+    if (/nps/i.test(n) || st.toUpperCase() === 'NPS') return 'NPS';
+    return 'Other';
+  }
+  if (category === 'EQUITY') return 'Other';
+  if (category === 'MUTUAL_FUND') {
+    if (nameLooksLikeEtf(n) || st.toUpperCase() === 'ETF') return 'Index / ETF';
+    return 'Other';
+  }
+  return 'Other';
+}
+
+export function casImportDetails(opts: {
+  category: AssetCategory;
+  casFileType?: string | null;
+}): HoldingDetails | undefined {
+  if (opts.category !== 'REAL_ESTATE' && opts.category !== 'SPECIALISED') return undefined;
+  const d: HoldingDetails = { altHoldMode: 'DEMAT' };
+  const ft = (opts.casFileType || '').toUpperCase();
+  if (ft === 'NSDL') d.depository = 'NSDL';
+  else if (ft === 'CDSL') d.depository = 'CDSL';
+  return d;
 }
 
 export function isElssSub(subCategory?: string): boolean {
@@ -30,7 +114,8 @@ export function nameLooksLikeEtf(name?: string): boolean {
 export function identifierLabel(
   category: AssetCategory,
   subCategory?: string,
-  heldAs?: MfHeldAs
+  heldAs?: MfHeldAs,
+  details?: HoldingDetails | null
 ): string {
   const sub = subCategory || '';
   if (category === 'EQUITY') return 'NSE/BSE Symbol';
@@ -55,12 +140,16 @@ export function identifierLabel(
     return 'Account number';
   }
   if (category === 'REAL_ESTATE') {
-    if (/\breit\b/i.test(sub)) return 'ISIN';
+    if (isReitLike(sub)) {
+      return details?.altHoldMode === 'LUMPSUM' ? 'Agreement / folio (optional)' : 'ISIN';
+    }
     return 'Survey / door number (optional)';
   }
   if (category === 'SPECIALISED') {
     if (sub === 'PMS') return 'PMS client code';
-    if (sub === 'AIF') return 'Scheme / folio';
+    if (isAifSub(sub)) {
+      return details?.altHoldMode === 'DEMAT' ? 'ISIN' : 'Scheme / folio';
+    }
     if (/unlisted|esop/i.test(sub)) return 'Share certificate / folio';
     return 'Account number';
   }
@@ -95,6 +184,7 @@ export function namePlaceholder(category: AssetCategory, subCategory?: string): 
     return 'e.g. SBI PPF';
   }
   if (category === 'REAL_ESTATE') {
+    if (/\binvit\b/i.test(sub)) return 'e.g. IndiGrid InvIT';
     if (/\breit\b/i.test(sub)) return 'e.g. Embassy Office Parks REIT';
     return 'e.g. 2BHK Flat Indiranagar';
   }
@@ -110,14 +200,18 @@ export function namePlaceholder(category: AssetCategory, subCategory?: string): 
   return 'e.g. PMS mandate';
 }
 
-export function acquiredOnLabel(category: AssetCategory, subCategory?: string): string {
+export function acquiredOnLabel(category: AssetCategory, subCategory?: string, details?: HoldingDetails | null): string {
   if (category === 'EQUITY' || category === 'MUTUAL_FUND') return 'Trade date';
   if (category === 'LIABILITY') return 'Loan start date';
-  if (category === 'REAL_ESTATE' && !/\breit\b/i.test(subCategory || '')) return 'Purchase date';
+  if (category === 'REAL_ESTATE') {
+    if (isReitLike(subCategory) && details?.altHoldMode !== 'LUMPSUM') return 'Trade date';
+    return 'Purchase date';
+  }
   if (category === 'CASH_BANK' || category === 'FIXED_INCOME') {
     if (/bond|nps|fd/i.test(subCategory || '')) return 'Bought on / opened on';
     return 'Balance as of';
   }
+  if (category === 'SPECIALISED' && isAifSub(subCategory) && details?.altHoldMode === 'DEMAT') return 'Trade date';
   if (category === 'SPECIALISED' && /pms|aif/i.test(subCategory || '')) return 'Incept / first close';
   return 'Bought on';
 }
@@ -210,6 +304,12 @@ export function detailsLines(h: Holding): { label: string; value: string }[] {
     return `₹ ${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
   };
   if (h.acquiredOn) out.push({ label: 'From', value: h.acquiredOn });
+  if (d.altHoldMode) {
+    out.push({
+      label: 'Held as',
+      value: d.altHoldMode === 'LUMPSUM' ? 'Direct lumpsum' : 'Demat (CAS)',
+    });
+  }
   if (d.mfPlan) out.push({ label: 'Plan', value: d.mfPlan === 'DIRECT' ? 'Direct' : 'Regular' });
   if (d.mfOption) out.push({ label: 'Option', value: d.mfOption === 'IDCW' ? 'IDCW' : 'Growth' });
   if (d.mfHeldAs) out.push({ label: 'Held as', value: d.mfHeldAs === 'DEMAT' ? 'Demat' : 'SOA folio' });

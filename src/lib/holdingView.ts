@@ -2,6 +2,7 @@ import { AssetCategory, EventType, Holding } from '../types';
 import { DerivedState, marketValueMinor } from './positions';
 import { QTY_SCALE } from './money';
 import { formatStatementDate } from './casPython';
+import { usesUnits } from './holdingForm';
 
 export type ThemeName = 'dark' | 'light';
 export type FamilyBucketId =
@@ -105,10 +106,8 @@ export function eventLabel(type: EventType | string, notes?: string): string {
 export function unitWord(h: Holding): string {
   if (h.category === 'GOLD_SGB') return 'grams';
   if (h.category === 'EQUITY') return 'shares';
-  if (h.category === 'REAL_ESTATE' && /\breit\b/i.test(h.subCategory || '')) return 'units';
-  if (h.category === 'REAL_ESTATE') return '';
   if (h.category === 'SPECIALISED' && /unlisted|esop/i.test(h.subCategory || '')) return 'shares';
-  if (h.category === 'CASH_BANK' || h.category === 'LIABILITY') return '';
+  if (!usesUnits(h.category, h.subCategory, h.details)) return '';
   return 'units';
 }
 

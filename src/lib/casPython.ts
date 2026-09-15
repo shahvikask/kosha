@@ -1,5 +1,6 @@
 import { AssetCategory, StatementImportRecord } from '../types';
 import { CASParseResult, ParsedDematHolding } from './casParser';
+import { recategorizeCasAsset } from './holdingForm';
 
 export type CasFileType = 'CDSL' | 'NSDL' | 'CAMS' | 'KFINTECH' | 'NPS';
 
@@ -240,9 +241,11 @@ export function pythonResultToCasParseResult(
   let i = 1;
 
   for (const h of data.holdings || []) {
-    let category = (h.category || 'MUTUAL_FUND') as AssetCategory;
-    const nm = (h.name || '').toUpperCase();
-    if (/\bSGB\b/.test(nm) || nm.includes('SOVEREIGN GOLD')) category = 'GOLD_SGB';
+    let category = recategorizeCasAsset(
+      h.name || '',
+      (h.category || 'MUTUAL_FUND') as AssetCategory,
+      h.schemeType
+    );
     importRecords.push({
       id: `py_${data.fileType}_${i++}`,
       date: periodTo,
@@ -270,7 +273,8 @@ export function pythonResultToCasParseResult(
       rta: h.rta || undefined,
       amfiCode: h.amfi || undefined,
       advisor: h.advisor || undefined,
-      schemeType: h.schemeType || (category === 'SPECIALISED' ? 'AIF' : undefined),
+      schemeType: h.schemeType
+        || (category === 'SPECIALISED' ? 'AIF' : category === 'REAL_ESTATE' ? 'REIT' : undefined),
       ucc: h.ucc || undefined,
       exchange: h.exchange || undefined,
       dpName: h.dpName || undefined,
@@ -279,9 +283,9 @@ export function pythonResultToCasParseResult(
       casFileType: data.fileType,
     });
 
-    if (category === 'EQUITY' || category === 'SPECIALISED' || category === 'GOLD_SGB') {
+    if (category === 'EQUITY' || category === 'SPECIALISED' || category === 'GOLD_SGB' || category === 'REAL_ESTATE') {
       dematHoldings.push({
-        type: category === 'EQUITY' ? 'EQUITY' : category === 'GOLD_SGB' ? 'GOLD_SGB' : 'SPECIALISED',
+        type: category === 'EQUITY' ? 'EQUITY' : category === 'GOLD_SGB' ? 'GOLD_SGB' : category === 'REAL_ESTATE' ? 'EQUITY' : 'SPECIALISED',
         isin: h.isin || '',
         name: h.name,
         symbol: h.symbol || undefined,

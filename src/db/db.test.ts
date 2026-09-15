@@ -320,6 +320,23 @@ const famSpouse:FamilyMember = {id:'f2',name:'Spouse',relation:'Spouse',color:'#
   eq('MF Direct stored', mfund.details?.mfPlan, 'DIRECT');
   eq('MF Growth stored', mfund.details?.mfOption, 'GROWTH');
   eq('MF SOA folio stored', mfund.details?.mfHeldAs, 'FOLIO');
+  await repo8.upsertHolding({
+    ...hold('h_reit', 'Embassy Office Parks REIT', 350),
+    category: 'REAL_ESTATE',
+    subCategory: 'REIT',
+    exchange: 'NSE',
+    details: { altHoldMode: 'DEMAT' },
+  } as Holding);
+  await repo8.upsertHolding({
+    ...hold('h_aifd', 'Blume Ventures Fund IV', 2500000),
+    category: 'SPECIALISED',
+    subCategory: 'AIF',
+    details: { altHoldMode: 'LUMPSUM', aifCategory: 'I', commitmentMinor: String(2500000 * 10000) },
+  } as Holding);
+  const reit = (await repo8.allHoldings()).find(h => h.id === 'h_reit')!;
+  const aifd = (await repo8.allHoldings()).find(h => h.id === 'h_aifd')!;
+  eq('REIT demat mode stored', reit.details?.altHoldMode, 'DEMAT');
+  eq('AIF lumpsum mode stored', aifd.details?.altHoldMode, 'LUMPSUM');
   await drv8.close();
 
   console.log(`\n${pass} passed, ${fail} failed`);

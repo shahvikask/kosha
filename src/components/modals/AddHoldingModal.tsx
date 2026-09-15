@@ -18,8 +18,10 @@ import {
   identifierLabel,
   inferMfOption,
   inferMfPlan,
+  isAifSub,
   isElssSub,
   isIndexOrEtfSub,
+  isReitLike,
   nameLooksLikeEtf,
   namePlaceholder,
   suggestLockInDates,
@@ -111,8 +113,10 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
   const [chargesRupees, setChargesRupees] = useState('');
 
   const listedPicker = category === 'EQUITY' || category === 'MUTUAL_FUND';
-  const unitAsset = usesUnits(category, subCategory);
-  const isAif = category === 'SPECIALISED' && subCategory === 'AIF';
+  const isAif = category === 'SPECIALISED' && isAifSub(subCategory);
+  const isReit = category === 'REAL_ESTATE' && isReitLike(subCategory);
+  const aifLumpsum = isAif && extra.altHoldMode !== 'DEMAT';
+  const unitAsset = usesUnits(category, subCategory, extra);
   const isPms = category === 'SPECIALISED' && subCategory === 'PMS';
   const isEtf = category === 'MUTUAL_FUND' && (nameLooksLikeEtf(name) || nameLooksLikeEtf(picked?.name));
   const heldAsDemat = extra.mfHeldAs === 'DEMAT' || isEtf;
@@ -132,8 +136,8 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
 
   const linkable = holdings.filter(h => {
     if (h.ownerId !== ownerId) return false;
-    if (category === 'LIABILITY') return h.category === 'REAL_ESTATE' && !/reit/i.test(h.subCategory);
-    if (category === 'REAL_ESTATE' && !/reit/i.test(subCategory)) return h.category === 'LIABILITY';
+    if (category === 'LIABILITY') return h.category === 'REAL_ESTATE' && !/reit|invit/i.test(h.subCategory);
+    if (category === 'REAL_ESTATE' && !/reit|invit/i.test(subCategory)) return h.category === 'LIABILITY';
     return false;
   });
 
@@ -258,7 +262,7 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
 
     let costNum = parseFloat(costPerUnitRupees) || 0;
     let currentPriceNum = parseFloat(currentPriceRupees) || costNum;
-    if (isAif) {
+    if (aifLumpsum) {
       const called = parseFloat(capitalCalledRupees);
       const commit = parseFloat(commitmentRupees);
       if (!costNum) costNum = (!isNaN(called) && called > 0 ? called : (!isNaN(commit) ? commit : 0));
@@ -303,6 +307,8 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
       details.originalTenorMonths = remainNum;
     }
     if (isEtf && !details.mfHeldAs) details.mfHeldAs = 'DEMAT';
+    if (isReit && !details.altHoldMode) details.altHoldMode = 'DEMAT';
+    if (isAif && !details.altHoldMode) details.altHoldMode = 'LUMPSUM';
     if (details.dpId) details.dpId = details.dpId.replace(/\s/g, '').toUpperCase();
     if (details.clientId) details.clientId = details.clientId.replace(/\s/g, '');
     if (details.boId) details.boId = details.boId.replace(/\s/g, '');
@@ -370,13 +376,15 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
   const buyLabel =
     category === 'EQUITY' || /unlisted|esop/i.test(subCategory) ? 'Buy price per share (₹) *'
     : isEtf ? 'Buy price per unit (₹) *'
-    : category === 'MUTUAL_FUND' || /reit/i.test(subCategory) ? 'Buy NAV (₹) *'
+    : category === 'MUTUAL_FUND' ? 'Buy NAV (₹) *'
+    : isReit || isAif ? 'Buy price per unit (₹) *'
     : category === 'GOLD_SGB' ? 'Buy price per gram (₹) *'
     : 'Buy price per unit (₹) *';
   const nowLabel =
     category === 'EQUITY' || /unlisted|esop/i.test(subCategory) ? 'Current price (₹)'
     : isEtf ? 'Current price (₹)'
-    : category === 'MUTUAL_FUND' || /reit/i.test(subCategory) ? 'Current NAV (₹)'
+    : category === 'MUTUAL_FUND' ? 'Current NAV (₹)'
+    : isReit || isAif ? 'Current price (₹)'
     : category === 'GOLD_SGB' ? 'Current price (₹ / g)'
     : 'Current price (₹)';
 
@@ -514,8 +522,8 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
             <div>
               <label className="text-xs font-semibold text-slate-400 block mb-1">
                 {listedPicker
-                  ? identifierLabel(category, subCategory, extra.mfHeldAs)
-                  : identifierLabel(category, subCategory)}
+                  ? identifierLabel(category, subCategory, extra.mfHeldAs, extra)
+                  : identifierLabel(category, subCategory, undefined, extra)}
               </label>
               <input
                 type="text"
@@ -546,8 +554,45 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
 
           {showAcquiredOn && (
             <div>
-              <label className={lbl}>{acquiredOnLabel(category, subCategory)}</label>
+              <label className={lbl}>{acquiredOnLabel(category, subCategory, extra)}</label>
               <input type="date" value={acquiredOn} onChange={e => handleAcquiredOn(e.target.value)} className={inp} />
+            </div>
+          )}
+
+          {(isReit || isAif) && (
+            <div className={panel}>
+              <div>
+                <label className={lbl}>Held as *</label>
+                <select
+                  value={extra.altHoldMode || (isAif ? 'LUMPSUM' : 'DEMAT')}
+                  onChange={e => patchExtra({ altHoldMode: e.target.value as HoldingDetails['altHoldMode'] })}
+                  className={inp}
+                >
+                  <option value="DEMAT">Demat units (on CAS / NSE-BSE)</option>
+                  <option value="LUMPSUM">Direct lumpsum (no units / NAV)</option>
+                </select>
+              </div>
+              {isAif && (
+                <div>
+                  <label className={lbl}>{aifLumpsum ? 'AIF category *' : 'AIF category'}</label>
+                  <select
+                    required={aifLumpsum}
+                    value={extra.aifCategory || ''}
+                    onChange={e => patchExtra({ aifCategory: (e.target.value || undefined) as HoldingDetails['aifCategory'] })}
+                    className={inp}
+                  >
+                    <option value="">Select</option>
+                    <option value="I">Category I (venture / SME / infra / social)</option>
+                    <option value="II">Category II (PE / debt, no leverage)</option>
+                    <option value="III">Category III (hedge / listed)</option>
+                  </select>
+                </div>
+              )}
+              <p className="sm:col-span-2 text-[11px] text-slate-500">
+                {extra.altHoldMode === 'LUMPSUM' || (isAif && extra.altHoldMode !== 'DEMAT')
+                  ? 'Direct allotment is an amount in rupees — no units or NAV. Use this for private REIT / AIF cheques.'
+                  : 'Listed REIT / InvIT / demat AIF units show on CDSL or NSDL CAS like shares.'}
+              </p>
             </div>
           )}
 
@@ -608,17 +653,8 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
                 EMI is recorded automatically each due month and outstanding is reduced, unless you pause or stop it on the loan page.
               </p>
             </div>
-          ) : isAif ? (
+          ) : aifLumpsum ? (
             <div className={panel}>
-              <div>
-                <label className={lbl}>AIF category *</label>
-                <select required value={extra.aifCategory || ''} onChange={e => patchExtra({ aifCategory: (e.target.value || undefined) as HoldingDetails['aifCategory'] })} className={inp}>
-                  <option value="">Select</option>
-                  <option value="I">Category I (venture / SME / infra / social)</option>
-                  <option value="II">Category II (PE / debt, no leverage)</option>
-                  <option value="III">Category III (hedge / listed)</option>
-                </select>
-              </div>
               <div>
                 <label className={lbl}>Commitment (₹) *</label>
                 <input type="number" step="any" required placeholder="e.g. 2500000" value={commitmentRupees} onChange={e => setCommitmentRupees(e.target.value)} className={inp} />
@@ -628,7 +664,7 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
                 <input type="number" step="any" placeholder="Drawn so far" value={capitalCalledRupees} onChange={e => { setCapitalCalledRupees(e.target.value); if (!costPerUnitRupees) setCostPerUnitRupees(e.target.value); }} className={inp} />
               </div>
               <div>
-                <label className={lbl}>Current NAV / value (₹) *</label>
+                <label className={lbl}>Current value (₹) *</label>
                 <input type="number" step="any" required placeholder="From the last statement" value={currentPriceRupees} onChange={e => setCurrentPriceRupees(e.target.value)} className={inp} />
               </div>
               <div className="sm:col-span-2">
@@ -1129,20 +1165,42 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
             </div>
           )}
 
-          {category === 'REAL_ESTATE' && /reit/i.test(subCategory) && (
+          {category === 'REAL_ESTATE' && isReitLike(subCategory) && extra.altHoldMode !== 'LUMPSUM' && (
             <div className={panel}>
               <div>
                 <label className="text-xs font-semibold text-slate-300 block mb-1">ISIN</label>
                 <input type="text" placeholder="INE0410…" value={isinManual} onChange={e => setIsinManual(e.target.value)} className={inp + ' font-mono uppercase'} />
               </div>
               <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1">Exchange / AMC</label>
-                <input type="text" placeholder="e.g. NSE" value={institutionName} onChange={e => setInstitutionName(e.target.value)} className={inp} />
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Exchange</label>
+                <input type="text" placeholder="e.g. NSE" value={listedExchange || institutionName} onChange={e => { setListedExchange(e.target.value.toUpperCase()); setInstitutionName(e.target.value); }} className={inp} />
               </div>
             </div>
           )}
 
-          {category === 'REAL_ESTATE' && !/reit/i.test(subCategory) && (
+          {category === 'REAL_ESTATE' && isReitLike(subCategory) && extra.altHoldMode === 'LUMPSUM' && (
+            <div className={panel}>
+              <div className="sm:col-span-2">
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Manager / vehicle</label>
+                <input type="text" placeholder="e.g. Embassy sponsor SPV" value={institutionName} onChange={e => setInstitutionName(e.target.value)} className={inp} />
+              </div>
+            </div>
+          )}
+
+          {isAif && extra.altHoldMode === 'DEMAT' && (
+            <div className={panel}>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">ISIN</label>
+                <input type="text" placeholder="INF…" value={isinManual} onChange={e => setIsinManual(e.target.value)} className={inp + ' font-mono uppercase'} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Fund manager / AIF</label>
+                <input type="text" placeholder="e.g. Edelweiss" value={institutionName} onChange={e => setInstitutionName(e.target.value)} className={inp} />
+              </div>
+            </div>
+          )}
+
+          {category === 'REAL_ESTATE' && !isReitLike(subCategory) && (
             <div className={panel}>
               <div className="sm:col-span-2">
                 <label className="text-xs font-semibold text-slate-300 block mb-1">Property location / address</label>

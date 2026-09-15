@@ -60,6 +60,7 @@ import {
 import { planEmiCatchUp, applyEmiPlan } from '../lib/emi';
 import { findDuplicatePanMember } from '../lib/pan';
 import { applyCatalogPrices, catalogToListed, isEodPriceSource, refreshEodFromSidecar } from '../lib/eodPrices';
+import { casHoldingSubCategory, casImportDetails } from '../lib/holdingForm';
 
 interface KoshaContextType {
   familyMembers: FamilyMember[];
@@ -1000,9 +1001,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           symbolOrFolio: rec.folio || rec.isin || rec.holdingName.substring(0, 12).toUpperCase(),
           isin: rec.isin,
           category: rec.category,
-          subCategory: rec.schemeType === 'AIF'
-            ? 'AIF Category II'
-            : rec.category === 'SPECIALISED' ? 'AIF Category II' : rec.category === 'EQUITY' ? 'Listed Equity' : 'Mutual Fund',
+          subCategory: casHoldingSubCategory(rec.category, rec.holdingName, rec.schemeType),
           ownerId: effectiveOwnerId,
           quantityScaled: '0',
           averageCostPerUnitMinor: priceMinor,
@@ -1020,6 +1019,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           dpName: rec.dpName,
           institutionName: rec.dpName,
           accountNumberMasked: rec.folio || rec.dematAccount,
+          details: casImportDetails({ category: rec.category, casFileType: rec.casFileType }),
         };
         currentWorkingHoldings = [newHolding, ...currentWorkingHoldings];
         if (repo) await repo.upsertHolding(newHolding);
@@ -1103,11 +1103,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             symbolOrFolio: rec.folio || rec.isin || rec.holdingName.substring(0, 12).toUpperCase(),
             isin: rec.isin,
             category: rec.category,
-            subCategory: rec.schemeType === 'NPS'
-              ? 'NPS'
-              : rec.schemeType === 'AIF'
-              ? 'AIF Category II'
-              : rec.category === 'SPECIALISED' ? 'AIF Category II' : rec.category === 'EQUITY' ? 'Listed Equity' : 'Mutual Fund',
+            subCategory: casHoldingSubCategory(rec.category, rec.holdingName, rec.schemeType),
             ownerId: effectiveOwnerId,
             quantityScaled: '0',
             averageCostPerUnitMinor: avgCostMinor,
@@ -1126,6 +1122,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             institutionName: rec.dpName,
             accountNumberMasked: rec.folio || rec.dematAccount,
             accountId: acctId,
+            details: casImportDetails({ category: rec.category, casFileType: rec.casFileType }),
           };
           currentWorkingHoldings = [newH, ...currentWorkingHoldings];
           if (repo) await repo.upsertHolding(newH);
@@ -1141,10 +1138,19 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           const nameUpgrade = betterName !== matched.name;
           const isinUpgrade = Boolean(!matched.isin && rec.isin);
           const amfiUpgrade = Boolean(!matched.amfiCode && rec.amfiCode);
-          if (isNewer || nameUpgrade || isinUpgrade || amfiUpgrade) {
+          const importedDetails = casImportDetails({ category: rec.category, casFileType: rec.casFileType });
+          const categoryUpgrade =
+            (rec.category === 'REAL_ESTATE' || rec.category === 'SPECIALISED') &&
+            matched.category !== rec.category;
+          const detailsUpgrade = Boolean(importedDetails && !matched.details?.altHoldMode);
+          if (isNewer || nameUpgrade || isinUpgrade || amfiUpgrade || categoryUpgrade || detailsUpgrade) {
             const updatedH: Holding = {
               ...matched,
               name: betterName,
+              category: categoryUpgrade ? rec.category : matched.category,
+              subCategory: categoryUpgrade
+                ? casHoldingSubCategory(rec.category, rec.holdingName, rec.schemeType)
+                : matched.subCategory,
               currentPriceMinor: isNewer ? priceMinor : matched.currentPriceMinor,
               lastPriceUpdated: isNewer
                 ? (rec.date ? `${rec.date}T00:00:00.000Z` : new Date().toISOString())
@@ -1157,6 +1163,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               amfiCode: matched.amfiCode || rec.amfiCode,
               dpName: matched.dpName || rec.dpName,
               isin: matched.isin || rec.isin,
+              details: importedDetails ? { ...matched.details, ...importedDetails } : matched.details,
             };
             if (repo) await repo.upsertHolding(updatedH);
             currentWorkingHoldings = currentWorkingHoldings.map(h => h.id === matched!.id ? updatedH : h);
