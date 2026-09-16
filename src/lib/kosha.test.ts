@@ -6,9 +6,11 @@ import { xirr } from './returns';
 import { classifyHolding, EXPOSURES, WRAPPERS, exposureLabel, l2Label } from './taxonomy';
 import { resolveSplit, apportion, buildTree, isHybrid, activeWrappers } from './lookthrough';
 import { LedgerEvent, Holding } from '../types';
-import { eventLabel, bucketOf, upcomingFromHoldings, displayHoldingName, accountTitle, inferAmcFromSchemeName, looksLikeSgb, metricsOf, isOpenPosition } from './holdingView';
+import { eventLabel, bucketOf, upcomingFromHoldings, displayHoldingName, accountTitle, inferAmcFromSchemeName, looksLikeSgb, metricsOf, isOpenPosition, orderBucketsByPresence } from './holdingView';
 import { formatStatementDate, latestAsOfForOwner, statementAsOfByMember, parseCasLatest, npsStatementPassword, statementPasswordsToTry } from './casPython';
 import { addCalendarMonths, dueEmiDates, planEmiCatchUp, resumeEmiDate } from './emi';
+import { planInterestCatchUp, fyEndDatesAfter, monthsHeldInFy, interestMinor, interestKindOf, interestSpecOf } from './interest';
+import { planInvestedCorrection, earliestActiveParcel } from './costBasis';
 import { absoluteReturnPct, incomeByFinancialYear, buildGrowthModel, formatPct } from './growth';
 import { profileOf, holdingReturn, isStatementOnlyHistory } from './returnMetrics';
 import { titleCaseName, passwordIssues, isValidPan, isValidEmail, normaliseAnswer, needsPasswordRotation, packHash, unpackHash, hashSecret, verifySecret } from './auth';
@@ -16,6 +18,7 @@ import { checkImportPan, pansMatch, panBlocksCommit, findDuplicatePanMember, pan
 import { applyCatalogPrices, catalogToListed, searchListed, isEodPriceSource } from './eodPrices';
 import { findMatchingHolding, holdingIdentityKey, isPlaceholderName, preferSchemeName } from './matchHolding';
 import { StatementImportRecord } from '../types';
+import { buildBooksHealth, concentrationOf, daysBetweenIso, freshnessTone, previousFinancialYear, fyEndIso } from './homeDashboard';
 import { usesUnits, identifierLabel, suggestLockInDates, looksLikeUan, looksLikePran, looksLikeNsdlDpId, looksLikeNsdlClientId, looksLikeBoid, defaultSgbCoupon, inferMfPlan, inferMfOption, nameLooksLikeEtf, dematAccountMask, detailsLines, recategorizeCasAsset, casHoldingSubCategory, casImportDetails, nameLooksLikeReit, nameLooksLikeAif } from './holdingForm';
 
 let pass=0, fail=0;
@@ -227,6 +230,11 @@ eq('equity bucket', bucketOf(H('Reliance','EQUITY','Large Cap')), 'SHARES');
 eq('MF bucket', bucketOf(H('HDFC Flexi Cap','MUTUAL_FUND','Flexi Cap')), 'FUNDS');
 eq('SGB bucket', bucketOf(H('SGB 2020','GOLD_SGB','SGB')), 'GOLD');
 eq('PPF bucket', bucketOf(H('PPF','FIXED_INCOME','Govt Small Savings (EEE)')), 'GOVT');
+const chipOrder = orderBucketsByPresence(['SHARES', 'FUNDS', 'SPECIAL']);
+eq('used classes sit together first', chipOrder.filter(b => !b.empty).map(b => b.id).join(','), 'SHARES,FUNDS,SPECIAL');
+eq('empty classes trail', chipOrder.filter(b => b.empty).map(b => b.id).join(','), 'GOLD,GOVT,PROPERTY,BANK,LOAN');
+eq('loans gray when unused', chipOrder.find(b => b.id === 'LOAN')?.empty, true);
+eq('shares not gray when used', chipOrder.find(b => b.id === 'SHARES')?.empty, false);
 eq('statement date IST-safe', formatStatementDate('2026-03-31'), '31 March 2026');
 const up = upcomingFromHoldings(
   [H('SGB 2020','GOLD_SGB','SGB',1,{nextCouponDate:'2099-11-15',maturityDate:'2099-11-15'})],
@@ -633,6 +641,164 @@ eq('CAS AIF sub not Category II', casHoldingSubCategory('SPECIALISED', 'Edelweis
 eq('CAS REIT details are demat', casImportDetails({ category: 'REAL_ESTATE', casFileType: 'CDSL' })?.altHoldMode, 'DEMAT');
 eq('direct REIT id is agreement', identifierLabel('REAL_ESTATE', 'REIT', undefined, { altHoldMode: 'LUMPSUM' }), 'Agreement / folio (optional)');
 eq('demat AIF id is ISIN', identifierLabel('SPECIALISED', 'AIF', undefined, { altHoldMode: 'DEMAT' }), 'ISIN');
+
+console.log('\n--- W. Cost basis from your records, FY-end interest ---');
+const casOpen = ev('ob_rel', 'OPENING_BALANCE', '2026-08-31', 139, 1285, 'h_rel');
+eq('opening parcel is the CAS line', earliestActiveParcel([casOpen], 'h_rel')?.id, 'ob_rel');
+const relH: Holding = {
+  ...hold('h_rel', 'EQUITY', 139, 1285, 1285, 'Other'),
+  name: 'RELIANCE INDUSTRIES LIMITED EQUITY SHARES',
+};
+const paid = planInvestedCorrection({
+  holding: relH,
+  events: [casOpen],
+  unitPriceMinor: BigInt(Math.round(850 * 1e4)),
+  acquiredOn: '2021-03-15',
+});
+eq('correction keeps 139 shares', Number(BigInt(paid!.quantityScaled)) / 1e8, 139);
+eq('correction unit is 850', Number(BigInt(paid!.unitPriceMinor)) / 1e4, 850);
+eq('correction dated to trade date', paid!.eventDate, '2021-03-15');
+const paidFold = foldHolding([casOpen, { ...paid!, id: 'cor_rel', createdAt: 't' }], 'EQUITY');
+eq('invested is qty × paid', Math.round(Number(paidFold.totalCostMinor) / 1e4), 139 * 850);
+eq('same price and date is a no-op', planInvestedCorrection({
+  holding: relH, events: [casOpen],
+  unitPriceMinor: BigInt(Math.round(1285 * 1e4)), acquiredOn: '2026-08-31',
+}), null);
+
+eq('FY ends after CAS date skip 31 Mar 2026', fyEndDatesAfter('2026-08-31', '2026-09-15').join(','), '');
+eq('next FY end after Aug is Mar 2027', fyEndDatesAfter('2026-08-31', '2027-03-31').join(','), '2027-03-31');
+eq('SGB from purchase fills 31 Mar dates', fyEndDatesAfter('2018-09-08', '2020-03-31').join(','), '2019-03-31,2020-03-31');
+eq('full FY is 12 months', monthsHeldInFy('2011-04-01', '2026-03-31'), 12);
+eq('bought Sep is 6 months to Mar', monthsHeldInFy('2018-09-08', '2019-03-31'), 6);
+eq('2.5% of 1 lakh for a year', Number(interestMinor(1_000_000_000n, 2.5, 12)) / 1e4, 2500);
+
+const sgbH: Holding = {
+  ...hold('h_sgb2', 'GOLD_SGB', 10, 7200, 7200, 'Sovereign Gold Bond'),
+  name: 'SGB 2018-19 Series VI',
+  couponRatePercent: 2.5,
+  issuePriceMinor: String(3119 * 10000),
+  acquiredOn: '2018-09-08',
+  lastPriceUpdated: '2026-08-31T00:00:00Z',
+};
+eq('SGB is payout interest', interestKindOf(sgbH), 'SGB');
+eq('SGB principal is grams × issue', Number(interestSpecOf(sgbH)!.principalMinor) / 1e4, 31190);
+const sgbPlan = planInterestCatchUp(sgbH, '2020-03-31', []);
+eq('SGB posts two FY coupons', sgbPlan?.events.length, 2);
+eq('SGB first coupon on 31 Mar 2019', sgbPlan?.events[0].eventDate, '2019-03-31');
+eq('SGB does not add to gold value', sgbPlan?.currentPriceMinor, undefined);
+eq('SGB coupon is on issue not CMP', Number(BigInt(sgbPlan!.events[1].totalAmountMinor)) / 1e4 > 700, true);
+const sgbAgain = planInterestCatchUp(sgbH, '2020-03-31', sgbPlan!.events.map(e => e.eventDate));
+eq('SGB catch-up is idempotent', sgbAgain, null);
+
+const ppfW: Holding = {
+  ...hold('h_ppf2', 'FIXED_INCOME', 1, 1450000, 1940000, 'PPF'),
+  name: 'Public Provident Fund',
+  interestRatePercent: 7.1,
+  acquiredOn: '2011-04-01',
+  lastPriceUpdated: '2026-08-31T00:00:00Z',
+};
+eq('PPF is compound interest', interestKindOf(ppfW), 'PPF');
+eq('PPF does not backfill before last valuation', planInterestCatchUp(ppfW, '2026-09-15', []), null);
+const ppfFwd = planInterestCatchUp(ppfW, '2027-03-31', []);
+eq('PPF posts the next 31 March', ppfFwd?.events.length, 1);
+eq('PPF credit date', ppfFwd?.events[0].eventDate, '2027-03-31');
+eq('PPF balance grows by the interest', BigInt(ppfFwd!.currentPriceMinor!) > BigInt(ppfW.currentPriceMinor), true);
+
+const epfW: Holding = { ...ppfW, id: 'h_epf2', name: 'EPFO', subCategory: 'EPF', interestRatePercent: 8.25 };
+eq('EPF kind', interestKindOf(epfW), 'EPF');
+const ssyW: Holding = { ...ppfW, id: 'h_ssy2', name: 'SSY daughter', subCategory: 'Sukanya Samriddhi (SSY)', interestRatePercent: 8.2 };
+eq('SSY kind', interestKindOf(ssyW), 'SSY');
+const fdW: Holding = {
+  ...hold('h_fd2', 'FIXED_INCOME', 1, 1000000, 1000000, 'Bank FD'),
+  name: 'HDFC 3-year FD',
+  interestRatePercent: 7.5,
+  lastPriceUpdated: '2026-08-31T00:00:00Z',
+};
+eq('FD kind', interestKindOf(fdW), 'FD');
+eq('FD without rate uses none if 0', interestKindOf({ ...fdW, interestRatePercent: undefined }), 'FD');
+eq('FD needs a rate to post', planInterestCatchUp({ ...fdW, interestRatePercent: undefined }, '2027-03-31', []), null);
+const fdPay: Holding = { ...fdW, details: { compounding: 'QUARTERLY' } };
+const fdPayPlan = planInterestCatchUp(fdPay, '2027-03-31', []);
+eq('payout FD does not raise the deposit', fdPayPlan?.currentPriceMinor, undefined);
+const aifH: Holding = { ...hold('h_aif2', 'SPECIALISED', 25000, 170, 170, 'AIF'), name: 'INDIA DISCOVERY FUND II - CLASS B1' };
+eq('AIF is not an interest product', interestKindOf(aifH), null);
+
+console.log('\n--- X. Home books health, concentration, freshness ---');
+eq('days 12 Sep to 16 Sep', daysBetweenIso('2026-09-12', '2026-09-16'), 4);
+eq('previous FY of 2026-27', previousFinancialYear('2026-27'), '2025-26');
+eq('FY 2025-26 ends', fyEndIso('2025-26'), '2026-03-31');
+eq('fresh dates are ok', freshnessTone({ statementAsOf: '2026-09-12', pricesAsOf: '2026-09-16', todayIso: '2026-09-16' }), 'ok');
+eq('old statement is amber', freshnessTone({ statementAsOf: '2026-07-01', pricesAsOf: '2026-09-16', todayIso: '2026-09-16' }), 'amber');
+eq('very old statement is red', freshnessTone({ statementAsOf: '2026-04-01', pricesAsOf: '2026-09-16', todayIso: '2026-09-16' }), 'red');
+const dashDerived = { positions: new Map(), errors: [] as string[] };
+const eqCost = hold('h_eq', 'EQUITY', 10, 100, 100, 'Large Cap');
+eqCost.name = 'Reliance';
+const healthEq = buildBooksHealth({
+  holdings: [eqCost],
+  events: [],
+  derived: dashDerived,
+  members: [{ id: 'f1', name: 'You', relation: 'Self', color: '#f59e0b' }],
+  casLatest: { asOf: null, byOwner: {} },
+  selectedMemberId: 'ALL',
+  sgbMode: 'MARKET_TRADED',
+  todayIso: '2026-09-16',
+});
+eq('invested = CMV is flagged', healthEq.findings.some(f => f.kind === 'COST_EQUALS_VALUE'), true);
+eq('health is amber not red', healthEq.tone, 'amber');
+const moved = hold('h_eq2', 'EQUITY', 10, 100, 140, 'Large Cap');
+moved.name = 'TCS';
+const healthOk = buildBooksHealth({
+  holdings: [moved],
+  events: [],
+  derived: dashDerived,
+  members: [{ id: 'f1', name: 'You', relation: 'Self', color: '#f59e0b' }],
+  casLatest: { asOf: null, byOwner: {} },
+  selectedMemberId: 'ALL',
+  sgbMode: 'MARKET_TRADED',
+  todayIso: '2026-09-16',
+});
+eq('true gain is not a cost flag', healthOk.findings.some(f => f.kind === 'COST_EQUALS_VALUE'), false);
+const staleCas = parseCasLatest(JSON.stringify({
+  asOf: '2026-06-01',
+  byOwner: { f1: { CDSL: { fileType: 'CDSL', filename: 'cas.pdf', periodTo: '2026-06-01' } } },
+}));
+const healthStale = buildBooksHealth({
+  holdings: [moved],
+  events: [],
+  derived: dashDerived,
+  members: [{ id: 'f1', name: 'You', relation: 'Self', color: '#f59e0b' }],
+  casLatest: staleCas,
+  selectedMemberId: 'ALL',
+  sgbMode: 'MARKET_TRADED',
+  todayIso: '2026-09-16',
+});
+eq('stale CDSL is flagged', healthStale.findings.some(f => f.kind === 'STALE_STATEMENT'), true);
+eq('missing PAN with CAS is flagged', healthStale.findings.some(f => f.kind === 'MEMBER_PAN_MISSING'), true);
+const ppf = hold('h_ppf', 'FIXED_INCOME', 1, 500000, 500000, 'PPF');
+ppf.name = 'PPF SBI';
+ppf.acquiredOn = '2020-04-01';
+const healthPpf = buildBooksHealth({
+  holdings: [ppf],
+  events: [{
+    id: 'ob', holdingId: 'h_ppf', holdingName: 'PPF SBI', ownerId: 'f1', eventType: 'OPENING_BALANCE',
+    eventDate: '2020-04-01', quantityScaled: ppf.quantityScaled, unitPriceMinor: ppf.averageCostPerUnitMinor,
+    totalAmountMinor: String(500000 * 10000), createdAt: 't',
+  }],
+  derived: dashDerived,
+  members: [{ id: 'f1', name: 'You', relation: 'Self', color: '#f59e0b', panForStatements: 'ABCDE1234F' }],
+  casLatest: { asOf: null, byOwner: {} },
+  selectedMemberId: 'ALL',
+  sgbMode: 'MARKET_TRADED',
+  todayIso: '2026-09-16',
+});
+eq('PPF without last-FY interest is flagged', healthPpf.findings.some(f => f.kind === 'MISSING_FY_INTEREST'), true);
+const conc = concentrationOf([
+  { id: 'a', name: 'A', valueMinor: 60n * 10000n * 100n },
+  { id: 'b', name: 'B', valueMinor: 30n * 10000n * 100n },
+  { id: 'c', name: 'C', valueMinor: 10n * 10000n * 100n },
+], 100n * 10000n * 100n, 2);
+eq('top 2 share', Math.round(conc.topSharePct), 90);
+eq('largest is A', conc.rows[0].name, 'A');
 
 console.log('\n--- H. Encryption ---');
 (async()=>{

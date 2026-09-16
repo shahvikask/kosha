@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useKosha } from '../../context/KoshaContext';
 import { ASSET_CATEGORIES, EmiStatus } from '../../types';
-import { MoneyEngine } from '../../lib/money';
+import { MoneyEngine, QTY_SCALE } from '../../lib/money';
 import { PrivacyValue, PrivacyDelta } from '../common/PrivacyValue';
 import {
   metricsOf,
@@ -13,8 +13,8 @@ import {
 } from '../../lib/holdingView';
 import { X, Edit3, Plus, Trash2, Calendar, Coins } from 'lucide-react';
 import { resumeEmiDate } from '../../lib/emi';
-import { holdingReturn } from '../../lib/returnMetrics';
-import { detailsLines, nameLooksLikeEtf } from '../../lib/holdingForm';
+import { holdingReturn, isStatementOnlyHistory } from '../../lib/returnMetrics';
+import { detailsLines, nameLooksLikeEtf, usesUnits } from '../../lib/holdingForm';
 
 interface HoldingDetailModalProps {
   holdingId: string | null;
@@ -35,6 +35,7 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
     updateHolding,
     updateHoldingPrice,
     deleteHolding,
+    correctInvested,
     sgbValuationMode,
     derived,
   } = useKosha();
@@ -51,6 +52,15 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
   const [editEmi, setEditEmi] = useState('');
   const [editRemaining, setEditRemaining] = useState('');
   const [editRate, setEditRate] = useState('');
+  const [editInvested, setEditInvested] = useState('');
+  const [editAcquiredOn, setEditAcquiredOn] = useState('');
+  const [editIssuePrice, setEditIssuePrice] = useState('');
+
+  useEffect(() => {
+    setIsEditingAll(false);
+    setIsEditingPrice(false);
+    setNewPriceInput('');
+  }, [holdingId]);
 
   if (!holdingId) return null;
   const holding = holdings.find(h => h.id === holdingId);
@@ -65,21 +75,38 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
   const acct = accounts.find(a => a.id === holding.accountId);
   const isElss = /elss|tax.?sav/i.test(`${holding.name} ${holding.subCategory} ${holding.schemeType || ''}`);
   const isGovt = /ppf|epf|nps|sukanya|ssy/i.test(`${holding.name} ${holding.subCategory}`);
+  const isSgb = holding.category === 'GOLD_SGB' && /sovereign|^sgb$/i.test(holding.subCategory || 'Sovereign');
+  const unitBased = usesUnits(holding.category, holding.subCategory, holding.details);
+  const paidPerUnitMinor = m.qty > 0n ? (m.cost * QTY_SCALE) / m.qty : m.cost;
+  const paidPerUnitRupees = MoneyEngine.toRupees(paidPerUnitMinor);
+  const statementOnly = isStatementOnlyHistory(holdingEvents);
+  const investedLooksLikeCmp = !catInfo.isLiability && m.cost > 0n && m.value > 0n && (
+    m.cost === m.value || (m.cost > m.value ? m.cost - m.value : m.value - m.cost) < 10_000n
+  );
 
   const handleStartEditAll = () => {
     setEditName(holding.name);
     setEditSymbol(holding.symbolOrFolio);
     setEditPrice(MoneyEngine.toRupees(m.price).toString());
-    setEditCoupon(holding.couponRatePercent != null ? String(holding.couponRatePercent) : '');
+    setEditCoupon(
+      isSgb
+        ? String(holding.couponRatePercent ?? 2.5)
+        : holding.category === 'FIXED_INCOME'
+          ? (holding.interestRatePercent != null ? String(holding.interestRatePercent) : '')
+          : (holding.couponRatePercent != null ? String(holding.couponRatePercent) : '')
+    );
     setEditNextCoupon(holding.nextCouponDate || '');
     setEditMaturity(holding.maturityDate || '');
     setEditEmi(holding.monthlyEmiMinor ? String(MoneyEngine.toRupees(BigInt(holding.monthlyEmiMinor))) : '');
     setEditRemaining(holding.remainingEmiCount != null ? String(holding.remainingEmiCount) : '');
     setEditRate(holding.interestRatePercent != null ? String(holding.interestRatePercent) : '');
+    setEditInvested(paidPerUnitRupees > 0 ? String(paidPerUnitRupees) : '');
+    setEditAcquiredOn(holding.acquiredOn || '');
+    setEditIssuePrice(holding.issuePriceMinor ? String(MoneyEngine.toRupees(BigInt(holding.issuePriceMinor))) : '');
     setIsEditingAll(true);
   };
 
-  const handleSaveEditAll = () => {
+  const handleSaveEditAll = async () => {
     const priceVal = parseFloat(editPrice);
     if (!editName.trim()) return;
     if (isNaN(priceVal) || priceVal < 0) return;
@@ -87,19 +114,40 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
     const rate = parseFloat(editRate);
     const emiVal = parseFloat(editEmi);
     const remainVal = parseInt(editRemaining, 10);
-    updateHolding(holding.id, {
+    const investedVal = parseFloat(editInvested);
+    const issueVal = parseFloat(editIssuePrice);
+    const ratePatch =
+      holding.category === 'GOLD_SGB'
+        ? { couponRatePercent: !isNaN(coupon) ? coupon : holding.couponRatePercent ?? 2.5 }
+        : holding.category === 'FIXED_INCOME'
+          ? { interestRatePercent: !isNaN(coupon) ? coupon : holding.interestRatePercent }
+          : { interestRatePercent: !isNaN(rate) ? rate : holding.interestRatePercent };
+    await updateHolding(holding.id, {
       name: editName.trim(),
       symbolOrFolio: editSymbol.trim() || holding.symbolOrFolio,
       currentPriceMinor: MoneyEngine.fromRupees(priceVal).toString(),
       lastPriceUpdated: new Date().toISOString(),
       priceSource: 'Manual Verified Entry',
-      couponRatePercent: !isNaN(coupon) ? coupon : holding.couponRatePercent,
-      interestRatePercent: !isNaN(rate) ? rate : holding.interestRatePercent,
+      ...ratePatch,
       nextCouponDate: editNextCoupon || undefined,
       maturityDate: editMaturity || undefined,
+      ...(!isNaN(issueVal) && issueVal > 0
+        ? { issuePriceMinor: MoneyEngine.fromRupees(issueVal).toString() }
+        : {}),
       monthlyEmiMinor: !isNaN(emiVal) && emiVal > 0 ? MoneyEngine.fromRupees(emiVal).toString() : holding.monthlyEmiMinor,
       remainingEmiCount: !isNaN(remainVal) ? remainVal : holding.remainingEmiCount,
+      ...(editAcquiredOn ? { acquiredOn: editAcquiredOn } : {}),
     });
+    if (!catInfo.isLiability && !isNaN(investedVal) && investedVal > 0) {
+      const when = editAcquiredOn || holding.acquiredOn;
+      if (when) {
+        await correctInvested(holding.id, {
+          unitPriceRupees: investedVal,
+          acquiredOn: when,
+          issuePriceRupees: !isNaN(issueVal) && issueVal > 0 ? issueVal : undefined,
+        });
+      }
+    }
     setIsEditingAll(false);
   };
 
@@ -192,6 +240,58 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
                   style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--text)' }}
                 />
               </label>
+              {!catInfo.isLiability && (
+                <>
+                  <label className="block">
+                    <span style={{ color: 'var(--muted)' }}>
+                      {unitBased && holding.category === 'EQUITY'
+                        ? 'Price you paid (₹ / share)'
+                        : unitBased && isSgb
+                          ? 'Price you paid (₹ / g)'
+                          : unitBased
+                            ? 'Amount you paid (₹ / unit)'
+                            : 'Amount you put in (₹)'}
+                    </span>
+                    <input
+                      type="number"
+                      step="any"
+                      value={editInvested}
+                      onChange={e => setEditInvested(e.target.value)}
+                      className="w-full mt-1 px-3 py-2 rounded-xl border"
+                      style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--text)' }}
+                    />
+                  </label>
+                  <label className="block">
+                    <span style={{ color: 'var(--muted)' }}>
+                      {holding.category === 'EQUITY' || (holding.category === 'SPECIALISED' && unitBased)
+                        ? 'Trade / purchase date'
+                        : holding.category === 'FIXED_INCOME'
+                          ? 'Account opened / bought on'
+                          : 'Bought on'}
+                    </span>
+                    <input
+                      type="date"
+                      value={editAcquiredOn}
+                      onChange={e => setEditAcquiredOn(e.target.value)}
+                      className="w-full mt-1 px-3 py-2 rounded-xl border"
+                      style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--text)' }}
+                    />
+                  </label>
+                  {isSgb && (
+                    <label className="block">
+                      <span style={{ color: 'var(--muted)' }}>Issue price (₹ / g)</span>
+                      <input
+                        type="number"
+                        step="any"
+                        value={editIssuePrice}
+                        onChange={e => setEditIssuePrice(e.target.value)}
+                        className="w-full mt-1 px-3 py-2 rounded-xl border"
+                        style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--text)' }}
+                      />
+                    </label>
+                  )}
+                </>
+              )}
               {(holding.category === 'GOLD_SGB' || holding.category === 'FIXED_INCOME') && (
                 <>
                   <label className="block">
@@ -276,7 +376,7 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
               )}
             </div>
             <p className="text-[11px]" style={{ color: 'var(--muted)' }}>
-              Units come from your statement. To change them, record a buy or sell.
+              CDSL/NSDL holdings statements print today's market price, not what you paid. Put in (Invested) and absolute return use the price you paid. Units still come from the statement — record a buy or sell to change them.
             </p>
             <div className="flex gap-2">
               <button
@@ -305,6 +405,16 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
               {catInfo.isLiability ? 'Original loan' : 'Put in (Invested)'}
             </div>
             <PrivacyValue minor={m.cost} className="text-xl font-bold" includePaise={false} />
+            {(statementOnly || investedLooksLikeCmp) && (
+              <button
+                type="button"
+                onClick={handleStartEditAll}
+                className="text-[11px] mt-1 text-left"
+                style={{ color: 'var(--accent)' }}
+              >
+                Statement has no buy price — add what you paid
+              </button>
+            )}
           </div>
           {!catInfo.isLiability && (
           <div className="p-4 rounded-2xl border" style={{ borderColor: 'var(--border)', background: 'var(--input)' }}>
@@ -467,7 +577,13 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
               <div className="text-sm flex items-center gap-2">
                 <Coins className="w-3.5 h-3.5" />
                 {holding.couponRatePercent}% a year
-                {holding.category === 'GOLD_SGB' ? ' (gold bond interest, twice a year)' : ''}
+                {holding.category === 'GOLD_SGB' ? ' (gold bond interest; booked on 31 March)' : ''}
+              </div>
+            )}
+            {holding.interestRatePercent != null && holding.category === 'FIXED_INCOME' && (
+              <div className="text-sm flex items-center gap-2">
+                <Coins className="w-3.5 h-3.5" />
+                {holding.interestRatePercent}% a year (credited 31 March)
               </div>
             )}
             {holding.nextCouponDate && (

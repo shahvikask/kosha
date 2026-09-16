@@ -1,7 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useKosha } from '../../context/KoshaContext';
 import { PrivacyValue, PrivacyDelta } from '../common/PrivacyValue';
-import { FAMILY_BUCKETS, FamilyBucketId, bucketOf, metricsOf, plainCategory, unitWord, whereHeld, displayHoldingName, isOpenPosition } from '../../lib/holdingView';
+import { FamilyBucketId, bucketOf, metricsOf, plainCategory, unitWord, whereHeld, displayHoldingName, isOpenPosition, orderBucketsByPresence } from '../../lib/holdingView';
 import { MoneyEngine } from '../../lib/money';
 import { Search, Plus, ChevronRight, SlidersHorizontal, UserRound, X } from 'lucide-react';
 import { absoluteReturnPct, formatPct } from '../../lib/growth';
@@ -44,6 +44,14 @@ export const HoldingsScreen: React.FC<Props> = ({ onOpenAddHolding, onOpenHoldin
   }), { invested: 0n, current: 0n, gain: 0n }), [rows]);
   const totalReturn = absoluteReturnPct(totals.invested, totals.current);
   const hasFilters = !!q.trim() || bucket !== 'ALL' || ownerId !== 'ALL' || showClosed;
+  const classChips = useMemo(() => {
+    const source = ownerId === 'ALL' ? filteredHoldings : filteredHoldings.filter(h => h.ownerId === ownerId);
+    return orderBucketsByPresence(source.map(h => bucketOf(h)));
+  }, [filteredHoldings, ownerId]);
+
+  useEffect(() => {
+    if (bucket !== 'ALL' && classChips.find(b => b.id === bucket)?.empty) setBucket('ALL');
+  }, [bucket, classChips]);
 
   const clearFilters = () => {
     setQ('');
@@ -82,7 +90,16 @@ export const HoldingsScreen: React.FC<Props> = ({ onOpenAddHolding, onOpenHoldin
         <div className="flex items-center gap-2 overflow-x-auto pb-0.5">
           <SlidersHorizontal className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--muted)' }} />
           <Chip active={bucket === 'ALL'} onClick={() => setBucket('ALL')}>All</Chip>
-          {FAMILY_BUCKETS.map(b => <Chip key={b.id} active={bucket === b.id} onClick={() => setBucket(b.id)}>{b.title}</Chip>)}
+          {classChips.map(b => (
+            <Chip
+              key={b.id}
+              active={bucket === b.id}
+              disabled={b.empty}
+              onClick={() => setBucket(b.id)}
+            >
+              {b.title}
+            </Chip>
+          ))}
           {closedCount > 0 && <Chip active={showClosed} onClick={() => setShowClosed(v => !v)}>{showClosed ? 'Closed shown' : `Closed (${closedCount})`}</Chip>}
           {hasFilters && <button onClick={clearFilters} className="ml-auto flex-shrink-0 text-xs font-semibold flex items-center gap-1 px-2 py-1.5" style={{ color: 'var(--accent)' }}><X className="w-3 h-3" /> Clear</button>}
         </div>
@@ -112,4 +129,21 @@ export const HoldingsScreen: React.FC<Props> = ({ onOpenAddHolding, onOpenHoldin
 };
 
 const Metric: React.FC<{ label: string; value: bigint; emphasis?: boolean }> = ({ label, value, emphasis }) => <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--border)', background: 'var(--input)' }}><div className="text-xs" style={{ color: 'var(--muted)' }}>{label}</div><PrivacyValue minor={value} includePaise={false} className={emphasis ? 'text-lg font-bold mt-1' : 'text-lg font-semibold mt-1'} /></div>;
-const Chip: React.FC<{ active: boolean; onClick: () => void; children: React.ReactNode }> = ({ active, onClick, children }) => <button onClick={onClick} className="px-3 py-1.5 rounded-full text-xs font-semibold border whitespace-nowrap" style={active ? { background: 'var(--accent)', color: 'var(--accent-fg)', borderColor: 'transparent' } : { borderColor: 'var(--border)', color: 'var(--text)', background: 'var(--card)' }}>{children}</button>;
+const Chip: React.FC<{ active: boolean; disabled?: boolean; onClick: () => void; children: React.ReactNode }> = ({ active, disabled, onClick, children }) => (
+  <button
+    type="button"
+    onClick={disabled ? undefined : onClick}
+    disabled={disabled}
+    aria-disabled={disabled || undefined}
+    className="px-3 py-1.5 rounded-full text-xs font-semibold border whitespace-nowrap"
+    style={
+      disabled
+        ? { borderColor: 'var(--border)', color: 'var(--muted)', background: 'transparent', opacity: 0.45, cursor: 'not-allowed' }
+        : active
+          ? { background: 'var(--accent)', color: 'var(--accent-fg)', borderColor: 'transparent' }
+          : { borderColor: 'var(--border)', color: 'var(--text)', background: 'var(--card)' }
+    }
+  >
+    {children}
+  </button>
+);
