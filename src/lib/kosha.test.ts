@@ -6,7 +6,7 @@ import { xirr } from './returns';
 import { classifyHolding, EXPOSURES, WRAPPERS, exposureLabel, l2Label } from './taxonomy';
 import { resolveSplit, apportion, buildTree, isHybrid, activeWrappers } from './lookthrough';
 import { LedgerEvent, Holding } from '../types';
-import { eventLabel, bucketOf, upcomingFromHoldings, displayHoldingName, accountTitle, inferAmcFromSchemeName, looksLikeSgb, metricsOf, isOpenPosition } from './holdingView';
+import { eventLabel, bucketOf, upcomingFromHoldings, displayHoldingName, accountTitle, inferAmcFromSchemeName, looksLikeSgb, metricsOf, isOpenPosition, orderBucketsByPresence } from './holdingView';
 import { formatStatementDate, latestAsOfForOwner, statementAsOfByMember, parseCasLatest, npsStatementPassword, statementPasswordsToTry } from './casPython';
 import { addCalendarMonths, dueEmiDates, planEmiCatchUp, resumeEmiDate } from './emi';
 import { planInterestCatchUp, fyEndDatesAfter, monthsHeldInFy, interestMinor, interestKindOf, interestSpecOf } from './interest';
@@ -229,6 +229,11 @@ eq('equity bucket', bucketOf(H('Reliance','EQUITY','Large Cap')), 'SHARES');
 eq('MF bucket', bucketOf(H('HDFC Flexi Cap','MUTUAL_FUND','Flexi Cap')), 'FUNDS');
 eq('SGB bucket', bucketOf(H('SGB 2020','GOLD_SGB','SGB')), 'GOLD');
 eq('PPF bucket', bucketOf(H('PPF','FIXED_INCOME','Govt Small Savings (EEE)')), 'GOVT');
+const chipOrder = orderBucketsByPresence(['SHARES', 'FUNDS', 'SPECIAL']);
+eq('used classes sit together first', chipOrder.filter(b => !b.empty).map(b => b.id).join(','), 'SHARES,FUNDS,SPECIAL');
+eq('empty classes trail', chipOrder.filter(b => b.empty).map(b => b.id).join(','), 'GOLD,GOVT,PROPERTY,BANK,LOAN');
+eq('loans gray when unused', chipOrder.find(b => b.id === 'LOAN')?.empty, true);
+eq('shares not gray when used', chipOrder.find(b => b.id === 'SHARES')?.empty, false);
 eq('statement date IST-safe', formatStatementDate('2026-03-31'), '31 March 2026');
 const up = upcomingFromHoldings(
   [H('SGB 2020','GOLD_SGB','SGB',1,{nextCouponDate:'2099-11-15',maturityDate:'2099-11-15'})],

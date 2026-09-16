@@ -30,6 +30,16 @@ export const FAMILY_BUCKETS: {
   { id: 'LOAN', title: 'Loans', hint: 'What the family owes' },
 ];
 
+/** Classes with holdings first (original order kept), empty classes last. */
+export function orderBucketsByPresence(
+  present: Iterable<FamilyBucketId>
+): { id: FamilyBucketId; title: string; hint: string; empty: boolean }[] {
+  const has = present instanceof Set ? present : new Set(present);
+  const filled = FAMILY_BUCKETS.filter(b => has.has(b.id)).map(b => ({ ...b, empty: false }));
+  const empty = FAMILY_BUCKETS.filter(b => !has.has(b.id)).map(b => ({ ...b, empty: true }));
+  return [...filled, ...empty];
+}
+
 export function looksLikeSgb(name?: string | null): boolean {
   const n = (name || '').toUpperCase();
   return /\bSGB\b/.test(n) || n.includes('SOVEREIGN GOLD');
