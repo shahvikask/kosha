@@ -18,6 +18,7 @@ import { checkImportPan, pansMatch, panBlocksCommit, findDuplicatePanMember, pan
 import { applyCatalogPrices, catalogToListed, searchListed, isEodPriceSource } from './eodPrices';
 import { findMatchingHolding, holdingIdentityKey, isPlaceholderName, preferSchemeName } from './matchHolding';
 import { StatementImportRecord } from '../types';
+import { buildBooksHealth, concentrationOf, daysBetweenIso, freshnessTone, previousFinancialYear, fyEndIso } from './homeDashboard';
 import { usesUnits, identifierLabel, suggestLockInDates, looksLikeUan, looksLikePran, looksLikeNsdlDpId, looksLikeNsdlClientId, looksLikeBoid, defaultSgbCoupon, inferMfPlan, inferMfOption, nameLooksLikeEtf, dematAccountMask, detailsLines, recategorizeCasAsset, casHoldingSubCategory, casImportDetails, nameLooksLikeReit, nameLooksLikeAif } from './holdingForm';
 
 let pass=0, fail=0;
@@ -721,6 +722,83 @@ const fdPayPlan = planInterestCatchUp(fdPay, '2027-03-31', []);
 eq('payout FD does not raise the deposit', fdPayPlan?.currentPriceMinor, undefined);
 const aifH: Holding = { ...hold('h_aif2', 'SPECIALISED', 25000, 170, 170, 'AIF'), name: 'INDIA DISCOVERY FUND II - CLASS B1' };
 eq('AIF is not an interest product', interestKindOf(aifH), null);
+
+console.log('\n--- X. Home books health, concentration, freshness ---');
+eq('days 12 Sep to 16 Sep', daysBetweenIso('2026-09-12', '2026-09-16'), 4);
+eq('previous FY of 2026-27', previousFinancialYear('2026-27'), '2025-26');
+eq('FY 2025-26 ends', fyEndIso('2025-26'), '2026-03-31');
+eq('fresh dates are ok', freshnessTone({ statementAsOf: '2026-09-12', pricesAsOf: '2026-09-16', todayIso: '2026-09-16' }), 'ok');
+eq('old statement is amber', freshnessTone({ statementAsOf: '2026-07-01', pricesAsOf: '2026-09-16', todayIso: '2026-09-16' }), 'amber');
+eq('very old statement is red', freshnessTone({ statementAsOf: '2026-04-01', pricesAsOf: '2026-09-16', todayIso: '2026-09-16' }), 'red');
+const dashDerived = { positions: new Map(), errors: [] as string[] };
+const eqCost = hold('h_eq', 'EQUITY', 10, 100, 100, 'Large Cap');
+eqCost.name = 'Reliance';
+const healthEq = buildBooksHealth({
+  holdings: [eqCost],
+  events: [],
+  derived: dashDerived,
+  members: [{ id: 'f1', name: 'You', relation: 'Self', color: '#f59e0b' }],
+  casLatest: { asOf: null, byOwner: {} },
+  selectedMemberId: 'ALL',
+  sgbMode: 'MARKET_TRADED',
+  todayIso: '2026-09-16',
+});
+eq('invested = CMV is flagged', healthEq.findings.some(f => f.kind === 'COST_EQUALS_VALUE'), true);
+eq('health is amber not red', healthEq.tone, 'amber');
+const moved = hold('h_eq2', 'EQUITY', 10, 100, 140, 'Large Cap');
+moved.name = 'TCS';
+const healthOk = buildBooksHealth({
+  holdings: [moved],
+  events: [],
+  derived: dashDerived,
+  members: [{ id: 'f1', name: 'You', relation: 'Self', color: '#f59e0b' }],
+  casLatest: { asOf: null, byOwner: {} },
+  selectedMemberId: 'ALL',
+  sgbMode: 'MARKET_TRADED',
+  todayIso: '2026-09-16',
+});
+eq('true gain is not a cost flag', healthOk.findings.some(f => f.kind === 'COST_EQUALS_VALUE'), false);
+const staleCas = parseCasLatest(JSON.stringify({
+  asOf: '2026-06-01',
+  byOwner: { f1: { CDSL: { fileType: 'CDSL', filename: 'cas.pdf', periodTo: '2026-06-01' } } },
+}));
+const healthStale = buildBooksHealth({
+  holdings: [moved],
+  events: [],
+  derived: dashDerived,
+  members: [{ id: 'f1', name: 'You', relation: 'Self', color: '#f59e0b' }],
+  casLatest: staleCas,
+  selectedMemberId: 'ALL',
+  sgbMode: 'MARKET_TRADED',
+  todayIso: '2026-09-16',
+});
+eq('stale CDSL is flagged', healthStale.findings.some(f => f.kind === 'STALE_STATEMENT'), true);
+eq('missing PAN with CAS is flagged', healthStale.findings.some(f => f.kind === 'MEMBER_PAN_MISSING'), true);
+const ppf = hold('h_ppf', 'FIXED_INCOME', 1, 500000, 500000, 'PPF');
+ppf.name = 'PPF SBI';
+ppf.acquiredOn = '2020-04-01';
+const healthPpf = buildBooksHealth({
+  holdings: [ppf],
+  events: [{
+    id: 'ob', holdingId: 'h_ppf', holdingName: 'PPF SBI', ownerId: 'f1', eventType: 'OPENING_BALANCE',
+    eventDate: '2020-04-01', quantityScaled: ppf.quantityScaled, unitPriceMinor: ppf.averageCostPerUnitMinor,
+    totalAmountMinor: String(500000 * 10000), createdAt: 't',
+  }],
+  derived: dashDerived,
+  members: [{ id: 'f1', name: 'You', relation: 'Self', color: '#f59e0b', panForStatements: 'ABCDE1234F' }],
+  casLatest: { asOf: null, byOwner: {} },
+  selectedMemberId: 'ALL',
+  sgbMode: 'MARKET_TRADED',
+  todayIso: '2026-09-16',
+});
+eq('PPF without last-FY interest is flagged', healthPpf.findings.some(f => f.kind === 'MISSING_FY_INTEREST'), true);
+const conc = concentrationOf([
+  { id: 'a', name: 'A', valueMinor: 60n * 10000n * 100n },
+  { id: 'b', name: 'B', valueMinor: 30n * 10000n * 100n },
+  { id: 'c', name: 'C', valueMinor: 10n * 10000n * 100n },
+], 100n * 10000n * 100n, 2);
+eq('top 2 share', Math.round(conc.topSharePct), 90);
+eq('largest is A', conc.rows[0].name, 'A');
 
 console.log('\n--- H. Encryption ---');
 (async()=>{
