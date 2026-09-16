@@ -9,6 +9,8 @@ import { LedgerEvent, Holding } from '../types';
 import { eventLabel, bucketOf, upcomingFromHoldings, displayHoldingName, accountTitle, inferAmcFromSchemeName, looksLikeSgb, metricsOf, isOpenPosition } from './holdingView';
 import { formatStatementDate, latestAsOfForOwner, statementAsOfByMember, parseCasLatest, npsStatementPassword, statementPasswordsToTry } from './casPython';
 import { addCalendarMonths, dueEmiDates, planEmiCatchUp, resumeEmiDate } from './emi';
+import { planInterestCatchUp, fyEndDatesAfter, monthsHeldInFy, interestMinor, interestKindOf, interestSpecOf } from './interest';
+import { planInvestedCorrection, earliestActiveParcel } from './costBasis';
 import { absoluteReturnPct, incomeByFinancialYear, buildGrowthModel, formatPct } from './growth';
 import { profileOf, holdingReturn, isStatementOnlyHistory } from './returnMetrics';
 import { titleCaseName, passwordIssues, isValidPan, isValidEmail, normaliseAnswer, needsPasswordRotation, packHash, unpackHash, hashSecret, verifySecret } from './auth';
@@ -633,6 +635,87 @@ eq('CAS AIF sub not Category II', casHoldingSubCategory('SPECIALISED', 'Edelweis
 eq('CAS REIT details are demat', casImportDetails({ category: 'REAL_ESTATE', casFileType: 'CDSL' })?.altHoldMode, 'DEMAT');
 eq('direct REIT id is agreement', identifierLabel('REAL_ESTATE', 'REIT', undefined, { altHoldMode: 'LUMPSUM' }), 'Agreement / folio (optional)');
 eq('demat AIF id is ISIN', identifierLabel('SPECIALISED', 'AIF', undefined, { altHoldMode: 'DEMAT' }), 'ISIN');
+
+console.log('\n--- W. Cost basis from your records, FY-end interest ---');
+const casOpen = ev('ob_rel', 'OPENING_BALANCE', '2026-08-31', 139, 1285, 'h_rel');
+eq('opening parcel is the CAS line', earliestActiveParcel([casOpen], 'h_rel')?.id, 'ob_rel');
+const relH: Holding = {
+  ...hold('h_rel', 'EQUITY', 139, 1285, 1285, 'Other'),
+  name: 'RELIANCE INDUSTRIES LIMITED EQUITY SHARES',
+};
+const paid = planInvestedCorrection({
+  holding: relH,
+  events: [casOpen],
+  unitPriceMinor: BigInt(Math.round(850 * 1e4)),
+  acquiredOn: '2021-03-15',
+});
+eq('correction keeps 139 shares', Number(BigInt(paid!.quantityScaled)) / 1e8, 139);
+eq('correction unit is 850', Number(BigInt(paid!.unitPriceMinor)) / 1e4, 850);
+eq('correction dated to trade date', paid!.eventDate, '2021-03-15');
+const paidFold = foldHolding([casOpen, { ...paid!, id: 'cor_rel', createdAt: 't' }], 'EQUITY');
+eq('invested is qty × paid', Math.round(Number(paidFold.totalCostMinor) / 1e4), 139 * 850);
+eq('same price and date is a no-op', planInvestedCorrection({
+  holding: relH, events: [casOpen],
+  unitPriceMinor: BigInt(Math.round(1285 * 1e4)), acquiredOn: '2026-08-31',
+}), null);
+
+eq('FY ends after CAS date skip 31 Mar 2026', fyEndDatesAfter('2026-08-31', '2026-09-15').join(','), '');
+eq('next FY end after Aug is Mar 2027', fyEndDatesAfter('2026-08-31', '2027-03-31').join(','), '2027-03-31');
+eq('SGB from purchase fills 31 Mar dates', fyEndDatesAfter('2018-09-08', '2020-03-31').join(','), '2019-03-31,2020-03-31');
+eq('full FY is 12 months', monthsHeldInFy('2011-04-01', '2026-03-31'), 12);
+eq('bought Sep is 6 months to Mar', monthsHeldInFy('2018-09-08', '2019-03-31'), 6);
+eq('2.5% of 1 lakh for a year', Number(interestMinor(1_000_000_000n, 2.5, 12)) / 1e4, 2500);
+
+const sgbH: Holding = {
+  ...hold('h_sgb2', 'GOLD_SGB', 10, 7200, 7200, 'Sovereign Gold Bond'),
+  name: 'SGB 2018-19 Series VI',
+  couponRatePercent: 2.5,
+  issuePriceMinor: String(3119 * 10000),
+  acquiredOn: '2018-09-08',
+  lastPriceUpdated: '2026-08-31T00:00:00Z',
+};
+eq('SGB is payout interest', interestKindOf(sgbH), 'SGB');
+eq('SGB principal is grams × issue', Number(interestSpecOf(sgbH)!.principalMinor) / 1e4, 31190);
+const sgbPlan = planInterestCatchUp(sgbH, '2020-03-31', []);
+eq('SGB posts two FY coupons', sgbPlan?.events.length, 2);
+eq('SGB first coupon on 31 Mar 2019', sgbPlan?.events[0].eventDate, '2019-03-31');
+eq('SGB does not add to gold value', sgbPlan?.currentPriceMinor, undefined);
+eq('SGB coupon is on issue not CMP', Number(BigInt(sgbPlan!.events[1].totalAmountMinor)) / 1e4 > 700, true);
+const sgbAgain = planInterestCatchUp(sgbH, '2020-03-31', sgbPlan!.events.map(e => e.eventDate));
+eq('SGB catch-up is idempotent', sgbAgain, null);
+
+const ppfW: Holding = {
+  ...hold('h_ppf2', 'FIXED_INCOME', 1, 1450000, 1940000, 'PPF'),
+  name: 'Public Provident Fund',
+  interestRatePercent: 7.1,
+  acquiredOn: '2011-04-01',
+  lastPriceUpdated: '2026-08-31T00:00:00Z',
+};
+eq('PPF is compound interest', interestKindOf(ppfW), 'PPF');
+eq('PPF does not backfill before last valuation', planInterestCatchUp(ppfW, '2026-09-15', []), null);
+const ppfFwd = planInterestCatchUp(ppfW, '2027-03-31', []);
+eq('PPF posts the next 31 March', ppfFwd?.events.length, 1);
+eq('PPF credit date', ppfFwd?.events[0].eventDate, '2027-03-31');
+eq('PPF balance grows by the interest', BigInt(ppfFwd!.currentPriceMinor!) > BigInt(ppfW.currentPriceMinor), true);
+
+const epfW: Holding = { ...ppfW, id: 'h_epf2', name: 'EPFO', subCategory: 'EPF', interestRatePercent: 8.25 };
+eq('EPF kind', interestKindOf(epfW), 'EPF');
+const ssyW: Holding = { ...ppfW, id: 'h_ssy2', name: 'SSY daughter', subCategory: 'Sukanya Samriddhi (SSY)', interestRatePercent: 8.2 };
+eq('SSY kind', interestKindOf(ssyW), 'SSY');
+const fdW: Holding = {
+  ...hold('h_fd2', 'FIXED_INCOME', 1, 1000000, 1000000, 'Bank FD'),
+  name: 'HDFC 3-year FD',
+  interestRatePercent: 7.5,
+  lastPriceUpdated: '2026-08-31T00:00:00Z',
+};
+eq('FD kind', interestKindOf(fdW), 'FD');
+eq('FD without rate uses none if 0', interestKindOf({ ...fdW, interestRatePercent: undefined }), 'FD');
+eq('FD needs a rate to post', planInterestCatchUp({ ...fdW, interestRatePercent: undefined }, '2027-03-31', []), null);
+const fdPay: Holding = { ...fdW, details: { compounding: 'QUARTERLY' } };
+const fdPayPlan = planInterestCatchUp(fdPay, '2027-03-31', []);
+eq('payout FD does not raise the deposit', fdPayPlan?.currentPriceMinor, undefined);
+const aifH: Holding = { ...hold('h_aif2', 'SPECIALISED', 25000, 170, 170, 'AIF'), name: 'INDIA DISCOVERY FUND II - CLASS B1' };
+eq('AIF is not an interest product', interestKindOf(aifH), null);
 
 console.log('\n--- H. Encryption ---');
 (async()=>{
