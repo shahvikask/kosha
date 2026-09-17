@@ -1,8 +1,8 @@
 /**
- * Home “Pass A” helpers: books health, concentration, date freshness.
- * Snapshot / quote history is Pass B — not here.
+ * Home helpers: Pass A (health, concentration, dates) and
+ * Pass B (statement value as a step series).
  */
-import { FamilyMember, Holding, LedgerEvent } from '../types';
+import { FamilyMember, Holding, LedgerEvent, StatementSnapRow } from '../types';
 import { CasFileType, CasLatestState, CAS_FILE_TYPE_LABEL } from './casPython';
 import { DerivedState } from './positions';
 import { financialYearOf } from './lots';
@@ -245,3 +245,72 @@ function holdingExistedBy(h: Holding, events: LedgerEvent[], iso: string): boole
   if (h.acquiredOn && h.acquiredOn.slice(0, 10) <= iso) return true;
   return events.some(e => e.holdingId === h.id && e.eventDate && e.eventDate.slice(0, 10) <= iso);
 }
+
+export interface StatementStep {
+  date: string;
+  valueMinor: bigint;
+  investedMinor: bigint;
+  issuers: string[];
+  /** Horizontal pad to today — not a new statement. */
+  isLivePad?: boolean;
+}
+
+export function issuerLabel(issuer: string): string {
+  return CAS_FILE_TYPE_LABEL[issuer as CasFileType] || issuer;
+}
+
+/**
+ * Last-known statement value after each file.
+ * A later CDSL replaces the previous CDSL for that member; CAMS stacks beside it.
+ * The line stays flat until the next file — we do not invent NAV in between.
+ */
+export function buildStatementSteps(opts: {
+  rows: StatementSnapRow[];
+  selectedMemberId: string;
+  todayIso: string;
+}): StatementStep[] {
+  const inScope = (ownerId: string) => opts.selectedMemberId === 'ALL' || ownerId === opts.selectedMemberId;
+  const rows = opts.rows
+    .filter(r => r.date && inScope(r.ownerId))
+    .slice()
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.issuer.localeCompare(b.issuer)));
+  if (rows.length === 0) return [];
+
+  const dates: string[] = [];
+  for (const r of rows) {
+    if (dates[dates.length - 1] !== r.date) dates.push(r.date);
+  }
+
+  const latest = new Map<string, { value: bigint; invested: bigint; issuer: string }>();
+  const steps: StatementStep[] = [];
+  let i = 0;
+  for (const date of dates) {
+    while (i < rows.length && rows[i].date === date) {
+      const r = rows[i];
+      latest.set(`${r.ownerId}\0${r.issuer}`, { value: r.valueMinor, invested: r.investedMinor, issuer: r.issuer });
+      i += 1;
+    }
+    let value = 0n;
+    let invested = 0n;
+    const issuers: string[] = [];
+    for (const slot of latest.values()) {
+      value += slot.value;
+      invested += slot.invested;
+      if (!issuers.includes(slot.issuer)) issuers.push(slot.issuer);
+    }
+    steps.push({ date, valueMinor: value, investedMinor: invested, issuers });
+  }
+
+  const last = steps[steps.length - 1];
+  if (last && opts.todayIso && last.date < opts.todayIso) {
+    steps.push({
+      date: opts.todayIso,
+      valueMinor: last.valueMinor,
+      investedMinor: last.investedMinor,
+      issuers: last.issuers,
+      isLivePad: true,
+    });
+  }
+  return steps;
+}
+

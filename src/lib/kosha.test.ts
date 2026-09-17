@@ -18,7 +18,7 @@ import { checkImportPan, pansMatch, panBlocksCommit, findDuplicatePanMember, pan
 import { applyCatalogPrices, catalogToListed, searchListed, isEodPriceSource } from './eodPrices';
 import { findMatchingHolding, holdingIdentityKey, isPlaceholderName, preferSchemeName } from './matchHolding';
 import { StatementImportRecord } from '../types';
-import { buildBooksHealth, concentrationOf, daysBetweenIso, freshnessTone, previousFinancialYear, fyEndIso } from './homeDashboard';
+import { buildBooksHealth, buildStatementSteps, concentrationOf, daysBetweenIso, freshnessTone, previousFinancialYear, fyEndIso } from './homeDashboard';
 import { usesUnits, identifierLabel, suggestLockInDates, looksLikeUan, looksLikePran, looksLikeNsdlDpId, looksLikeNsdlClientId, looksLikeBoid, defaultSgbCoupon, inferMfPlan, inferMfOption, nameLooksLikeEtf, dematAccountMask, detailsLines, recategorizeCasAsset, casHoldingSubCategory, casImportDetails, nameLooksLikeReit, nameLooksLikeAif } from './holdingForm';
 
 let pass=0, fail=0;
@@ -799,6 +799,35 @@ const conc = concentrationOf([
 ], 100n * 10000n * 100n, 2);
 eq('top 2 share', Math.round(conc.topSharePct), 90);
 eq('largest is A', conc.rows[0].name, 'A');
+
+const snap = (date: string, issuer: string, rupees: number, owner = 'f1') => ({
+  date, issuer, ownerId: owner, valueMinor: BigInt(rupees) * 10000n, investedMinor: 0n,
+});
+const stepsMix = buildStatementSteps({
+  rows: [
+    snap('2026-01-31', 'CDSL', 100),
+    snap('2026-02-28', 'CAMS', 40),
+    snap('2026-03-31', 'CDSL', 110),
+  ],
+  selectedMemberId: 'ALL',
+  todayIso: '2026-03-31',
+});
+eq('Jan is CDSL only', Number(stepsMix[0].valueMinor) / 10000, 100);
+eq('Feb stacks CAMS on last CDSL', Number(stepsMix[1].valueMinor) / 10000, 140);
+eq('Mar replaces CDSL, keeps CAMS', Number(stepsMix[2].valueMinor) / 10000, 150);
+eq('no pad when last date is today', stepsMix.some(s => s.isLivePad), false);
+const stepsPad = buildStatementSteps({
+  rows: [snap('2026-01-31', 'CDSL', 100)],
+  selectedMemberId: 'ALL',
+  todayIso: '2026-09-16',
+});
+eq('pads flat to today', stepsPad[stepsPad.length - 1].isLivePad, true);
+eq('pad keeps last value', Number(stepsPad[1].valueMinor) / 10000, 100);
+eq('other member is empty', buildStatementSteps({
+  rows: [snap('2026-01-31', 'CDSL', 100, 'f1')],
+  selectedMemberId: 'f2',
+  todayIso: '2026-09-16',
+}).length, 0);
 
 console.log('\n--- H. Encryption ---');
 (async()=>{

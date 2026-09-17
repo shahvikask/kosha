@@ -3,11 +3,11 @@ import { useKosha } from '../../context/KoshaContext';
 import { PrivacyValue, PrivacyDelta } from '../common/PrivacyValue';
 import { FAMILY_BUCKETS, upcomingFromHoldings, formatCalendarDate, FamilyBucketId } from '../../lib/holdingView';
 import { FileSpreadsheet, Target, Calendar, ChevronRight, ArrowUpRight, ShieldCheck, ShieldAlert } from 'lucide-react';
-import { Donut, HBars, AreaFlow, StackedFy, SplitBar } from '../growth/Charts';
+import { Donut, HBars, AreaFlow, StackedFy, SplitBar, StepFlow } from '../growth/Charts';
 import { buildGrowthModel, formatPct, GrowthHoldingRow } from '../../lib/growth';
 import { ExposureNode, EXPOSURES } from '../../lib/taxonomy';
 import { formatStatementDateShort } from '../../lib/casPython';
-import { buildBooksHealth, concentrationOf, freshnessTone, HealthTone } from '../../lib/homeDashboard';
+import { buildBooksHealth, buildStatementSteps, concentrationOf, freshnessTone, HealthTone, issuerLabel } from '../../lib/homeDashboard';
 
 interface HomeScreenProps {
   onOpenAddHolding: () => void;
@@ -22,7 +22,7 @@ type Drill =
   | { kind: 'fy'; id: string };
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpenHoldingDetail }) => {
-  const { summary, filteredHoldings, familyMembers, selectedMemberId, setActiveScreen, sgbValuationMode, derived, lastStatementAsOf, pricesAsOf, goals, ledgerEvents, casLatest } = useKosha();
+  const { summary, filteredHoldings, familyMembers, selectedMemberId, setActiveScreen, sgbValuationMode, derived, lastStatementAsOf, pricesAsOf, goals, ledgerEvents, casLatest, statementSnaps } = useKosha();
   const [drill, setDrill] = useState<Drill>({ kind: 'none' });
   const [showAllMovers, setShowAllMovers] = useState(false);
   const who = selectedMemberId === 'ALL' ? 'The family' : familyMembers.find(m => m.id === selectedMemberId)?.name || 'Family';
@@ -44,6 +44,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpen
     const assetRows = model.holdings.filter(h => h.bucket !== 'LOAN' && h.valueMinor > 0n);
     return concentrationOf(assetRows, model.kpis.assetsMinor, 5);
   }, [model.holdings, model.kpis.assetsMinor]);
+  const statementSteps = useMemo(
+    () => buildStatementSteps({ rows: statementSnaps, selectedMemberId, todayIso: asOf }),
+    [statementSnaps, selectedMemberId, asOf],
+  );
+  const filedSteps = statementSteps.filter(s => !s.isLivePad);
+  const stepDelta = filedSteps.length >= 2
+    ? filedSteps[filedSteps.length - 1].valueMinor - filedSteps[0].valueMinor
+    : null;
   const goalRows = useMemo(() => goals.map(g => {
     const tagged = filteredHoldings.filter(h => [h.tag, ...(h.tags || [])].some(t => (t || '').toLowerCase() === g.name.toLowerCase()));
     const current = tagged.reduce((s, h) => s + (model.holdings.find(x => x.id === h.id)?.valueMinor || 0n), 0n);
@@ -163,6 +171,31 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpen
           </div>
 
           {selectedMemberId === 'ALL' && model.members.length > 1 && <section className="card p-4 sm:p-5"><h2 className="text-sm font-bold mb-3">Whose name it is in</h2><HBars slices={model.members} selectedId={drill.kind === 'member' ? drill.id : null} onSelect={id => setDrill(d => d.kind === 'member' && d.id === id ? { kind: 'none' } : { kind: 'member', id })} /></section>}
+
+          <section className="card p-4 sm:p-5">
+            <div className="flex items-start justify-between gap-3 mb-1">
+              <div>
+                <h2 className="text-sm font-bold">Value on each statement</h2>
+                <p className="text-[11px] mt-0.5" style={{ color: 'var(--muted)' }}>
+                  Steps. Flat between files — we do not guess prices in between.
+                </p>
+              </div>
+              {stepDelta != null && (
+                <div className="text-right shrink-0">
+                  <div className="text-[10px] uppercase tracking-wide font-bold" style={{ color: 'var(--muted)' }}>Since first file</div>
+                  <PrivacyDelta minor={stepDelta} className="text-sm font-extrabold" />
+                </div>
+              )}
+            </div>
+            <StepFlow steps={statementSteps} />
+            {filedSteps.length > 0 && (
+              <p className="text-[11px] mt-2" style={{ color: 'var(--muted)' }}>
+                {filedSteps.length === 1
+                  ? `${issuerLabel(filedSteps[0].issuers[0] || 'CAS')} through ${formatStatementDateShort(filedSteps[0].date)}. Import the next month to see a step.`
+                  : filedSteps.slice(-3).map(s => `${s.issuers.map(issuerLabel).join(' + ')} ${formatStatementDateShort(s.date)}`).join(' · ')}
+              </p>
+            )}
+          </section>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             <section className="card p-4 sm:p-5"><h2 className="text-sm font-bold mb-1">Money in, over time</h2><p className="text-[11px] mb-2" style={{ color: 'var(--muted)' }}>Invested capital and dividends / interest.</p><AreaFlow months={model.months} /></section>

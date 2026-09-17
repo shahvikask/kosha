@@ -2,6 +2,8 @@ import React from 'react';
 import { PrivacyValue } from '../common/PrivacyValue';
 import { GrowthSlice, MonthPoint, IncomeYear } from '../../lib/growth';
 import { MoneyEngine } from '../../lib/money';
+import { StatementStep } from '../../lib/homeDashboard';
+import { formatStatementDateShort } from '../../lib/casPython';
 
 export const Donut: React.FC<{
   slices: GrowthSlice[];
@@ -114,6 +116,69 @@ export const HBars: React.FC<{
         );
       })}
     </div>
+  );
+};
+
+export const StepFlow: React.FC<{ steps: StatementStep[] }> = ({ steps }) => {
+  if (steps.length === 0) {
+    return (
+      <p className="text-xs py-8 text-center" style={{ color: 'var(--muted)' }}>
+        Read a later month's statement to see how reported value moved.
+      </p>
+    );
+  }
+  const drawn = steps;
+  const w = 640;
+  const h = 180;
+  const pad = { l: 8, r: 8, t: 16, b: 28 };
+  const max = drawn.reduce((s, p) => (p.valueMinor > s ? p.valueMinor : s), 1n);
+  const maxN = Number(max) || 1;
+  const firstMs = Date.parse(drawn[0].date);
+  const lastMs = Date.parse(drawn[drawn.length - 1].date);
+  const span = Math.max(1, lastMs - firstMs);
+  const xOf = (iso: string) => {
+    if (drawn.length === 1) return pad.l + (w - pad.l - pad.r) / 2;
+    const t = Date.parse(iso);
+    const f = Number.isFinite(t) ? (t - firstMs) / span : 0;
+    return pad.l + f * (w - pad.l - pad.r);
+  };
+  const yOf = (v: bigint) => pad.t + (1 - Number(v) / maxN) * (h - pad.t - pad.b);
+  const pts = drawn.map(p => ({ x: xOf(p.date), y: yOf(p.valueMinor), p }));
+  let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
+  for (let i = 1; i < pts.length; i++) {
+    d += ` H ${pts[i].x.toFixed(1)} V ${pts[i].y.toFixed(1)}`;
+  }
+  const last = pts[pts.length - 1];
+  const area = `${d} L ${last.x.toFixed(1)} ${h - pad.b} L ${pts[0].x.toFixed(1)} ${h - pad.b} Z`;
+  const marks = pts.filter(pt => !pt.p.isLivePad);
+  const tickIdx = [0];
+  if (marks.length > 2) tickIdx.push(Math.floor((marks.length - 1) / 2));
+  if (marks.length > 1) tickIdx.push(marks.length - 1);
+  const ticks = [...new Set(tickIdx)].map(i => marks[i]).filter(Boolean);
+
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-auto">
+      <path d={area} fill="var(--accent)" opacity="0.16" />
+      <path d={d} fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinejoin="miter" />
+      {marks.map(pt => (
+        <circle key={pt.p.date} cx={pt.x} cy={pt.y} r="3.5" fill="var(--accent)">
+          <title>{`${formatStatementDateShort(pt.p.date)}`}</title>
+        </circle>
+      ))}
+      {ticks.map((pt, i) => (
+        <text
+          key={`${pt.p.date}-t`}
+          x={pt.x}
+          y={h - 8}
+          textAnchor={i === 0 ? 'start' : i === ticks.length - 1 ? 'end' : 'middle'}
+          fontSize="11"
+          fill="currentColor"
+          opacity="0.55"
+        >
+          {formatStatementDateShort(pt.p.date)}
+        </text>
+      ))}
+    </svg>
   );
 };
 

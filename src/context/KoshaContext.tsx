@@ -15,6 +15,7 @@ import {
   FamilyGoal,
   ImportBatchInfo,
   ListedSecurity,
+  StatementSnapRow,
 } from '../types';
 import { INITIAL_FAMILY_MEMBERS } from '../data/initialData';
 import { EMPTY_SELF, ThemeName, looksLikeSgb, metricsOf } from '../lib/holdingView';
@@ -76,6 +77,7 @@ interface KoshaContextType {
   accounts: DematOrFolioAccount[];
   goals: FamilyGoal[];
   importBatches: ImportBatchInfo[];
+  statementSnaps: StatementSnapRow[];
   isPrivacyMasked: boolean;
   setIsPrivacyMasked: (val: boolean | ((prev: boolean) => boolean)) => void;
   sgbValuationMode: 'MARKET_TRADED' | 'RBI_BENCHMARK';
@@ -325,6 +327,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [accounts, setAccounts] = useState<DematOrFolioAccount[]>([]);
   const [goals, setGoals] = useState<FamilyGoal[]>([]);
   const [importBatches, setImportBatches] = useState<ImportBatchInfo[]>([]);
+  const [statementSnaps, setStatementSnaps] = useState<StatementSnapRow[]>([]);
   const [listedSecurities, setListedSecurities] = useState<ListedSecurity[]>([]);
   const [pricesAsOf, setPricesAsOf] = useState<string | null>(null);
   const [pricesRefreshing, setPricesRefreshing] = useState(false);
@@ -427,6 +430,11 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setAccounts(await r.allAccounts());
         setGoals(await r.allGoals());
         setImportBatches(await r.allBatches());
+        try {
+          setStatementSnaps(await r.statementSnapshotTotals());
+        } catch {
+          setStatementSnaps([]);
+        }
         try {
           const listed = await r.allListedSecurities();
           setListedSecurities(listed);
@@ -1359,6 +1367,11 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
 
         setImportBatches(await repo.allBatches());
+        try {
+          setStatementSnaps(await repo.statementSnapshotTotals());
+        } catch {
+          setStatementSnaps([]);
+        }
       }
     }
 
@@ -1610,6 +1623,11 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setAccounts(await repo.allAccounts());
       setGoals(await repo.allGoals());
       setImportBatches(await repo.allBatches());
+      try {
+        setStatementSnaps(await repo.statementSnapshotTotals());
+      } catch {
+        setStatementSnaps([]);
+      }
     } else {
       setFamilyMembers([EMPTY_SELF]);
       setHoldings([]);
@@ -1617,6 +1635,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setAccounts([]);
       setGoals([]);
       setImportBatches([]);
+      setStatementSnaps([]);
     }
     setCasLatest(EMPTY_CAS_LATEST);
     setSelectedMemberId('ALL');
@@ -1718,6 +1737,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         accounts,
         goals,
         importBatches,
+        statementSnaps,
         isPrivacyMasked,
         setIsPrivacyMasked,
         sgbValuationMode,

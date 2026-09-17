@@ -440,3 +440,13 @@ export interface ImportBatchInfo {
   committedAt: string;
 }
 
+/** One issuer’s reported value on one statement date (Pass B). */
+export interface StatementSnapRow {
+  date: string;
+  issuer: string;
+  ownerId: string;
+  valueMinor: bigint;
+  investedMinor: bigint;
+}
+
+
