@@ -5,6 +5,7 @@ import { FamilyBucketId, bucketOf, metricsOf, plainCategory, unitWord, whereHeld
 import { MoneyEngine } from '../../lib/money';
 import { Search, Plus, ChevronRight, SlidersHorizontal, UserRound, X } from 'lucide-react';
 import { absoluteReturnPct, formatPct } from '../../lib/growth';
+import { isUnknownInvested, UNKNOWN_INVESTED_LABEL } from '../../lib/costBasis';
 
 interface Props {
   onOpenAddHolding: () => void;
@@ -12,7 +13,7 @@ interface Props {
 }
 
 export const HoldingsScreen: React.FC<Props> = ({ onOpenAddHolding, onOpenHoldingDetail }) => {
-  const { filteredHoldings, familyMembers, derived, sgbValuationMode } = useKosha();
+  const { filteredHoldings, familyMembers, derived, sgbValuationMode, ledgerEvents } = useKosha();
   const [q, setQ] = useState('');
   const [bucket, setBucket] = useState<FamilyBucketId | 'ALL'>('ALL');
   const [ownerId, setOwnerId] = useState('ALL');
@@ -24,7 +25,8 @@ export const HoldingsScreen: React.FC<Props> = ({ onOpenAddHolding, onOpenHoldin
     return filteredHoldings
       .map(h => {
         const m = metricsOf(h, derived, sgbValuationMode);
-        return { h, m, b: bucketOf(h), abs: absoluteReturnPct(m.cost, m.value) };
+        const unknown = isUnknownInvested(h, ledgerEvents, m.cost, m.value);
+        return { h, m, b: bucketOf(h), abs: unknown ? null : absoluteReturnPct(m.cost, m.value), unknown };
       })
       .filter(r => showClosed || isOpenPosition(r.h, derived))
       .filter(r => bucket === 'ALL' || r.b === bucket)
@@ -35,14 +37,18 @@ export const HoldingsScreen: React.FC<Props> = ({ onOpenAddHolding, onOpenHoldin
         return [r.h.name, r.h.isin, r.h.amc, r.h.symbolOrFolio, owner, r.h.institutionName, r.h.dpName].filter(Boolean).join(' ').toLowerCase().includes(needle);
       })
       .sort((a, b) => (a.m.value < b.m.value ? 1 : -1));
-  }, [filteredHoldings, derived, sgbValuationMode, q, bucket, familyMembers, ownerId, showClosed]);
+  }, [filteredHoldings, derived, sgbValuationMode, q, bucket, familyMembers, ownerId, showClosed, ledgerEvents]);
 
   const totals = useMemo(() => rows.reduce((acc, row) => ({
-    invested: acc.invested + row.m.cost,
+    invested: acc.invested + (row.unknown ? 0n : row.m.cost),
     current: acc.current + row.m.value,
-    gain: acc.gain + row.m.gain,
-  }), { invested: 0n, current: 0n, gain: 0n }), [rows]);
-  const totalReturn = absoluteReturnPct(totals.invested, totals.current);
+    gain: acc.gain + (row.unknown ? 0n : row.m.gain),
+    unknown: acc.unknown + (row.unknown ? 1 : 0),
+    knownValue: acc.knownValue + (row.unknown ? 0n : row.m.value),
+  }), { invested: 0n, current: 0n, gain: 0n, unknown: 0, knownValue: 0n }), [rows]);
+  const totalReturn = totals.unknown === rows.length && rows.length > 0
+    ? null
+    : absoluteReturnPct(totals.invested, totals.knownValue);
   const hasFilters = !!q.trim() || bucket !== 'ALL' || ownerId !== 'ALL' || showClosed;
   const classChips = useMemo(() => {
     const source = ownerId === 'ALL' ? filteredHoldings : filteredHoldings.filter(h => h.ownerId === ownerId);
@@ -73,11 +79,18 @@ export const HoldingsScreen: React.FC<Props> = ({ onOpenAddHolding, onOpenHoldin
 
       {filteredHoldings.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <Metric label="Invested" value={totals.invested} />
+          <Metric label="Invested" value={totals.invested} empty={totals.unknown > 0 && totals.invested === 0n} hint={totals.unknown > 0 ? `${totals.unknown} need what you paid` : undefined} />
           <Metric label="Current value" value={totals.current} emphasis />
           <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--border)', background: 'var(--input)' }}>
             <div className="text-xs" style={{ color: 'var(--muted)' }}>Absolute gain</div>
-            <div className="mt-1 flex items-baseline gap-2"><PrivacyDelta minor={totals.gain} className="text-lg font-bold" /><span className="text-xs font-bold" style={{ color: (totalReturn ?? 0) >= 0 ? 'var(--good)' : 'var(--bad)' }}>{formatPct(totalReturn)}</span></div>
+            {totals.unknown > 0 && totals.invested === 0n ? (
+              <div className="mt-1 text-lg font-bold" style={{ color: 'var(--bad)' }}>{UNKNOWN_INVESTED_LABEL}</div>
+            ) : (
+              <div className="mt-1 flex items-baseline gap-2"><PrivacyDelta minor={totals.gain} className="text-lg font-bold" /><span className="text-xs font-bold" style={{ color: (totalReturn ?? 0) >= 0 ? 'var(--good)' : 'var(--bad)' }}>{formatPct(totalReturn)}</span></div>
+            )}
+            {totals.unknown > 0 && totals.invested > 0n && (
+              <div className="text-[11px] mt-1" style={{ color: 'var(--muted)' }}>{totals.unknown} holdings excluded — no buy price</div>
+            )}
           </div>
         </div>
       )}
@@ -116,10 +129,10 @@ export const HoldingsScreen: React.FC<Props> = ({ onOpenAddHolding, onOpenHoldin
         <div className="card overflow-hidden" style={{ borderColor: 'var(--border)' }}>
           <div className="hidden md:grid grid-cols-[minmax(0,1.7fr)_0.9fr_0.9fr_0.8fr_24px] gap-4 px-4 py-3 border-b text-[10px] uppercase tracking-[0.12em] font-bold" style={{ color: 'var(--muted)', borderColor: 'var(--border)' }}><span>Investment</span><span className="text-right">Invested</span><span className="text-right">Current</span><span className="text-right">Return</span><span /></div>
           <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
-            {rows.map(({ h, m, abs }) => {
+            {rows.map(({ h, m, abs, unknown }) => {
               const owner = familyMembers.find(fm => fm.id === h.ownerId);
               const good = (abs ?? 0) >= 0;
-              return <button key={h.id} onClick={() => onOpenHoldingDetail(h.id)} className="w-full text-left px-4 py-3.5 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"><div className="grid md:grid-cols-[minmax(0,1.7fr)_0.9fr_0.9fr_0.8fr_24px] gap-3 md:gap-4 items-center"><div className="min-w-0"><div className="font-semibold text-sm truncate">{displayHoldingName(h.name)}</div><div className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--muted)' }}>{plainCategory(h.category)}{owner ? ` · ${owner.name}` : ''} · {whereHeld(h)}{unitWord(h) && m.qty > 0n ? ` · ${MoneyEngine.toQty(m.qty).toLocaleString('en-IN')} ${unitWord(h)}` : ''}</div></div><div className="md:text-right"><div className="md:hidden text-[10px] uppercase tracking-wide font-bold mb-0.5" style={{ color: 'var(--muted)' }}>Invested</div><PrivacyValue minor={m.cost} includePaise={false} className="text-sm" /></div><div className="md:text-right"><div className="md:hidden text-[10px] uppercase tracking-wide font-bold mb-0.5" style={{ color: 'var(--muted)' }}>Current</div><PrivacyValue minor={m.value} includePaise={false} className="text-sm font-bold" /></div><div className="md:text-right"><div className="md:hidden text-[10px] uppercase tracking-wide font-bold mb-0.5" style={{ color: 'var(--muted)' }}>Absolute return</div><PrivacyDelta minor={m.gain} className="text-sm font-semibold" /><div className="text-[11px] font-medium" style={{ color: good ? 'var(--good)' : 'var(--bad)' }}>{formatPct(abs)}</div></div><ChevronRight className="hidden md:block w-4 h-4" style={{ color: 'var(--muted)' }} /></div></button>;
+              return <button key={h.id} onClick={() => onOpenHoldingDetail(h.id)} className="w-full text-left px-4 py-3.5 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"><div className="grid md:grid-cols-[minmax(0,1.7fr)_0.9fr_0.9fr_0.8fr_24px] gap-3 md:gap-4 items-center"><div className="min-w-0"><div className="font-semibold text-sm truncate">{displayHoldingName(h.name)}</div><div className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--muted)' }}>{plainCategory(h.category)}{owner ? ` · ${owner.name}` : ''} · {whereHeld(h)}{unitWord(h) && m.qty > 0n ? ` · ${MoneyEngine.toQty(m.qty).toLocaleString('en-IN')} ${unitWord(h)}` : ''}</div></div><div className="md:text-right"><div className="md:hidden text-[10px] uppercase tracking-wide font-bold mb-0.5" style={{ color: 'var(--muted)' }}>Invested</div>{unknown ? <span className="text-sm" style={{ color: 'var(--muted)' }}>—</span> : <PrivacyValue minor={m.cost} includePaise={false} className="text-sm" />}</div><div className="md:text-right"><div className="md:hidden text-[10px] uppercase tracking-wide font-bold mb-0.5" style={{ color: 'var(--muted)' }}>Current</div><PrivacyValue minor={m.value} includePaise={false} className="text-sm font-bold" /></div><div className="md:text-right"><div className="md:hidden text-[10px] uppercase tracking-wide font-bold mb-0.5" style={{ color: 'var(--muted)' }}>Absolute return</div>{unknown ? <div className="text-sm font-semibold" style={{ color: 'var(--bad)' }}>{UNKNOWN_INVESTED_LABEL}</div> : <><PrivacyDelta minor={m.gain} className="text-sm font-semibold" /><div className="text-[11px] font-medium" style={{ color: good ? 'var(--good)' : 'var(--bad)' }}>{formatPct(abs)}</div></>}</div><ChevronRight className="hidden md:block w-4 h-4" style={{ color: 'var(--muted)' }} /></div></button>;
             })}
           </div>
         </div>
@@ -128,7 +141,15 @@ export const HoldingsScreen: React.FC<Props> = ({ onOpenAddHolding, onOpenHoldin
   );
 };
 
-const Metric: React.FC<{ label: string; value: bigint; emphasis?: boolean }> = ({ label, value, emphasis }) => <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--border)', background: 'var(--input)' }}><div className="text-xs" style={{ color: 'var(--muted)' }}>{label}</div><PrivacyValue minor={value} includePaise={false} className={emphasis ? 'text-lg font-bold mt-1' : 'text-lg font-semibold mt-1'} /></div>;
+const Metric: React.FC<{ label: string; value: bigint; emphasis?: boolean; empty?: boolean; hint?: string }> = ({ label, value, emphasis, empty, hint }) => (
+  <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--border)', background: 'var(--input)' }}>
+    <div className="text-xs" style={{ color: 'var(--muted)' }}>{label}</div>
+    {empty
+      ? <div className={emphasis ? 'text-lg font-bold mt-1' : 'text-lg font-semibold mt-1'} style={{ color: 'var(--muted)' }}>—</div>
+      : <PrivacyValue minor={value} includePaise={false} className={emphasis ? 'text-lg font-bold mt-1' : 'text-lg font-semibold mt-1'} />}
+    {hint && <div className="text-[11px] mt-1" style={{ color: 'var(--muted)' }}>{hint}</div>}
+  </div>
+);
 const Chip: React.FC<{ active: boolean; disabled?: boolean; onClick: () => void; children: React.ReactNode }> = ({ active, disabled, onClick, children }) => (
   <button
     type="button"

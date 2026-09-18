@@ -1,6 +1,6 @@
 /**
- * Home helpers: Pass A (health, concentration, dates) and
- * Pass B (statement value as a step series).
+ * Home helpers: Pass A–C (health, steps, since-last) and
+ * Pass D (holdings whose CAS cost is still the market price).
  */
 import { FamilyMember, Holding, LedgerEvent, StatementSnapRow, StatementHoldingSnap } from '../types';
 import { CasFileType, CasLatestState, CAS_FILE_TYPE_LABEL } from './casPython';
@@ -8,12 +8,11 @@ import { DerivedState } from './positions';
 import { financialYearOf } from './lots';
 import { interestKindOf } from './interest';
 import { isOpenPosition, metricsOf, displayHoldingName } from './holdingView';
+import { isUnknownInvested } from './costBasis';
 
-const RUPEE = 10_000n;
 const STALE_AMBER_DAYS = 45;
 const STALE_RED_DAYS = 90;
 const PRICE_LAG_AMBER_DAYS = 7;
-const COST_EQ_TOLERANCE = RUPEE; // ₹1
 const TOP_N = 5;
 
 export type HealthTone = 'ok' | 'amber' | 'red';
@@ -120,9 +119,7 @@ export function buildBooksHealth(opts: {
     if (h.category === 'LIABILITY') continue;
     if (!isOpenPosition(h, opts.derived)) continue;
     const m = metricsOf(h, opts.derived, opts.sgbMode);
-    if (m.cost <= 0n || m.value <= 0n) continue;
-    const diff = m.cost > m.value ? m.cost - m.value : m.value - m.cost;
-    if (diff <= COST_EQ_TOLERANCE) costEq.push(h);
+    if (isUnknownInvested(h, events, m.cost, m.value)) costEq.push(h);
   }
   if (costEq.length > 0) {
     const names = costEq.slice(0, 2).map(h => displayHoldingName(h.name)).join(', ');
@@ -403,5 +400,30 @@ export function buildSinceLastStatement(opts: {
     movers: movers.slice(0, 5),
     newCount,
   };
+}
+
+export interface UnknownCostRow {
+  id: string;
+  name: string;
+  valueMinor: bigint;
+}
+
+/** Pass D: CAS printed CMV as invested — user still needs to add what they paid. */
+export function unknownCostRows(opts: {
+  holdings: Holding[];
+  events: LedgerEvent[];
+  derived: DerivedState;
+  sgbMode: 'MARKET_TRADED' | 'RBI_BENCHMARK';
+}): UnknownCostRow[] {
+  const out: UnknownCostRow[] = [];
+  for (const h of opts.holdings) {
+    if (h.category === 'LIABILITY') continue;
+    if (!isOpenPosition(h, opts.derived)) continue;
+    const m = metricsOf(h, opts.derived, opts.sgbMode);
+    if (!isUnknownInvested(h, opts.events, m.cost, m.value)) continue;
+    out.push({ id: h.id, name: displayHoldingName(h.name), valueMinor: m.value });
+  }
+  out.sort((a, b) => (a.valueMinor < b.valueMinor ? 1 : -1));
+  return out;
 }
 

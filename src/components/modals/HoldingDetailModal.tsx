@@ -15,7 +15,7 @@ import { X, Edit3, Plus, Trash2, Calendar, Coins } from 'lucide-react';
 import { resumeEmiDate } from '../../lib/emi';
 import { holdingReturn, isStatementOnlyHistory } from '../../lib/returnMetrics';
 import { detailsLines, nameLooksLikeEtf, usesUnits } from '../../lib/holdingForm';
-import { planInvestedCorrection } from '../../lib/costBasis';
+import { isUnknownInvested, planInvestedCorrection, UNKNOWN_INVESTED_LABEL } from '../../lib/costBasis';
 
 interface HoldingDetailModalProps {
   holdingId: string | null;
@@ -82,9 +82,10 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
   const paidPerUnitMinor = m.qty > 0n ? (m.cost * QTY_SCALE) / m.qty : m.cost;
   const paidPerUnitRupees = MoneyEngine.toRupees(paidPerUnitMinor);
   const statementOnly = isStatementOnlyHistory(holdingEvents);
-  const investedLooksLikeCmp = !catInfo.isLiability && m.cost > 0n && m.value > 0n && (
+  const unknownInvested = isUnknownInvested(holding, holdingEvents, m.cost, m.value);
+  const investedLooksLikeCmp = unknownInvested || (!catInfo.isLiability && m.cost > 0n && m.value > 0n && (
     m.cost === m.value || (m.cost > m.value ? m.cost - m.value : m.value - m.cost) < 10_000n
-  );
+  ));
 
   const handleStartEditAll = () => {
     setEditName(holding.name);
@@ -429,7 +430,9 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
             <div className="text-xs mb-1" style={{ color: 'var(--muted)' }}>
               {catInfo.isLiability ? 'Original loan' : 'Put in (Invested)'}
             </div>
-            <PrivacyValue minor={m.cost} className="text-xl font-bold" includePaise={false} />
+            {unknownInvested
+              ? <div className="text-xl font-bold" style={{ color: 'var(--muted)' }}>—</div>
+              : <PrivacyValue minor={m.cost} className="text-xl font-bold" includePaise={false} />}
             {(statementOnly || investedLooksLikeCmp) && (
               <button
                 type="button"
@@ -444,7 +447,9 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
           {!catInfo.isLiability && (
           <div className="p-4 rounded-2xl border" style={{ borderColor: 'var(--border)', background: 'var(--input)' }}>
             <div className="text-xs mb-1" style={{ color: 'var(--muted)' }}>Gain or loss</div>
-            <PrivacyDelta minor={m.gain} className="text-xl font-bold" />
+            {unknownInvested
+              ? <div className="text-xl font-bold" style={{ color: 'var(--bad)' }}>{UNKNOWN_INVESTED_LABEL}</div>
+              : <PrivacyDelta minor={m.gain} className="text-xl font-bold" />}
           </div>
           )}
         </div>
@@ -705,7 +710,7 @@ const ReturnPanel: React.FC<{ holding: import('../../types').Holding }> = ({ hol
       <div className="grid grid-cols-2 gap-3">
         <div>
           <div className="text-[11px]" style={{ color: 'var(--muted)' }}>{r.profile.primaryLabel}</div>
-          <div className="text-lg font-bold" style={{ color: (r.primaryPct ?? 0) >= 0 ? 'var(--good)' : 'var(--bad)' }}>
+          <div className="text-lg font-bold" style={{ color: r.unknownInvested ? 'var(--bad)' : (r.primaryPct ?? 0) >= 0 ? 'var(--good)' : 'var(--bad)' }}>
             {r.primaryText}
           </div>
         </div>

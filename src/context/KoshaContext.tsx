@@ -61,7 +61,7 @@ import {
 } from '../lib/casPython';
 import { planEmiCatchUp, applyEmiPlan } from '../lib/emi';
 import { planInterestCatchUp, applyInterestPlan } from '../lib/interest';
-import { planInvestedCorrection } from '../lib/costBasis';
+import { planInvestedCorrection, isUnknownInvested } from '../lib/costBasis';
 import { findDuplicatePanMember } from '../lib/pan';
 import { applyCatalogPrices, catalogToListed, isEodPriceSource, refreshEodFromSidecar } from '../lib/eodPrices';
 import { casHoldingSubCategory, casImportDetails } from '../lib/holdingForm';
@@ -530,7 +530,9 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         totalLiabilitiesMinor += m.value;
       } else {
         totalAssetsMinor += m.value;
-        totalInvestedMinor += m.cost;
+        if (!isUnknownInvested(h, filteredEvents, m.cost, m.value)) {
+          totalInvestedMinor += m.cost;
+        }
       }
     });
 

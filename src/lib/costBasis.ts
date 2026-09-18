@@ -7,6 +7,7 @@
  */
 import { Holding, LedgerEvent } from '../types';
 import { QTY_SCALE } from './money';
+import { interestKindOf } from './interest';
 
 const PARCEL_TYPES = new Set(['BUY', 'OPENING_BALANCE', 'SNAPSHOT_ADJUSTMENT', 'CORRECTION']);
 
@@ -64,4 +65,32 @@ export function planInvestedCorrection(opts: {
     notes: 'Invested updated from your records (statement has no buy price)',
     supersedesEventId: parcel?.id,
   };
+}
+
+const RUPEE = 10_000n;
+/** Running-balance products: the passbook figure is both cost and value. */
+const BALANCE_IS_COST = new Set(['PPF', 'EPF', 'SSY', 'FD']);
+
+export const UNKNOWN_INVESTED_LABEL = 'Need what you paid';
+
+/**
+ * CDSL/NSDL holdings CAS prints CMP as both value and “invested”.
+ * Until the user records what they paid (BUY or CORRECTION), that
+ * number is not a cost — hide it and refuse a 0% return.
+ */
+export function isUnknownInvested(
+  holding: Holding,
+  events: LedgerEvent[],
+  costMinor: bigint,
+  valueMinor: bigint,
+): boolean {
+  if (holding.category === 'LIABILITY') return false;
+  const kind = interestKindOf(holding);
+  if (kind && BALANCE_IS_COST.has(kind)) return false;
+  if (costMinor <= 0n || valueMinor <= 0n) return false;
+  const diff = costMinor > valueMinor ? costMinor - valueMinor : valueMinor - costMinor;
+  if (diff > RUPEE) return false;
+  return !events.some(
+    e => e.holdingId === holding.id && (e.eventType === 'BUY' || e.eventType === 'CORRECTION'),
+  );
 }

@@ -10,6 +10,7 @@ import { DerivedState } from './positions';
 import { classifyHolding } from './taxonomy';
 import { metricsOf } from './holdingView';
 import { absoluteReturnPct, formatPct } from './growth';
+import { isUnknownInvested, UNKNOWN_INVESTED_LABEL } from './costBasis';
 
 export interface InstrumentProfile {
   key: string;
@@ -24,6 +25,7 @@ export interface HoldingReturn {
   primaryText: string;
   secondaryPct: number | null;
   secondaryText: string;
+  unknownInvested?: boolean;
 }
 
 const WHY = {
@@ -37,6 +39,7 @@ const WHY = {
   EQUITY: 'Absolute return compares today’s value with the amount invested in this holding.',
   OTHER: 'Absolute return compares today’s value with the amount invested in this holding.',
   STATEMENT: 'This is the change in value versus the invested value recorded in Kosha.',
+  UNKNOWN: 'The statement printed today’s market value, not what you paid. Return cannot be computed until you add invested.',
   CLOSED: 'This holding is no longer on the latest statement. Quantity is zero.',
 } as const;
 
@@ -94,6 +97,17 @@ export function holdingReturn(
       primaryText: 'Closed',
       secondaryPct: null,
       secondaryText: '—',
+    };
+  }
+
+  if (isUnknownInvested(h, own, m.cost, m.value)) {
+    return {
+      profile: { ...profile, why: WHY.UNKNOWN },
+      primaryPct: null,
+      primaryText: UNKNOWN_INVESTED_LABEL,
+      secondaryPct: null,
+      secondaryText: '—',
+      unknownInvested: true,
     };
   }
 
