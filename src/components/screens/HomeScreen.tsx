@@ -3,11 +3,11 @@ import { useKosha } from '../../context/KoshaContext';
 import { PrivacyValue, PrivacyDelta } from '../common/PrivacyValue';
 import { FAMILY_BUCKETS, upcomingFromHoldings, formatCalendarDate, FamilyBucketId } from '../../lib/holdingView';
 import { FileSpreadsheet, Target, Calendar, ChevronRight, ArrowUpRight, ShieldCheck, ShieldAlert } from 'lucide-react';
-import { Donut, HBars, AreaFlow, StackedFy, SplitBar, StepFlow } from '../growth/Charts';
+import { Donut, HBars, SplitBar, TimeStepChart } from '../growth/Charts';
 import { buildGrowthModel, formatPct, GrowthHoldingRow } from '../../lib/growth';
 import { ExposureNode, EXPOSURES } from '../../lib/taxonomy';
 import { formatStatementDateShort } from '../../lib/casPython';
-import { buildBooksHealth, buildStatementSteps, buildSinceLastStatement, concentrationOf, freshnessTone, HealthTone, issuerLabel, unknownCostRows } from '../../lib/homeDashboard';
+import { buildBooksHealth, buildStatementSteps, buildSinceLastStatement, concentrationOf, freshnessTone, firstToLastPct, HealthTone, investedSeriesFrom, issuerLabel, unknownCostRows } from '../../lib/homeDashboard';
 import { UNKNOWN_INVESTED_LABEL } from '../../lib/costBasis';
 
 interface HomeScreenProps {
@@ -71,9 +71,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpen
     [filteredHoldings, ledgerEvents, selectedMemberId, derived, sgbValuationMode],
   );
   const filedSteps = statementSteps.filter(s => !s.isLivePad);
-  const stepDelta = filedSteps.length >= 2
-    ? filedSteps[filedSteps.length - 1].valueMinor - filedSteps[0].valueMinor
-    : null;
+  const empty = filteredHoldings.length === 0;
+  const k = model.kpis;
+  const investedSteps = useMemo(
+    () => investedSeriesFrom(statementSteps, model.kpis.investedMinor),
+    [statementSteps, model.kpis.investedMinor],
+  );
+  const assetsPct = firstToLastPct(statementSteps.map(s => s.valueMinor));
+  const investedPct = firstToLastPct(investedSteps.map(s => s.investedMinor));
   const goalRows = useMemo(() => goals.map(g => {
     const tagged = filteredHoldings.filter(h => [h.tag, ...(h.tags || [])].some(t => (t || '').toLowerCase() === g.name.toLowerCase()));
     const current = tagged.reduce((s, h) => s + (model.holdings.find(x => x.id === h.id)?.valueMinor || 0n), 0n);
@@ -87,8 +92,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpen
     if (drill.kind === 'member') return hs.filter(h => h.ownerId === drill.id);
     return hs;
   }, [model.holdings, drill]);
-  const empty = filteredHoldings.length === 0;
-  const k = model.kpis;
   const gainGood = k.absoluteGainMinor >= 0n;
   const movers = showAllMovers ? filteredRows : filteredRows.slice(0, 3);
   const drillTitle = drill.kind === 'bucket'
@@ -239,30 +242,61 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpen
 
           {selectedMemberId === 'ALL' && model.members.length > 1 && <section className="card p-4 sm:p-5"><h2 className="text-sm font-bold mb-3">Whose name it is in</h2><HBars slices={model.members} selectedId={drill.kind === 'member' ? drill.id : null} onSelect={id => setDrill(d => d.kind === 'member' && d.id === id ? { kind: 'none' } : { kind: 'member', id })} /></section>}
 
-          <section className="card p-4 sm:p-5">
-            <div className="flex items-start justify-between gap-3 mb-1">
-              <div>
-                <h2 className="text-sm font-bold">Value on each statement</h2>
-                <p className="text-[11px] mt-0.5" style={{ color: 'var(--muted)' }}>
-                  Steps. Flat between files — we do not guess prices in between.
-                </p>
-              </div>
-              {stepDelta != null && (
-                <div className="text-right shrink-0">
-                  <div className="text-[10px] uppercase tracking-wide font-bold" style={{ color: 'var(--muted)' }}>Since first file</div>
-                  <PrivacyDelta minor={stepDelta} className="text-sm font-extrabold" />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <section className="card p-4 sm:p-5">
+              <div className="flex items-start justify-between gap-3 mb-1">
+                <div>
+                  <h2 className="text-sm font-bold">Assets over time</h2>
+                  <p className="text-[11px] mt-0.5" style={{ color: 'var(--muted)' }}>
+                    Statement value. Flat between files.
+                  </p>
                 </div>
+                <div className="text-right shrink-0">
+                  <div className="text-[10px] uppercase tracking-wide font-bold" style={{ color: 'var(--muted)' }}>Change</div>
+                  <div className="text-sm font-extrabold" style={{ color: (assetsPct ?? 0) >= 0 ? 'var(--good)' : 'var(--bad)' }}>
+                    {formatPct(assetsPct)}
+                  </div>
+                </div>
+              </div>
+              <TimeStepChart
+                id="assets"
+                steps={statementSteps}
+                color="var(--accent)"
+                valueOf={s => s.valueMinor}
+                empty="Import two statements to see assets move."
+              />
+              {filedSteps.length > 0 && (
+                <p className="text-[11px] mt-1" style={{ color: 'var(--muted)' }}>
+                  {filedSteps.length === 1
+                    ? `${issuerLabel(filedSteps[0].issuers[0] || 'CAS')} through ${formatStatementDateShort(filedSteps[0].date)}`
+                    : filedSteps.slice(-3).map(s => `${s.issuers.map(issuerLabel).join(' + ')} ${formatStatementDateShort(s.date)}`).join(' · ')}
+                </p>
               )}
-            </div>
-            <StepFlow steps={statementSteps} />
-            {filedSteps.length > 0 && (
-              <p className="text-[11px] mt-2" style={{ color: 'var(--muted)' }}>
-                {filedSteps.length === 1
-                  ? `${issuerLabel(filedSteps[0].issuers[0] || 'CAS')} through ${formatStatementDateShort(filedSteps[0].date)}. Import the next month to see a step.`
-                  : filedSteps.slice(-3).map(s => `${s.issuers.map(issuerLabel).join(' + ')} ${formatStatementDateShort(s.date)}`).join(' · ')}
-              </p>
-            )}
-          </section>
+            </section>
+            <section className="card p-4 sm:p-5">
+              <div className="flex items-start justify-between gap-3 mb-1">
+                <div>
+                  <h2 className="text-sm font-bold">Invested over time</h2>
+                  <p className="text-[11px] mt-0.5" style={{ color: 'var(--muted)' }}>
+                    Cost printed on each file, carried forward.
+                  </p>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-[10px] uppercase tracking-wide font-bold" style={{ color: 'var(--muted)' }}>Change</div>
+                  <div className="text-sm font-extrabold" style={{ color: (investedPct ?? 0) >= 0 ? 'var(--good)' : 'var(--bad)' }}>
+                    {formatPct(investedPct)}
+                  </div>
+                </div>
+              </div>
+              <TimeStepChart
+                id="invested"
+                steps={investedSteps}
+                color="#f59e0b"
+                valueOf={s => s.investedMinor}
+                empty="CAMS/KFin prints cost. CDSL usually does not — add what you paid."
+              />
+            </section>
+          </div>
 
           {sinceLast.asOf && (
             <section className="card p-4 sm:p-5">
@@ -306,11 +340,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpen
               )}
             </section>
           )}
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            <section className="card p-4 sm:p-5"><h2 className="text-sm font-bold mb-1">Money in, over time</h2><p className="text-[11px] mb-2" style={{ color: 'var(--muted)' }}>Invested capital and dividends / interest.</p><AreaFlow months={model.months} /></section>
-            <section className="card p-4 sm:p-5"><h2 className="text-sm font-bold mb-1">Income by Indian FY</h2><StackedFy years={model.incomeYears} selectedFy={drill.kind === 'fy' ? drill.id : null} onSelect={id => setDrill(d => d.kind === 'fy' && d.id === id ? { kind: 'none' } : { kind: 'fy', id })} /></section>
-          </div>
 
           <section className="card p-4 sm:p-5 space-y-3"><h2 className="text-sm font-bold">Gain booked vs still on paper</h2><SplitBar leftLabel="Unrealised" rightLabel="Realised" leftMinor={k.unrealisedMinor > 0n ? k.unrealisedMinor : 0n} rightMinor={k.realisedMinor > 0n ? k.realisedMinor : 0n} leftColor="#3b82f6" rightColor="#10b981" /></section>
 

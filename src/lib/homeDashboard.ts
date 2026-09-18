@@ -311,6 +311,25 @@ export function buildStatementSteps(opts: {
   return steps;
 }
 
+/** Carry last printed invested forward; live pad uses today's known invested. */
+export function investedSeriesFrom(steps: StatementStep[], liveInvestedMinor: bigint): StatementStep[] {
+  let last = 0n;
+  return steps.map(s => {
+    const raw = s.isLivePad ? (liveInvestedMinor > 0n ? liveInvestedMinor : s.investedMinor) : s.investedMinor;
+    const v = raw > 0n ? raw : last;
+    if (v > 0n) last = v;
+    return { ...s, investedMinor: v };
+  });
+}
+
+export function firstToLastPct(values: bigint[]): number | null {
+  const nz = values.filter(v => v > 0n);
+  if (nz.length < 2) return null;
+  const first = nz[0];
+  const last = nz[nz.length - 1];
+  return Number(last - first) / Number(first) * 100;
+}
+
 export interface SinceLastMover {
   id: string;
   name: string;

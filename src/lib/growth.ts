@@ -120,7 +120,15 @@ export function absoluteReturnPct(invested: bigint, current: bigint): number | n
   return (rupees(current - invested) / rupees(invested)) * 100;
 }
 
-/** Display helper retained as a presentation concern; no annualised return is calculated. */
+/** CAGR when one unchanged amount sat for `days`. Null if days < 365 or non-positive. */
+export function annualReturnPct(invested: bigint, current: bigint, days: number): number | null {
+  if (invested <= 0n || current <= 0n || !Number.isFinite(days) || days < 365) return null;
+  const ratio = rupees(current) / rupees(invested);
+  if (ratio <= 0 || !Number.isFinite(ratio)) return null;
+  return (Math.pow(ratio, 365 / days) - 1) * 100;
+}
+
+/** Display helper retained as a presentation concern. */
 export function formatPct(n: number | null, digits = 1): string {
   if (n == null || !Number.isFinite(n)) return '—';
   const sign = n > 0 ? '+' : '';

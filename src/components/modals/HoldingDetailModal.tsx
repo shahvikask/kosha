@@ -702,6 +702,10 @@ const ReturnPanel: React.FC<{ holding: import('../../types').Holding }> = ({ hol
   const { ledgerEvents, derived, sgbValuationMode } = useKosha();
   const asOf = new Date().toISOString().slice(0, 10);
   const r = holdingReturn(holding, ledgerEvents, derived, sgbValuationMode, asOf);
+  const absColor = r.unknownInvested ? 'var(--bad)' : (r.primaryPct ?? 0) >= 0 ? 'var(--good)' : 'var(--bad)';
+  const annColor = r.annualReason === 'ok'
+    ? ((r.secondaryPct ?? 0) >= 0 ? 'var(--good)' : 'var(--bad)')
+    : 'var(--muted)';
   return (
     <div className="p-4 rounded-2xl border space-y-3" style={{ borderColor: 'var(--border)', background: 'var(--input)' }}>
       <div className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--muted)' }}>
@@ -709,17 +713,22 @@ const ReturnPanel: React.FC<{ holding: import('../../types').Holding }> = ({ hol
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <div className="text-[11px]" style={{ color: 'var(--muted)' }}>{r.profile.primaryLabel}</div>
-          <div className="text-lg font-bold" style={{ color: r.unknownInvested ? 'var(--bad)' : (r.primaryPct ?? 0) >= 0 ? 'var(--good)' : 'var(--bad)' }}>
+          <div className="text-[11px]" style={{ color: 'var(--muted)' }}>Abs. return</div>
+          <div className="text-lg font-bold" style={{ color: absColor }}>
             {r.primaryText}
           </div>
         </div>
         <div>
-          <div className="text-[11px]" style={{ color: 'var(--muted)' }}>{r.profile.secondaryLabel}</div>
-          <div className="text-lg font-bold">{r.secondaryText}</div>
+          <div className="text-[11px]" style={{ color: 'var(--muted)' }}>Annual return</div>
+          <div className="text-lg font-bold" style={{ color: annColor }}>
+            {r.secondaryText}
+          </div>
         </div>
       </div>
       <p className="text-[11px] leading-relaxed" style={{ color: 'var(--muted)' }}>{r.profile.why}</p>
+      <p className="text-[11px] leading-relaxed" style={{ color: r.annualReason === 'changed' ? 'var(--accent)' : 'var(--muted)' }}>
+        {r.annualWhy}
+      </p>
       <p className="text-[11px]" style={{ color: 'var(--muted)' }}>
         Nifty, category average, G-sec and CRISIL figures are not in this vault — we only compute what your record book supports. CMP is last close / NAV, not live.
       </p>

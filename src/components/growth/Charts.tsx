@@ -119,31 +119,43 @@ export const HBars: React.FC<{
   );
 };
 
-export const StepFlow: React.FC<{ steps: StatementStep[] }> = ({ steps }) => {
-  if (steps.length === 0) {
+export const TimeStepChart: React.FC<{
+  steps: StatementStep[];
+  color: string;
+  valueOf: (s: StatementStep) => bigint;
+  empty: string;
+  id: string;
+}> = ({ steps, color, valueOf, empty, id }) => {
+  const drawn = steps.filter(s => valueOf(s) > 0n || s.isLivePad);
+  if (drawn.length === 0 || drawn.every(s => valueOf(s) <= 0n)) {
     return (
-      <p className="text-xs py-8 text-center" style={{ color: 'var(--muted)' }}>
-        Read a later month's statement to see how reported value moved.
-      </p>
+      <p className="text-xs py-8 text-center" style={{ color: 'var(--muted)' }}>{empty}</p>
     );
   }
-  const drawn = steps;
   const w = 640;
-  const h = 180;
-  const pad = { l: 8, r: 8, t: 16, b: 28 };
-  const max = drawn.reduce((s, p) => (p.valueMinor > s ? p.valueMinor : s), 1n);
-  const maxN = Number(max) || 1;
+  const h = 196;
+  const pad = { l: 12, r: 14, t: 18, b: 30 };
+  const vals = drawn.map(s => Number(valueOf(s)));
+  const rawMin = Math.min(...vals);
+  const rawMax = Math.max(...vals, 1);
+  const spanV = Math.max(rawMax - rawMin, rawMax * 0.08, 1);
+  const yMin = rawMin <= 0 ? 0 : Math.max(0, rawMin - spanV * 0.12);
+  const yMax = rawMax + spanV * 0.08;
   const firstMs = Date.parse(drawn[0].date);
   const lastMs = Date.parse(drawn[drawn.length - 1].date);
-  const span = Math.max(1, lastMs - firstMs);
+  const spanT = Math.max(1, lastMs - firstMs);
   const xOf = (iso: string) => {
     if (drawn.length === 1) return pad.l + (w - pad.l - pad.r) / 2;
     const t = Date.parse(iso);
-    const f = Number.isFinite(t) ? (t - firstMs) / span : 0;
+    const f = Number.isFinite(t) ? (t - firstMs) / spanT : 0;
     return pad.l + f * (w - pad.l - pad.r);
   };
-  const yOf = (v: bigint) => pad.t + (1 - Number(v) / maxN) * (h - pad.t - pad.b);
-  const pts = drawn.map(p => ({ x: xOf(p.date), y: yOf(p.valueMinor), p }));
+  const yOf = (v: bigint) => {
+    const n = Number(v);
+    const f = (n - yMin) / (yMax - yMin || 1);
+    return pad.t + (1 - f) * (h - pad.t - pad.b);
+  };
+  const pts = drawn.map(p => ({ x: xOf(p.date), y: yOf(valueOf(p)), p }));
   let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
   for (let i = 1; i < pts.length; i++) {
     d += ` H ${pts[i].x.toFixed(1)} V ${pts[i].y.toFixed(1)}`;
@@ -155,16 +167,58 @@ export const StepFlow: React.FC<{ steps: StatementStep[] }> = ({ steps }) => {
   if (marks.length > 2) tickIdx.push(Math.floor((marks.length - 1) / 2));
   if (marks.length > 1) tickIdx.push(marks.length - 1);
   const ticks = [...new Set(tickIdx)].map(i => marks[i]).filter(Boolean);
+  const grid = [0.25, 0.5, 0.75];
 
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-auto">
-      <path d={area} fill="var(--accent)" opacity="0.16" />
-      <path d={d} fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinejoin="miter" />
+    <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-auto" role="img">
+      <defs>
+        <linearGradient id={`fill-${id}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.28" />
+          <stop offset="100%" stopColor={color} stopOpacity="0.03" />
+        </linearGradient>
+      </defs>
+      {grid.map(g => {
+        const y = pad.t + g * (h - pad.t - pad.b);
+        return (
+          <line
+            key={g}
+            x1={pad.l}
+            x2={w - pad.r}
+            y1={y}
+            y2={y}
+            stroke="currentColor"
+            strokeOpacity="0.08"
+            strokeWidth="1"
+          />
+        );
+      })}
+      <line
+        x1={pad.l}
+        x2={w - pad.r}
+        y1={h - pad.b}
+        y2={h - pad.b}
+        stroke="currentColor"
+        strokeOpacity="0.16"
+        strokeWidth="1"
+      />
+      <path d={area} fill={`url(#fill-${id})`} />
+      <path d={d} fill="none" stroke={color} strokeWidth="2.4" strokeLinejoin="miter" />
       {marks.map(pt => (
-        <circle key={pt.p.date} cx={pt.x} cy={pt.y} r="3.5" fill="var(--accent)">
-          <title>{`${formatStatementDateShort(pt.p.date)}`}</title>
-        </circle>
+        <g key={pt.p.date}>
+          <circle cx={pt.x} cy={pt.y} r="5" fill="var(--card)" stroke={color} strokeWidth="2">
+            <title>{formatStatementDateShort(pt.p.date)}</title>
+          </circle>
+        </g>
       ))}
+      {pts.some(pt => pt.p.isLivePad) && (
+        <circle
+          cx={last.x}
+          cy={last.y}
+          r="3"
+          fill={color}
+          opacity="0.55"
+        />
+      )}
       {ticks.map((pt, i) => (
         <text
           key={`${pt.p.date}-t`}
@@ -173,7 +227,7 @@ export const StepFlow: React.FC<{ steps: StatementStep[] }> = ({ steps }) => {
           textAnchor={i === 0 ? 'start' : i === ticks.length - 1 ? 'end' : 'middle'}
           fontSize="11"
           fill="currentColor"
-          opacity="0.55"
+          opacity="0.5"
         >
           {formatStatementDateShort(pt.p.date)}
         </text>
@@ -181,6 +235,16 @@ export const StepFlow: React.FC<{ steps: StatementStep[] }> = ({ steps }) => {
     </svg>
   );
 };
+
+export const StepFlow: React.FC<{ steps: StatementStep[] }> = ({ steps }) => (
+  <TimeStepChart
+    id="assets"
+    steps={steps}
+    color="var(--accent)"
+    valueOf={s => s.valueMinor}
+    empty="Read a later month's statement to see how reported value moved."
+  />
+);
 
 export const AreaFlow: React.FC<{ months: MonthPoint[] }> = ({ months }) => {
   if (months.length < 2) {

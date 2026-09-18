@@ -11,14 +11,14 @@ import { formatStatementDate, latestAsOfForOwner, statementAsOfByMember, parseCa
 import { addCalendarMonths, dueEmiDates, planEmiCatchUp, resumeEmiDate } from './emi';
 import { planInterestCatchUp, fyEndDatesAfter, monthsHeldInFy, interestMinor, interestKindOf, interestSpecOf } from './interest';
 import { planInvestedCorrection, earliestActiveParcel, isUnknownInvested, UNKNOWN_INVESTED_LABEL } from './costBasis';
-import { absoluteReturnPct, incomeByFinancialYear, buildGrowthModel, formatPct } from './growth';
-import { profileOf, holdingReturn, isStatementOnlyHistory } from './returnMetrics';
+import { absoluteReturnPct, annualReturnPct, incomeByFinancialYear, buildGrowthModel, formatPct } from './growth';
+import { profileOf, holdingReturn, isStatementOnlyHistory, investedHasChanged } from './returnMetrics';
 import { titleCaseName, passwordIssues, isValidPan, isValidEmail, normaliseAnswer, needsPasswordRotation, packHash, unpackHash, hashSecret, verifySecret } from './auth';
 import { checkImportPan, pansMatch, panBlocksCommit, findDuplicatePanMember, panFingerprint } from './pan';
 import { applyCatalogPrices, catalogToListed, searchListed, isEodPriceSource } from './eodPrices';
 import { findMatchingHolding, holdingIdentityKey, isPlaceholderName, preferSchemeName } from './matchHolding';
 import { StatementImportRecord } from '../types';
-import { buildBooksHealth, buildStatementSteps, buildSinceLastStatement, concentrationOf, daysBetweenIso, freshnessTone, previousFinancialYear, fyEndIso, unknownCostRows } from './homeDashboard';
+import { buildBooksHealth, buildStatementSteps, buildSinceLastStatement, concentrationOf, daysBetweenIso, freshnessTone, previousFinancialYear, fyEndIso, unknownCostRows, firstToLastPct, investedSeriesFrom } from './homeDashboard';
 import { usesUnits, identifierLabel, suggestLockInDates, looksLikeUan, looksLikePran, looksLikeNsdlDpId, looksLikeNsdlClientId, looksLikeBoid, defaultSgbCoupon, inferMfPlan, inferMfOption, nameLooksLikeEtf, dematAccountMask, detailsLines, recategorizeCasAsset, casHoldingSubCategory, casImportDetails, nameLooksLikeReit, nameLooksLikeAif } from './holdingForm';
 
 let pass=0, fail=0;
@@ -480,6 +480,8 @@ eq('repayment label', eventLabel('REPAYMENT'), 'Loan repayment');
 
 console.log('\n--- S. Growth engine ---');
 eq('absolute 50%', Math.round(absoluteReturnPct(1_000_000_000n, 1_500_000_000n)!), 50);
+eq('CAGR 21% over 365 days', Math.round(annualReturnPct(100n * 10000n, 121n * 10000n, 365)!), 21);
+eq('CAGR refuses under a year', annualReturnPct(100n * 10000n, 150n * 10000n, 200), null);
 eq('format pct', formatPct(12.54), '+12.5%');
 eq('FY of May is next label', financialYearOf('2026-05-01'), '2026-27');
 const divEv = ev('dv1','DIVIDEND','2026-05-10',1,5000,'h_g');
@@ -516,6 +518,20 @@ const ppfH = {...hold('pp1','FIXED_INCOME',1,100000,110000), name:'PPF', couponR
 eq('PPF key', profileOf(ppfH, [], '2026-09-10').key, 'PPF');
 const ppfRet = holdingReturn(ppfH, [], derivePositions([], [ppfH]), 'MARKET_TRADED', '2026-09-10');
 eq('PPF primary is absolute not coupon', ppfRet.primaryText, '+10.0%');
+const sipEv = [ev('s1','BUY','2025-01-01',10,10,'mf1'), ev('s2','BUY','2025-02-01',10,10,'mf1'), ev('s3','BUY','2025-03-01',10,10,'mf1')];
+eq('SIP invested changed', investedHasChanged(sipEv, 'mf1', 'MUTUAL_FUND'), true);
+const sipRet = holdingReturn(mfSip, sipEv, derivePositions(sipEv, [mfSip]), 'MARKET_TRADED', '2026-09-10');
+eq('SIP annual is N/A', sipRet.secondaryText, 'N/A');
+eq('SIP annual reason', sipRet.annualReason, 'changed');
+const lumpEv = [ev('l1','OPENING_BALANCE','2024-01-01',100,10,'mf2')];
+const lumpRet = holdingReturn(mfLump, lumpEv, derivePositions(lumpEv, [mfLump]), 'MARKET_TRADED', '2026-09-10');
+eq('lump annual is computed', lumpRet.annualReason, 'ok');
+eq('lump annual text is a pct', lumpRet.secondaryText.includes('%'), true);
+eq('fresh lump under a year is N/A', holdingReturn(
+  mfLump, [ev('l2','OPENING_BALANCE','2026-06-01',100,10,'mf2')],
+  derivePositions([ev('l2','OPENING_BALANCE','2026-06-01',100,10,'mf2')], [mfLump]),
+  'MARKET_TRADED', '2026-09-10',
+).annualReason, 'under_year');
 eq('AIF is absolute not TVPI', profileOf({...hold('a1','SPECIALISED',1,100,150), name:'Cat II AIF'}, [], '2026-09-10').primaryLabel, 'Absolute return');
 
 const closedH = hold('cl1','MUTUAL_FUND',0,10,12);
@@ -859,6 +875,13 @@ eq('other member is empty', buildStatementSteps({
   selectedMemberId: 'f2',
   todayIso: '2026-09-16',
 }).length, 0);
+eq('pct from 100 to 150', Math.round(firstToLastPct([100n, 150n])!), 50);
+eq('pct one point is empty', firstToLastPct([100n]), null);
+const carried = investedSeriesFrom([
+  { date: '2026-01-31', valueMinor: 100n, investedMinor: 80n, issuers: ['CDSL'] },
+  { date: '2026-03-31', valueMinor: 120n, investedMinor: 0n, issuers: ['CDSL'] },
+], 90n);
+eq('invested carries forward', Number(carried[1].investedMinor), 80);
 const since = buildSinceLastStatement({
   snaps: [{ date: '2026-08-31', holdingId: 'h_eq2', ownerId: 'f1', valueMinor: 10n * 100n * 10000n }],
   holdings: [moved],
