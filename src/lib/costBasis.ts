@@ -37,17 +37,21 @@ export function planInvestedCorrection(opts: {
   unitPriceMinor: bigint;
   acquiredOn: string;
 }): Omit<LedgerEvent, 'id' | 'createdAt'> | null {
-  const { holding, events, unitPriceMinor, acquiredOn } = opts;
+  const { holding, events, unitPriceMinor } = opts;
   if (unitPriceMinor <= 0n) return null;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(acquiredOn)) return null;
   const parcel = earliestActiveParcel(events, holding.id);
-  if (!parcel) return null;
-  const qty = BigInt(parcel.quantityScaled || '0');
+  const qty = parcel
+    ? BigInt(parcel.quantityScaled || '0')
+    : BigInt(holding.quantityScaled || '0');
   if (qty <= 0n) return null;
+  const acquiredOn = /^\d{4}-\d{2}-\d{2}$/.test(opts.acquiredOn)
+    ? opts.acquiredOn
+    : (parcel?.eventDate || holding.acquiredOn || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(acquiredOn)) return null;
   const total = (qty * unitPriceMinor) / QTY_SCALE;
-  const samePrice = BigInt(parcel.unitPriceMinor || '0') === unitPriceMinor;
-  const sameDate = parcel.eventDate === acquiredOn;
-  if (samePrice && sameDate) return null;
+  const samePrice = parcel != null && BigInt(parcel.unitPriceMinor || '0') === unitPriceMinor;
+  const sameDate = parcel != null && parcel.eventDate === acquiredOn;
+  if (parcel && samePrice && sameDate) return null;
   return {
     holdingId: holding.id,
     holdingName: holding.name,
@@ -58,6 +62,6 @@ export function planInvestedCorrection(opts: {
     unitPriceMinor: unitPriceMinor.toString(),
     totalAmountMinor: total.toString(),
     notes: 'Invested updated from your records (statement has no buy price)',
-    supersedesEventId: parcel.id,
+    supersedesEventId: parcel?.id,
   };
 }

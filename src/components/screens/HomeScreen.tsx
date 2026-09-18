@@ -7,7 +7,7 @@ import { Donut, HBars, AreaFlow, StackedFy, SplitBar, StepFlow } from '../growth
 import { buildGrowthModel, formatPct, GrowthHoldingRow } from '../../lib/growth';
 import { ExposureNode, EXPOSURES } from '../../lib/taxonomy';
 import { formatStatementDateShort } from '../../lib/casPython';
-import { buildBooksHealth, buildStatementSteps, concentrationOf, freshnessTone, HealthTone, issuerLabel } from '../../lib/homeDashboard';
+import { buildBooksHealth, buildStatementSteps, buildSinceLastStatement, concentrationOf, freshnessTone, HealthTone, issuerLabel } from '../../lib/homeDashboard';
 
 interface HomeScreenProps {
   onOpenAddHolding: () => void;
@@ -22,7 +22,7 @@ type Drill =
   | { kind: 'fy'; id: string };
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpenHoldingDetail }) => {
-  const { summary, filteredHoldings, familyMembers, selectedMemberId, setActiveScreen, sgbValuationMode, derived, lastStatementAsOf, pricesAsOf, goals, ledgerEvents, casLatest, statementSnaps } = useKosha();
+  const { summary, filteredHoldings, familyMembers, selectedMemberId, setActiveScreen, sgbValuationMode, derived, lastStatementAsOf, pricesAsOf, goals, ledgerEvents, casLatest, statementSnaps, statementHoldingSnaps } = useKosha();
   const [drill, setDrill] = useState<Drill>({ kind: 'none' });
   const [showAllMovers, setShowAllMovers] = useState(false);
   const who = selectedMemberId === 'ALL' ? 'The family' : familyMembers.find(m => m.id === selectedMemberId)?.name || 'Family';
@@ -47,6 +47,18 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpen
   const statementSteps = useMemo(
     () => buildStatementSteps({ rows: statementSnaps, selectedMemberId, todayIso: asOf }),
     [statementSnaps, selectedMemberId, asOf],
+  );
+  const sinceLast = useMemo(
+    () => buildSinceLastStatement({
+      snaps: statementHoldingSnaps,
+      holdings: filteredHoldings,
+      derived,
+      events: ledgerEvents.filter(e => selectedMemberId === 'ALL' || e.ownerId === selectedMemberId),
+      selectedMemberId,
+      sgbMode: sgbValuationMode,
+      todayIso: asOf,
+    }),
+    [statementHoldingSnaps, filteredHoldings, derived, ledgerEvents, selectedMemberId, sgbValuationMode, asOf],
   );
   const filedSteps = statementSteps.filter(s => !s.isLivePad);
   const stepDelta = filedSteps.length >= 2
@@ -196,6 +208,49 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpen
               </p>
             )}
           </section>
+
+          {sinceLast.asOf && (
+            <section className="card p-4 sm:p-5">
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div>
+                  <h2 className="text-sm font-bold">Since last statement</h2>
+                  <p className="text-[11px] mt-0.5" style={{ color: 'var(--muted)' }}>
+                    {formatStatementDateShort(sinceLast.asOf)} file vs today's prices on those same holdings.
+                  </p>
+                </div>
+                <div className="text-right shrink-0">
+                  <PrivacyDelta minor={sinceLast.deltaMinor} className="text-sm font-extrabold" />
+                  {sinceLast.newCount > 0 && (
+                    <div className="text-[11px]" style={{ color: 'var(--muted)' }}>{sinceLast.newCount} new since then</div>
+                  )}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div className="rounded-xl border px-3 py-2" style={{ borderColor: 'var(--border)', background: 'var(--input)' }}>
+                  <div className="text-[10px] uppercase tracking-wide font-bold" style={{ color: 'var(--muted)' }}>On the file</div>
+                  <PrivacyValue minor={sinceLast.thenMinor} includePaise={false} className="text-sm font-bold" />
+                </div>
+                <div className="rounded-xl border px-3 py-2" style={{ borderColor: 'var(--border)', background: 'var(--input)' }}>
+                  <div className="text-[10px] uppercase tracking-wide font-bold" style={{ color: 'var(--muted)' }}>Now</div>
+                  <PrivacyValue minor={sinceLast.nowMinor} includePaise={false} className="text-sm font-bold" />
+                </div>
+              </div>
+              {sinceLast.movers.length === 0 ? (
+                <p className="text-xs" style={{ color: 'var(--muted)' }}>Prices have not moved from the statement yet, or refresh EOD prices.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {sinceLast.movers.map(r => (
+                    <li key={r.id}>
+                      <button type="button" onClick={() => onOpenHoldingDetail(r.id)} className="w-full text-left flex items-center justify-between gap-2">
+                        <span className="truncate text-sm font-medium">{r.name}</span>
+                        <PrivacyDelta minor={r.deltaMinor} className="text-xs font-bold shrink-0" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             <section className="card p-4 sm:p-5"><h2 className="text-sm font-bold mb-1">Money in, over time</h2><p className="text-[11px] mb-2" style={{ color: 'var(--muted)' }}>Invested capital and dividends / interest.</p><AreaFlow months={model.months} /></section>

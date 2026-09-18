@@ -18,7 +18,7 @@ import { checkImportPan, pansMatch, panBlocksCommit, findDuplicatePanMember, pan
 import { applyCatalogPrices, catalogToListed, searchListed, isEodPriceSource } from './eodPrices';
 import { findMatchingHolding, holdingIdentityKey, isPlaceholderName, preferSchemeName } from './matchHolding';
 import { StatementImportRecord } from '../types';
-import { buildBooksHealth, buildStatementSteps, concentrationOf, daysBetweenIso, freshnessTone, previousFinancialYear, fyEndIso } from './homeDashboard';
+import { buildBooksHealth, buildStatementSteps, buildSinceLastStatement, concentrationOf, daysBetweenIso, freshnessTone, previousFinancialYear, fyEndIso } from './homeDashboard';
 import { usesUnits, identifierLabel, suggestLockInDates, looksLikeUan, looksLikePran, looksLikeNsdlDpId, looksLikeNsdlClientId, looksLikeBoid, defaultSgbCoupon, inferMfPlan, inferMfOption, nameLooksLikeEtf, dematAccountMask, detailsLines, recategorizeCasAsset, casHoldingSubCategory, casImportDetails, nameLooksLikeReit, nameLooksLikeAif } from './holdingForm';
 
 let pass=0, fail=0;
@@ -664,6 +664,24 @@ eq('same price and date is a no-op', planInvestedCorrection({
   holding: relH, events: [casOpen],
   unitPriceMinor: BigInt(Math.round(1285 * 1e4)), acquiredOn: '2026-08-31',
 }), null);
+eq('blank date uses the statement date', planInvestedCorrection({
+  holding: relH, events: [casOpen],
+  unitPriceMinor: BigInt(Math.round(850 * 1e4)), acquiredOn: '',
+})!.eventDate, '2026-08-31');
+
+const aifSnap = ev('s_aif', 'SNAPSHOT_ADJUSTMENT', '2026-08-31', 25000, 170, 'h_aif3');
+const aifHold: Holding = { ...hold('h_aif3', 'SPECIALISED', 25000, 170, 170, 'AIF'), name: 'INDIA DISCOVERY FUND II - CLASS B1' };
+const aifPaid = planInvestedCorrection({
+  holding: aifHold,
+  events: [aifSnap],
+  unitPriceMinor: BigInt(Math.round(140 * 1e4)),
+  acquiredOn: '',
+});
+eq('AIF save without purchase date', aifPaid!.eventDate, '2026-08-31');
+eq('AIF unit becomes 140', Number(BigInt(aifPaid!.unitPriceMinor)) / 1e4, 140);
+const aifFold = foldHolding([aifSnap, { ...aifPaid!, id: 'c_aif', createdAt: 't' }], 'SPECIALISED');
+eq('AIF qty stays 25000', Number(aifFold.totalQtyScaled) / 1e8, 25000);
+eq('AIF invested is 25000 × 140', Math.round(Number(aifFold.totalCostMinor) / 1e4), 25000 * 140);
 
 eq('FY ends after CAS date skip 31 Mar 2026', fyEndDatesAfter('2026-08-31', '2026-09-15').join(','), '');
 eq('next FY end after Aug is Mar 2027', fyEndDatesAfter('2026-08-31', '2027-03-31').join(','), '2027-03-31');
@@ -828,6 +846,19 @@ eq('other member is empty', buildStatementSteps({
   selectedMemberId: 'f2',
   todayIso: '2026-09-16',
 }).length, 0);
+const since = buildSinceLastStatement({
+  snaps: [{ date: '2026-08-31', holdingId: 'h_eq2', ownerId: 'f1', valueMinor: 10n * 100n * 10000n }],
+  holdings: [moved],
+  derived: dashDerived,
+  events: [],
+  selectedMemberId: 'ALL',
+  sgbMode: 'MARKET_TRADED',
+  todayIso: '2026-09-16',
+});
+eq('since last as-of', since.asOf, '2026-08-31');
+eq('since last now is 10 × 140', Number(since.nowMinor) / 10000, 1400);
+eq('since last then is 10 × 100', Number(since.thenMinor) / 10000, 1000);
+eq('since last mover is TCS', since.movers[0].name, 'TCS');
 
 console.log('\n--- H. Encryption ---');
 (async()=>{

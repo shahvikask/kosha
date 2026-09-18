@@ -2,7 +2,7 @@
  * Home helpers: Pass A (health, concentration, dates) and
  * Pass B (statement value as a step series).
  */
-import { FamilyMember, Holding, LedgerEvent, StatementSnapRow } from '../types';
+import { FamilyMember, Holding, LedgerEvent, StatementSnapRow, StatementHoldingSnap } from '../types';
 import { CasFileType, CasLatestState, CAS_FILE_TYPE_LABEL } from './casPython';
 import { DerivedState } from './positions';
 import { financialYearOf } from './lots';
@@ -312,5 +312,96 @@ export function buildStatementSteps(opts: {
     });
   }
   return steps;
+}
+
+export interface SinceLastMover {
+  id: string;
+  name: string;
+  thenMinor: bigint;
+  nowMinor: bigint;
+  deltaMinor: bigint;
+}
+
+export interface SinceLastStatement {
+  asOf: string | null;
+  thenMinor: bigint;
+  nowMinor: bigint;
+  deltaMinor: bigint;
+  movers: SinceLastMover[];
+  newCount: number;
+}
+
+/**
+ * Current value of holdings vs their last statement CMV.
+ * Coverage is what the files reported — PPF/FD never on CAS are omitted.
+ */
+export function buildSinceLastStatement(opts: {
+  snaps: StatementHoldingSnap[];
+  holdings: Holding[];
+  derived: DerivedState;
+  events: LedgerEvent[];
+  selectedMemberId: string;
+  sgbMode: 'MARKET_TRADED' | 'RBI_BENCHMARK';
+  todayIso: string;
+}): SinceLastStatement {
+  const inScope = (ownerId: string) => opts.selectedMemberId === 'ALL' || ownerId === opts.selectedMemberId;
+  const latest = new Map<string, StatementHoldingSnap>();
+  let asOf: string | null = null;
+  for (const s of opts.snaps) {
+    if (!inScope(s.ownerId) || !s.date) continue;
+    const prev = latest.get(s.holdingId);
+    if (!prev || s.date >= prev.date) latest.set(s.holdingId, s);
+    if (!asOf || s.date > asOf) asOf = s.date;
+  }
+  if (!asOf) {
+    return { asOf: null, thenMinor: 0n, nowMinor: 0n, deltaMinor: 0n, movers: [], newCount: 0 };
+  }
+
+  let thenMinor = 0n;
+  let nowMinor = 0n;
+  const movers: SinceLastMover[] = [];
+  for (const snap of latest.values()) {
+    const h = opts.holdings.find(x => x.id === snap.holdingId);
+    if (!h) continue;
+    const now = metricsOf(h, opts.derived, opts.sgbMode).value;
+    thenMinor += snap.valueMinor;
+    nowMinor += now;
+    const delta = now - snap.valueMinor;
+    if (delta !== 0n) {
+      movers.push({
+        id: h.id,
+        name: displayHoldingName(h.name),
+        thenMinor: snap.valueMinor,
+        nowMinor: now,
+        deltaMinor: delta,
+      });
+    }
+  }
+  movers.sort((a, b) => {
+    const aa = a.deltaMinor < 0n ? -a.deltaMinor : a.deltaMinor;
+    const bb = b.deltaMinor < 0n ? -b.deltaMinor : b.deltaMinor;
+    return aa < bb ? 1 : aa > bb ? -1 : 0;
+  });
+
+  let newCount = 0;
+  for (const h of opts.holdings) {
+    if (!inScope(h.ownerId) || h.category === 'LIABILITY') continue;
+    if (latest.has(h.id)) continue;
+    if (!isOpenPosition(h, opts.derived)) continue;
+    const first = opts.events
+      .filter(e => e.holdingId === h.id && e.eventDate)
+      .sort((a, b) => a.eventDate.localeCompare(b.eventDate))[0];
+    const start = (h.acquiredOn || first?.eventDate || '').slice(0, 10);
+    if (start && start > asOf) newCount += 1;
+  }
+
+  return {
+    asOf,
+    thenMinor,
+    nowMinor,
+    deltaMinor: nowMinor - thenMinor,
+    movers: movers.slice(0, 5),
+    newCount,
+  };
 }
 

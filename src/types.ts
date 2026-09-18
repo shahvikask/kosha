@@ -449,4 +449,12 @@ export interface StatementSnapRow {
   investedMinor: bigint;
 }
 
+/** Latest statement CMV for one holding (Pass C). */
+export interface StatementHoldingSnap {
+  date: string;
+  holdingId: string;
+  ownerId: string;
+  valueMinor: bigint;
+}
+
 
