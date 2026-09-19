@@ -1,10 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { useKosha } from '../../context/KoshaContext';
 import { PrivacyValue, PrivacyDelta } from '../common/PrivacyValue';
-import { FAMILY_BUCKETS, upcomingFromHoldings, formatCalendarDate, FamilyBucketId } from '../../lib/holdingView';
-import { FileSpreadsheet, Target, Calendar, ChevronRight, ArrowUpRight, ShieldCheck, ShieldAlert } from 'lucide-react';
+import { FAMILY_BUCKETS, upcomingFromHoldings, formatCalendarDate, FamilyBucketId, bucketOf } from '../../lib/holdingView';
+import { FileSpreadsheet, Target, Calendar, ChevronRight, ArrowUpRight, ShieldCheck, ShieldAlert, Plus, WalletCards, Landmark } from 'lucide-react';
 import { Donut, HBars, SplitBar, TimeStepChart } from '../growth/Charts';
-import { buildGrowthModel, formatPct, GrowthHoldingRow } from '../../lib/growth';
+import { buildGrowthModel, formatPct, GrowthHoldingRow, BUCKET_COLORS } from '../../lib/growth';
 import { ExposureNode, EXPOSURES } from '../../lib/taxonomy';
 import { formatStatementDateShort } from '../../lib/casPython';
 import { buildBooksHealth, buildStatementSteps, buildSinceLastStatement, concentrationOf, freshnessTone, firstToLastPct, HealthTone, investedSeriesFrom, issuerLabel, unknownCostRows } from '../../lib/homeDashboard';
@@ -104,7 +104,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpen
 
   return (
     <div className="space-y-5 sm:space-y-6 pb-12">
-      <section className="card p-5 sm:p-8 relative overflow-hidden">
+      <section className="card card-hero p-5 sm:p-8 relative overflow-hidden">
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-5">
           <div>
             <div className="text-xs uppercase tracking-wider font-bold mb-2" style={{ color: 'var(--muted)' }}>{who} · Net worth</div>
@@ -150,10 +150,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpen
           </div>
         </div>
         <div className="mt-5 space-y-2">
-          <WaterRow label="Invested" value={k.investedMinor} widthPct={barPct(k.investedMinor, k.assetsMinor)} />
-          <WaterRow label="Assets" value={k.assetsMinor} widthPct={100} />
-          <WaterRow label="Loans" value={k.liabilitiesMinor} widthPct={barPct(k.liabilitiesMinor, k.assetsMinor)} negative />
-          <WaterRow label="Net worth" value={summary.netWorthMinor} widthPct={barPct(summary.netWorthMinor > 0n ? summary.netWorthMinor : 0n, k.assetsMinor)} strong />
+          <WaterRow label="Invested" value={k.investedMinor} widthPct={barPct(k.investedMinor, k.assetsMinor)} color="var(--accent)" />
+          <WaterRow label="Assets" value={k.assetsMinor} widthPct={100} color="var(--accent-2)" />
+          <WaterRow label="Loans" value={k.liabilitiesMinor} widthPct={barPct(k.liabilitiesMinor, k.assetsMinor)} negative color="var(--bad)" />
+          <WaterRow label="Net worth" value={summary.netWorthMinor} widthPct={barPct(summary.netWorthMinor > 0n ? summary.netWorthMinor : 0n, k.assetsMinor)} strong color="var(--bucket-shares)" />
         </div>
       </section>
 
@@ -171,10 +171,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpen
       {!empty && (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <Action title="Read a statement" hint="CDSL, CAMS, KFin" onClick={() => setActiveScreen('DOCUMENTS')} />
-            <Action title="Add manually" hint="PPF, home, gold" onClick={onOpenAddHolding} />
-            <Action title="See holdings" hint="Search & compare" onClick={() => setActiveScreen('HOLDINGS')} />
-            <Action title="Demat & folios" hint="Where it sits" onClick={() => setActiveScreen('ACCOUNTS')} />
+            <Action title="Read a statement" hint="CDSL, CAMS, KFin" onClick={() => setActiveScreen('DOCUMENTS')} tint="var(--bucket-govt)" icon={FileSpreadsheet} />
+            <Action title="Add manually" hint="PPF, home, gold" onClick={onOpenAddHolding} tint="var(--accent)" icon={Plus} />
+            <Action title="See holdings" hint="Search & compare" onClick={() => setActiveScreen('HOLDINGS')} tint="var(--bucket-shares)" icon={WalletCards} />
+            <Action title="Demat & folios" hint="Where it sits" onClick={() => setActiveScreen('ACCOUNTS')} tint="var(--bucket-bank)" icon={Landmark} />
           </div>
 
           <section className="card p-4 sm:p-5">
@@ -261,7 +261,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpen
               <TimeStepChart
                 id="assets"
                 steps={statementSteps}
-                color="var(--accent)"
+                color="var(--accent-2)"
                 valueOf={s => s.valueMinor}
                 empty="Import two statements to see assets move."
               />
@@ -291,7 +291,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpen
               <TimeStepChart
                 id="invested"
                 steps={investedSteps}
-                color="#f59e0b"
+                color="var(--accent)"
                 valueOf={s => s.investedMinor}
                 empty="CAMS/KFin prints cost. CDSL usually does not — add what you paid."
               />
@@ -353,7 +353,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpen
               </p>
               {biggest.rows.length === 0 ? null : (
                 <ul className="space-y-2">
-                  {biggest.rows.map(r => (
+                  {biggest.rows.map(r => {
+                    const hold = filteredHoldings.find(h => h.id === r.id);
+                    const barColor = hold ? BUCKET_COLORS[bucketOf(hold)] : 'var(--accent)';
+                    return (
                     <li key={r.id}>
                       <button type="button" onClick={() => onOpenHoldingDetail(r.id)} className="w-full text-left">
                         <div className="flex items-center justify-between gap-2 text-sm">
@@ -361,11 +364,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpen
                           <span className="shrink-0 text-[11px] font-bold" style={{ color: 'var(--muted)' }}>{r.pct.toFixed(0)}%</span>
                         </div>
                         <div className="mt-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--chip)' }}>
-                          <div className="h-full rounded-full" style={{ width: `${Math.min(100, r.pct)}%`, background: 'var(--accent)' }} />
+                          <div className="h-full rounded-full" style={{ width: `${Math.min(100, r.pct)}%`, background: barColor }} />
                         </div>
                       </button>
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               )}
             </section>
@@ -386,31 +390,42 @@ const barPct = (part: bigint, whole: bigint): number => {
   return Math.max(0, Math.min(100, n));
 };
 
-const DateChip: React.FC<{ label: string; value?: string; valueNode?: React.ReactNode; tone: HealthTone }> = ({ label, value, valueNode, tone }) => (
+const DateChip: React.FC<{ label: string; value?: string; valueNode?: React.ReactNode; tone: HealthTone }> = ({ label, value, valueNode, tone }) => {
+  const tint = tone === 'red' ? 'var(--bad)' : tone === 'amber' ? 'var(--warn)' : 'var(--good)';
+  return (
   <div
     className="rounded-xl border px-3 py-1.5"
     style={{
-      borderColor: tone === 'red' ? 'var(--bad)' : tone === 'amber' ? 'var(--accent)' : 'var(--border)',
-      background: 'var(--input)',
+      borderColor: `color-mix(in srgb, ${tint} 45%, var(--border))`,
+      background: `color-mix(in srgb, ${tint} 14%, var(--input))`,
     }}
   >
     <div className="text-[10px] uppercase tracking-wide font-bold" style={{ color: 'var(--muted)' }}>{label}</div>
     <div className="text-xs font-bold mt-0.5">{valueNode || value}</div>
   </div>
-);
+  );
+};
 
-const WaterRow: React.FC<{ label: string; value: bigint; widthPct: number; negative?: boolean; strong?: boolean }> = ({ label, value, widthPct, negative, strong }) => (
+const WaterRow: React.FC<{ label: string; value: bigint; widthPct: number; negative?: boolean; strong?: boolean; color: string }> = ({ label, value, widthPct, negative, strong, color }) => (
   <div className="grid grid-cols-[7rem_1fr_auto] sm:grid-cols-[8.5rem_1fr_auto] items-center gap-3">
     <div className="text-xs font-semibold" style={{ color: strong ? 'var(--text)' : 'var(--muted)' }}>{label}</div>
     <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--chip)' }}>
       <div
         className="h-full rounded-full"
-        style={{ width: `${widthPct}%`, background: negative ? 'var(--bad)' : strong ? 'var(--accent)' : 'var(--text)', opacity: negative ? 0.7 : strong ? 1 : 0.35 }}
+        style={{ width: `${widthPct}%`, background: color, opacity: negative ? 0.75 : 1 }}
       />
     </div>
     <PrivacyValue minor={value} includePaise={false} className={`text-sm ${strong ? 'font-extrabold' : 'font-semibold'}`} prefix={negative && value > 0n ? '−' : ''} />
   </div>
 );
 
-const Action: React.FC<{ title: string; hint: string; onClick: () => void }> = ({ title, hint, onClick }) => <button onClick={onClick} className="card p-4 text-left hover:opacity-90"><div className="font-bold text-sm">{title}</div><div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{hint}</div></button>;
-const HoldingTable: React.FC<{ rows: GrowthHoldingRow[]; onOpen: (id: string) => void }> = ({ rows, onOpen }) => rows.length === 0 ? <p className="text-xs" style={{ color: 'var(--muted)' }}>Nothing in this slice.</p> : <div className="divide-y" style={{ borderColor: 'var(--border)' }}>{rows.map(r => <button key={r.id} type="button" onClick={() => onOpen(r.id)} className="w-full text-left py-3 flex items-center gap-3 hover:opacity-90"><div className="min-w-0 flex-1"><div className="text-sm font-medium truncate">{r.name}</div><div className="text-[11px] truncate" style={{ color: 'var(--muted)' }}>{r.ownerName} · {FAMILY_BUCKETS.find(b => b.id === r.bucket)?.title}</div></div><div className="text-right shrink-0">{r.unknownInvested ? <div className="text-xs font-semibold" style={{ color: 'var(--bad)' }}>{UNKNOWN_INVESTED_LABEL}</div> : <><PrivacyValue minor={r.valueMinor} includePaise={false} className="text-sm font-semibold" /><div className="text-[11px]"><PrivacyDelta minor={r.gainMinor} className="text-[11px] font-medium" /></div></>}</div><ChevronRight className="w-4 h-4 shrink-0" style={{ color: 'var(--muted)' }} /></button>)}</div>;
+const Action: React.FC<{ title: string; hint: string; onClick: () => void; tint: string; icon: typeof FileSpreadsheet }> = ({ title, hint, onClick, tint, icon: Icon }) => (
+  <button onClick={onClick} className="card p-4 text-left hover:opacity-90" style={{ borderColor: `color-mix(in srgb, ${tint} 35%, var(--border))` }}>
+    <span className="w-9 h-9 rounded-xl flex items-center justify-center mb-2" style={{ background: `color-mix(in srgb, ${tint} 18%, transparent)`, color: tint }}>
+      <Icon className="w-4 h-4" />
+    </span>
+    <div className="font-bold text-sm">{title}</div>
+    <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{hint}</div>
+  </button>
+);
+const HoldingTable: React.FC<{ rows: GrowthHoldingRow[]; onOpen: (id: string) => void }> = ({ rows, onOpen }) => rows.length === 0 ? <p className="text-xs" style={{ color: 'var(--muted)' }}>Nothing in this slice.</p> : <div className="divide-y" style={{ borderColor: 'var(--border)' }}>{rows.map(r => <button key={r.id} type="button" onClick={() => onOpen(r.id)} className="w-full text-left py-3 flex items-center gap-3 hover:opacity-90"><span className="w-2 h-2 rounded-full shrink-0" style={{ background: BUCKET_COLORS[r.bucket] }} /><div className="min-w-0 flex-1"><div className="text-sm font-medium truncate">{r.name}</div><div className="text-[11px] truncate" style={{ color: 'var(--muted)' }}>{r.ownerName} · {FAMILY_BUCKETS.find(b => b.id === r.bucket)?.title}</div></div><div className="text-right shrink-0">{r.unknownInvested ? <div className="text-xs font-semibold" style={{ color: 'var(--bad)' }}>{UNKNOWN_INVESTED_LABEL}</div> : <><PrivacyValue minor={r.valueMinor} includePaise={false} className="text-sm font-semibold" /><div className="text-[11px]"><PrivacyDelta minor={r.gainMinor} className="text-[11px] font-medium" /></div></>}</div><ChevronRight className="w-4 h-4 shrink-0" style={{ color: 'var(--muted)' }} /></button>)}</div>;

@@ -1,37 +1,63 @@
 @import "tailwindcss";
 
 :root {
-  --app: #0b1120;
-  --chrome: #0f172a;
-  --card: #111827;
-  --border: #1e293b;
-  --text: #f1f5f9;
-  --muted: #94a3b8;
-  --subtle: #64748b;
-  --accent: #fbbf24;
-  --accent-fg: #0f172a;
+  --app: #07131f;
+  --chrome: #0c1c2c;
+  --card: #102536;
+  --border: #1e3a4f;
+  --text: #f4f7fb;
+  --muted: #9bb3c7;
+  --subtle: #6b879c;
+  --accent: #f5c14a;
+  --accent-fg: #1a1204;
+  --accent-2: #2dd4bf;
+  --accent-2-fg: #042f2e;
   --good: #34d399;
   --bad: #fb7185;
-  --chip: #1e293b;
-  --input: #020617;
-  --shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  --warn: #fbbf24;
+  --chip: #163044;
+  --input: #081824;
+  --shadow: 0 16px 40px rgba(4, 16, 28, 0.45);
+  --wash-1: rgba(245, 193, 74, 0.16);
+  --wash-2: rgba(45, 212, 191, 0.14);
+  --bucket-shares: #38bdf8;
+  --bucket-funds: #818cf8;
+  --bucket-gold: #f5c14a;
+  --bucket-govt: #34d399;
+  --bucket-property: #c084fc;
+  --bucket-bank: #22d3ee;
+  --bucket-special: #f472b6;
+  --bucket-loan: #fb7185;
 }
 
 html.theme-light {
-  --app: #f4efe4;
-  --chrome: #fffdf8;
+  --app: #f6efe3;
+  --chrome: #fffaf3;
   --card: #ffffff;
-  --border: #e4d9c8;
+  --border: #eadcc8;
   --text: #1c1917;
-  --muted: #57534e;
-  --subtle: #a8a29e;
+  --muted: #6b5e52;
+  --subtle: #a89886;
   --accent: #d97706;
   --accent-fg: #fffbeb;
+  --accent-2: #0f766e;
+  --accent-2-fg: #f0fdfa;
   --good: #047857;
   --bad: #be123c;
-  --chip: #f3ebe0;
-  --input: #faf7f2;
-  --shadow: 0 10px 30px rgba(28, 25, 23, 0.08);
+  --warn: #b45309;
+  --chip: #f4eadc;
+  --input: #faf6ef;
+  --shadow: 0 12px 28px rgba(80, 50, 20, 0.08);
+  --wash-1: rgba(217, 119, 6, 0.12);
+  --wash-2: rgba(15, 118, 110, 0.10);
+  --bucket-shares: #0284c7;
+  --bucket-funds: #4f46e5;
+  --bucket-gold: #d97706;
+  --bucket-govt: #047857;
+  --bucket-property: #7c3aed;
+  --bucket-bank: #0e7490;
+  --bucket-special: #be185d;
+  --bucket-loan: #be123c;
 }
 
 @layer base {
@@ -42,9 +68,21 @@ html.theme-light {
   html,
   body,
   #root {
-    background: var(--app);
-    color: var(--text);
     min-height: 100%;
+    color: var(--text);
+  }
+
+  html,
+  body {
+    background-color: var(--app);
+    background-image:
+      radial-gradient(1200px 520px at -10% -20%, var(--wash-1), transparent 58%),
+      radial-gradient(900px 480px at 110% -10%, var(--wash-2), transparent 52%);
+    background-attachment: fixed;
+  }
+
+  #root {
+    background: transparent;
   }
 
   body {
@@ -62,6 +100,11 @@ html.theme-light {
   button,
   select {
     -webkit-tap-highlight-color: transparent;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
   }
 
   button:focus-visible,
@@ -90,6 +133,13 @@ html.theme-light {
   border: 1px solid var(--border);
   border-radius: 1.5rem;
   box-shadow: var(--shadow);
+}
+
+.card-hero {
+  background:
+    radial-gradient(900px 220px at 0% 0%, var(--wash-1), transparent 55%),
+    radial-gradient(700px 200px at 100% 0%, var(--wash-2), transparent 50%),
+    var(--card);
 }
 
 .chip {
@@ -164,4 +214,10 @@ html.theme-light .divide-slate-900 > :not([hidden]) ~ :not([hidden]) {
 }
 html.theme-light .placeholder-slate-500::placeholder {
   color: var(--subtle);
+}
+html.theme-light .text-amber-400 {
+  color: var(--accent);
+}
+html.theme-light .text-emerald-400 {
+  color: var(--accent-2);
 }

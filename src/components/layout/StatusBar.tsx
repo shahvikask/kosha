@@ -14,7 +14,7 @@ export const StatusBar: React.FC = () => {
   return (
     <footer
       className="h-10 border-t text-[11px] sm:text-xs flex items-center justify-between px-4 sm:px-6 fixed bottom-0 left-0 right-0 z-40"
-      style={{ background: 'var(--chrome)', borderColor: 'var(--border)', color: 'var(--muted)' }}
+      style={{ background: 'color-mix(in srgb, var(--chrome) 88%, var(--accent-2) 8%)', borderColor: 'var(--border)', color: 'var(--muted)' }}
     >
       <div className="flex items-center gap-2 truncate">
         <Shield className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--good)' }} />

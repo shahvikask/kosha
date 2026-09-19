@@ -69,7 +69,7 @@ const KoshaMainApp: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen flex flex-col font-sans" style={{ background: 'var(--app)', color: 'var(--text)' }}>
+    <div className="min-h-screen flex flex-col font-sans" style={{ color: 'var(--text)' }}>
       {migration && migration.verified && !isMigrationBannerDismissed && (
         <div className="px-4 py-3 text-xs sm:text-sm flex items-center justify-between" style={{ background: 'var(--chip)', color: 'var(--text)' }}>
           <div className="flex items-center gap-2 max-w-7xl mx-auto w-full">

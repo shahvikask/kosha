@@ -19,28 +19,28 @@ import { apportion, resolveSplit } from './lookthrough';
 import { isUnknownInvested } from './costBasis';
 
 export const BUCKET_COLORS: Record<FamilyBucketId, string> = {
-  SHARES: '#f59e0b',
-  FUNDS: '#3b82f6',
-  GOLD: '#eab308',
-  GOVT: '#10b981',
-  PROPERTY: '#8b5cf6',
-  BANK: '#06b6d4',
-  SPECIAL: '#6366f1',
-  LOAN: '#f43f5e',
+  SHARES: '#38bdf8',
+  FUNDS: '#818cf8',
+  GOLD: '#f5c14a',
+  GOVT: '#34d399',
+  PROPERTY: '#c084fc',
+  BANK: '#22d3ee',
+  SPECIAL: '#f472b6',
+  LOAN: '#fb7185',
 };
 
 export const EXPOSURE_COLORS: Record<ExposureNode, string> = {
-  EQUITY: '#f59e0b',
-  DEBT: '#10b981',
-  GOLD: '#eab308',
-  PROPERTY: '#a78bfa',
+  EQUITY: '#38bdf8',
+  DEBT: '#34d399',
+  GOLD: '#f5c14a',
+  PROPERTY: '#c084fc',
   CASH: '#22d3ee',
-  PRIVATE: '#64748b',
-  PROTECTION: '#ec4899',
-  LIABILITY: '#f43f5e',
+  PRIVATE: '#f472b6',
+  PROTECTION: '#fb7185',
+  LIABILITY: '#fb7185',
 };
 
-const MEMBER_PALETTE = ['#f59e0b', '#3b82f6', '#10b981', '#8b5cf6', '#06b6d4', '#f43f5e', '#84cc16'];
+const MEMBER_PALETTE = ['#f5c14a', '#38bdf8', '#34d399', '#c084fc', '#22d3ee', '#fb7185', '#818cf8'];
 
 export interface GrowthSlice {
   id: string;
