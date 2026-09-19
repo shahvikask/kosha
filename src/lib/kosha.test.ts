@@ -2,6 +2,7 @@ import { foldHolding, financialYearOf, assessmentYearOf, calendarDays } from './
 import { derivePositions, openingBalanceFor, marketValueMinor } from './positions';
 import { ruleSetFor, classifyGain, isEquityOriented, grandfatheredCostMinor, applyRateMinor } from './taxRules';
 import { encryptJson, decryptJson, isEncryptedBlob, generateRecoveryKey, maskPan, WrongPassphraseError } from './vault';
+import { packBackup, unpackBackup, verifyRestoreIdentity, isBinaryBackup, looksLikePlainJsonBackup, BACKUP_KIND, VaultBackup } from './backup';
 import { xirr } from './returns';
 import { classifyHolding, EXPOSURES, WRAPPERS, exposureLabel, l2Label } from './taxonomy';
 import { resolveSplit, apportion, buildTree, isHybrid, activeWrappers } from './lookthrough';
@@ -925,6 +926,61 @@ console.log('\n--- H. Encryption ---');
   const hashed = await hashSecret('Abcd1234!');
   eq('password verifies', await verifySecret('Abcd1234!', hashed.salt, hashed.hash, hashed.iterations), true);
   eq('wrong password fails', await verifySecret('nope', hashed.salt, hashed.hash, hashed.iterations), false);
+
+  const a1 = await hashSecret(normaliseAnswer('Fluffy'));
+  const a2 = await hashSecret(normaliseAnswer('Pune'));
+  const acct = {
+    email: 'vikas@example.com',
+    firstName: 'Vikas',
+    lastName: 'Shah',
+    passwordSalt: hashed.salt,
+    passwordHash: hashed.hash,
+    passwordIterations: hashed.iterations,
+    passwordChangedAt: '2026-01-01T00:00:00.000Z',
+    panMasked: maskPan('ABCDE1234F'),
+    panForStatements: 'ABCDE1234F',
+    dateOfBirth: '1980-04-01',
+    q1Id: 'pet',
+    q1Hash: packHash(a1),
+    q2Id: 'city',
+    q2Hash: packHash(a2),
+    createdAt: '2026-01-01T00:00:00.000Z',
+  };
+  const payload: VaultBackup = {
+    kind: BACKUP_KIND,
+    version: 2,
+    exportedAt: '2026-09-19T00:00:00.000Z',
+    account: acct,
+    familyMembers: [],
+    holdings: [{ id: 'h1', name: 'Secret Fund', ownerId: 'f1' } as any],
+    ledgerEvents: [],
+    accounts: [],
+    goals: [],
+    casLatest: null,
+  };
+  const packed = await packBackup(payload, 'vikas@example.com', 'Abcd1234!');
+  eq('backup is binary not json', isBinaryBackup(packed), true);
+  eq('notepad does not see holding name', new TextDecoder().decode(packed).includes('Secret Fund'), false);
+  eq('plain json detector on binary is false', looksLikePlainJsonBackup(new TextDecoder().decode(packed)), false);
+  const opened = await unpackBackup(packed, 'vikas@example.com', 'Abcd1234!');
+  eq('backup round trip holding', opened.holdings[0].name, 'Secret Fund');
+  let badKey = false;
+  try { await unpackBackup(packed, 'vikas@example.com', 'WrongPass1!'); } catch { badKey = true; }
+  eq('wrong vault password cannot unpack', badKey, true);
+  let badUser = false;
+  try { await unpackBackup(packed, 'other@example.com', 'Abcd1234!'); } catch { badUser = true; }
+  eq('wrong email cannot unpack', badUser, true);
+  eq('logged-in restore only needs login', await verifyRestoreIdentity(opened, {
+    email: 'vikas@example.com', password: 'Abcd1234!', strict: false,
+  }), null);
+  eq('new device needs matching PAN', await verifyRestoreIdentity(opened, {
+    email: 'vikas@example.com', password: 'Abcd1234!', pan: 'XXXXX1234X',
+    dateOfBirth: '1980-04-01', q1Id: 'pet', q1Answer: 'Fluffy', q2Id: 'city', q2Answer: 'Pune', strict: true,
+  }), 'PAN does not match this backup.');
+  eq('new device full identity passes', await verifyRestoreIdentity(opened, {
+    email: 'vikas@example.com', password: 'Abcd1234!', pan: 'ABCDE1234F',
+    dateOfBirth: '1980-04-01', q1Id: 'pet', q1Answer: 'fluffy', q2Id: 'city', q2Answer: 'Pune', strict: true,
+  }), null);
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail?1:0);

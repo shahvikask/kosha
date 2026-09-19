@@ -442,6 +442,32 @@ export class Repository {
     });
   }
 
+  /** Empty the vault so a backup can take its place. */
+  async wipeVaultCompletely(): Promise<void> {
+    await this.db.transaction(async () => {
+      await this.db.exec(`DROP TRIGGER IF EXISTS tg_ledger_event__no_delete`);
+      for (const t of [
+        'statement_position',
+        'holding',
+        'account',
+        'liability',
+        'goal',
+        'import_batch',
+        'ledger_event',
+        'price_observation',
+        'entity',
+        'vault_account',
+      ]) {
+        try {
+          await this.db.exec(`DELETE FROM ${t}`);
+        } catch {
+          /* table may not exist yet */
+        }
+      }
+      await this.db.exec(LEDGER_NO_DELETE_TRIGGER);
+    });
+  }
+
   // ---------- entities ----------
 
   async upsertEntity(m: FamilyMember): Promise<void> {

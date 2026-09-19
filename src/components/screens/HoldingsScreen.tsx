@@ -5,7 +5,7 @@ import { FamilyBucketId, bucketOf, metricsOf, plainCategory, unitWord, whereHeld
 import { MoneyEngine } from '../../lib/money';
 import { Search, Plus, ChevronRight, SlidersHorizontal, UserRound, X } from 'lucide-react';
 import { holdingReturn } from '../../lib/returnMetrics';
-import { absoluteReturnPct, formatPct } from '../../lib/growth';
+import { absoluteReturnPct, formatPct, BUCKET_COLORS } from '../../lib/growth';
 import { isUnknownInvested, UNKNOWN_INVESTED_LABEL } from '../../lib/costBasis';
 
 interface Props {
@@ -110,6 +110,7 @@ export const HoldingsScreen: React.FC<Props> = ({ onOpenAddHolding, onOpenHoldin
               key={b.id}
               active={bucket === b.id}
               disabled={b.empty}
+              tone={BUCKET_COLORS[b.id]}
               onClick={() => setBucket(b.id)}
             >
               {b.title}
@@ -134,7 +135,7 @@ export const HoldingsScreen: React.FC<Props> = ({ onOpenAddHolding, onOpenHoldin
             {rows.map(({ h, m, abs, unknown, ann, annOk }) => {
               const owner = familyMembers.find(fm => fm.id === h.ownerId);
               const good = (abs ?? 0) >= 0;
-              return <button key={h.id} onClick={() => onOpenHoldingDetail(h.id)} className="w-full text-left px-4 py-3.5 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"><div className="grid md:grid-cols-[minmax(0,1.7fr)_0.9fr_0.9fr_0.8fr_24px] gap-3 md:gap-4 items-center"><div className="min-w-0"><div className="font-semibold text-sm truncate">{displayHoldingName(h.name)}</div><div className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--muted)' }}>{plainCategory(h.category)}{owner ? ` · ${owner.name}` : ''} · {whereHeld(h)}{unitWord(h) && m.qty > 0n ? ` · ${MoneyEngine.toQty(m.qty).toLocaleString('en-IN')} ${unitWord(h)}` : ''}</div></div><div className="md:text-right"><div className="md:hidden text-[10px] uppercase tracking-wide font-bold mb-0.5" style={{ color: 'var(--muted)' }}>Invested</div>{unknown ? <span className="text-sm" style={{ color: 'var(--muted)' }}>—</span> : <PrivacyValue minor={m.cost} includePaise={false} className="text-sm" />}</div><div className="md:text-right"><div className="md:hidden text-[10px] uppercase tracking-wide font-bold mb-0.5" style={{ color: 'var(--muted)' }}>Current</div><PrivacyValue minor={m.value} includePaise={false} className="text-sm font-bold" /></div><div className="md:text-right"><div className="md:hidden text-[10px] uppercase tracking-wide font-bold mb-0.5" style={{ color: 'var(--muted)' }}>Abs. / Ann.</div>{unknown ? <div className="text-sm font-semibold" style={{ color: 'var(--bad)' }}>{UNKNOWN_INVESTED_LABEL}</div> : <><PrivacyDelta minor={m.gain} className="text-sm font-semibold" /><div className="text-[11px] font-medium" style={{ color: good ? 'var(--good)' : 'var(--bad)' }}>{formatPct(abs)}</div><div className="text-[11px]" style={{ color: annOk ? 'var(--text)' : 'var(--muted)' }}>Ann. {ann}</div></>}</div><ChevronRight className="hidden md:block w-4 h-4" style={{ color: 'var(--muted)' }} /></div></button>;
+              return <button key={h.id} onClick={() => onOpenHoldingDetail(h.id)} className="w-full text-left px-4 py-3.5 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"><div className="grid md:grid-cols-[minmax(0,1.7fr)_0.9fr_0.9fr_0.8fr_24px] gap-3 md:gap-4 items-center"><div className="min-w-0 flex items-start gap-2"><span className="mt-1.5 w-2 h-2 rounded-full shrink-0" style={{ background: BUCKET_COLORS[bucketOf(h)] }} /><div className="min-w-0"><div className="font-semibold text-sm truncate">{displayHoldingName(h.name)}</div><div className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--muted)' }}>{plainCategory(h.category)}{owner ? ` · ${owner.name}` : ''} · {whereHeld(h)}{unitWord(h) && m.qty > 0n ? ` · ${MoneyEngine.toQty(m.qty).toLocaleString('en-IN')} ${unitWord(h)}` : ''}</div></div></div><div className="md:text-right"><div className="md:hidden text-[10px] uppercase tracking-wide font-bold mb-0.5" style={{ color: 'var(--muted)' }}>Invested</div>{unknown ? <span className="text-sm" style={{ color: 'var(--muted)' }}>—</span> : <PrivacyValue minor={m.cost} includePaise={false} className="text-sm" />}</div><div className="md:text-right"><div className="md:hidden text-[10px] uppercase tracking-wide font-bold mb-0.5" style={{ color: 'var(--muted)' }}>Current</div><PrivacyValue minor={m.value} includePaise={false} className="text-sm font-bold" /></div><div className="md:text-right"><div className="md:hidden text-[10px] uppercase tracking-wide font-bold mb-0.5" style={{ color: 'var(--muted)' }}>Abs. / Ann.</div>{unknown ? <div className="text-sm font-semibold" style={{ color: 'var(--bad)' }}>{UNKNOWN_INVESTED_LABEL}</div> : <><PrivacyDelta minor={m.gain} className="text-sm font-semibold" /><div className="text-[11px] font-medium" style={{ color: good ? 'var(--good)' : 'var(--bad)' }}>{formatPct(abs)}</div><div className="text-[11px]" style={{ color: annOk ? 'var(--text)' : 'var(--muted)' }}>Ann. {ann}</div></>}</div><ChevronRight className="hidden md:block w-4 h-4" style={{ color: 'var(--muted)' }} /></div></button>;
             })}
           </div>
         </div>
@@ -152,7 +153,7 @@ const Metric: React.FC<{ label: string; value: bigint; emphasis?: boolean; empty
     {hint && <div className="text-[11px] mt-1" style={{ color: 'var(--muted)' }}>{hint}</div>}
   </div>
 );
-const Chip: React.FC<{ active: boolean; disabled?: boolean; onClick: () => void; children: React.ReactNode }> = ({ active, disabled, onClick, children }) => (
+const Chip: React.FC<{ active: boolean; disabled?: boolean; onClick: () => void; children: React.ReactNode; tone?: string }> = ({ active, disabled, onClick, children, tone }) => (
   <button
     type="button"
     onClick={disabled ? undefined : onClick}
@@ -163,8 +164,8 @@ const Chip: React.FC<{ active: boolean; disabled?: boolean; onClick: () => void;
       disabled
         ? { borderColor: 'var(--border)', color: 'var(--muted)', background: 'transparent', opacity: 0.45, cursor: 'not-allowed' }
         : active
-          ? { background: 'var(--accent)', color: 'var(--accent-fg)', borderColor: 'transparent' }
-          : { borderColor: 'var(--border)', color: 'var(--text)', background: 'var(--card)' }
+          ? { background: tone || 'var(--accent)', color: tone ? '#0b1220' : 'var(--accent-fg)', borderColor: 'transparent' }
+          : { borderColor: tone ? `color-mix(in srgb, ${tone} 45%, var(--border))` : 'var(--border)', color: tone || 'var(--text)', background: tone ? `color-mix(in srgb, ${tone} 14%, var(--card))` : 'var(--card)' }
     }
   >
     {children}

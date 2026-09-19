@@ -63,12 +63,12 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
       {/* Brand Title with Prominent Integrated U-Rupee Symbol */}
       <div>
         <div className="flex items-center">
-          <span className={`font-bold ${textSizes[size]} tracking-tight text-white font-serif`}>
-            Grow<span className="text-amber-400">Ur</span><span className="text-emerald-400">Dhan</span>
+          <span className={`font-bold ${textSizes[size]} tracking-tight font-serif`} style={{ color: 'var(--text)' }}>
+            Grow<span style={{ color: 'var(--accent)' }}>Ur</span><span style={{ color: 'var(--accent-2)' }}>Dhan</span>
           </span>
         </div>
         {showTagline && (
-          <p className="text-[11px] text-slate-400 hidden sm:block">Private Indian Family Wealth & Records</p>
+          <p className="text-[11px] hidden sm:block" style={{ color: 'var(--muted)' }}>Private Indian Family Wealth & Records</p>
         )}
       </div>
     </div>
