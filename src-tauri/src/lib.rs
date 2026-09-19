@@ -63,6 +63,36 @@ fn cas_prices(app: tauri::AppHandle, eng: State<engine::Engine>) -> Result<serde
     engine::prices()
 }
 
+#[tauri::command]
+fn backup_save(filename: String, bytes_b64: String) -> Result<bool, String> {
+    use base64::Engine as _;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(bytes_b64)
+        .map_err(|e| e.to_string())?;
+    let path = rfd::FileDialog::new()
+        .set_file_name(&filename)
+        .add_filter("GrowUrDhan backup", &["kosha"])
+        .save_file();
+    let Some(path) = path else {
+        return Ok(false);
+    };
+    std::fs::write(path, bytes).map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+#[tauri::command]
+fn backup_open() -> Result<Option<String>, String> {
+    use base64::Engine as _;
+    let path = rfd::FileDialog::new()
+        .add_filter("GrowUrDhan backup", &["kosha", "json"])
+        .pick_file();
+    let Some(path) = path else {
+        return Ok(None);
+    };
+    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+    Ok(Some(base64::engine::general_purpose::STANDARD.encode(bytes)))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -76,7 +106,9 @@ pub fn run() {
             cas_health,
             engine_ensure,
             cas_parse,
-            cas_prices
+            cas_prices,
+            backup_save,
+            backup_open
         ])
         .setup(|app| {
             let handle = app.handle().clone();

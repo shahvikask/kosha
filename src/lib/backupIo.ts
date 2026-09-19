@@ -2,9 +2,9 @@
  * Save / pick a backup file. Same API on web, Windows (Tauri) and Android WebView.
  * Tries native dialogs first, then the File System Access API, then a download / file input.
  */
-export async function saveBackupFile(filename: string, bytes: Uint8Array): Promise<void> {
+export async function saveBackupFile(filename: string, bytes: Uint8Array): Promise<'saved' | 'cancelled'> {
   const native = await tauriSave(filename, bytes);
-  if (native) return;
+  if (native === 'saved' || native === 'cancelled') return native;
   const picker = window as unknown as {
     showSaveFilePicker?: (opts: unknown) => Promise<{ createWritable: () => Promise<{ write: (b: BufferSource) => Promise<void>; close: () => Promise<void> }> }>;
   };
@@ -17,9 +17,9 @@ export async function saveBackupFile(filename: string, bytes: Uint8Array): Promi
       const w = await handle.createWritable();
       await w.write(bytes as unknown as BufferSource);
       await w.close();
-      return;
+      return 'saved';
     } catch (e) {
-      if ((e as { name?: string }).name === 'AbortError') return;
+      if ((e as { name?: string }).name === 'AbortError') return 'cancelled';
     }
   }
   const blob = new Blob([bytes as unknown as BlobPart], { type: 'application/octet-stream' });
@@ -32,6 +32,7 @@ export async function saveBackupFile(filename: string, bytes: Uint8Array): Promi
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
+  return 'saved';
 }
 
 export async function pickBackupFile(): Promise<Uint8Array | null> {
@@ -78,33 +79,34 @@ function b64ToBytes(b64: string): Uint8Array {
   return out;
 }
 
-async function invokeTauri<T>(cmd: string, args: Record<string, unknown>): Promise<T | null> {
+function tauriInvokeFn(): ((cmd: string, args: Record<string, unknown>) => Promise<unknown>) | null {
   const g = window as unknown as {
-    __TAURI_INTERNALS__?: { invoke?: (c: string, a: unknown) => Promise<T> };
-    __TAURI__?: { invoke?: (c: string, a: unknown) => Promise<T> };
+    __TAURI_INTERNALS__?: { invoke?: (c: string, a: unknown) => Promise<unknown> };
+    __TAURI__?: { core?: { invoke?: (c: string, a: unknown) => Promise<unknown> }; invoke?: (c: string, a: unknown) => Promise<unknown> };
   };
-  const inv = g.__TAURI_INTERNALS__?.invoke || g.__TAURI__?.invoke;
-  if (typeof inv !== 'function') return null;
+  return g.__TAURI_INTERNALS__?.invoke || g.__TAURI__?.core?.invoke || g.__TAURI__?.invoke || null;
+}
+
+async function tauriSave(filename: string, bytes: Uint8Array): Promise<'saved' | 'cancelled' | 'missing'> {
+  const inv = tauriInvokeFn();
+  if (!inv) return 'missing';
   try {
-    return await inv(cmd, args);
+    const saved = await inv('backup_save', { filename, bytesB64: bytesToB64(bytes) });
+    return saved === false ? 'cancelled' : 'saved';
   } catch {
-    return null;
+    return 'missing';
   }
 }
 
-async function tauriSave(filename: string, bytes: Uint8Array): Promise<boolean> {
-  const ok = await invokeTauri<boolean | void>('backup_save', {
-    filename,
-    bytesB64: bytesToB64(bytes),
-  });
-  return ok !== null;
-}
-
 async function tauriOpen(): Promise<Uint8Array | null | undefined> {
-  const g = window as unknown as { __TAURI_INTERNALS__?: unknown; __TAURI__?: unknown };
-  if (!g.__TAURI_INTERNALS__ && !g.__TAURI__) return undefined;
-  const b64 = await invokeTauri<string | null>('backup_open', {});
-  if (b64 === null) return undefined;
-  if (!b64) return null;
-  return b64ToBytes(b64);
+  const inv = tauriInvokeFn();
+  if (!inv) return undefined;
+  try {
+    const b64 = await inv('backup_open', {});
+    if (b64 === null || b64 === false) return null;
+    if (typeof b64 !== 'string' || !b64) return null;
+    return b64ToBytes(b64);
+  } catch {
+    return undefined;
+  }
 }
