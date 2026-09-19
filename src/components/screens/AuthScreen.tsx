@@ -54,6 +54,9 @@ export const AuthScreen: React.FC = () => {
   const [newPw, setNewPw] = useState('');
   const [newPw2, setNewPw2] = useState('');
 
+  /** New device: full identity. Already-has-vault (login page): email + password only. */
+  const newDeviceRestore = !account;
+
   useEffect(() => {
     if (!account) setMode(m => (m === 'restore' ? m : 'register'));
     else if (mustRotatePassword) setMode('change');
@@ -111,20 +114,27 @@ export const AuthScreen: React.FC = () => {
       if (!restoreBytes) return 'Choose a .kosha backup file first.';
       if (!isValidEmail(email)) return 'Enter the vault email.';
       if (!password) return 'Enter the vault password.';
-      if (!isValidPan(pan)) return 'PAN must be 10 characters, like ABCDE1234F.';
-      if (!dob) return 'Enter date of birth.';
-      if (q1Id === q2Id) return 'Pick two different questions.';
-      if (!q1Ans.trim() || !q2Ans.trim()) return 'Answer both security questions.';
+      if (newDeviceRestore) {
+        if (!isValidPan(pan)) return 'PAN must be 10 characters, like ABCDE1234F.';
+        if (!dob) return 'Enter date of birth.';
+        if (q1Id === q2Id) return 'Pick two different questions.';
+        if (!q1Ans.trim() || !q2Ans.trim()) return 'Answer both security questions.';
+        return restoreLockedBackup(restoreBytes, {
+          email,
+          password,
+          pan,
+          dateOfBirth: dob,
+          q1Id,
+          q1Answer: q1Ans,
+          q2Id,
+          q2Answer: q2Ans,
+          strict: true,
+        });
+      }
       return restoreLockedBackup(restoreBytes, {
         email,
         password,
-        pan,
-        dateOfBirth: dob,
-        q1Id,
-        q1Answer: q1Ans,
-        q2Id,
-        q2Answer: q2Ans,
-        strict: true,
+        strict: false,
       });
     });
 
@@ -158,7 +168,7 @@ export const AuthScreen: React.FC = () => {
 
   const heading =
     mode === 'register' ? 'Create your vault'
-    : mode === 'restore' ? 'Restore on this device'
+    : mode === 'restore' ? (newDeviceRestore ? 'Restore on this device' : 'Restore this vault')
     : mode === 'forgot' ? 'Reset password'
     : mode === 'change' ? 'Password must be renewed'
     : 'Unlock your vault';
@@ -193,8 +203,10 @@ export const AuthScreen: React.FC = () => {
             <p className="text-xs mt-1" style={{ color: 'var(--muted)' }}>
               {mode === 'register'
                 ? 'This becomes Self — it cannot be deleted. Money stays on this computer.'
+                : mode === 'restore' && newDeviceRestore
+                  ? 'Same email, password, PAN, date of birth and security answers you used at signup.'
                 : mode === 'restore'
-                  ? 'Same email, password, PAN, date of birth and security answers that locked the file.'
+                  ? 'Email and password unlock the file. Records on this computer will be replaced.'
                 : mode === 'change'
                   ? 'Passwords are renewed every six months.'
                   : 'Password every time. Your email is remembered on this computer.'}
@@ -222,7 +234,7 @@ export const AuthScreen: React.FC = () => {
                 Answers are not case sensitive. If you forget the password, these two answers reset it.
               </p>
               <Btn busy={busy} onClick={onRegister}>Create account</Btn>
-              <button type="button" className="text-xs font-semibold w-full" style={{ color: 'var(--accent)' }} onClick={() => { setMode('restore'); setError(''); }}>
+              <button type="button" className="text-xs font-semibold w-full" style={{ color: 'var(--accent)' }} onClick={() => { setMode('restore'); setError(''); setRestoreBytes(null); }}>
                 I changed device — restore a backup
               </button>
             </>
@@ -238,20 +250,35 @@ export const AuthScreen: React.FC = () => {
               >
                 <div className="font-bold">{restoreBytes ? 'Backup file selected' : 'Choose .kosha backup'}</div>
                 <div className="text-[11px] mt-0.5" style={{ color: 'var(--muted)' }}>
-                  {restoreBytes ? 'Locked file ready. Fill the same details as signup.' : 'The file is encrypted. Nothing is stored until every field matches.'}
+                  {restoreBytes
+                    ? (newDeviceRestore ? 'Locked file ready. Fill the same details as signup.' : 'Locked file ready. Email and password decrypt it.')
+                    : 'The file is encrypted. Opening it in Notepad shows noise, not your holdings.'}
                 </div>
               </button>
               <Field label="Email (username)" value={email} onChange={setEmail} type="email" autoComplete="username" />
               <Field label="Password" value={password} onChange={setPassword} type="password" autoComplete="current-password" />
-              <Field label="PAN" value={pan} onChange={v => setPan(v.toUpperCase())} autoComplete="off" />
-              <Field label="Date of birth" value={dob} onChange={setDob} type="date" />
-              <Select label="Security question 1" value={q1Id} onChange={setQ1Id} options={SECURITY_QUESTIONS} />
-              <Field label="Answer 1" value={q1Ans} onChange={setQ1Ans} />
-              <Select label="Security question 2" value={q2Id} onChange={setQ2Id} options={SECURITY_QUESTIONS} />
-              <Field label="Answer 2" value={q2Ans} onChange={setQ2Ans} />
+              {newDeviceRestore && (
+                <>
+                  <Field label="PAN" value={pan} onChange={v => setPan(v.toUpperCase())} autoComplete="off" />
+                  <Field label="Date of birth" value={dob} onChange={setDob} type="date" />
+                  <Select label="Security question 1" value={q1Id} onChange={setQ1Id} options={SECURITY_QUESTIONS} />
+                  <Field label="Answer 1" value={q1Ans} onChange={setQ1Ans} />
+                  <Select label="Security question 2" value={q2Id} onChange={setQ2Id} options={SECURITY_QUESTIONS} />
+                  <Field label="Answer 2" value={q2Ans} onChange={setQ2Ans} />
+                </>
+              )}
               <Btn busy={busy} onClick={onRestore}>Restore vault</Btn>
-              <button type="button" className="text-xs font-semibold w-full" style={{ color: 'var(--accent)' }} onClick={() => { setMode('register'); setError(''); setRestoreBytes(null); }}>
-                Back to create account
+              <button
+                type="button"
+                className="text-xs font-semibold w-full"
+                style={{ color: 'var(--accent)' }}
+                onClick={() => {
+                  setMode(newDeviceRestore ? 'register' : 'login');
+                  setError('');
+                  setRestoreBytes(null);
+                }}
+              >
+                {newDeviceRestore ? 'Back to create account' : 'Back to unlock'}
               </button>
             </>
           )}
@@ -268,6 +295,9 @@ export const AuthScreen: React.FC = () => {
               <Btn busy={busy} onClick={onLogin}>Unlock</Btn>
               <button type="button" className="text-xs font-semibold w-full" style={{ color: 'var(--accent)' }} onClick={() => { setMode('forgot'); setError(''); }}>
                 Forgot password
+              </button>
+              <button type="button" className="text-xs font-semibold w-full" style={{ color: 'var(--accent)' }} onClick={() => { setMode('restore'); setError(''); setRestoreBytes(null); }}>
+                Restore from a backup
               </button>
             </>
           )}

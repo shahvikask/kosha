@@ -960,8 +960,19 @@ console.log('\n--- H. Encryption ---');
   };
   const packed = await packBackup(payload, 'vikas@example.com', 'Abcd1234!');
   eq('backup is binary not json', isBinaryBackup(packed), true);
-  eq('notepad does not see holding name', new TextDecoder().decode(packed).includes('Secret Fund'), false);
-  eq('plain json detector on binary is false', looksLikePlainJsonBackup(new TextDecoder().decode(packed)), false);
+  const dump = new TextDecoder().decode(packed);
+  eq('notepad does not see holding name', dump.includes('Secret Fund'), false);
+  eq('notepad does not see PAN', dump.includes('ABCDE1234F'), false);
+  eq('notepad does not see email', dump.includes('vikas@example.com'), false);
+  eq('file is not pretty json', dump.trimStart().startsWith('{'), false);
+  eq('plain json detector on binary is false', looksLikePlainJsonBackup(dump), false);
+  let plainRejected = false;
+  try {
+    await unpackBackup(new TextEncoder().encode(JSON.stringify(payload)), 'vikas@example.com', 'Abcd1234!');
+  } catch (e) {
+    plainRejected = e instanceof Error && /unlocked backup/i.test(e.message);
+  }
+  eq('refuses plaintext json backup', plainRejected, true);
   const opened = await unpackBackup(packed, 'vikas@example.com', 'Abcd1234!');
   eq('backup round trip holding', opened.holdings[0].name, 'Secret Fund');
   let badKey = false;
@@ -973,10 +984,21 @@ console.log('\n--- H. Encryption ---');
   eq('logged-in restore only needs login', await verifyRestoreIdentity(opened, {
     email: 'vikas@example.com', password: 'Abcd1234!', strict: false,
   }), null);
+  eq('login restore ignores wrong PAN', await verifyRestoreIdentity(opened, {
+    email: 'vikas@example.com', password: 'Abcd1234!', pan: 'XXXXX1234X', strict: false,
+  }), null);
   eq('new device needs matching PAN', await verifyRestoreIdentity(opened, {
     email: 'vikas@example.com', password: 'Abcd1234!', pan: 'XXXXX1234X',
     dateOfBirth: '1980-04-01', q1Id: 'pet', q1Answer: 'Fluffy', q2Id: 'city', q2Answer: 'Pune', strict: true,
   }), 'PAN does not match this backup.');
+  eq('new device needs matching DOB', await verifyRestoreIdentity(opened, {
+    email: 'vikas@example.com', password: 'Abcd1234!', pan: 'ABCDE1234F',
+    dateOfBirth: '1990-01-01', q1Id: 'pet', q1Answer: 'Fluffy', q2Id: 'city', q2Answer: 'Pune', strict: true,
+  }), 'Date of birth does not match this backup.');
+  eq('new device needs matching answers', await verifyRestoreIdentity(opened, {
+    email: 'vikas@example.com', password: 'Abcd1234!', pan: 'ABCDE1234F',
+    dateOfBirth: '1980-04-01', q1Id: 'pet', q1Answer: 'Wrong', q2Id: 'city', q2Answer: 'Pune', strict: true,
+  }), 'Security answers do not match this backup.');
   eq('new device full identity passes', await verifyRestoreIdentity(opened, {
     email: 'vikas@example.com', password: 'Abcd1234!', pan: 'ABCDE1234F',
     dateOfBirth: '1980-04-01', q1Id: 'pet', q1Answer: 'fluffy', q2Id: 'city', q2Answer: 'Pune', strict: true,

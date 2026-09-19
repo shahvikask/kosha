@@ -63,8 +63,10 @@ fn cas_prices(app: tauri::AppHandle, eng: State<engine::Engine>) -> Result<serde
     engine::prices()
 }
 
+/// Async on purpose: a sync command runs on the UI thread, and a blocking
+/// Windows file dialog on that thread never appears (or deadlocks).
 #[tauri::command]
-fn backup_save(filename: String, bytes_b64: String) -> Result<bool, String> {
+async fn backup_save(filename: String, bytes_b64: String) -> Result<bool, String> {
     use base64::Engine as _;
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(bytes_b64)
@@ -81,7 +83,7 @@ fn backup_save(filename: String, bytes_b64: String) -> Result<bool, String> {
 }
 
 #[tauri::command]
-fn backup_open() -> Result<Option<String>, String> {
+async fn backup_open() -> Result<Option<String>, String> {
     use base64::Engine as _;
     let path = rfd::FileDialog::new()
         .add_filter("GrowUrDhan backup", &["kosha", "json"])
