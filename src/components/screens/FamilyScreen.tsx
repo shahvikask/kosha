@@ -232,7 +232,8 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
     try {
       if (backupGate === 'export') {
         const bytes = await createLockedBackup(backupEmail, backupPassword);
-        await saveBackupFile(suggestedBackupName(), bytes);
+        const outcome = await saveBackupFile(suggestedBackupName(), bytes);
+        if (outcome === 'cancelled') return;
         setBackupGate(null);
         setBackupPassword('');
         setNotification({ type: 'success', message: 'Locked backup saved. Only your vault email and password can open it.' });
