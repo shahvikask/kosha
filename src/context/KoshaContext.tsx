@@ -27,7 +27,8 @@ import { MoneyEngine, MONEY_SCALE, QTY_SCALE } from '../lib/money';
 import { xirr, buildCashFlows, totalGainPercent } from '../lib/returns';
 import { foldHolding, financialYearOf, assessmentYearOf } from '../lib/lots';
 import { derivePositions, DerivedState } from '../lib/positions';
-import { encryptJson, decryptJson, isEncryptedBlob, generateRecoveryKey, maskPan, WrongPassphraseError } from '../lib/vault';
+import { maskPan } from '../lib/vault';
+import { packBackup, unpackBackup, verifyRestoreIdentity, VaultBackup, RestoreIdentity, BackupError, BACKUP_KIND, BACKUP_VERSION } from '../lib/backup';
 import {
   VaultAccountPublic,
   toPublicAccount,
@@ -122,8 +123,9 @@ interface KoshaContextType {
   statementAsOfByMember: MemberStatementAsOf[];
   casLatest: CasLatestState;
   cleanDuplicatesAndHeal: () => Promise<{ mergedCount: number; flaggedCount: number }>;
-  exportBackupJson: (passphrase?: string) => Promise<string>;
-  importBackupJson: (dataOrJsonStr: string | any) => Promise<boolean>;
+  confirmVaultPassword: (email: string, password: string) => Promise<string | null>;
+  createLockedBackup: (email: string, password: string) => Promise<Uint8Array>;
+  restoreLockedBackup: (bytes: Uint8Array, identity: RestoreIdentity) => Promise<string | null>;
   startOver: () => Promise<void>;
   updateHoldingPrice: (id: string, newPriceRupees: number) => Promise<void>;
   upsertGoal: (goal: Omit<FamilyGoal, 'id' | 'createdAt'> & { id?: string }) => Promise<FamilyGoal>;
@@ -1425,49 +1427,104 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return { mergedCount: result.mergedCount, flaggedCount: result.flaggedCount };
   };
 
-  const exportBackupJson = async (passphrase?: string): Promise<string> => {
-    const sanitizedFamilyMembers = passphrase
-      ? familyMembers
-      : familyMembers.map(({ panForStatements, ...rest }) => rest);
-    const backupData = {
-      koshaVersion: '1.0.0',
-      exportedAt: new Date().toISOString(),
-      familyMembers: sanitizedFamilyMembers,
-      holdings,
-      ledgerEvents,
-    };
-    if (passphrase) {
-      const blob = await encryptJson(backupData, passphrase);
-      return JSON.stringify(blob, null, 2);
+  const confirmVaultPassword = async (email: string, password: string): Promise<string | null> => {
+    if (!repo) return 'Vault is not ready.';
+    const stored = await repo.getVaultAccount();
+    if (!stored) return 'No account on this computer.';
+    if (email.trim().toLowerCase() !== stored.email.toLowerCase()) {
+      return 'Email or password is wrong.';
     }
-    return JSON.stringify(backupData, null, 2);
+    const ok = await verifySecret(password, stored.passwordSalt, stored.passwordHash, stored.passwordIterations);
+    if (!ok) return 'Email or password is wrong.';
+    return null;
   };
 
-  const importBackupJson = async (dataOrJsonStr: string | any): Promise<boolean> => {
+  const createLockedBackup = async (email: string, password: string): Promise<Uint8Array> => {
+    if (!repo) throw new BackupError('Vault is not ready.');
+    const stored = await repo.getVaultAccount();
+    if (!stored) throw new BackupError('Create your vault before making a backup.');
+    const mismatch = await confirmVaultPassword(email, password);
+    if (mismatch) throw new BackupError(mismatch);
+    const payload: VaultBackup = {
+      kind: BACKUP_KIND,
+      version: BACKUP_VERSION,
+      exportedAt: new Date().toISOString(),
+      account: stored,
+      familyMembers,
+      holdings,
+      ledgerEvents,
+      accounts,
+      goals,
+      casLatest,
+    };
+    return packBackup(payload, stored.email, password);
+  };
+
+  const hydrateFromRepo = async (r: Repository) => {
+    setFamilyMembers(await r.allEntities());
+    setHoldings(await r.allHoldings());
+    setLedgerEvents(await r.allEvents());
+    setAccounts(await r.allAccounts());
+    setGoals(await r.allGoals());
+    setImportBatches(await r.allBatches());
     try {
-      const data = typeof dataOrJsonStr === 'string' ? JSON.parse(dataOrJsonStr) : dataOrJsonStr;
-      if (data.familyMembers && Array.isArray(data.familyMembers)) {
-        if (repo) {
-          for (const m of data.familyMembers) await repo.upsertEntity(m);
-        }
-        setFamilyMembers(data.familyMembers);
-      }
-      if (data.holdings && Array.isArray(data.holdings)) {
-        if (repo) {
-          for (const h of data.holdings) await repo.upsertHolding(h);
-        }
-        setHoldings(data.holdings);
-      }
-      if (data.ledgerEvents && Array.isArray(data.ledgerEvents)) {
-        if (repo) {
-          await repo.appendEvents(data.ledgerEvents);
-        }
-        setLedgerEvents(data.ledgerEvents);
-      }
-      return true;
+      const raw = await r.getMeta('cas_latest');
+      setCasLatest(parseCasLatest(raw));
+    } catch {
+      setCasLatest(EMPTY_CAS_LATEST);
+    }
+    try {
+      setStatementSnaps(await r.statementSnapshotTotals());
+      setStatementHoldingSnaps(await r.latestHoldingStatementValues());
+    } catch {
+      setStatementSnaps([]);
+      setStatementHoldingSnaps([]);
+    }
+  };
+
+  const restoreLockedBackup = async (bytes: Uint8Array, identity: RestoreIdentity): Promise<string | null> => {
+    if (!repo) return 'Vault is not ready.';
+    let backup: VaultBackup;
+    try {
+      backup = await unpackBackup(bytes, identity.email, identity.password);
     } catch (e) {
-      console.error('Backup import error:', e);
-      return false;
+      return e instanceof Error ? e.message : 'Could not open that backup.';
+    }
+    const idErr = await verifyRestoreIdentity(backup, identity);
+    if (idErr) return idErr;
+    try {
+      await repo.wipeVaultCompletely();
+      await repo.saveVaultAccount(backup.account);
+      for (const m of backup.familyMembers) await repo.upsertEntity(m);
+      for (const a of backup.accounts || []) {
+        await repo.upsertAccount({
+          id: a.id,
+          entityId: a.ownerId,
+          accountType: a.accountType,
+          custodian: a.custodian,
+          identifierMasked: a.identifierMasked,
+          dpId: a.dpId,
+          clientId: a.clientId,
+          boId: a.boId,
+          nominee: a.nominee,
+        });
+      }
+      for (const h of backup.holdings) await repo.upsertHolding(h);
+      if (backup.ledgerEvents.length) await repo.appendEvents(backup.ledgerEvents);
+      for (const g of backup.goals || []) {
+        await repo.upsertGoal(g);
+      }
+      if (backup.casLatest) {
+        await repo.setMeta('cas_latest', JSON.stringify(backup.casLatest));
+      }
+      await hydrateFromRepo(repo);
+      setAccount(toPublicAccount(backup.account));
+      writeRememberedEmail(backup.account.email);
+      setUnlocked(true);
+      setMustRotatePassword(needsPasswordRotation(backup.account.passwordChangedAt));
+      return null;
+    } catch (e) {
+      return e instanceof Error ? e.message : 'Could not restore that backup.';
     }
   };
 
@@ -1785,8 +1842,9 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         statementAsOfByMember: statementAsOfByMember(casLatest, familyMembers),
         casLatest,
         cleanDuplicatesAndHeal,
-        exportBackupJson,
-        importBackupJson,
+        confirmVaultPassword,
+        createLockedBackup,
+        restoreLockedBackup,
         startOver,
         updateHoldingPrice,
         upsertGoal,

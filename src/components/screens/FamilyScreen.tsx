@@ -3,11 +3,9 @@ import { useKosha } from '../../context/KoshaContext';
 import { FamilyMember, FamilyRelation, isPrimaryFamilyMember } from '../../types';
 import { MoneyEngine } from '../../lib/money';
 import { metricsOf } from '../../lib/holdingView';
-import {
-  decryptJson,
-  isEncryptedBlob,
-  maskPan,
-} from '../../lib/vault';
+import { maskPan } from '../../lib/vault';
+import { suggestedBackupName } from '../../lib/backup';
+import { saveBackupFile, pickBackupFile } from '../../lib/backupIo';
 import { LS_KEYS } from '../../db/migrate';
 import {
   Users,
@@ -61,9 +59,10 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
     goals,
     upsertGoal,
     deleteGoal,
-    exportBackupJson,
-    importBackupJson,
+    createLockedBackup,
+    restoreLockedBackup,
     startOver,
+    account,
     repo,
   } = useKosha();
 
@@ -89,6 +88,10 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
   const [goalDate, setGoalDate] = useState('');
 
   const [hasBackupCopy, setHasBackupCopy] = useState(false);
+  const [backupGate, setBackupGate] = useState<'export' | 'restore' | null>(null);
+  const [backupEmail, setBackupEmail] = useState('');
+  const [backupPassword, setBackupPassword] = useState('');
+  const [backupBusy, setBackupBusy] = useState(false);
   useEffect(() => {
     const keys = Object.values(LS_KEYS);
     setHasBackupCopy(keys.some(k => localStorage.getItem(`${k}__pre_sqlite_backup`) !== null));
@@ -208,60 +211,55 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
     }
   };
 
-  const handleExportBackup = async () => {
-    const password = window.prompt('Choose a password to lock the backup file:');
-    if (!password) return;
-    try {
-      const jsonStr = await exportBackupJson(password);
-      const blob = new Blob([jsonStr], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `growurdhan_vault_${new Date().toISOString().split('T')[0]}.kosha`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      setNotification({ type: 'success', message: 'Backup saved to your Downloads folder.' });
-    } catch (err: any) {
-      setNotification({ type: 'error', message: err?.message || 'Could not export backup.' });
-    }
+  const handleExportBackup = () => {
+    setBackupEmail(account?.email || '');
+    setBackupPassword('');
+    setBackupGate('export');
   };
 
-  const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async event => {
-      const content = event.target?.result as string;
-      try {
-        const parsed = JSON.parse(content);
-        if (isEncryptedBlob(parsed)) {
-          const password = window.prompt('Password for this backup:');
-          if (!password) return;
-          try {
-            const decrypted = await decryptJson<any>(parsed, password);
-            await importBackupJson(decrypted);
-            setNotification({ type: 'success', message: 'Vault restored from backup.' });
-          } catch {
-            setNotification({
-              type: 'error',
-              message: 'Wrong password, or this file has been changed. Nothing was touched.',
-            });
-          }
-        } else {
-          await importBackupJson(parsed);
-          setNotification({
-            type: 'warning',
-            message: 'This is an older unlocked backup. The next export will be locked.',
-          });
+  const handleImportBackup = () => {
+    setBackupEmail(account?.email || '');
+    setBackupPassword('');
+    setBackupGate('restore');
+  };
+
+  const runBackupGate = async () => {
+    if (!backupEmail.trim() || !backupPassword) {
+      setNotification({ type: 'error', message: 'Enter your vault email and password.' });
+      return;
+    }
+    setBackupBusy(true);
+    try {
+      if (backupGate === 'export') {
+        const bytes = await createLockedBackup(backupEmail, backupPassword);
+        await saveBackupFile(suggestedBackupName(), bytes);
+        setBackupGate(null);
+        setBackupPassword('');
+        setNotification({ type: 'success', message: 'Locked backup saved. Only your vault email and password can open it.' });
+      } else {
+        const bytes = await pickBackupFile();
+        if (!bytes) {
+          setBackupBusy(false);
+          return;
         }
-      } catch {
-        setNotification({ type: 'error', message: 'That file is not a GrowUrDhan backup.' });
+        const err = await restoreLockedBackup(bytes, {
+          email: backupEmail,
+          password: backupPassword,
+          strict: false,
+        });
+        if (err) {
+          setNotification({ type: 'error', message: err });
+        } else {
+          setBackupGate(null);
+          setBackupPassword('');
+          setNotification({ type: 'success', message: 'Vault restored from backup.' });
+        }
       }
-    };
-    reader.readAsText(file);
-    e.target.value = '';
+    } catch (err: any) {
+      setNotification({ type: 'error', message: err?.message || 'Could not finish backup.' });
+    } finally {
+      setBackupBusy(false);
+    }
   };
 
   const handleRebuildFromBackup = async () => {
@@ -605,7 +603,7 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
             <div className="font-semibold mt-1">Statements never leave this machine</div>
           </div>
           <div className="p-3 rounded-xl border" style={{ borderColor: 'var(--border)' }}>
-            <div className="font-semibold">If you lose the backup password, we cannot open the file.</div>
+            <div className="font-semibold">Locked with your vault email and password. We cannot open the file if you forget them.</div>
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -617,17 +615,21 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
             <Download className="w-4 h-4 mb-2" />
             <div className="font-bold">Download backup</div>
             <div className="text-xs mt-1" style={{ color: 'var(--muted)' }}>
-              Locked .kosha file
+              Encrypted .kosha — same login password
             </div>
           </button>
-          <label className="p-4 rounded-2xl border text-left text-sm cursor-pointer" style={{ borderColor: 'var(--border)' }}>
+          <button
+            type="button"
+            onClick={handleImportBackup}
+            className="p-4 rounded-2xl border text-left text-sm"
+            style={{ borderColor: 'var(--border)' }}
+          >
             <Upload className="w-4 h-4 mb-2" />
             <div className="font-bold">Restore backup</div>
             <div className="text-xs mt-1" style={{ color: 'var(--muted)' }}>
-              Load a previous file
+              Email and password unlock it
             </div>
-            <input type="file" accept=".kosha,.json" className="hidden" onChange={handleImportBackup} />
-          </label>
+          </button>
           <button
             disabled={!hasBackupCopy}
             onClick={handleRebuildFromBackup}
@@ -787,6 +789,60 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {backupGate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'color-mix(in srgb, var(--app) 70%, transparent)' }}>
+          <div className="card p-6 w-full max-w-md space-y-4">
+            <h3 className="font-bold text-lg">
+              {backupGate === 'export' ? 'Lock backup with your vault login' : 'Unlock backup'}
+            </h3>
+            <p className="text-sm" style={{ color: 'var(--muted)' }}>
+              {backupGate === 'export'
+                ? 'Re-enter the same email and password you use to unlock GrowUrDhan. There is no second backup password.'
+                : 'Enter the vault email and password that locked this file. The records on this computer will be replaced.'}
+            </p>
+            <label className="block text-xs font-semibold space-y-1">
+              <span>Email (username)</span>
+              <input
+                type="email"
+                value={backupEmail}
+                onChange={e => setBackupEmail(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border text-sm font-normal"
+                style={{ background: 'var(--input)', borderColor: 'var(--border)', color: 'var(--text)' }}
+              />
+            </label>
+            <label className="block text-xs font-semibold space-y-1">
+              <span>Password</span>
+              <input
+                type="password"
+                value={backupPassword}
+                onChange={e => setBackupPassword(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border text-sm font-normal"
+                style={{ background: 'var(--input)', borderColor: 'var(--border)', color: 'var(--text)' }}
+              />
+            </label>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => { setBackupGate(null); setBackupPassword(''); }}
+                className="px-4 py-2 rounded-xl text-xs font-semibold border"
+                style={{ borderColor: 'var(--border)' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={backupBusy}
+                onClick={runBackupGate}
+                className="px-4 py-2 rounded-xl text-xs font-bold"
+                style={{ background: 'var(--accent)', color: 'var(--accent-fg)', opacity: backupBusy ? 0.7 : 1 }}
+              >
+                {backupBusy ? 'Please wait…' : backupGate === 'export' ? 'Save locked file' : 'Choose file and restore'}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -9,6 +9,7 @@ import {
   titleCaseName,
   readRememberedEmail,
 } from '../../lib/auth';
+import { pickBackupFile } from '../../lib/backupIo';
 
 const FLOATS = [
   { t: 'Data will remain on your device.', top: '8%', left: '6%', rot: '-6deg' },
@@ -19,7 +20,7 @@ const FLOATS = [
   { t: 'Do you want to see everything in one place?', bottom: '32%', left: '18%', rot: '-3deg' },
 ];
 
-type Mode = 'register' | 'login' | 'forgot' | 'change';
+type Mode = 'register' | 'login' | 'forgot' | 'change' | 'restore';
 
 export const AuthScreen: React.FC = () => {
   const {
@@ -29,6 +30,7 @@ export const AuthScreen: React.FC = () => {
     login,
     changePassword,
     resetWithQuestions,
+    restoreLockedBackup,
   } = useKosha();
 
   const [mode, setMode] = useState<Mode>(
@@ -48,11 +50,12 @@ export const AuthScreen: React.FC = () => {
   const [q1Ans, setQ1Ans] = useState('');
   const [q2Ans, setQ2Ans] = useState('');
   const [oldPw, setOldPw] = useState('');
+  const [restoreBytes, setRestoreBytes] = useState<Uint8Array | null>(null);
   const [newPw, setNewPw] = useState('');
   const [newPw2, setNewPw2] = useState('');
 
   useEffect(() => {
-    if (!account) setMode('register');
+    if (!account) setMode(m => (m === 'restore' ? m : 'register'));
     else if (mustRotatePassword) setMode('change');
     else setMode(m => (m === 'register' ? 'login' : m));
   }, [account, mustRotatePassword]);
@@ -103,6 +106,36 @@ export const AuthScreen: React.FC = () => {
       });
     });
 
+  const onRestore = () =>
+    run(async () => {
+      if (!restoreBytes) return 'Choose a .kosha backup file first.';
+      if (!isValidEmail(email)) return 'Enter the vault email.';
+      if (!password) return 'Enter the vault password.';
+      if (!isValidPan(pan)) return 'PAN must be 10 characters, like ABCDE1234F.';
+      if (!dob) return 'Enter date of birth.';
+      if (q1Id === q2Id) return 'Pick two different questions.';
+      if (!q1Ans.trim() || !q2Ans.trim()) return 'Answer both security questions.';
+      return restoreLockedBackup(restoreBytes, {
+        email,
+        password,
+        pan,
+        dateOfBirth: dob,
+        q1Id,
+        q1Answer: q1Ans,
+        q2Id,
+        q2Answer: q2Ans,
+        strict: true,
+      });
+    });
+
+  const chooseRestoreFile = () =>
+    run(async () => {
+      const bytes = await pickBackupFile();
+      if (!bytes) return null;
+      setRestoreBytes(bytes);
+      return null;
+    });
+
   const onLogin = () =>
     run(async () => {
       if (!email.trim() || !password) return 'Enter email and password.';
@@ -125,6 +158,7 @@ export const AuthScreen: React.FC = () => {
 
   const heading =
     mode === 'register' ? 'Create your vault'
+    : mode === 'restore' ? 'Restore on this device'
     : mode === 'forgot' ? 'Reset password'
     : mode === 'change' ? 'Password must be renewed'
     : 'Unlock your vault';
@@ -159,6 +193,8 @@ export const AuthScreen: React.FC = () => {
             <p className="text-xs mt-1" style={{ color: 'var(--muted)' }}>
               {mode === 'register'
                 ? 'This becomes Self — it cannot be deleted. Money stays on this computer.'
+                : mode === 'restore'
+                  ? 'Same email, password, PAN, date of birth and security answers that locked the file.'
                 : mode === 'change'
                   ? 'Passwords are renewed every six months.'
                   : 'Password every time. Your email is remembered on this computer.'}
@@ -186,6 +222,37 @@ export const AuthScreen: React.FC = () => {
                 Answers are not case sensitive. If you forget the password, these two answers reset it.
               </p>
               <Btn busy={busy} onClick={onRegister}>Create account</Btn>
+              <button type="button" className="text-xs font-semibold w-full" style={{ color: 'var(--accent)' }} onClick={() => { setMode('restore'); setError(''); }}>
+                I changed device — restore a backup
+              </button>
+            </>
+          )}
+
+          {mode === 'restore' && (
+            <>
+              <button
+                type="button"
+                onClick={chooseRestoreFile}
+                className="w-full px-3 py-3 rounded-xl border text-sm text-left"
+                style={{ background: 'var(--input)', borderColor: restoreBytes ? 'var(--accent)' : 'var(--border)', color: 'var(--text)' }}
+              >
+                <div className="font-bold">{restoreBytes ? 'Backup file selected' : 'Choose .kosha backup'}</div>
+                <div className="text-[11px] mt-0.5" style={{ color: 'var(--muted)' }}>
+                  {restoreBytes ? 'Locked file ready. Fill the same details as signup.' : 'The file is encrypted. Nothing is stored until every field matches.'}
+                </div>
+              </button>
+              <Field label="Email (username)" value={email} onChange={setEmail} type="email" autoComplete="username" />
+              <Field label="Password" value={password} onChange={setPassword} type="password" autoComplete="current-password" />
+              <Field label="PAN" value={pan} onChange={v => setPan(v.toUpperCase())} autoComplete="off" />
+              <Field label="Date of birth" value={dob} onChange={setDob} type="date" />
+              <Select label="Security question 1" value={q1Id} onChange={setQ1Id} options={SECURITY_QUESTIONS} />
+              <Field label="Answer 1" value={q1Ans} onChange={setQ1Ans} />
+              <Select label="Security question 2" value={q2Id} onChange={setQ2Id} options={SECURITY_QUESTIONS} />
+              <Field label="Answer 2" value={q2Ans} onChange={setQ2Ans} />
+              <Btn busy={busy} onClick={onRestore}>Restore vault</Btn>
+              <button type="button" className="text-xs font-semibold w-full" style={{ color: 'var(--accent)' }} onClick={() => { setMode('register'); setError(''); setRestoreBytes(null); }}>
+                Back to create account
+              </button>
             </>
           )}
 
