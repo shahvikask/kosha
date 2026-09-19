@@ -15,6 +15,8 @@ import {
   FamilyGoal,
   ImportBatchInfo,
   ListedSecurity,
+  StatementSnapRow,
+  StatementHoldingSnap,
 } from '../types';
 import { INITIAL_FAMILY_MEMBERS } from '../data/initialData';
 import { EMPTY_SELF, ThemeName, looksLikeSgb, metricsOf } from '../lib/holdingView';
@@ -60,7 +62,7 @@ import {
 } from '../lib/casPython';
 import { planEmiCatchUp, applyEmiPlan } from '../lib/emi';
 import { planInterestCatchUp, applyInterestPlan } from '../lib/interest';
-import { planInvestedCorrection } from '../lib/costBasis';
+import { planInvestedCorrection, isUnknownInvested } from '../lib/costBasis';
 import { findDuplicatePanMember } from '../lib/pan';
 import { applyCatalogPrices, catalogToListed, isEodPriceSource, refreshEodFromSidecar } from '../lib/eodPrices';
 import { casHoldingSubCategory, casImportDetails } from '../lib/holdingForm';
@@ -77,6 +79,8 @@ interface KoshaContextType {
   accounts: DematOrFolioAccount[];
   goals: FamilyGoal[];
   importBatches: ImportBatchInfo[];
+  statementSnaps: StatementSnapRow[];
+  statementHoldingSnaps: StatementHoldingSnap[];
   isPrivacyMasked: boolean;
   setIsPrivacyMasked: (val: boolean | ((prev: boolean) => boolean)) => void;
   sgbValuationMode: 'MARKET_TRADED' | 'RBI_BENCHMARK';
@@ -326,6 +330,8 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [accounts, setAccounts] = useState<DematOrFolioAccount[]>([]);
   const [goals, setGoals] = useState<FamilyGoal[]>([]);
   const [importBatches, setImportBatches] = useState<ImportBatchInfo[]>([]);
+  const [statementSnaps, setStatementSnaps] = useState<StatementSnapRow[]>([]);
+  const [statementHoldingSnaps, setStatementHoldingSnaps] = useState<StatementHoldingSnap[]>([]);
   const [listedSecurities, setListedSecurities] = useState<ListedSecurity[]>([]);
   const [pricesAsOf, setPricesAsOf] = useState<string | null>(null);
   const [pricesRefreshing, setPricesRefreshing] = useState(false);
@@ -428,6 +434,13 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setGoals(await r.allGoals());
         setImportBatches(await r.allBatches());
         try {
+          setStatementSnaps(await r.statementSnapshotTotals());
+          setStatementHoldingSnaps(await r.latestHoldingStatementValues());
+        } catch {
+          setStatementSnaps([]);
+          setStatementHoldingSnaps([]);
+        }
+        try {
           const listed = await r.allListedSecurities();
           setListedSecurities(listed);
           setPricesAsOf(await r.getMeta('prices_as_of'));
@@ -517,7 +530,9 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         totalLiabilitiesMinor += m.value;
       } else {
         totalAssetsMinor += m.value;
-        totalInvestedMinor += m.cost;
+        if (!isUnknownInvested(h, filteredEvents, m.cost, m.value)) {
+          totalInvestedMinor += m.cost;
+        }
       }
     });
 
@@ -773,12 +788,11 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!existing) return;
     const unitPriceMinor = MoneyEngine.fromRupees(input.unitPriceRupees);
     if (unitPriceMinor <= 0n) return;
-    const acquiredOn = input.acquiredOn;
     const planned = planInvestedCorrection({
       holding: existing,
       events: ledgerEvents,
       unitPriceMinor,
-      acquiredOn,
+      acquiredOn: input.acquiredOn,
     });
     let extra: LedgerEvent[] = [];
     if (planned) {
@@ -794,6 +808,9 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       input.issuePriceRupees != null && input.issuePriceRupees > 0
         ? MoneyEngine.fromRupees(input.issuePriceRupees).toString()
         : existing.issuePriceMinor;
+    const acquiredOn = /^\d{4}-\d{2}-\d{2}$/.test(input.acquiredOn)
+      ? input.acquiredOn
+      : (planned?.eventDate || existing.acquiredOn);
     let next: Holding = {
       ...existing,
       acquiredOn: acquiredOn || existing.acquiredOn,
@@ -1359,6 +1376,13 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
 
         setImportBatches(await repo.allBatches());
+        try {
+          setStatementSnaps(await repo.statementSnapshotTotals());
+          setStatementHoldingSnaps(await repo.latestHoldingStatementValues());
+        } catch {
+          setStatementSnaps([]);
+          setStatementHoldingSnaps([]);
+        }
       }
     }
 
@@ -1610,6 +1634,13 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setAccounts(await repo.allAccounts());
       setGoals(await repo.allGoals());
       setImportBatches(await repo.allBatches());
+      try {
+        setStatementSnaps(await repo.statementSnapshotTotals());
+        setStatementHoldingSnaps(await repo.latestHoldingStatementValues());
+      } catch {
+        setStatementSnaps([]);
+        setStatementHoldingSnaps([]);
+      }
     } else {
       setFamilyMembers([EMPTY_SELF]);
       setHoldings([]);
@@ -1617,6 +1648,8 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setAccounts([]);
       setGoals([]);
       setImportBatches([]);
+      setStatementSnaps([]);
+      setStatementHoldingSnaps([]);
     }
     setCasLatest(EMPTY_CAS_LATEST);
     setSelectedMemberId('ALL');
@@ -1718,6 +1751,8 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         accounts,
         goals,
         importBatches,
+        statementSnaps,
+        statementHoldingSnaps,
         isPrivacyMasked,
         setIsPrivacyMasked,
         sgbValuationMode,

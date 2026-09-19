@@ -15,6 +15,7 @@ import { X, Edit3, Plus, Trash2, Calendar, Coins } from 'lucide-react';
 import { resumeEmiDate } from '../../lib/emi';
 import { holdingReturn, isStatementOnlyHistory } from '../../lib/returnMetrics';
 import { detailsLines, nameLooksLikeEtf, usesUnits } from '../../lib/holdingForm';
+import { isUnknownInvested, planInvestedCorrection, UNKNOWN_INVESTED_LABEL } from '../../lib/costBasis';
 
 interface HoldingDetailModalProps {
   holdingId: string | null;
@@ -55,6 +56,7 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
   const [editInvested, setEditInvested] = useState('');
   const [editAcquiredOn, setEditAcquiredOn] = useState('');
   const [editIssuePrice, setEditIssuePrice] = useState('');
+  const [editError, setEditError] = useState('');
 
   useEffect(() => {
     setIsEditingAll(false);
@@ -80,9 +82,10 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
   const paidPerUnitMinor = m.qty > 0n ? (m.cost * QTY_SCALE) / m.qty : m.cost;
   const paidPerUnitRupees = MoneyEngine.toRupees(paidPerUnitMinor);
   const statementOnly = isStatementOnlyHistory(holdingEvents);
-  const investedLooksLikeCmp = !catInfo.isLiability && m.cost > 0n && m.value > 0n && (
+  const unknownInvested = isUnknownInvested(holding, holdingEvents, m.cost, m.value);
+  const investedLooksLikeCmp = unknownInvested || (!catInfo.isLiability && m.cost > 0n && m.value > 0n && (
     m.cost === m.value || (m.cost > m.value ? m.cost - m.value : m.value - m.cost) < 10_000n
-  );
+  ));
 
   const handleStartEditAll = () => {
     setEditName(holding.name);
@@ -103,10 +106,12 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
     setEditInvested(paidPerUnitRupees > 0 ? String(paidPerUnitRupees) : '');
     setEditAcquiredOn(holding.acquiredOn || '');
     setEditIssuePrice(holding.issuePriceMinor ? String(MoneyEngine.toRupees(BigInt(holding.issuePriceMinor))) : '');
+    setEditError('');
     setIsEditingAll(true);
   };
 
   const handleSaveEditAll = async () => {
+    setEditError('');
     const priceVal = parseFloat(editPrice);
     if (!editName.trim()) return;
     if (isNaN(priceVal) || priceVal < 0) return;
@@ -139,14 +144,29 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
       ...(editAcquiredOn ? { acquiredOn: editAcquiredOn } : {}),
     });
     if (!catInfo.isLiability && !isNaN(investedVal) && investedVal > 0) {
-      const when = editAcquiredOn || holding.acquiredOn;
-      if (when) {
-        await correctInvested(holding.id, {
-          unitPriceRupees: investedVal,
-          acquiredOn: when,
-          issuePriceRupees: !isNaN(issueVal) && issueVal > 0 ? issueVal : undefined,
-        });
+      let unitRupees = investedVal;
+      if (!unitBased && m.qty > 0n) {
+        const totalMinor = MoneyEngine.fromRupees(investedVal);
+        unitRupees = MoneyEngine.toRupees((totalMinor * QTY_SCALE) / m.qty);
       }
+      const when = editAcquiredOn || holding.acquiredOn || '';
+      const unitPriceMinor = MoneyEngine.fromRupees(unitRupees);
+      const planned = planInvestedCorrection({
+        holding,
+        events: holdingEvents,
+        unitPriceMinor,
+        acquiredOn: when,
+      });
+      if (!planned && unitPriceMinor !== paidPerUnitMinor) {
+        setEditError('Could not save what you paid — this holding has no units on the books.');
+        setIsEditingAll(false);
+        return;
+      }
+      await correctInvested(holding.id, {
+        unitPriceRupees: unitRupees,
+        acquiredOn: when,
+        issuePriceRupees: !isNaN(issueVal) && issueVal > 0 ? issueVal : undefined,
+      });
     }
     setIsEditingAll(false);
   };
@@ -276,6 +296,9 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
                       className="w-full mt-1 px-3 py-2 rounded-xl border"
                       style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--text)' }}
                     />
+                    <span className="text-[11px] mt-1 block" style={{ color: 'var(--muted)' }}>
+                      Optional. Leave blank to keep the statement date.
+                    </span>
                   </label>
                   {isSgb && (
                     <label className="block">
@@ -376,8 +399,11 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
               )}
             </div>
             <p className="text-[11px]" style={{ color: 'var(--muted)' }}>
-              CDSL/NSDL holdings statements print today's market price, not what you paid. Put in (Invested) and absolute return use the price you paid. Units still come from the statement — record a buy or sell to change them.
+              CDSL/NSDL holdings statements print today's market price, not what you paid. Put in (Invested) and absolute return use the price you paid. Units still come from the statement — record a buy or sell to change them. Purchase date is optional.
             </p>
+            {editError && (
+              <p className="text-[11px] font-semibold" style={{ color: 'var(--bad)' }}>{editError}</p>
+            )}
             <div className="flex gap-2">
               <button
                 onClick={handleSaveEditAll}
@@ -404,7 +430,9 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
             <div className="text-xs mb-1" style={{ color: 'var(--muted)' }}>
               {catInfo.isLiability ? 'Original loan' : 'Put in (Invested)'}
             </div>
-            <PrivacyValue minor={m.cost} className="text-xl font-bold" includePaise={false} />
+            {unknownInvested
+              ? <div className="text-xl font-bold" style={{ color: 'var(--muted)' }}>—</div>
+              : <PrivacyValue minor={m.cost} className="text-xl font-bold" includePaise={false} />}
             {(statementOnly || investedLooksLikeCmp) && (
               <button
                 type="button"
@@ -419,7 +447,9 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
           {!catInfo.isLiability && (
           <div className="p-4 rounded-2xl border" style={{ borderColor: 'var(--border)', background: 'var(--input)' }}>
             <div className="text-xs mb-1" style={{ color: 'var(--muted)' }}>Gain or loss</div>
-            <PrivacyDelta minor={m.gain} className="text-xl font-bold" />
+            {unknownInvested
+              ? <div className="text-xl font-bold" style={{ color: 'var(--bad)' }}>{UNKNOWN_INVESTED_LABEL}</div>
+              : <PrivacyDelta minor={m.gain} className="text-xl font-bold" />}
           </div>
           )}
         </div>
@@ -672,6 +702,10 @@ const ReturnPanel: React.FC<{ holding: import('../../types').Holding }> = ({ hol
   const { ledgerEvents, derived, sgbValuationMode } = useKosha();
   const asOf = new Date().toISOString().slice(0, 10);
   const r = holdingReturn(holding, ledgerEvents, derived, sgbValuationMode, asOf);
+  const absColor = r.unknownInvested ? 'var(--bad)' : (r.primaryPct ?? 0) >= 0 ? 'var(--good)' : 'var(--bad)';
+  const annColor = r.annualReason === 'ok'
+    ? ((r.secondaryPct ?? 0) >= 0 ? 'var(--good)' : 'var(--bad)')
+    : 'var(--muted)';
   return (
     <div className="p-4 rounded-2xl border space-y-3" style={{ borderColor: 'var(--border)', background: 'var(--input)' }}>
       <div className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--muted)' }}>
@@ -679,17 +713,22 @@ const ReturnPanel: React.FC<{ holding: import('../../types').Holding }> = ({ hol
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <div className="text-[11px]" style={{ color: 'var(--muted)' }}>{r.profile.primaryLabel}</div>
-          <div className="text-lg font-bold" style={{ color: (r.primaryPct ?? 0) >= 0 ? 'var(--good)' : 'var(--bad)' }}>
+          <div className="text-[11px]" style={{ color: 'var(--muted)' }}>Abs. return</div>
+          <div className="text-lg font-bold" style={{ color: absColor }}>
             {r.primaryText}
           </div>
         </div>
         <div>
-          <div className="text-[11px]" style={{ color: 'var(--muted)' }}>{r.profile.secondaryLabel}</div>
-          <div className="text-lg font-bold">{r.secondaryText}</div>
+          <div className="text-[11px]" style={{ color: 'var(--muted)' }}>Annual return</div>
+          <div className="text-lg font-bold" style={{ color: annColor }}>
+            {r.secondaryText}
+          </div>
         </div>
       </div>
       <p className="text-[11px] leading-relaxed" style={{ color: 'var(--muted)' }}>{r.profile.why}</p>
+      <p className="text-[11px] leading-relaxed" style={{ color: r.annualReason === 'changed' ? 'var(--accent)' : 'var(--muted)' }}>
+        {r.annualWhy}
+      </p>
       <p className="text-[11px]" style={{ color: 'var(--muted)' }}>
         Nifty, category average, G-sec and CRISIL figures are not in this vault — we only compute what your record book supports. CMP is last close / NAV, not live.
       </p>

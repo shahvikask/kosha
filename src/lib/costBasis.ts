@@ -7,6 +7,7 @@
  */
 import { Holding, LedgerEvent } from '../types';
 import { QTY_SCALE } from './money';
+import { interestKindOf } from './interest';
 
 const PARCEL_TYPES = new Set(['BUY', 'OPENING_BALANCE', 'SNAPSHOT_ADJUSTMENT', 'CORRECTION']);
 
@@ -37,17 +38,21 @@ export function planInvestedCorrection(opts: {
   unitPriceMinor: bigint;
   acquiredOn: string;
 }): Omit<LedgerEvent, 'id' | 'createdAt'> | null {
-  const { holding, events, unitPriceMinor, acquiredOn } = opts;
+  const { holding, events, unitPriceMinor } = opts;
   if (unitPriceMinor <= 0n) return null;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(acquiredOn)) return null;
   const parcel = earliestActiveParcel(events, holding.id);
-  if (!parcel) return null;
-  const qty = BigInt(parcel.quantityScaled || '0');
+  const qty = parcel
+    ? BigInt(parcel.quantityScaled || '0')
+    : BigInt(holding.quantityScaled || '0');
   if (qty <= 0n) return null;
+  const acquiredOn = /^\d{4}-\d{2}-\d{2}$/.test(opts.acquiredOn)
+    ? opts.acquiredOn
+    : (parcel?.eventDate || holding.acquiredOn || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(acquiredOn)) return null;
   const total = (qty * unitPriceMinor) / QTY_SCALE;
-  const samePrice = BigInt(parcel.unitPriceMinor || '0') === unitPriceMinor;
-  const sameDate = parcel.eventDate === acquiredOn;
-  if (samePrice && sameDate) return null;
+  const samePrice = parcel != null && BigInt(parcel.unitPriceMinor || '0') === unitPriceMinor;
+  const sameDate = parcel != null && parcel.eventDate === acquiredOn;
+  if (parcel && samePrice && sameDate) return null;
   return {
     holdingId: holding.id,
     holdingName: holding.name,
@@ -58,6 +63,34 @@ export function planInvestedCorrection(opts: {
     unitPriceMinor: unitPriceMinor.toString(),
     totalAmountMinor: total.toString(),
     notes: 'Invested updated from your records (statement has no buy price)',
-    supersedesEventId: parcel.id,
+    supersedesEventId: parcel?.id,
   };
+}
+
+const RUPEE = 10_000n;
+/** Running-balance products: the passbook figure is both cost and value. */
+const BALANCE_IS_COST = new Set(['PPF', 'EPF', 'SSY', 'FD']);
+
+export const UNKNOWN_INVESTED_LABEL = 'Need what you paid';
+
+/**
+ * CDSL/NSDL holdings CAS prints CMP as both value and “invested”.
+ * Until the user records what they paid (BUY or CORRECTION), that
+ * number is not a cost — hide it and refuse a 0% return.
+ */
+export function isUnknownInvested(
+  holding: Holding,
+  events: LedgerEvent[],
+  costMinor: bigint,
+  valueMinor: bigint,
+): boolean {
+  if (holding.category === 'LIABILITY') return false;
+  const kind = interestKindOf(holding);
+  if (kind && BALANCE_IS_COST.has(kind)) return false;
+  if (costMinor <= 0n || valueMinor <= 0n) return false;
+  const diff = costMinor > valueMinor ? costMinor - valueMinor : valueMinor - costMinor;
+  if (diff > RUPEE) return false;
+  return !events.some(
+    e => e.holdingId === holding.id && (e.eventType === 'BUY' || e.eventType === 'CORRECTION'),
+  );
 }

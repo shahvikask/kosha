@@ -1,19 +1,18 @@
 /**
- * Home “Pass A” helpers: books health, concentration, date freshness.
- * Snapshot / quote history is Pass B — not here.
+ * Home helpers: Pass A–C (health, steps, since-last) and
+ * Pass D (holdings whose CAS cost is still the market price).
  */
-import { FamilyMember, Holding, LedgerEvent } from '../types';
+import { FamilyMember, Holding, LedgerEvent, StatementSnapRow, StatementHoldingSnap } from '../types';
 import { CasFileType, CasLatestState, CAS_FILE_TYPE_LABEL } from './casPython';
 import { DerivedState } from './positions';
 import { financialYearOf } from './lots';
 import { interestKindOf } from './interest';
 import { isOpenPosition, metricsOf, displayHoldingName } from './holdingView';
+import { isUnknownInvested } from './costBasis';
 
-const RUPEE = 10_000n;
 const STALE_AMBER_DAYS = 45;
 const STALE_RED_DAYS = 90;
 const PRICE_LAG_AMBER_DAYS = 7;
-const COST_EQ_TOLERANCE = RUPEE; // ₹1
 const TOP_N = 5;
 
 export type HealthTone = 'ok' | 'amber' | 'red';
@@ -120,9 +119,7 @@ export function buildBooksHealth(opts: {
     if (h.category === 'LIABILITY') continue;
     if (!isOpenPosition(h, opts.derived)) continue;
     const m = metricsOf(h, opts.derived, opts.sgbMode);
-    if (m.cost <= 0n || m.value <= 0n) continue;
-    const diff = m.cost > m.value ? m.cost - m.value : m.value - m.cost;
-    if (diff <= COST_EQ_TOLERANCE) costEq.push(h);
+    if (isUnknownInvested(h, events, m.cost, m.value)) costEq.push(h);
   }
   if (costEq.length > 0) {
     const names = costEq.slice(0, 2).map(h => displayHoldingName(h.name)).join(', ');
@@ -245,3 +242,207 @@ function holdingExistedBy(h: Holding, events: LedgerEvent[], iso: string): boole
   if (h.acquiredOn && h.acquiredOn.slice(0, 10) <= iso) return true;
   return events.some(e => e.holdingId === h.id && e.eventDate && e.eventDate.slice(0, 10) <= iso);
 }
+
+export interface StatementStep {
+  date: string;
+  valueMinor: bigint;
+  investedMinor: bigint;
+  issuers: string[];
+  /** Horizontal pad to today — not a new statement. */
+  isLivePad?: boolean;
+}
+
+export function issuerLabel(issuer: string): string {
+  return CAS_FILE_TYPE_LABEL[issuer as CasFileType] || issuer;
+}
+
+/**
+ * Last-known statement value after each file.
+ * A later CDSL replaces the previous CDSL for that member; CAMS stacks beside it.
+ * The line stays flat until the next file — we do not invent NAV in between.
+ */
+export function buildStatementSteps(opts: {
+  rows: StatementSnapRow[];
+  selectedMemberId: string;
+  todayIso: string;
+}): StatementStep[] {
+  const inScope = (ownerId: string) => opts.selectedMemberId === 'ALL' || ownerId === opts.selectedMemberId;
+  const rows = opts.rows
+    .filter(r => r.date && inScope(r.ownerId))
+    .slice()
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.issuer.localeCompare(b.issuer)));
+  if (rows.length === 0) return [];
+
+  const dates: string[] = [];
+  for (const r of rows) {
+    if (dates[dates.length - 1] !== r.date) dates.push(r.date);
+  }
+
+  const latest = new Map<string, { value: bigint; invested: bigint; issuer: string }>();
+  const steps: StatementStep[] = [];
+  let i = 0;
+  for (const date of dates) {
+    while (i < rows.length && rows[i].date === date) {
+      const r = rows[i];
+      latest.set(`${r.ownerId}\0${r.issuer}`, { value: r.valueMinor, invested: r.investedMinor, issuer: r.issuer });
+      i += 1;
+    }
+    let value = 0n;
+    let invested = 0n;
+    const issuers: string[] = [];
+    for (const slot of latest.values()) {
+      value += slot.value;
+      invested += slot.invested;
+      if (!issuers.includes(slot.issuer)) issuers.push(slot.issuer);
+    }
+    steps.push({ date, valueMinor: value, investedMinor: invested, issuers });
+  }
+
+  const last = steps[steps.length - 1];
+  if (last && opts.todayIso && last.date < opts.todayIso) {
+    steps.push({
+      date: opts.todayIso,
+      valueMinor: last.valueMinor,
+      investedMinor: last.investedMinor,
+      issuers: last.issuers,
+      isLivePad: true,
+    });
+  }
+  return steps;
+}
+
+/** Carry last printed invested forward; live pad uses today's known invested. */
+export function investedSeriesFrom(steps: StatementStep[], liveInvestedMinor: bigint): StatementStep[] {
+  let last = 0n;
+  return steps.map(s => {
+    const raw = s.isLivePad ? (liveInvestedMinor > 0n ? liveInvestedMinor : s.investedMinor) : s.investedMinor;
+    const v = raw > 0n ? raw : last;
+    if (v > 0n) last = v;
+    return { ...s, investedMinor: v };
+  });
+}
+
+export function firstToLastPct(values: bigint[]): number | null {
+  const nz = values.filter(v => v > 0n);
+  if (nz.length < 2) return null;
+  const first = nz[0];
+  const last = nz[nz.length - 1];
+  return Number(last - first) / Number(first) * 100;
+}
+
+export interface SinceLastMover {
+  id: string;
+  name: string;
+  thenMinor: bigint;
+  nowMinor: bigint;
+  deltaMinor: bigint;
+}
+
+export interface SinceLastStatement {
+  asOf: string | null;
+  thenMinor: bigint;
+  nowMinor: bigint;
+  deltaMinor: bigint;
+  movers: SinceLastMover[];
+  newCount: number;
+}
+
+/**
+ * Current value of holdings vs their last statement CMV.
+ * Coverage is what the files reported — PPF/FD never on CAS are omitted.
+ */
+export function buildSinceLastStatement(opts: {
+  snaps: StatementHoldingSnap[];
+  holdings: Holding[];
+  derived: DerivedState;
+  events: LedgerEvent[];
+  selectedMemberId: string;
+  sgbMode: 'MARKET_TRADED' | 'RBI_BENCHMARK';
+  todayIso: string;
+}): SinceLastStatement {
+  const inScope = (ownerId: string) => opts.selectedMemberId === 'ALL' || ownerId === opts.selectedMemberId;
+  const latest = new Map<string, StatementHoldingSnap>();
+  let asOf: string | null = null;
+  for (const s of opts.snaps) {
+    if (!inScope(s.ownerId) || !s.date) continue;
+    const prev = latest.get(s.holdingId);
+    if (!prev || s.date >= prev.date) latest.set(s.holdingId, s);
+    if (!asOf || s.date > asOf) asOf = s.date;
+  }
+  if (!asOf) {
+    return { asOf: null, thenMinor: 0n, nowMinor: 0n, deltaMinor: 0n, movers: [], newCount: 0 };
+  }
+
+  let thenMinor = 0n;
+  let nowMinor = 0n;
+  const movers: SinceLastMover[] = [];
+  for (const snap of latest.values()) {
+    const h = opts.holdings.find(x => x.id === snap.holdingId);
+    if (!h) continue;
+    const now = metricsOf(h, opts.derived, opts.sgbMode).value;
+    thenMinor += snap.valueMinor;
+    nowMinor += now;
+    const delta = now - snap.valueMinor;
+    if (delta !== 0n) {
+      movers.push({
+        id: h.id,
+        name: displayHoldingName(h.name),
+        thenMinor: snap.valueMinor,
+        nowMinor: now,
+        deltaMinor: delta,
+      });
+    }
+  }
+  movers.sort((a, b) => {
+    const aa = a.deltaMinor < 0n ? -a.deltaMinor : a.deltaMinor;
+    const bb = b.deltaMinor < 0n ? -b.deltaMinor : b.deltaMinor;
+    return aa < bb ? 1 : aa > bb ? -1 : 0;
+  });
+
+  let newCount = 0;
+  for (const h of opts.holdings) {
+    if (!inScope(h.ownerId) || h.category === 'LIABILITY') continue;
+    if (latest.has(h.id)) continue;
+    if (!isOpenPosition(h, opts.derived)) continue;
+    const first = opts.events
+      .filter(e => e.holdingId === h.id && e.eventDate)
+      .sort((a, b) => a.eventDate.localeCompare(b.eventDate))[0];
+    const start = (h.acquiredOn || first?.eventDate || '').slice(0, 10);
+    if (start && start > asOf) newCount += 1;
+  }
+
+  return {
+    asOf,
+    thenMinor,
+    nowMinor,
+    deltaMinor: nowMinor - thenMinor,
+    movers: movers.slice(0, 5),
+    newCount,
+  };
+}
+
+export interface UnknownCostRow {
+  id: string;
+  name: string;
+  valueMinor: bigint;
+}
+
+/** Pass D: CAS printed CMV as invested — user still needs to add what they paid. */
+export function unknownCostRows(opts: {
+  holdings: Holding[];
+  events: LedgerEvent[];
+  derived: DerivedState;
+  sgbMode: 'MARKET_TRADED' | 'RBI_BENCHMARK';
+}): UnknownCostRow[] {
+  const out: UnknownCostRow[] = [];
+  for (const h of opts.holdings) {
+    if (h.category === 'LIABILITY') continue;
+    if (!isOpenPosition(h, opts.derived)) continue;
+    const m = metricsOf(h, opts.derived, opts.sgbMode);
+    if (!isUnknownInvested(h, opts.events, m.cost, m.value)) continue;
+    out.push({ id: h.id, name: displayHoldingName(h.name), valueMinor: m.value });
+  }
+  out.sort((a, b) => (a.valueMinor < b.valueMinor ? 1 : -1));
+  return out;
+}
+

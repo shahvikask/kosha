@@ -20,7 +20,7 @@ import {
   SCHEMA_V7_COLUMNS,
   LEDGER_NO_DELETE_TRIGGER,
 } from './schema';
-import { LedgerEvent, Holding, FamilyMember, FamilyRelation, isPrimaryFamilyMember, DematOrFolioAccount, FamilyGoal, ImportBatchInfo, ListedSecurity } from '../types';
+import { LedgerEvent, Holding, FamilyMember, FamilyRelation, isPrimaryFamilyMember, DematOrFolioAccount, FamilyGoal, ImportBatchInfo, ListedSecurity, StatementSnapRow, StatementHoldingSnap } from '../types';
 import { VaultAccount } from '../lib/auth';
 
 function toBps(percent: number | undefined | null): number | null {
@@ -341,6 +341,74 @@ export class Repository {
               rows_new, rows_duplicate, committed_at
        FROM import_batch ORDER BY committed_at DESC LIMIT 50`);
     return rows.map(rowToBatch);
+  }
+
+  /** Reported CMV (and invested, when the statement printed it) per issuer × date × member. */
+  async statementSnapshotTotals(): Promise<StatementSnapRow[]> {
+    try {
+      const rows = await this.db.query<Record<string, SqlValue>>(
+        `SELECT
+            COALESCE(sp.statement_date, ib.period_to, ib.statement_date) AS statement_date,
+            COALESCE(ib.statement_type, 'CAS') AS statement_type,
+            h.entity_id AS entity_id,
+            SUM(CASE
+              WHEN sp.current_value_minor IS NOT NULL THEN sp.current_value_minor
+              ELSE (sp.quantity_scaled * sp.unit_price_minor) / 100000000
+            END) AS value_minor,
+            SUM(COALESCE(sp.invested_minor, 0)) AS invested_minor
+         FROM statement_position sp
+         INNER JOIN import_batch ib ON ib.import_batch_id = sp.import_batch_id
+         INNER JOIN holding h ON h.holding_id = sp.holding_id
+         WHERE COALESCE(sp.statement_date, ib.period_to, ib.statement_date) IS NOT NULL
+         GROUP BY COALESCE(sp.statement_date, ib.period_to, ib.statement_date),
+                  COALESCE(ib.statement_type, 'CAS'),
+                  h.entity_id
+         ORDER BY statement_date ASC`);
+      return rows.map(r => ({
+        date: s(r.statement_date).slice(0, 10),
+        issuer: s(r.statement_type),
+        ownerId: s(r.entity_id),
+        valueMinor: asMinor(r.value_minor),
+        investedMinor: asMinor(r.invested_minor),
+      })).filter(r => r.date);
+    } catch {
+      return [];
+    }
+  }
+
+  /** Last reported CMV per holding, used for “since last statement”. */
+  async latestHoldingStatementValues(): Promise<StatementHoldingSnap[]> {
+    try {
+      const rows = await this.db.query<Record<string, SqlValue>>(
+        `SELECT
+            COALESCE(sp.statement_date, ib.period_to, ib.statement_date) AS statement_date,
+            sp.holding_id AS holding_id,
+            h.entity_id AS entity_id,
+            CASE
+              WHEN sp.current_value_minor IS NOT NULL THEN sp.current_value_minor
+              ELSE (sp.quantity_scaled * sp.unit_price_minor) / 100000000
+            END AS value_minor
+         FROM statement_position sp
+         INNER JOIN import_batch ib ON ib.import_batch_id = sp.import_batch_id
+         INNER JOIN holding h ON h.holding_id = sp.holding_id
+         WHERE COALESCE(sp.statement_date, ib.period_to, ib.statement_date) IS NOT NULL
+         ORDER BY statement_date ASC`);
+      const latest = new Map<string, StatementHoldingSnap>();
+      for (const r of rows) {
+        const date = s(r.statement_date).slice(0, 10);
+        const holdingId = s(r.holding_id);
+        if (!date || !holdingId) continue;
+        latest.set(holdingId, {
+          date,
+          holdingId,
+          ownerId: s(r.entity_id),
+          valueMinor: asMinor(r.value_minor),
+        });
+      }
+      return [...latest.values()];
+    } catch {
+      return [];
+    }
   }
 
   /**
@@ -698,6 +766,11 @@ export class Repository {
 }
 
 function s(v: SqlValue): string { return v === null || v === undefined ? '' : String(v); }
+
+function asMinor(v: SqlValue): bigint {
+  if (v === null || v === undefined || v === '') return 0n;
+  try { return BigInt(String(v)); } catch { return 0n; }
+}
 
 function rowToEvent(r: Record<string, SqlValue>): LedgerEvent {
   return {

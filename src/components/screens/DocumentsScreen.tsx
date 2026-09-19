@@ -104,6 +104,7 @@ export const DocumentsScreen: React.FC = () => {
   // Record Book filter & search
   const [recordBookSearch, setRecordBookSearch] = useState<string>('');
   const [recordBookFilterType, setRecordBookFilterType] = useState<string>('ALL');
+  const [showOlderStatements, setShowOlderStatements] = useState(false);
 
   // Clear staged file when changing member before a parse; after a parse, retarget
   // so a wrong profile can be switched without dropping the PDF.
@@ -536,6 +537,11 @@ export const DocumentsScreen: React.FC = () => {
       return matchesSearch && matchesType && matchesMember;
     });
   }, [ledgerEvents, recordBookSearch, recordBookFilterType, selectedMemberId]);
+
+  const visibleBatches = showOlderStatements || importBatches.length <= 2
+    ? importBatches
+    : importBatches.slice(0, 2);
+  const hiddenBatchCount = importBatches.length - visibleBatches.length;
 
   // Format date readable
   const formattedStatementDate = useMemo(() => {
@@ -1374,7 +1380,7 @@ export const DocumentsScreen: React.FC = () => {
                 Later files of the same issuer replace earlier ones. Totals are not added together.
               </p>
               <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
-                {importBatches.map(b => (
+                {visibleBatches.map(b => (
                   <div key={b.id} className="py-3 flex items-start justify-between gap-3 text-sm">
                     <div>
                       <div className="font-semibold">{b.filename}</div>
@@ -1390,6 +1396,26 @@ export const DocumentsScreen: React.FC = () => {
                   </div>
                 ))}
               </div>
+              {importBatches.length > 2 && (
+                <button
+                  type="button"
+                  onClick={() => setShowOlderStatements(v => !v)}
+                  className="w-full flex items-center justify-center gap-1.5 pt-1 text-xs font-semibold"
+                  style={{ color: 'var(--accent)' }}
+                >
+                  {showOlderStatements ? (
+                    <>
+                      <ChevronUp className="w-3.5 h-3.5" />
+                      Hide earlier statements
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="w-3.5 h-3.5" />
+                      {hiddenBatchCount} earlier {hiddenBatchCount === 1 ? 'statement' : 'statements'}
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           )}
         </div>

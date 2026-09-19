@@ -16,6 +16,7 @@ import {
 } from './holdingView';
 import { ExposureNode, EXPOSURES, classifyHolding } from './taxonomy';
 import { apportion, resolveSplit } from './lookthrough';
+import { isUnknownInvested } from './costBasis';
 
 export const BUCKET_COLORS: Record<FamilyBucketId, string> = {
   SHARES: '#f59e0b',
@@ -60,6 +61,7 @@ export interface GrowthHoldingRow {
   costMinor: bigint;
   gainMinor: bigint;
   realisedMinor: bigint;
+  unknownInvested?: boolean;
 }
 
 export interface IncomeYear {
@@ -86,6 +88,7 @@ export interface GrowthKpis {
   incomeThisFyMinor: bigint;
   realisedMinor: bigint;
   unrealisedMinor: bigint;
+  unknownInvestedCount: number;
 }
 
 export interface GrowthModel {
@@ -117,7 +120,15 @@ export function absoluteReturnPct(invested: bigint, current: bigint): number | n
   return (rupees(current - invested) / rupees(invested)) * 100;
 }
 
-/** Display helper retained as a presentation concern; no annualised return is calculated. */
+/** CAGR when one unchanged amount sat for `days`. Null if days < 365 or non-positive. */
+export function annualReturnPct(invested: bigint, current: bigint, days: number): number | null {
+  if (invested <= 0n || current <= 0n || !Number.isFinite(days) || days < 365) return null;
+  const ratio = rupees(current) / rupees(invested);
+  if (ratio <= 0 || !Number.isFinite(ratio)) return null;
+  return (Math.pow(ratio, 365 / days) - 1) * 100;
+}
+
+/** Display helper retained as a presentation concern. */
 export function formatPct(n: number | null, digits = 1): string {
   if (n == null || !Number.isFinite(n)) return '—';
   const sign = n > 0 ? '+' : '';
@@ -205,8 +216,10 @@ export function buildGrowthModel(
 
   let assets = 0n;
   let invested = 0n;
+  let knownAssets = 0n;
   let liabilities = 0n;
   let realised = 0n;
+  let unknownInvestedCount = 0;
   const rows: GrowthHoldingRow[] = [];
   const bucketMap = new Map<FamilyBucketId, { value: bigint; count: number }>();
   const exposureMap = new Map<ExposureNode, { value: bigint; count: number }>();
@@ -220,11 +233,17 @@ export function buildGrowthModel(
     const closed = h.category !== 'LIABILITY' && m.qty <= 0n;
     if (closed) continue;
     const bucket = bucketOf(h);
+    let unknown = false;
     if (h.category === 'LIABILITY') {
       liabilities += m.value;
     } else {
       assets += m.value;
-      invested += m.cost;
+      unknown = isUnknownInvested(h, events, m.cost, m.value);
+      if (unknown) unknownInvestedCount += 1;
+      else {
+        invested += m.cost;
+        knownAssets += m.value;
+      }
       const b = bucketMap.get(bucket) || { value: 0n, count: 0 };
       b.value += m.value;
       b.count += 1;
@@ -253,9 +272,10 @@ export function buildGrowthModel(
       ownerId: h.ownerId,
       ownerName: nameOf(h.ownerId),
       valueMinor: m.value,
-      costMinor: m.cost,
-      gainMinor: m.gain,
+      costMinor: unknown ? 0n : m.cost,
+      gainMinor: unknown ? 0n : m.gain,
       realisedMinor: real,
+      unknownInvested: unknown || undefined,
     });
   }
 
@@ -281,12 +301,12 @@ export function buildGrowthModel(
 
   const assetIds = new Set(holdings.filter(h => h.category !== 'LIABILITY').map(h => h.id));
   const assetEvents = events.filter(e => assetIds.has(e.holdingId));
-  const absPct = absoluteReturnPct(invested, assets);
+  const absPct = absoluteReturnPct(invested, knownAssets);
   const incomeYears = incomeByFinancialYear(events, byId);
   const currentFy = financialYearOf(asOf);
   const incomeThisFy = incomeYears.find(y => y.fy === currentFy)?.totalMinor || 0n;
   const months = cumulativeByMonth(assetEvents, asOf);
-  const unrealised = assets - invested;
+  const unrealised = knownAssets - invested;
 
   return {
     kpis: {
@@ -294,11 +314,12 @@ export function buildGrowthModel(
       assetsMinor: assets,
       liabilitiesMinor: liabilities,
       netWorthMinor: assets - liabilities,
-      absoluteGainMinor: assets - invested,
+      absoluteGainMinor: knownAssets - invested,
       absoluteReturnPct: absPct,
       incomeThisFyMinor: incomeThisFy,
       realisedMinor: realised,
       unrealisedMinor: unrealised,
+      unknownInvestedCount,
     },
     buckets,
     exposures,

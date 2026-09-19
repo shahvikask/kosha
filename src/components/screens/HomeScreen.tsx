@@ -3,11 +3,12 @@ import { useKosha } from '../../context/KoshaContext';
 import { PrivacyValue, PrivacyDelta } from '../common/PrivacyValue';
 import { FAMILY_BUCKETS, upcomingFromHoldings, formatCalendarDate, FamilyBucketId } from '../../lib/holdingView';
 import { FileSpreadsheet, Target, Calendar, ChevronRight, ArrowUpRight, ShieldCheck, ShieldAlert } from 'lucide-react';
-import { Donut, HBars, AreaFlow, StackedFy, SplitBar } from '../growth/Charts';
+import { Donut, HBars, SplitBar, TimeStepChart } from '../growth/Charts';
 import { buildGrowthModel, formatPct, GrowthHoldingRow } from '../../lib/growth';
 import { ExposureNode, EXPOSURES } from '../../lib/taxonomy';
 import { formatStatementDateShort } from '../../lib/casPython';
-import { buildBooksHealth, concentrationOf, freshnessTone, HealthTone } from '../../lib/homeDashboard';
+import { buildBooksHealth, buildStatementSteps, buildSinceLastStatement, concentrationOf, freshnessTone, firstToLastPct, HealthTone, investedSeriesFrom, issuerLabel, unknownCostRows } from '../../lib/homeDashboard';
+import { UNKNOWN_INVESTED_LABEL } from '../../lib/costBasis';
 
 interface HomeScreenProps {
   onOpenAddHolding: () => void;
@@ -22,7 +23,7 @@ type Drill =
   | { kind: 'fy'; id: string };
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpenHoldingDetail }) => {
-  const { summary, filteredHoldings, familyMembers, selectedMemberId, setActiveScreen, sgbValuationMode, derived, lastStatementAsOf, pricesAsOf, goals, ledgerEvents, casLatest } = useKosha();
+  const { summary, filteredHoldings, familyMembers, selectedMemberId, setActiveScreen, sgbValuationMode, derived, lastStatementAsOf, pricesAsOf, goals, ledgerEvents, casLatest, statementSnaps, statementHoldingSnaps } = useKosha();
   const [drill, setDrill] = useState<Drill>({ kind: 'none' });
   const [showAllMovers, setShowAllMovers] = useState(false);
   const who = selectedMemberId === 'ALL' ? 'The family' : familyMembers.find(m => m.id === selectedMemberId)?.name || 'Family';
@@ -44,6 +45,40 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpen
     const assetRows = model.holdings.filter(h => h.bucket !== 'LOAN' && h.valueMinor > 0n);
     return concentrationOf(assetRows, model.kpis.assetsMinor, 5);
   }, [model.holdings, model.kpis.assetsMinor]);
+  const statementSteps = useMemo(
+    () => buildStatementSteps({ rows: statementSnaps, selectedMemberId, todayIso: asOf }),
+    [statementSnaps, selectedMemberId, asOf],
+  );
+  const sinceLast = useMemo(
+    () => buildSinceLastStatement({
+      snaps: statementHoldingSnaps,
+      holdings: filteredHoldings,
+      derived,
+      events: ledgerEvents.filter(e => selectedMemberId === 'ALL' || e.ownerId === selectedMemberId),
+      selectedMemberId,
+      sgbMode: sgbValuationMode,
+      todayIso: asOf,
+    }),
+    [statementHoldingSnaps, filteredHoldings, derived, ledgerEvents, selectedMemberId, sgbValuationMode, asOf],
+  );
+  const needCost = useMemo(
+    () => unknownCostRows({
+      holdings: filteredHoldings,
+      events: ledgerEvents.filter(e => selectedMemberId === 'ALL' || e.ownerId === selectedMemberId),
+      derived,
+      sgbMode: sgbValuationMode,
+    }),
+    [filteredHoldings, ledgerEvents, selectedMemberId, derived, sgbValuationMode],
+  );
+  const filedSteps = statementSteps.filter(s => !s.isLivePad);
+  const empty = filteredHoldings.length === 0;
+  const k = model.kpis;
+  const investedSteps = useMemo(
+    () => investedSeriesFrom(statementSteps, model.kpis.investedMinor),
+    [statementSteps, model.kpis.investedMinor],
+  );
+  const assetsPct = firstToLastPct(statementSteps.map(s => s.valueMinor));
+  const investedPct = firstToLastPct(investedSteps.map(s => s.investedMinor));
   const goalRows = useMemo(() => goals.map(g => {
     const tagged = filteredHoldings.filter(h => [h.tag, ...(h.tags || [])].some(t => (t || '').toLowerCase() === g.name.toLowerCase()));
     const current = tagged.reduce((s, h) => s + (model.holdings.find(x => x.id === h.id)?.valueMinor || 0n), 0n);
@@ -57,8 +92,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpen
     if (drill.kind === 'member') return hs.filter(h => h.ownerId === drill.id);
     return hs;
   }, [model.holdings, drill]);
-  const empty = filteredHoldings.length === 0;
-  const k = model.kpis;
   const gainGood = k.absoluteGainMinor >= 0n;
   const movers = showAllMovers ? filteredRows : filteredRows.slice(0, 3);
   const drillTitle = drill.kind === 'bucket'
@@ -94,17 +127,30 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpen
               />
             </div>
           </div>
-          <div className="rounded-2xl border p-4 min-w-[220px]" style={{ borderColor: 'var(--border)', background: 'var(--input)' }}>
+          <div className="rounded-2xl border p-4 min-w-[220px]" style={{ borderColor: k.unknownInvestedCount > 0 && k.investedMinor <= 0n ? 'var(--bad)' : 'var(--border)', background: 'var(--input)' }}>
             <div className="text-[11px] uppercase tracking-wide font-bold" style={{ color: 'var(--muted)' }}>Absolute return</div>
-            <div className="mt-1 flex items-baseline gap-2">
-              <PrivacyDelta minor={k.absoluteGainMinor} className="text-xl font-extrabold" />
-              <span className="text-sm font-bold" style={{ color: gainGood ? 'var(--good)' : 'var(--bad)' }}>{formatPct(k.absoluteReturnPct)}</span>
-            </div>
-            <div className="text-[11px] mt-1" style={{ color: 'var(--muted)' }}>Current value compared with invested amount</div>
+            {k.unknownInvestedCount > 0 && k.investedMinor <= 0n ? (
+              <>
+                <div className="mt-1 text-xl font-extrabold" style={{ color: 'var(--bad)' }}>{UNKNOWN_INVESTED_LABEL}</div>
+                <div className="text-[11px] mt-1" style={{ color: 'var(--muted)' }}>CAS has no buy price on {k.unknownInvestedCount === 1 ? 'this holding' : `${k.unknownInvestedCount} holdings`}</div>
+              </>
+            ) : (
+              <>
+                <div className="mt-1 flex items-baseline gap-2">
+                  <PrivacyDelta minor={k.absoluteGainMinor} className="text-xl font-extrabold" />
+                  <span className="text-sm font-bold" style={{ color: gainGood ? 'var(--good)' : 'var(--bad)' }}>{formatPct(k.absoluteReturnPct)}</span>
+                </div>
+                <div className="text-[11px] mt-1" style={{ color: 'var(--muted)' }}>
+                  {k.unknownInvestedCount > 0
+                    ? `On holdings with a buy price · ${k.unknownInvestedCount} still need cost`
+                    : 'Current value compared with invested amount'}
+                </div>
+              </>
+            )}
           </div>
         </div>
         <div className="mt-5 space-y-2">
-          <WaterRow label="Invested" value={summary.totalInvestedMinor} widthPct={barPct(summary.totalInvestedMinor, k.assetsMinor)} />
+          <WaterRow label="Invested" value={k.investedMinor} widthPct={barPct(k.investedMinor, k.assetsMinor)} />
           <WaterRow label="Assets" value={k.assetsMinor} widthPct={100} />
           <WaterRow label="Loans" value={k.liabilitiesMinor} widthPct={barPct(k.liabilitiesMinor, k.assetsMinor)} negative />
           <WaterRow label="Net worth" value={summary.netWorthMinor} widthPct={barPct(summary.netWorthMinor > 0n ? summary.netWorthMinor : 0n, k.assetsMinor)} strong />
@@ -157,6 +203,38 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpen
             )}
           </section>
 
+          {needCost.length > 0 && (
+            <section className="card p-4 sm:p-5">
+              <div className="flex items-start justify-between gap-3 mb-2">
+                <div>
+                  <h2 className="text-sm font-bold">Add what you paid</h2>
+                  <p className="text-[11px] mt-0.5" style={{ color: 'var(--muted)' }}>
+                    CAS printed today's value as invested. Return stays blank until you edit these.
+                  </p>
+                </div>
+                <span className="text-[11px] font-semibold" style={{ color: 'var(--bad)' }}>{needCost.length}</span>
+              </div>
+              <ul className="space-y-2">
+                {needCost.slice(0, 6).map(r => (
+                  <li key={r.id}>
+                    <button type="button" onClick={() => onOpenHoldingDetail(r.id)} className="w-full text-left rounded-xl border px-3 py-2 hover:opacity-90" style={{ borderColor: 'var(--border)', background: 'var(--input)' }}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-semibold truncate">{r.name}</span>
+                        <PrivacyValue minor={r.valueMinor} includePaise={false} className="text-xs font-bold shrink-0" />
+                      </div>
+                      <div className="text-[11px] mt-0.5" style={{ color: 'var(--bad)' }}>{UNKNOWN_INVESTED_LABEL}</div>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {needCost.length > 6 && (
+                <button type="button" onClick={() => setActiveScreen('HOLDINGS')} className="mt-2 text-xs font-semibold" style={{ color: 'var(--accent)' }}>
+                  View all {needCost.length}
+                </button>
+              )}
+            </section>
+          )}
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             <section className="card p-4 sm:p-5"><h2 className="text-sm font-bold mb-3">Where the money sits</h2>{model.buckets.length === 0 ? <p className="text-xs" style={{ color: 'var(--muted)' }}>No assets to chart.</p> : <Donut slices={model.buckets} selectedId={drill.kind === 'bucket' ? drill.id : null} onSelect={id => setDrill(d => d.kind === 'bucket' && d.id === id ? { kind: 'none' } : { kind: 'bucket', id })} center={<><span className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--muted)' }}>Assets</span><PrivacyValue minor={k.assetsMinor} includePaise={false} showCompact className="text-sm font-bold" compactClassName="hidden" /></>} />}</section>
             <section className="card p-4 sm:p-5"><h2 className="text-sm font-bold mb-1">Look-through mix</h2><p className="text-[11px] mb-3" style={{ color: 'var(--muted)' }}>Equity, debt and gold after opening hybrid funds.</p><HBars slices={model.exposures} selectedId={drill.kind === 'exposure' ? drill.id : null} onSelect={id => setDrill(d => d.kind === 'exposure' && d.id === id ? { kind: 'none' } : { kind: 'exposure', id })} /></section>
@@ -165,9 +243,103 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpen
           {selectedMemberId === 'ALL' && model.members.length > 1 && <section className="card p-4 sm:p-5"><h2 className="text-sm font-bold mb-3">Whose name it is in</h2><HBars slices={model.members} selectedId={drill.kind === 'member' ? drill.id : null} onSelect={id => setDrill(d => d.kind === 'member' && d.id === id ? { kind: 'none' } : { kind: 'member', id })} /></section>}
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            <section className="card p-4 sm:p-5"><h2 className="text-sm font-bold mb-1">Money in, over time</h2><p className="text-[11px] mb-2" style={{ color: 'var(--muted)' }}>Invested capital and dividends / interest.</p><AreaFlow months={model.months} /></section>
-            <section className="card p-4 sm:p-5"><h2 className="text-sm font-bold mb-1">Income by Indian FY</h2><StackedFy years={model.incomeYears} selectedFy={drill.kind === 'fy' ? drill.id : null} onSelect={id => setDrill(d => d.kind === 'fy' && d.id === id ? { kind: 'none' } : { kind: 'fy', id })} /></section>
+            <section className="card p-4 sm:p-5">
+              <div className="flex items-start justify-between gap-3 mb-1">
+                <div>
+                  <h2 className="text-sm font-bold">Assets over time</h2>
+                  <p className="text-[11px] mt-0.5" style={{ color: 'var(--muted)' }}>
+                    Statement value. Flat between files.
+                  </p>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-[10px] uppercase tracking-wide font-bold" style={{ color: 'var(--muted)' }}>Change</div>
+                  <div className="text-sm font-extrabold" style={{ color: (assetsPct ?? 0) >= 0 ? 'var(--good)' : 'var(--bad)' }}>
+                    {formatPct(assetsPct)}
+                  </div>
+                </div>
+              </div>
+              <TimeStepChart
+                id="assets"
+                steps={statementSteps}
+                color="var(--accent)"
+                valueOf={s => s.valueMinor}
+                empty="Import two statements to see assets move."
+              />
+              {filedSteps.length > 0 && (
+                <p className="text-[11px] mt-1" style={{ color: 'var(--muted)' }}>
+                  {filedSteps.length === 1
+                    ? `${issuerLabel(filedSteps[0].issuers[0] || 'CAS')} through ${formatStatementDateShort(filedSteps[0].date)}`
+                    : filedSteps.slice(-3).map(s => `${s.issuers.map(issuerLabel).join(' + ')} ${formatStatementDateShort(s.date)}`).join(' · ')}
+                </p>
+              )}
+            </section>
+            <section className="card p-4 sm:p-5">
+              <div className="flex items-start justify-between gap-3 mb-1">
+                <div>
+                  <h2 className="text-sm font-bold">Invested over time</h2>
+                  <p className="text-[11px] mt-0.5" style={{ color: 'var(--muted)' }}>
+                    Cost printed on each file, carried forward.
+                  </p>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-[10px] uppercase tracking-wide font-bold" style={{ color: 'var(--muted)' }}>Change</div>
+                  <div className="text-sm font-extrabold" style={{ color: (investedPct ?? 0) >= 0 ? 'var(--good)' : 'var(--bad)' }}>
+                    {formatPct(investedPct)}
+                  </div>
+                </div>
+              </div>
+              <TimeStepChart
+                id="invested"
+                steps={investedSteps}
+                color="#f59e0b"
+                valueOf={s => s.investedMinor}
+                empty="CAMS/KFin prints cost. CDSL usually does not — add what you paid."
+              />
+            </section>
           </div>
+
+          {sinceLast.asOf && (
+            <section className="card p-4 sm:p-5">
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div>
+                  <h2 className="text-sm font-bold">Since last statement</h2>
+                  <p className="text-[11px] mt-0.5" style={{ color: 'var(--muted)' }}>
+                    {formatStatementDateShort(sinceLast.asOf)} file vs today's prices on those same holdings.
+                  </p>
+                </div>
+                <div className="text-right shrink-0">
+                  <PrivacyDelta minor={sinceLast.deltaMinor} className="text-sm font-extrabold" />
+                  {sinceLast.newCount > 0 && (
+                    <div className="text-[11px]" style={{ color: 'var(--muted)' }}>{sinceLast.newCount} new since then</div>
+                  )}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div className="rounded-xl border px-3 py-2" style={{ borderColor: 'var(--border)', background: 'var(--input)' }}>
+                  <div className="text-[10px] uppercase tracking-wide font-bold" style={{ color: 'var(--muted)' }}>On the file</div>
+                  <PrivacyValue minor={sinceLast.thenMinor} includePaise={false} className="text-sm font-bold" />
+                </div>
+                <div className="rounded-xl border px-3 py-2" style={{ borderColor: 'var(--border)', background: 'var(--input)' }}>
+                  <div className="text-[10px] uppercase tracking-wide font-bold" style={{ color: 'var(--muted)' }}>Now</div>
+                  <PrivacyValue minor={sinceLast.nowMinor} includePaise={false} className="text-sm font-bold" />
+                </div>
+              </div>
+              {sinceLast.movers.length === 0 ? (
+                <p className="text-xs" style={{ color: 'var(--muted)' }}>Prices have not moved from the statement yet, or refresh EOD prices.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {sinceLast.movers.map(r => (
+                    <li key={r.id}>
+                      <button type="button" onClick={() => onOpenHoldingDetail(r.id)} className="w-full text-left flex items-center justify-between gap-2">
+                        <span className="truncate text-sm font-medium">{r.name}</span>
+                        <PrivacyDelta minor={r.deltaMinor} className="text-xs font-bold shrink-0" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
 
           <section className="card p-4 sm:p-5 space-y-3"><h2 className="text-sm font-bold">Gain booked vs still on paper</h2><SplitBar leftLabel="Unrealised" rightLabel="Realised" leftMinor={k.unrealisedMinor > 0n ? k.unrealisedMinor : 0n} rightMinor={k.realisedMinor > 0n ? k.realisedMinor : 0n} leftColor="#3b82f6" rightColor="#10b981" /></section>
 
@@ -241,4 +413,4 @@ const WaterRow: React.FC<{ label: string; value: bigint; widthPct: number; negat
 );
 
 const Action: React.FC<{ title: string; hint: string; onClick: () => void }> = ({ title, hint, onClick }) => <button onClick={onClick} className="card p-4 text-left hover:opacity-90"><div className="font-bold text-sm">{title}</div><div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{hint}</div></button>;
-const HoldingTable: React.FC<{ rows: GrowthHoldingRow[]; onOpen: (id: string) => void }> = ({ rows, onOpen }) => rows.length === 0 ? <p className="text-xs" style={{ color: 'var(--muted)' }}>Nothing in this slice.</p> : <div className="divide-y" style={{ borderColor: 'var(--border)' }}>{rows.map(r => <button key={r.id} type="button" onClick={() => onOpen(r.id)} className="w-full text-left py-3 flex items-center gap-3 hover:opacity-90"><div className="min-w-0 flex-1"><div className="text-sm font-medium truncate">{r.name}</div><div className="text-[11px] truncate" style={{ color: 'var(--muted)' }}>{r.ownerName} · {FAMILY_BUCKETS.find(b => b.id === r.bucket)?.title}</div></div><div className="text-right shrink-0"><PrivacyValue minor={r.valueMinor} includePaise={false} className="text-sm font-semibold" /><div className="text-[11px]"><PrivacyDelta minor={r.gainMinor} className="text-[11px] font-medium" /></div></div><ChevronRight className="w-4 h-4 shrink-0" style={{ color: 'var(--muted)' }} /></button>)}</div>;
+const HoldingTable: React.FC<{ rows: GrowthHoldingRow[]; onOpen: (id: string) => void }> = ({ rows, onOpen }) => rows.length === 0 ? <p className="text-xs" style={{ color: 'var(--muted)' }}>Nothing in this slice.</p> : <div className="divide-y" style={{ borderColor: 'var(--border)' }}>{rows.map(r => <button key={r.id} type="button" onClick={() => onOpen(r.id)} className="w-full text-left py-3 flex items-center gap-3 hover:opacity-90"><div className="min-w-0 flex-1"><div className="text-sm font-medium truncate">{r.name}</div><div className="text-[11px] truncate" style={{ color: 'var(--muted)' }}>{r.ownerName} · {FAMILY_BUCKETS.find(b => b.id === r.bucket)?.title}</div></div><div className="text-right shrink-0">{r.unknownInvested ? <div className="text-xs font-semibold" style={{ color: 'var(--bad)' }}>{UNKNOWN_INVESTED_LABEL}</div> : <><PrivacyValue minor={r.valueMinor} includePaise={false} className="text-sm font-semibold" /><div className="text-[11px]"><PrivacyDelta minor={r.gainMinor} className="text-[11px] font-medium" /></div></>}</div><ChevronRight className="w-4 h-4 shrink-0" style={{ color: 'var(--muted)' }} /></button>)}</div>;

@@ -440,3 +440,21 @@ export interface ImportBatchInfo {
   committedAt: string;
 }
 
+/** One issuer’s reported value on one statement date (Pass B). */
+export interface StatementSnapRow {
+  date: string;
+  issuer: string;
+  ownerId: string;
+  valueMinor: bigint;
+  investedMinor: bigint;
+}
+
+/** Latest statement CMV for one holding (Pass C). */
+export interface StatementHoldingSnap {
+  date: string;
+  holdingId: string;
+  ownerId: string;
+  valueMinor: bigint;
+}
+
+
