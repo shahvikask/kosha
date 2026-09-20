@@ -1,0 +1,62 @@
+name: GrowUrDhan Android APK (device test)
+
+on:
+  push:
+    branches: [GUD-Android-APK]
+  workflow_dispatch:
+
+env:
+  VITE_GUD_TEST_APK: "1"
+  GUD_TEST_APK: "1"
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: SDK platforms and NDK
+        run: |
+          sdkmanager --install "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018" "platform-tools"
+
+      - name: Install JS
+        run: npm ci || npm install
+
+      - name: Init Android project
+        run: |
+          npx tauri android init --ci || npx tauri android init || true
+          node scripts/android_prepare.mjs
+
+      - name: Build debug APK
+        run: npx tauri android build --apk --debug --target aarch64
+
+      - name: Stage APK
+        run: |
+          mkdir -p dist-apk
+          find src-tauri/gen/android src-tauri/target -name '*.apk' -print
+          find src-tauri/gen/android src-tauri/target -name '*.apk' -exec cp {} dist-apk/ \;
+          ls -la dist-apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GrowUrDhan-Android-APK
+          path: dist-apk/*.apk
+          if-no-files-found: error
