@@ -31,9 +31,8 @@ import java.security.SecureRandom
 
 /**
  * Device-bound vault + Play Billing.
- * The AES wrapping key never leaves Android Keystore.
- * Purchases are bound to the Google Play account, not this APK file.
- * A sideloaded / extracted APK fails the installer check and stays locked.
+ * On GUD-Android-APK, BuildConfig.GUD_TEST_APK lets a sideloaded debug
+ * install start a trial. Play AAB builds leave that flag unset / false.
  */
 @TauriPlugin
 class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), PurchasesUpdatedListener {
@@ -73,6 +72,15 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
     )
 
+    private fun testApk(): Boolean {
+        return try {
+            val klass = Class.forName(activity.packageName + ".BuildConfig")
+            klass.getField("GUD_TEST_APK").getBoolean(null)
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     private fun installedFromPlay(): Boolean {
         return try {
             val info = activity.packageManager.getInstallSourceInfo(activity.packageName)
@@ -83,8 +91,10 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
         }
     }
 
-    private fun ensureTrialStarted(fromPlay: Boolean): String? {
-        if (!fromPlay) return null
+    private fun trustedInstall(): Boolean = testApk() || installedFromPlay()
+
+    private fun ensureTrialStarted(trusted: Boolean): String? {
+        if (!trusted) return null
         val prefs = licencePrefs()
         val existing = prefs.getString("trialStartedAt", null)
         if (existing != null) return existing
@@ -140,23 +150,23 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
     }
 
     private fun resolveLicence(invoke: Invoke, attempt: Int) {
-        val fromPlay = installedFromPlay()
+        val trusted = trustedInstall()
         val client = billing
         if (client == null || !client.isReady) {
-            if (fromPlay && attempt < 8) {
+            if (installedFromPlay() && attempt < 8) {
                 handler.postDelayed({ resolveLicence(invoke, attempt + 1) }, 350)
                 return
             }
             val fallback = JSObject()
             fallback.put("lifetime", false)
             fallback.put("supportActive", false)
-            fallback.put("integrity", fromPlay)
-            fallback.put("trialStartedAt", ensureTrialStarted(fromPlay))
+            fallback.put("integrity", trusted)
+            fallback.put("trialStartedAt", ensureTrialStarted(trusted))
             invoke.resolve(fallback)
             return
         }
         val result = JSObject()
-        result.put("integrity", fromPlay)
+        result.put("integrity", trusted)
         queryKind(client, BillingClient.ProductType.INAPP) { inapp ->
             val owned = inapp.filter { it.purchaseState == Purchase.PurchaseState.PURCHASED }
             acknowledgeAll(client, owned)
@@ -168,7 +178,7 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
                 result.put("supportActive", support != null)
                 result.put("supportRenewsAt", null)
                 result.put("playAccountBound", owned.isNotEmpty() || support != null)
-                result.put("trialStartedAt", ensureTrialStarted(fromPlay))
+                result.put("trialStartedAt", ensureTrialStarted(trusted))
                 invoke.resolve(result)
             }
         }
@@ -177,6 +187,10 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
 
     @Command
     fun play_purchase(invoke: Invoke) {
+        if (testApk()) {
+            invoke.resolve(JSObject())
+            return
+        }
         val args = invoke.parseArgs(BuyArgs::class.java)
         val client = billing ?: return invoke.reject("Google Play Billing is not ready.")
         if (!installedFromPlay()) {
@@ -254,7 +268,6 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
                     .build()
             )
         } catch (_: Exception) {
-            /* Installer check is the hard gate; Integrity is extra signal. */
         }
     }
 
