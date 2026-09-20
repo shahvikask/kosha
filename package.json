@@ -13,7 +13,11 @@
     "lint": "tsc --noEmit",
     "test": "tsx src/lib/kosha.test.ts",
     "test:snap": "tsx src/lib/snapshot.test.ts",
-    "test:db": "tsx src/db/db.test.ts"
+    "test:db": "tsx src/db/db.test.ts",
+    "android:init": "npx tauri android init",
+    "android:prepare": "node scripts/android_prepare.mjs",
+    "android:aab": "npx tauri android build --target aarch64",
+    "android:apk": "npx tauri android build --apk --target aarch64"
   },
   "dependencies": {
     "@sqlite.org/sqlite-wasm": "^3.53.0-build1",
@@ -24,7 +28,8 @@
     "lucide-react": "^0.546.0",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
-    "vite": "^6.2.3"
+    "vite": "^6.2.3",
+    "@tauri-apps/api": "^2.11.1"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
@@ -35,6 +40,7 @@
     "esbuild": "^0.25.0",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
-    "typescript": "~5.8.2"
+    "typescript": "~5.8.2",
+    "@tauri-apps/cli": "^2.11.4"
   }
 }

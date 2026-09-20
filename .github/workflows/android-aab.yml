@@ -1,0 +1,76 @@
+name: GrowUrDhan Android AAB
+
+on:
+  push:
+    branches: [GUD-Android]
+  workflow_dispatch:
+
+jobs:
+  aab:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: SDK platforms and NDK
+        run: |
+          sdkmanager --install "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018" "platform-tools"
+
+      - name: Install JS
+        run: npm ci
+
+      - name: Init Android project
+        run: |
+          npx tauri android init --ci || npx tauri android init || true
+          node scripts/android_prepare.mjs
+
+      - name: Decode upload keystore
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > src-tauri/gen/android/app/upload.jks
+          echo "storeFile=upload.jks" >> src-tauri/gen/android/keystore.properties
+          echo "storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> src-tauri/gen/android/keystore.properties
+          echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}" >> src-tauri/gen/android/keystore.properties
+          echo "keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}" >> src-tauri/gen/android/keystore.properties
+
+      - name: Build AAB (Play)
+        run: npx tauri android build --target aarch64
+
+      - name: Stage AAB
+        run: |
+          mkdir -p dist-play
+          find src-tauri/gen/android -name '*.aab' -exec cp {} dist-play/GrowUrDhan.aab \;
+          ls -la dist-play || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GrowUrDhan-Android-AAB
+          path: dist-play/GrowUrDhan.aab
+          if-no-files-found: warn
+
+      - name: Upload to Play internal track
+        if: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: in.growurdhan.app
+          releaseFiles: dist-play/GrowUrDhan.aab
+          track: internal
+          status: draft

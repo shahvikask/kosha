@@ -160,6 +160,35 @@ select {
   .card {
     border-radius: 1.25rem;
   }
+
+  .app-main {
+    padding-bottom: calc(7.5rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+.onboard-spine {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+  transform: translateX(-0.5px);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.onboard-logo {
+  position: relative;
+  z-index: 2;
+  background: var(--app);
+  border-radius: 1.25rem;
+  padding: 0.35rem;
+  box-shadow: var(--shadow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button, a, input, select { transition: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,0 +1,25 @@
+SHORT DESCRIPTION (80 chars)
+Private family wealth tracker for India. Encrypted on your phone. No spam calls.
+
+FULL DESCRIPTION
+GrowUrDhan is a family vault, not a brokerage.
+
+Most money apps want your mobile number so someone can sell you a SIP. This one does not. You create a vault on the phone. Email is only a lock. Statements never go to our servers — we do not have servers for your books.
+
+What you can do
+• Import monthly CAS from CDSL, NSDL, CAMS, KFin, and NPS
+• Add PPF, EPF, gold, property, unlisted, and loans
+• See Self, spouse, children, and HUF together
+• Keep a locked backup only you can open
+
+Price (Google Play only)
+• 30-day free trial
+• Lifetime licence ₹249 — once, tied to your Play account, works on a new phone
+• Optional annual support ₹250 the first year, ₹299 later
+There is no card form inside the app. Cancel support any time; the lifetime licence stays.
+
+Not for children. Not an adviser. A tracker for people who already own Indian assets.
+
+SUPPORT / PRIVACY
+https://shahvikask.github.io/kosha/privacy.html
+Account deletion: https://shahvikask.github.io/kosha/delete-account.html

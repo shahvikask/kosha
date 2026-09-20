@@ -334,8 +334,9 @@ export const AuthScreen: React.FC = () => {
             <p className="text-xs font-medium" style={{ color: 'var(--bad)' }}>{error}</p>
           )}
         </div>
-        <p className="text-[11px] text-center mt-4" style={{ color: 'var(--muted)' }}>
-          No mobile number. No cloud login. The vault never leaves this computer.
+        <p className="text-[11px] text-center mt-4 leading-relaxed" style={{ color: 'var(--muted)' }}>
+          No mobile number. No cloud login. The vault never leaves this phone.
+          Thirty days free, then a ₹249 lifetime licence on Google Play.
         </p>
       </div>
     </div>

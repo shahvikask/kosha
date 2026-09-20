@@ -1,0 +1,30 @@
+name: GrowUrDhan marketing site
+
+on:
+  push:
+    branches: [GUD-Android]
+    paths:
+      - 'marketing/**'
+      - '.github/workflows/marketing.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  pages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Stage site
+        run: |
+          mkdir -p _site
+          cp -R marketing/site/. _site/
+          cp marketing/play-listing-en.txt marketing/play-listing-hi.txt marketing/data-safety.yml _site/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - uses: actions/deploy-pages@v4
+        continue-on-error: true

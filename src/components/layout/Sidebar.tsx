@@ -65,15 +65,15 @@ export const Sidebar: React.FC = () => {
             <ShieldCheck className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: 'var(--good)' }} />
             <div className="text-[11px] leading-relaxed" style={{ color: 'var(--muted)' }}>
               <span className="font-semibold block text-xs mb-0.5" style={{ color: 'var(--text)' }}>Private by design</span>
-              Your portfolio stays on this computer.
+              Your portfolio stays on this device.
             </div>
           </div>
         </div>
       </aside>
 
       <nav
-        className="md:hidden fixed bottom-10 left-0 right-0 z-30 flex items-center justify-around py-2 px-1 border-t shadow-lg"
-        style={{ background: 'var(--chrome)', borderColor: 'var(--border)', color: 'var(--muted)' }}
+        className="md:hidden fixed left-0 right-0 z-30 flex items-center justify-around py-2 px-1 border-t"
+        style={{ bottom: 'calc(2.5rem + env(safe-area-inset-bottom, 0px))', background: 'var(--chrome)', borderColor: 'var(--border)', color: 'var(--muted)', paddingBottom: '0.25rem' }}
         aria-label="Mobile navigation"
       >
         {navItems.map(item => {

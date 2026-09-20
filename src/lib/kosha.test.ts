@@ -3,6 +3,8 @@ import { derivePositions, openingBalanceFor, marketValueMinor } from './position
 import { ruleSetFor, classifyGain, isEquityOriented, grandfatheredCostMinor, applyRateMinor } from './taxRules';
 import { encryptJson, decryptJson, isEncryptedBlob, generateRecoveryKey, maskPan, WrongPassphraseError } from './vault';
 import { packBackup, unpackBackup, verifyRestoreIdentity, isBinaryBackup, looksLikePlainJsonBackup, BACKUP_KIND, VaultBackup } from './backup';
+import { derivePlan, daysRemaining, TRIAL_DAYS, PRICE_BUNDLE_INR, PRICE_INR, appUnlocked, enhancementsEnabled } from './license';
+import { ONBOARDING_SLIDES } from './onboarding';
 import { xirr } from './returns';
 import { classifyHolding, EXPOSURES, WRAPPERS, exposureLabel, l2Label } from './taxonomy';
 import { resolveSplit, apportion, buildTree, isHybrid, activeWrappers } from './lookthrough';
@@ -1003,6 +1005,31 @@ console.log('\n--- H. Encryption ---');
     email: 'vikas@example.com', password: 'Abcd1234!', pan: 'ABCDE1234F',
     dateOfBirth: '1980-04-01', q1Id: 'pet', q1Answer: 'fluffy', q2Id: 'city', q2Answer: 'Pune', strict: true,
   }), null);
+
+  console.log('\n--- Y. Licence and onboarding ---');
+  eq('trial is 30 days', TRIAL_DAYS, 30);
+  eq('bundle is 249+250', PRICE_BUNDLE_INR, PRICE_INR.lifetime + PRICE_INR.supportWithLicence);
+  eq('bundle not the mistyped 599', PRICE_BUNDLE_INR, 499);
+  const trial = derivePlan({ lifetime: false, supportActive: false, trialStartedAt: new Date(Date.now() - 2*86400000).toISOString() });
+  eq('two days in still trial', trial.plan, 'trial');
+  eq('days left roughly 28', trial.daysLeft >= 27 && trial.daysLeft <= 28, true);
+  const expired = derivePlan({ lifetime: false, supportActive: false, trialStartedAt: new Date(Date.now() - 40*86400000).toISOString() });
+  eq('day 40 is expired', expired.plan, 'expired');
+  eq('expired app locked', appUnlocked({ ...expired, lifetime: false, supportActive: false, trialStartedAt: null, sideloadBlocked: false, playAccountBound: false, source: 'preview', supportRenewsAt: null } as any), false);
+  const life = derivePlan({ lifetime: true, supportActive: false, trialStartedAt: null });
+  eq('lifetime plan', life.plan, 'lifetime');
+  eq('lifetime unlocks', appUnlocked({ plan: 'lifetime', lifetime: true, supportActive: false, daysLeft: 0, trialStartedAt: null, trialEndsAt: null, supportRenewsAt: null, playAccountBound: true, sideloadBlocked: false, source: 'play' }), true);
+  eq('support enhancements need both', enhancementsEnabled({ plan: 'lifetime_support', lifetime: true, supportActive: true, daysLeft: 0, trialStartedAt: null, trialEndsAt: null, supportRenewsAt: null, playAccountBound: true, sideloadBlocked: false, source: 'play' }), true);
+  eq('no support no enhancements', enhancementsEnabled({ plan: 'lifetime', lifetime: true, supportActive: false, daysLeft: 0, trialStartedAt: null, trialEndsAt: null, supportRenewsAt: null, playAccountBound: true, sideloadBlocked: false, source: 'play' }), false);
+  eq('onboarding has six slides', ONBOARDING_SLIDES.length, 6);
+  eq('price slide mentions trial', ONBOARDING_SLIDES.some(s => /30/.test(s.enBody) && /249/.test(s.enBody)), true);
+  eq('hindi columns present', ONBOARDING_SLIDES.every(s => s.hiTitle.length > 4 && s.enTitle.length > 4), true);
+  eq('days remaining helper', daysRemaining(new Date().toISOString()) , 30);
+  eq('sideload without licence locked', appUnlocked({ plan: 'trial', lifetime: false, supportActive: false, daysLeft: 30, trialStartedAt: new Date().toISOString(), trialEndsAt: null, supportRenewsAt: null, playAccountBound: false, sideloadBlocked: true, source: 'play' }), false);
+  eq('sideload with lifetime open', appUnlocked({ plan: 'lifetime', lifetime: true, supportActive: false, daysLeft: 0, trialStartedAt: null, trialEndsAt: null, supportRenewsAt: null, playAccountBound: true, sideloadBlocked: true, source: 'play' }), true);
+  eq('lifetime price 249', PRICE_INR.lifetime, 249);
+  eq('support later 299', PRICE_INR.supportLater, 299);
+
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail?1:0);

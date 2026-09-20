@@ -7,6 +7,8 @@ import { maskPan } from '../../lib/vault';
 import { suggestedBackupName } from '../../lib/backup';
 import { saveBackupFile, pickBackupFile } from '../../lib/backupIo';
 import { LS_KEYS } from '../../db/migrate';
+import { useLicence } from '../../context/LicenseContext';
+import { formatInr, PRICE_INR, PRICE_BUNDLE_INR } from '../../lib/license';
 import {
   Users,
   Plus,
@@ -62,9 +64,11 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
     createLockedBackup,
     restoreLockedBackup,
     startOver,
+    deleteAccountAndData,
     account,
     repo,
   } = useKosha();
+  const licence = useLicence();
 
   const [notification, setNotification] = useState<{
     type: 'success' | 'error' | 'warning';
@@ -607,7 +611,7 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
             <div className="font-semibold">Locked with your vault email and password. We cannot open the file if you forget them.</div>
           </div>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <button
             onClick={handleExportBackup}
             className="p-4 rounded-2xl border text-left text-sm"
@@ -661,6 +665,38 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
             <div className="font-bold">Start over</div>
             <div className="text-xs mt-1">Empty vault. No sample stocks.</div>
           </button>
+          <button
+            type="button"
+            onClick={async () => {
+              if (
+                !window.confirm(
+                  'Delete this vault and every record on this phone? Google Play requires this. A locked backup is the only way back. Your Play licence stays on the Play account.',
+                )
+              )
+                return;
+              await deleteAccountAndData();
+            }}
+            className="p-4 rounded-2xl border text-left text-sm"
+            style={{ borderColor: 'var(--border)', color: 'var(--bad)' }}
+          >
+            <Trash2 className="w-4 h-4 mb-2" />
+            <div className="font-bold">Delete account</div>
+            <div className="text-xs mt-1">Wipes this device. Web link also listed below.</div>
+          </button>
+        </div>
+        <div className="p-4 rounded-2xl border space-y-2 text-sm" style={{ borderColor: 'var(--border)' }}>
+          <div className="font-bold">Licence</div>
+          <p className="text-xs leading-relaxed" style={{ color: 'var(--muted)' }}>
+            {licence.state.lifetime
+              ? licence.state.supportActive
+                ? 'Lifetime plus support. Enhancements stay on.'
+                : `Lifetime licence on this Play account. Support is optional at ${formatInr(PRICE_INR.supportLater)} / year.`
+              : `Trial: ${licence.state.daysLeft} days left. Lifetime ${formatInr(PRICE_INR.lifetime)}. Lifetime + first year support ${formatInr(PRICE_BUNDLE_INR)}.`}
+          </p>
+          <div className="flex flex-wrap gap-3 text-xs font-semibold" style={{ color: 'var(--accent)' }}>
+            <a href="https://shahvikask.github.io/kosha/privacy.html" target="_blank" rel="noreferrer">Privacy policy</a>
+            <a href="https://shahvikask.github.io/kosha/delete-account.html" target="_blank" rel="noreferrer">Delete account (web)</a>
+          </div>
         </div>
       </div>
 

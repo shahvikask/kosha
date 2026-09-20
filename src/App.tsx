@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { KoshaProvider, useKosha } from './context/KoshaContext';
+import { LicenceProvider, useLicence } from './context/LicenseContext';
 import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
 import { StatusBar } from './components/layout/StatusBar';
@@ -13,10 +14,14 @@ import { AddRecordModal } from './components/modals/AddRecordModal';
 import { HoldingDetailModal } from './components/modals/HoldingDetailModal';
 import { EmergencySheetModal } from './components/modals/EmergencySheetModal';
 import { AuthScreen } from './components/screens/AuthScreen';
+import { OnboardingScreen } from './components/screens/OnboardingScreen';
+import { LicenseScreen } from './components/screens/LicenseScreen';
+import { markOnboardingSeen } from './lib/onboarding';
 import { AlertTriangle, CheckCircle2, RefreshCw, X } from 'lucide-react';
 
 const KoshaMainApp: React.FC = () => {
   const { activeScreen, dbReady, dbError, migration, account, unlocked, mustRotatePassword } = useKosha();
+  const licence = useLicence();
 
   const [isAddHoldingOpen, setIsAddHoldingOpen] = useState(false);
   const [isAddRecordOpen, setIsAddRecordOpen] = useState(false);
@@ -25,10 +30,24 @@ const KoshaMainApp: React.FC = () => {
   const [isEmergencySheetOpen, setIsEmergencySheetOpen] = useState(false);
   const [isMigrationBannerDismissed, setIsMigrationBannerDismissed] = useState(false);
 
+  useEffect(() => {
+    if (!account) return;
+    markOnboardingSeen();
+    licence.dismissOnboarding();
+  }, [account]);
+
   const handleOpenAddRecord = (holdingId?: string) => {
     setPreselectedHoldingForRecord(holdingId);
     setIsAddRecordOpen(true);
   };
+
+  if (!licence.ready) {
+    return (
+      <div className="min-h-[100dvh] flex items-center justify-center" style={{ background: 'var(--app)', color: 'var(--text)' }}>
+        <div className="text-lg font-bold tracking-wide animate-pulse">Checking licence…</div>
+      </div>
+    );
+  }
 
   if (dbError) {
     return (
@@ -64,12 +83,20 @@ const KoshaMainApp: React.FC = () => {
     );
   }
 
+  if (!account && licence.showOnboarding) {
+    return <OnboardingScreen onDone={licence.dismissOnboarding} />;
+  }
+
+  if (!licence.unlocked) {
+    return <LicenseScreen state={licence.state} onChange={licence.setState} />;
+  }
+
   if (!account || !unlocked || mustRotatePassword) {
     return <AuthScreen />;
   }
 
   return (
-    <div className="min-h-screen flex flex-col font-sans" style={{ color: 'var(--text)' }}>
+    <div className="min-h-screen flex flex-col font-sans app-shell" style={{ color: 'var(--text)' }}>
       {migration && migration.verified && !isMigrationBannerDismissed && (
         <div className="px-4 py-3 text-xs sm:text-sm flex items-center justify-between" style={{ background: 'var(--chip)', color: 'var(--text)' }}>
           <div className="flex items-center gap-2 max-w-7xl mx-auto w-full">
@@ -107,7 +134,7 @@ const KoshaMainApp: React.FC = () => {
 
       <div className="flex-1 flex max-w-7xl w-full mx-auto">
         <Sidebar />
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 min-w-0 max-w-full overflow-x-hidden mb-12">
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 min-w-0 max-w-full overflow-x-hidden app-main">
           {activeScreen === 'HOME' && (
             <HomeScreen
               onOpenAddHolding={() => setIsAddHoldingOpen(true)}
@@ -154,8 +181,10 @@ const KoshaMainApp: React.FC = () => {
 
 export default function App() {
   return (
-    <KoshaProvider>
-      <KoshaMainApp />
-    </KoshaProvider>
+    <LicenceProvider>
+      <KoshaProvider>
+        <KoshaMainApp />
+      </KoshaProvider>
+    </LicenceProvider>
   );
 }

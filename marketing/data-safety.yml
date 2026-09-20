@@ -1,0 +1,27 @@
+# Copy into Play Console → App content → Data safety
+collects_data: false
+ads: false
+target_audience: 18+
+designed_for_families: false
+encryption_in_transit: not_applicable_no_account_backend
+encryption_at_rest: true
+users_can_request_deletion: true
+deletion_url: https://shahvikask.github.io/kosha/delete-account.html
+privacy_policy_url: https://shahvikask.github.io/kosha/privacy.html
+
+# Play Billing (Google's collection, declare as collected by third party if the form asks)
+play_billing:
+  - purchase_history
+  - device_or_other_ids
+  purpose: app_functionality
+  shared_with: google_play
+  optional: false
+
+# Vault fields stored ON DEVICE only — if the form has "collected by the app" vs "sent off device"
+on_device_only:
+  - name
+  - email_as_username
+  - pan
+  - date_of_birth
+  - financial_info
+  sent_off_device: false

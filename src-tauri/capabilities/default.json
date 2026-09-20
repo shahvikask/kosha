@@ -1,0 +1,21 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "GrowUrDhan Android vault",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    {
+      "identifier": "allow-android-vault",
+      "commands": {
+        "allow": [
+          "vault_blob_load",
+          "vault_blob_save",
+          "play_licence_status",
+          "play_purchase",
+          "play_restore"
+        ]
+      }
+    }
+  ]
+}
