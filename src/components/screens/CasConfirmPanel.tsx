@@ -71,30 +71,58 @@ export const CasConfirmPanel: React.FC<CasConfirmPanelProps> = ({ result, previo
         )}
       </div>
 
-      <div className="grid grid-cols-3 gap-2 md:gap-3">
-        <div className="rounded-xl md:rounded-2xl bg-slate-950/70 border border-slate-800 p-2.5 md:p-4 space-y-1 min-w-0">
+      <div className="md:hidden rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
+        {[
+          { label: 'Printed on PDF', value: formatInrAmount(pdfGrand), tone: undefined as string | undefined },
+          { label: 'Parsed from PDF', value: formatInrAmount(parsedGrand), tone: undefined },
+          {
+            label: 'Difference',
+            value: delta === 0 ? '₹ 0.00' : formatInrAmount(delta),
+            tone: complete ? 'var(--good)' : 'var(--warn)',
+          },
+        ].map(row => (
+          <div
+            key={row.label}
+            className="flex items-center justify-between gap-3 px-3 py-2.5 border-b last:border-b-0"
+            style={{ borderColor: 'var(--border)', background: 'var(--input)' }}
+          >
+            <div className="text-[11px] font-semibold uppercase tracking-wide shrink-0" style={{ color: 'var(--muted)' }}>
+              {row.label}
+            </div>
+            <div
+              className="text-sm font-bold font-mono tabular-nums whitespace-nowrap text-right"
+              style={{ color: row.tone || 'var(--text)' }}
+            >
+              {row.value}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="hidden md:grid grid-cols-3 gap-3">
+        <div className="rounded-2xl bg-slate-950/70 border border-slate-800 p-4 space-y-1 min-w-0">
           <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
             Printed on PDF
           </div>
-          <div className="text-sm md:text-xl font-bold text-slate-100 font-mono tabular-nums">
+          <div className="text-xl font-bold text-slate-100 font-mono tabular-nums whitespace-nowrap">
             {formatInrAmount(pdfGrand)}
           </div>
-          <div className="text-[11px] text-slate-500 hidden md:block">Grand total from the statement</div>
+          <div className="text-[11px] text-slate-500">Grand total from the statement</div>
         </div>
-        <div className="rounded-xl md:rounded-2xl bg-slate-950/70 border border-slate-800 p-2.5 md:p-4 space-y-1 min-w-0">
+        <div className="rounded-2xl bg-slate-950/70 border border-slate-800 p-4 space-y-1 min-w-0">
           <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
             Parsed from PDF
           </div>
-          <div className="text-sm md:text-xl font-bold text-slate-100 font-mono tabular-nums">
+          <div className="text-xl font-bold text-slate-100 font-mono tabular-nums whitespace-nowrap">
             {formatInrAmount(parsedGrand)}
           </div>
-          <div className="text-[11px] text-slate-500 hidden md:block">
+          <div className="text-[11px] text-slate-500">
             {result.parsedTotals?.holdingsCount ?? holdings.length} holding
             {(result.parsedTotals?.holdingsCount ?? holdings.length) === 1 ? '' : 's'}
           </div>
         </div>
         <div
-          className={`rounded-xl md:rounded-2xl border p-2.5 md:p-4 space-y-1 min-w-0 ${
+          className={`rounded-2xl border p-4 space-y-1 min-w-0 ${
             complete
               ? 'bg-emerald-950/30 border-emerald-800/50'
               : 'bg-amber-950/30 border-amber-800/50'
@@ -104,13 +132,13 @@ export const CasConfirmPanel: React.FC<CasConfirmPanelProps> = ({ result, previo
             Difference
           </div>
           <div
-            className={`text-sm md:text-xl font-bold font-mono tabular-nums ${
+            className={`text-xl font-bold font-mono tabular-nums whitespace-nowrap ${
               complete ? 'text-emerald-300' : 'text-amber-300'
             }`}
           >
             {delta === 0 ? '₹ 0.00' : formatInrAmount(delta)}
           </div>
-          <div className={`text-[11px] hidden md:block ${complete ? 'text-emerald-400/80' : 'text-amber-300/90'}`}>
+          <div className={`text-[11px] ${complete ? 'text-emerald-400/80' : 'text-amber-300/90'}`}>
             {complete
               ? 'Parsed value matches the PDF total'
               : 'Parsed value does not match the PDF total'}

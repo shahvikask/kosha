@@ -12,7 +12,6 @@ import {
   ArrowRightLeft,
   RefreshCw,
   Lock,
-  MoreVertical,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -40,14 +39,14 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddHolding, onOpenAddRecor
 
   const [isFamilyDropdownOpen, setIsFamilyDropdownOpen] = useState(false);
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
-  const [isMoreOpen, setIsMoreOpen] = useState(false);
   const barRef = useRef<HTMLElement>(null);
   const selectedMember = familyMembers.find(m => m.id === selectedMemberId);
+  const familyColor = selectedMemberId === 'ALL' ? '#38bdf8' : selectedMember?.color || '#38bdf8';
+  const familyInitial = selectedMemberId === 'ALL' ? 'F' : (selectedMember?.name?.charAt(0) || 'F');
 
   const closeMenus = () => {
     setIsFamilyDropdownOpen(false);
     setIsAddMenuOpen(false);
-    setIsMoreOpen(false);
   };
 
   useEffect(() => {
@@ -75,7 +74,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddHolding, onOpenAddRecor
         paddingTop: 'env(safe-area-inset-top, 0px)',
       }}
     >
-      <div className="max-w-7xl mx-auto px-3 md:px-6 lg:px-8 h-14 md:h-16 flex items-center gap-2 min-w-0">
+      <div className="max-w-7xl mx-auto px-2.5 md:px-6 lg:px-8 h-14 md:h-16 flex items-center gap-1.5 md:gap-2 min-w-0">
         <button
           type="button"
           onClick={() => {
@@ -88,30 +87,27 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddHolding, onOpenAddRecor
           <BrandLogo size="sm" showTagline={false} compact />
         </button>
 
-        <div className="relative min-w-0 flex-1 md:flex-none">
+        <div className="relative shrink-0">
           <button
             id="family-selector-btn"
             onClick={() => {
               setIsAddMenuOpen(false);
-              setIsMoreOpen(false);
               setIsFamilyDropdownOpen(v => !v);
             }}
-            className="flex items-center gap-1.5 w-full md:w-auto max-w-full px-2.5 md:px-3.5 h-9 md:h-auto md:py-1.5 rounded-xl border text-sm font-medium min-w-0"
+            className="flex items-center gap-1 h-9 pl-1 pr-1.5 md:pl-2.5 md:pr-3 md:gap-1.5 rounded-xl border"
             style={{ borderColor: 'var(--border)', background: 'var(--card)', color: 'var(--text)' }}
+            aria-label={selectedMemberId === 'ALL' ? 'Whole family' : selectedMember?.name || 'Family'}
+            aria-expanded={isFamilyDropdownOpen}
+            title={selectedMemberId === 'ALL' ? 'Whole family' : selectedMember?.name}
           >
-            <div
-              className="w-2 h-2 rounded-full shrink-0"
-              style={{ backgroundColor: selectedMemberId === 'ALL' ? '#38bdf8' : selectedMember?.color || '#38bdf8' }}
-            />
-            <span className="truncate min-w-0">
-              {selectedMemberId === 'ALL' ? (
-                <>
-                  <span className="md:hidden">Family</span>
-                  <span className="hidden md:inline">Whole family</span>
-                </>
-              ) : (
-                selectedMember?.name
-              )}
+            <span
+              className="w-7 h-7 rounded-lg text-white flex items-center justify-center text-xs font-bold shrink-0"
+              style={{ backgroundColor: familyColor }}
+            >
+              {familyInitial}
+            </span>
+            <span className="hidden md:inline text-sm font-medium truncate max-w-[10rem]">
+              {selectedMemberId === 'ALL' ? 'Whole family' : selectedMember?.name}
             </span>
             <ChevronDown className="w-3.5 h-3.5 opacity-60 shrink-0" />
           </button>
@@ -161,109 +157,51 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddHolding, onOpenAddRecor
           )}
         </div>
 
-        <div className="hidden md:flex items-center gap-2 shrink-0">
+        <div className="flex-1" />
+
+        <div className="flex items-center gap-1 md:gap-2 shrink-0">
           <button
             onClick={() => refreshEodPrices()}
             disabled={pricesRefreshing}
-            className="p-2 rounded-xl border"
+            className="w-9 h-9 rounded-xl border flex items-center justify-center"
             style={iconBtn}
             title={pricesAsOf ? `Prices as on ${formatStatementDateShort(pricesAsOf)}` : 'Refresh last close / NAV'}
+            aria-label="Refresh prices"
           >
             <RefreshCw className={`w-4 h-4 ${pricesRefreshing ? 'animate-spin' : ''}`} />
           </button>
           <button
             onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-            className="p-2 rounded-xl border"
+            className="w-9 h-9 rounded-xl border flex items-center justify-center"
             style={iconBtn}
             title={theme === 'light' ? 'Switch to dark' : 'Switch to light'}
+            aria-label={theme === 'light' ? 'Dark theme' : 'Light theme'}
           >
             {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-          </button>
-          <button onClick={() => lockVault()} className="p-2 rounded-xl border" style={iconBtn} title="Lock">
-            <Lock className="w-4 h-4" />
           </button>
           <button
             id="privacy-toggle-btn"
             onClick={() => setIsPrivacyMasked(prev => !prev)}
-            className="p-2 rounded-xl border flex items-center gap-1.5 text-sm"
+            className="w-9 h-9 rounded-xl border flex items-center justify-center"
             style={{
               borderColor: isPrivacyMasked ? 'var(--accent)' : 'var(--border)',
               background: 'var(--card)',
               color: 'var(--text)',
             }}
             title={isPrivacyMasked ? 'Show numbers' : 'Hide numbers'}
+            aria-label={isPrivacyMasked ? 'Show numbers' : 'Hide numbers'}
           >
             {isPrivacyMasked ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            <span className="text-xs font-medium">{isPrivacyMasked ? 'Hidden' : 'Visible'}</span>
           </button>
-        </div>
-
-        <div className="relative shrink-0 md:hidden">
           <button
-            type="button"
-            onClick={() => {
-              setIsFamilyDropdownOpen(false);
-              setIsAddMenuOpen(false);
-              setIsMoreOpen(v => !v);
-            }}
+            onClick={() => lockVault()}
             className="w-9 h-9 rounded-xl border flex items-center justify-center"
             style={iconBtn}
-            aria-label="More actions"
-            aria-expanded={isMoreOpen}
+            title="Lock"
+            aria-label="Lock vault"
           >
-            <MoreVertical className="w-4 h-4" />
+            <Lock className="w-4 h-4" />
           </button>
-          {isMoreOpen && (
-            <div
-              className="absolute right-0 mt-1.5 w-56 rounded-2xl shadow-2xl border py-1.5 z-50"
-              style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
-            >
-              <button
-                onClick={() => {
-                  setIsMoreOpen(false);
-                  refreshEodPrices();
-                }}
-                className="w-full text-left px-3.5 py-2.5 text-sm flex items-center gap-2.5"
-                style={{ color: 'var(--text)' }}
-              >
-                <RefreshCw className={`w-4 h-4 ${pricesRefreshing ? 'animate-spin' : ''}`} />
-                Refresh prices
-              </button>
-              <button
-                onClick={() => {
-                  setTheme(theme === 'light' ? 'dark' : 'light');
-                  setIsMoreOpen(false);
-                }}
-                className="w-full text-left px-3.5 py-2.5 text-sm flex items-center gap-2.5"
-                style={{ color: 'var(--text)' }}
-              >
-                {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-                {theme === 'light' ? 'Dark theme' : 'Light theme'}
-              </button>
-              <button
-                onClick={() => {
-                  setIsPrivacyMasked(prev => !prev);
-                  setIsMoreOpen(false);
-                }}
-                className="w-full text-left px-3.5 py-2.5 text-sm flex items-center gap-2.5"
-                style={{ color: 'var(--text)' }}
-              >
-                {isPrivacyMasked ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                {isPrivacyMasked ? 'Show numbers' : 'Hide numbers'}
-              </button>
-              <button
-                onClick={() => {
-                  setIsMoreOpen(false);
-                  lockVault();
-                }}
-                className="w-full text-left px-3.5 py-2.5 text-sm flex items-center gap-2.5"
-                style={{ color: 'var(--text)' }}
-              >
-                <Lock className="w-4 h-4" />
-                Lock vault
-              </button>
-            </div>
-          )}
         </div>
 
         <div className="relative shrink-0">
@@ -271,16 +209,15 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddHolding, onOpenAddRecor
             id="header-add-btn"
             onClick={() => {
               setIsFamilyDropdownOpen(false);
-              setIsMoreOpen(false);
               setIsAddMenuOpen(v => !v);
             }}
-            className="h-9 md:h-auto text-sm font-bold px-2.5 md:px-3.5 py-0 md:py-1.5 rounded-xl flex items-center gap-1"
+            className="h-9 w-9 md:w-auto text-sm font-bold px-0 md:px-3.5 rounded-xl flex items-center justify-center gap-1"
             style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}
             aria-label="Add"
           >
             <Plus className="w-4 h-4 stroke-[2.5]" />
-            <span className="hidden sm:inline">Add</span>
-            <ChevronDown className="w-3.5 h-3.5 opacity-80 hidden sm:block" />
+            <span className="hidden md:inline">Add</span>
+            <ChevronDown className="w-3.5 h-3.5 opacity-80 hidden md:block" />
           </button>
           {isAddMenuOpen && (
             <div

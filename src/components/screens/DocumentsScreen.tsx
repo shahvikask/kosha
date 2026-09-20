@@ -1532,79 +1532,75 @@ export const DocumentsScreen: React.FC = () => {
 
       {/* TAB 3: APPEND-ONLY RECORD BOOK */}
       {activeTab === 'RECORD_BOOK' && (
-        <div className="bg-slate-900/80 rounded-3xl border border-slate-800 shadow-lg overflow-hidden space-y-4 p-6 backdrop-blur-md">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+        <div className="card overflow-hidden space-y-3 p-4 md:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b" style={{ borderColor: 'var(--border)' }}>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-slate-100">Record Book</h3>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800/60">
+                <h3 className="text-base font-bold">Record Book</h3>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border" style={{ color: 'var(--good)', borderColor: 'var(--border)' }}>
                   Immutable
                 </span>
               </div>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs hidden md:block" style={{ color: 'var(--muted)' }}>
                 Chronological timeline of all purchases, sales, bonus issues, splits, dividends & interest
               </p>
             </div>
-
-            {/* Filter */}
-            <div className="flex items-center gap-2">
-              <select
-                value={recordBookFilterType}
-                onChange={e => setRecordBookFilterType(e.target.value)}
-                className="px-3.5 py-1.5 bg-slate-950 border border-slate-700 rounded-xl text-xs font-semibold text-slate-200 cursor-pointer"
-              >
-                <option value="ALL">All rows</option>
-                <option value="BUY">Bought</option>
-                <option value="SELL">Sold</option>
-                <option value="SNAPSHOT_ADJUSTMENT">Updated to match statement</option>
-                <option value="OPENING_BALANCE">Opening from statement</option>
-                <option value="DIVIDEND">Dividend</option>
-                <option value="INTEREST">Interest</option>
-                <option value="REPAYMENT">Loan repayment</option>
-              </select>
-            </div>
+            <select
+              value={recordBookFilterType}
+              onChange={e => setRecordBookFilterType(e.target.value)}
+              className="px-3 py-2 rounded-xl text-xs font-semibold border"
+              style={{ background: 'var(--input)', borderColor: 'var(--border)', color: 'var(--text)' }}
+            >
+              <option value="ALL">All rows</option>
+              <option value="BUY">Bought</option>
+              <option value="SELL">Sold</option>
+              <option value="SNAPSHOT_ADJUSTMENT">Updated to match statement</option>
+              <option value="OPENING_BALANCE">Opening from statement</option>
+              <option value="DIVIDEND">Dividend</option>
+              <option value="INTEREST">Interest</option>
+              <option value="REPAYMENT">Loan repayment</option>
+            </select>
           </div>
 
-          <div className="divide-y divide-slate-800">
+          <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
             {filteredRecordBook.map(ev => {
               const isIncome = ev.eventType === 'DIVIDEND' || ev.eventType === 'INTEREST';
+              const mark = recordBookMark(ev.eventType);
               return (
-                <div
-                  key={ev.id}
-                  className="py-3 flex items-center justify-between px-2 hover:bg-slate-800/40 rounded-xl transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`w-9 h-9 rounded-xl flex items-center justify-center text-[10px] font-bold border ${
-                        ev.eventType === 'BUY'
-                          ? 'bg-sky-950/80 text-sky-300 border-sky-800/60'
-                          : ev.eventType === 'SELL'
-                          ? 'bg-rose-950/80 text-rose-300 border-rose-800/60'
-                          : isIncome
-                          ? 'bg-emerald-950/80 text-emerald-300 border-emerald-800/60'
-                          : 'bg-slate-800 text-slate-300 border-slate-700'
-                      }`}
-                    >
-                      {eventLabel(ev.eventType, ev.notes).split(' ')[0]}
-                    </div>
-
-                    <div>
-                      <div className="font-semibold text-sm text-slate-100">{displayHoldingName(ev.holdingName)}</div>
-                      <div className="text-xs text-slate-400">
-                        {eventLabel(ev.eventType, ev.notes)} · {ev.eventDate}
-                        {ev.notes ? ` · ${ev.notes}` : ''}
-                      </div>
-                    </div>
+                <div key={ev.id} className="py-2.5 flex items-start gap-2.5 min-w-0">
+                  <div
+                    className="w-10 shrink-0 rounded-lg flex items-center justify-center text-[10px] font-bold h-10 text-center leading-tight px-0.5"
+                    style={{
+                      background: 'var(--input)',
+                      color: ev.eventType === 'BUY' ? 'var(--bucket-shares)' : ev.eventType === 'SELL' ? 'var(--bad)' : isIncome ? 'var(--good)' : 'var(--muted)',
+                      border: '1px solid var(--border)',
+                    }}
+                  >
+                    {mark}
                   </div>
-
-                  <div className="text-right">
-                    <PrivacyValue
-                      minor={BigInt(ev.totalAmountMinor || '0')}
-                      className={`text-sm font-bold ${isIncome ? 'text-emerald-400' : 'text-slate-100'}`}
-                      prefix={isIncome ? '+' : ''}
-                      includePaise={false}
-                    />
-                    <div className="text-[11px] text-slate-500 font-mono">ID: {ev.id}</div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="text-sm font-semibold leading-snug line-clamp-2 min-w-0">
+                        {displayHoldingName(ev.holdingName)}
+                      </div>
+                      <PrivacyValue
+                        minor={BigInt(ev.totalAmountMinor || '0')}
+                        className="text-sm font-bold tabular-nums whitespace-nowrap shrink-0"
+                        prefix={isIncome ? '+' : ''}
+                        includePaise={false}
+                      />
+                    </div>
+                    <div className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--muted)' }}>
+                      {eventLabel(ev.eventType, ev.notes)} · {ev.eventDate}
+                    </div>
+                    {ev.notes ? (
+                      <div className="text-[11px] mt-0.5 line-clamp-2" style={{ color: 'var(--muted)' }}>
+                        {ev.notes}
+                      </div>
+                    ) : null}
+                    <div className="text-[10px] font-mono mt-0.5 hidden md:block" style={{ color: 'var(--subtle)' }}>
+                      ID: {ev.id}
+                    </div>
                   </div>
                 </div>
               );
@@ -1614,6 +1610,35 @@ export const DocumentsScreen: React.FC = () => {
       )}
     </div>
   );
+};
+
+const recordBookMark = (type: string): string => {
+  switch (type) {
+    case 'BUY':
+      return 'Buy';
+    case 'SELL':
+      return 'Sell';
+    case 'DIVIDEND':
+      return 'Div';
+    case 'INTEREST':
+      return 'Int';
+    case 'OPENING_BALANCE':
+      return 'Open';
+    case 'SNAPSHOT_ADJUSTMENT':
+      return 'Snap';
+    case 'CORRECTION':
+      return 'Fix';
+    case 'REPAYMENT':
+      return 'Pay';
+    case 'BONUS':
+      return 'Bon';
+    case 'SPLIT':
+      return 'Split';
+    case 'VALUATION_UPDATE':
+      return 'Val';
+    default:
+      return type.slice(0, 4);
+  }
 };
 
 const PanOwnerBanner: React.FC<{
