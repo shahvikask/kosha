@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * After `npx tauri android init`, stamp Play-required Android bits:
- * targetSdk 36, no backup, Play Billing, EncryptedFile, overlay plugin.
+ * After `npx tauri android init`, stamp Android bits.
+ * GUD_TEST_APK=1 (GUD-Android-APK only) marks a sideloadable test build.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync, cpSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const android = join(root, 'src-tauri', 'gen', 'android');
 const overlay = join(root, 'src-tauri', 'android-overlay');
+const testApk = process.env.GUD_TEST_APK === '1' || process.env.VITE_GUD_TEST_APK === '1';
 
 if (!existsSync(android)) {
   console.error('Run npx tauri android init first (CI does this).');
@@ -30,7 +31,27 @@ if (!gradle.includes('billing-ktx')) {
 `,
   );
 }
-if (!gradle.includes('isMinifyEnabled = true')) {
+if (testApk) {
+  if (!gradle.includes('buildConfig = true') && !gradle.includes('buildConfig = true')) {
+    gradle = gradle.replace(
+      /defaultConfig\s*\{/,
+      `defaultConfig {
+        buildConfigField("boolean", "GUD_TEST_APK", "true")
+`,
+    );
+  }
+  if (!gradle.includes('buildFeatures')) {
+    gradle = gradle.replace(
+      /android\s*\{/,
+      `android {
+    buildFeatures {
+        buildConfig = true
+    }
+`,
+    );
+  }
+}
+if (!testApk && !gradle.includes('isMinifyEnabled = true')) {
   gradle = gradle.replace(
     /getByName\("release"\)\s*\{/,
     `getByName("release") {
@@ -39,7 +60,7 @@ if (!gradle.includes('isMinifyEnabled = true')) {
 `,
   );
 }
-if (!gradle.includes('proguard-rules.pro')) {
+if (!gradle.includes('proguard-rules.pro') && gradle.includes('isMinifyEnabled = true')) {
   gradle = gradle.replace(
     /isMinifyEnabled = true/,
     `isMinifyEnabled = true
@@ -63,15 +84,9 @@ if (existsSync(manifest)) {
   }
   if (!m.includes('com.android.vending.BILLING')) {
     m = m.replace(
-      '<manifest',
-      '<manifest xmlns:android="http://schemas.android.com/apk/res/android"',
+      /<application/,
+      '    <uses-permission android:name="com.android.vending.BILLING" />\n    <application',
     );
-    if (!m.includes('com.android.vending.BILLING')) {
-      m = m.replace(
-        /<application/,
-        '    <uses-permission android:name="com.android.vending.BILLING" />\n    <application',
-      );
-    }
   }
   writeFileSync(manifest, m);
 }
@@ -86,4 +101,4 @@ const ktDst = join(android, 'app', 'src', 'main', 'java');
 mkdirSync(ktDst, { recursive: true });
 cpSync(ktSrc, ktDst, { recursive: true });
 
-console.log('Android overlay applied (API 36, no backup, Play Billing, Keystore vault).');
+console.log(testApk ? 'Android overlay applied (TEST APK — sideload trial on).' : 'Android overlay applied (Play AAB — sideload locked).');

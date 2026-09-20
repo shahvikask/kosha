@@ -3,14 +3,11 @@
  *
  * Perpetual access is a one-time Google Play product. Annual support is a
  * Play subscription. A 30-day trial is started on a genuine Play install
- * (native) or a device-bound clock (web preview). There is no card form,
- * Stripe, or outside-store link — that would break Google Play Payments policy.
+ * (native) or a device-bound clock (web preview / device-test APK).
  *
- * Play cannot attach a free trial to a one-time product, so the 30 days are
- * not an auto-charging subscription. After the trial the user must tap Buy
- * on the lifetime SKU. That is more honest than silently charging a card.
- *
- * Prices displayed here are fallbacks. The Play Store is the source of truth.
+ * VITE_GUD_TEST_APK=1 is set only on the GUD-Android-APK branch so a
+ * sideloaded debug APK can be tested on a phone. The Play AAB on
+ * GUD-Android does not set this flag and still rejects extracted APKs.
  */
 export const TRIAL_DAYS = 30;
 
@@ -62,6 +59,14 @@ function isoDaysFrom(startIso: string, days: number): string {
   const t = Date.parse(startIso);
   if (!Number.isFinite(t)) return startIso;
   return new Date(t + days * 86400000).toISOString();
+}
+
+export function isTestApk(): boolean {
+  try {
+    return import.meta.env.VITE_GUD_TEST_APK === '1';
+  } catch {
+    return false;
+  }
 }
 
 export function daysRemaining(trialStartedAt: string, now = new Date()): number {
@@ -133,6 +138,9 @@ function readPreviewState(now = new Date()): LicenceState {
 }
 
 export async function loadLicence(now = new Date()): Promise<LicenceState> {
+  if (isTestApk()) {
+    return { ...readPreviewState(now), sideloadBlocked: false, source: 'preview' };
+  }
   if (isNativeShell()) {
     try {
       const remote = await nativeCommand<Partial<LicenceState> & { ok?: boolean; integrity?: boolean }>('play_licence_status');
@@ -153,7 +161,6 @@ export async function loadLicence(now = new Date()): Promise<LicenceState> {
         source: 'play',
       };
     } catch {
-      /* A broken plugin must not grant access. */
       return { ...EMPTY_LICENCE, plan: 'expired', daysLeft: 0, source: 'play', sideloadBlocked: true };
     }
   }
@@ -161,22 +168,22 @@ export async function loadLicence(now = new Date()): Promise<LicenceState> {
 }
 
 export async function purchaseLifetime(): Promise<LicenceState> {
-  if (isNativeShell()) {
-    await nativeCommand('play_purchase', { sku: SKU_LIFETIME });
+  if (isTestApk() || !isNativeShell()) {
+    localStorage.setItem(LS_LIFETIME, '1');
     return loadLicence();
   }
-  localStorage.setItem(LS_LIFETIME, '1');
+  await nativeCommand('play_purchase', { sku: SKU_LIFETIME });
   return loadLicence();
 }
 
 export async function purchaseSupport(introOffer: boolean): Promise<LicenceState> {
-  if (isNativeShell()) {
-    await nativeCommand('play_purchase', { sku: SKU_SUPPORT, offer: introOffer ? 'with_licence' : 'standalone' });
+  if (isTestApk() || !isNativeShell()) {
+    const until = new Date();
+    until.setFullYear(until.getFullYear() + 1);
+    localStorage.setItem(LS_SUPPORT_UNTIL, until.toISOString());
     return loadLicence();
   }
-  const until = new Date();
-  until.setFullYear(until.getFullYear() + 1);
-  localStorage.setItem(LS_SUPPORT_UNTIL, until.toISOString());
+  await nativeCommand('play_purchase', { sku: SKU_SUPPORT, offer: introOffer ? 'with_licence' : 'standalone' });
   return loadLicence();
 }
 
@@ -186,7 +193,7 @@ export async function purchaseBundle(): Promise<LicenceState> {
 }
 
 export async function restorePurchases(): Promise<LicenceState> {
-  if (isNativeShell()) {
+  if (isNativeShell() && !isTestApk()) {
     await nativeCommand('play_restore', {});
   }
   return loadLicence();
