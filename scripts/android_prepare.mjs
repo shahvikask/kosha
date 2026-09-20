@@ -26,6 +26,7 @@ if (!gradle.includes('billing-ktx')) {
     /dependencies\s*\{/,
     `dependencies {
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("com.android.billingclient:billing-ktx:7.1.1")
     implementation("com.google.android.play:integrity:1.4.0")
 `,

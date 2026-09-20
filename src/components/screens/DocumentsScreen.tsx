@@ -22,6 +22,7 @@ import {
   npsStatementPassword,
   statementPasswordsToTry,
 } from '../../lib/casPython';
+import { maybeRunScheduledBackup } from '../../lib/backupSchedule';
 import { CasConfirmPanel } from './CasConfirmPanel';
 import {
   checkImportPan,
@@ -472,6 +473,7 @@ export const DocumentsScreen: React.FC = () => {
       setParseResult(null);
       setSelectedFile(null);
       setAcceptedHoldingIds(new Set());
+      void maybeRunScheduledBackup('cas');
     } catch (err: any) {
       console.error('CAS commit failed:', err);
       setImportNotification({

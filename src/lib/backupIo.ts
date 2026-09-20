@@ -2,22 +2,42 @@
  * Save / pick a locked .kosha file on every surface:
  *   web           — File System Access API, then <a download> / file input
  *   Windows exe   — Tauri commands backup_save / backup_open (native dialog)
- *   Android later — same file-input path as the browser (WebView)
+ *   Android       — plugin ACTION_CREATE_DOCUMENT / file input (not desktop dialogs)
  *
  * Encryption lives in backup.ts. This file only moves the bytes.
  */
+import { isNativeShell, nativeCommand } from './license';
 
 function isTauriShell(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
 
+function isAndroidUa(): boolean {
+  return typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
+}
+
 export async function saveBackupFile(filename: string, bytes: Uint8Array): Promise<'saved' | 'cancelled'> {
-  if (isTauriShell()) {
-    const saved = await desktopInvoke<boolean>('backup_save', {
-      filename,
-      bytesB64: bytesToB64(bytes),
-    });
-    return saved === false ? 'cancelled' : 'saved';
+  if (isNativeShell() && isAndroidUa()) {
+    try {
+      const result = await nativeCommand<{ saved?: boolean } | boolean | null>('backup_save', {
+        filename,
+        bytesB64: bytesToB64(bytes),
+      });
+      if (result === false || (result && typeof result === 'object' && result.saved === false)) return 'cancelled';
+      return 'saved';
+    } catch {
+      /* fall through to download */
+    }
+  } else if (isTauriShell()) {
+    try {
+      const saved = await desktopInvoke<boolean>('backup_save', {
+        filename,
+        bytesB64: bytesToB64(bytes),
+      });
+      return saved === false ? 'cancelled' : 'saved';
+    } catch {
+      /* fall through */
+    }
   }
   const picker = window as unknown as {
     showSaveFilePicker?: (opts: unknown) => Promise<{ createWritable: () => Promise<{ write: (b: BufferSource) => Promise<void>; close: () => Promise<void> }> }>;
@@ -50,10 +70,21 @@ export async function saveBackupFile(filename: string, bytes: Uint8Array): Promi
 }
 
 export async function pickBackupFile(): Promise<Uint8Array | null> {
-  if (isTauriShell()) {
-    const b64 = await desktopInvoke<string | null>('backup_open', {});
-    if (!b64) return null;
-    return b64ToBytes(b64);
+  if (isNativeShell() && isAndroidUa()) {
+    try {
+      const b64 = await nativeCommand<string | null>('backup_open');
+      if (b64) return b64ToBytes(b64);
+    } catch {
+      /* fall through to input */
+    }
+  } else if (isTauriShell()) {
+    try {
+      const b64 = await desktopInvoke<string | null>('backup_open', {});
+      if (b64) return b64ToBytes(b64);
+      return null;
+    } catch {
+      /* fall through */
+    }
   }
   return pickViaInput();
 }

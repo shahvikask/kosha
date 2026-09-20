@@ -2,10 +2,12 @@ import { foldHolding, financialYearOf, assessmentYearOf, calendarDays } from './
 import { derivePositions, openingBalanceFor, marketValueMinor } from './positions';
 import { ruleSetFor, classifyGain, isEquityOriented, grandfatheredCostMinor, applyRateMinor } from './taxRules';
 import { encryptJson, decryptJson, isEncryptedBlob, generateRecoveryKey, maskPan, WrongPassphraseError } from './vault';
-import { packBackup, unpackBackup, verifyRestoreIdentity, isBinaryBackup, looksLikePlainJsonBackup, BACKUP_KIND, VaultBackup } from './backup';
+import { packBackup, unpackBackup, verifyRestoreIdentity, isBinaryBackup, looksLikePlainJsonBackup, BACKUP_KIND, VaultBackup, suggestedScheduledBackupName, suggestedBackupName } from './backup';
 import { derivePlan, daysRemaining, TRIAL_DAYS, PRICE_BUNDLE_INR, PRICE_INR, appUnlocked, enhancementsEnabled } from './license';
 import { __test as encTest } from '../db/encryptedStore';
 import { ONBOARDING_SLIDES } from './onboarding';
+import { TERMS_SECTIONS, TERMS_VERSION, TERMS_TEXT_ID, termsPlainText, hasAcceptedCurrentTerms, acceptCurrentTerms } from './terms';
+import { pruneToLastN, BACKUP_KEEP_LAST, DEFAULT_BACKUP_SCHEDULE } from './backupSchedule';
 import { xirr } from './returns';
 import { classifyHolding, EXPOSURES, WRAPPERS, exposureLabel, l2Label } from './taxonomy';
 import { resolveSplit, apportion, buildTree, isHybrid, activeWrappers } from './lookthrough';
@@ -1038,7 +1040,33 @@ console.log('\n--- H. Encryption ---');
   const unwrapped = await encTest.decryptBytes(wrapped, wrapKey, true);
   eq('envelope round trip', new TextDecoder().decode(unwrapped), 'vault-bytes');
 
-
+  console.log('\n--- Z. Terms and backup schedule ---');
+  eq('terms version dated', TERMS_VERSION, '2026-09-20');
+  eq('terms text id stable', TERMS_TEXT_ID, 'GUD-TOS-2026-09-20-v1');
+  eq('terms has 21 sections', TERMS_SECTIONS.length, 21);
+  const tos = termsPlainText();
+  eq('not an investment adviser', /Investment Adviser/i.test(tos), true);
+  eq('SEBI named', /SEBI/i.test(tos), true);
+  eq('liability cap present', /1,000/.test(tos), true);
+  eq('IT Act electronic record', /Information Technology Act/.test(tos), true);
+  eq('password not stored for schedule', /memory only/i.test(tos), true);
+  eq('Drive/OneDrive described', /Google Drive/.test(tos) && /OneDrive/.test(tos), true);
+  eq('not accepted before tap', hasAcceptedCurrentTerms(), false);
+  const accepted = acceptCurrentTerms();
+  eq('accept records version', accepted.version, TERMS_VERSION);
+  eq('accepted after tap', hasAcceptedCurrentTerms(), true);
+  const extra = pruneToLastN(
+    [{ n: 'a', t: 1 }, { n: 'b', t: 5 }, { n: 'c', t: 3 }, { n: 'd', t: 4 }, { n: 'e', t: 2 }, { n: 'f', t: 6 }],
+    BACKUP_KEEP_LAST,
+    x => x.t,
+  );
+  eq('prune drops the oldest beyond 5', extra.map(x => x.n).join(','), 'a');
+  eq('keep last is 5', BACKUP_KEEP_LAST, 5);
+  eq('schedule defaults off', DEFAULT_BACKUP_SCHEDULE.enabled, false);
+  eq('both triggers on by default', DEFAULT_BACKUP_SCHEDULE.onOpen && DEFAULT_BACKUP_SCHEDULE.onCasImport, true);
+  const scheduledName = suggestedScheduledBackupName(new Date('2026-09-20T12:34:56.000Z'));
+  eq('scheduled name has time', /growurdhan_20260920_123456\.kosha/.test(scheduledName), true);
+  eq('manual name is date only', suggestedBackupName(new Date('2026-09-20T12:34:56.000Z')), 'growurdhan_2026-09-20.kosha');
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail?1:0);

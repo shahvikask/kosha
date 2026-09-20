@@ -10,6 +10,8 @@ import {
   readRememberedEmail,
 } from '../../lib/auth';
 import { pickBackupFile } from '../../lib/backupIo';
+import { TermsGate } from './TermsGate';
+import { hasAcceptedCurrentTerms } from '../../lib/terms';
 
 const FLOATS = [
   { t: 'Data will remain on your device.', top: '8%', left: '6%', rot: '-6deg' },
@@ -53,6 +55,7 @@ export const AuthScreen: React.FC = () => {
   const [restoreBytes, setRestoreBytes] = useState<Uint8Array | null>(null);
   const [newPw, setNewPw] = useState('');
   const [newPw2, setNewPw2] = useState('');
+  const [termsReason, setTermsReason] = useState<'register' | 'restore' | 'login' | null>(null);
 
   /** New device: full identity. Already-has-vault (login page): email + password only. */
   const newDeviceRestore = !account;
@@ -95,19 +98,23 @@ export const AuthScreen: React.FC = () => {
       if (!dob) return 'Enter date of birth.';
       if (q1Id === q2Id) return 'Pick two different questions.';
       if (!q1Ans.trim() || !q2Ans.trim()) return 'Answer both security questions.';
-      return registerOwner({
-        firstName,
-        lastName,
-        email,
-        password,
-        pan,
-        dateOfBirth: dob,
-        q1Id,
-        q1Answer: q1Ans,
-        q2Id,
-        q2Answer: q2Ans,
-      });
+      setTermsReason('register');
+      return null;
     });
+
+  const finishRegister = () =>
+    run(async () => registerOwner({
+      firstName,
+      lastName,
+      email,
+      password,
+      pan,
+      dateOfBirth: dob,
+      q1Id,
+      q1Answer: q1Ans,
+      q2Id,
+      q2Answer: q2Ans,
+    }));
 
   const onRestore = () =>
     run(async () => {
@@ -119,6 +126,15 @@ export const AuthScreen: React.FC = () => {
         if (!dob) return 'Enter date of birth.';
         if (q1Id === q2Id) return 'Pick two different questions.';
         if (!q1Ans.trim() || !q2Ans.trim()) return 'Answer both security questions.';
+      }
+      setTermsReason('restore');
+      return null;
+    });
+
+  const finishRestore = () =>
+    run(async () => {
+      if (!restoreBytes) return 'Choose a .kosha backup file first.';
+      if (newDeviceRestore) {
         return restoreLockedBackup(restoreBytes, {
           email,
           password,
@@ -149,8 +165,14 @@ export const AuthScreen: React.FC = () => {
   const onLogin = () =>
     run(async () => {
       if (!email.trim() || !password) return 'Enter email and password.';
+      if (!hasAcceptedCurrentTerms()) {
+        setTermsReason('login');
+        return null;
+      }
       return login(email, password);
     });
+
+  const finishLogin = () => run(async () => login(email, password));
 
   const onForgot = () =>
     run(async () => {
@@ -335,10 +357,22 @@ export const AuthScreen: React.FC = () => {
           )}
         </div>
         <p className="text-[11px] text-center mt-4 leading-relaxed" style={{ color: 'var(--muted)' }}>
-          No mobile number. No cloud login. The vault never leaves this phone.
+          No mobile number. No cloud login. The vault never leaves this phone unless you save a backup.
           Thirty days free, then a ₹249 lifetime licence on Google Play.
         </p>
       </div>
+      {termsReason && (
+        <TermsGate
+          reason={termsReason}
+          onAccept={() => {
+            const reason = termsReason;
+            setTermsReason(null);
+            if (reason === 'register') finishRegister();
+            else if (reason === 'restore') finishRestore();
+            else finishLogin();
+          }}
+        />
+      )}
     </div>
   );
 };

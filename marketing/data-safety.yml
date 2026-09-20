@@ -8,6 +8,17 @@ encryption_at_rest: true
 users_can_request_deletion: true
 deletion_url: https://shahvikask.github.io/kosha/delete-account.html
 privacy_policy_url: https://shahvikask.github.io/kosha/privacy.html
+terms_url: https://shahvikask.github.io/kosha/terms.html
+
+# User-chosen encrypted backups (optional). The developer does not operate Drive/OneDrive.
+user_initiated_backups:
+  - encrypted_kosha_file_to_user_picked_folder
+  destinations:
+    - google_drive_if_user_picks_it
+    - onedrive_if_user_picks_it
+    - downloads_or_other_document_tree
+  sent_to_developer: false
+  password_stored_by_app: false
 
 # Play Billing (Google's collection, declare as collected by third party if the form asks)
 play_billing:

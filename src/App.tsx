@@ -16,7 +16,10 @@ import { EmergencySheetModal } from './components/modals/EmergencySheetModal';
 import { AuthScreen } from './components/screens/AuthScreen';
 import { OnboardingScreen } from './components/screens/OnboardingScreen';
 import { LicenseScreen } from './components/screens/LicenseScreen';
+import { ClosedScreen } from './components/screens/TermsGate';
 import { markOnboardingSeen } from './lib/onboarding';
+import { maybeRunScheduledBackup } from './lib/backupSchedule';
+import { setTermsDeclineHandler } from './lib/terms';
 import { AlertTriangle, CheckCircle2, RefreshCw, X } from 'lucide-react';
 
 const KoshaMainApp: React.FC = () => {
@@ -29,12 +32,23 @@ const KoshaMainApp: React.FC = () => {
   const [selectedHoldingIdForDetail, setSelectedHoldingIdForDetail] = useState<string | null>(null);
   const [isEmergencySheetOpen, setIsEmergencySheetOpen] = useState(false);
   const [isMigrationBannerDismissed, setIsMigrationBannerDismissed] = useState(false);
+  const [termsDeclined, setTermsDeclined] = useState(false);
+
+  useEffect(() => {
+    setTermsDeclineHandler(() => setTermsDeclined(true));
+    return () => setTermsDeclineHandler(null);
+  }, []);
 
   useEffect(() => {
     if (!account) return;
     markOnboardingSeen();
     licence.dismissOnboarding();
   }, [account]);
+
+  useEffect(() => {
+    if (!account || !unlocked || mustRotatePassword) return;
+    void maybeRunScheduledBackup('open');
+  }, [account, unlocked, mustRotatePassword]);
 
   const handleOpenAddRecord = (holdingId?: string) => {
     setPreselectedHoldingForRecord(holdingId);
@@ -47,6 +61,10 @@ const KoshaMainApp: React.FC = () => {
         <div className="text-lg font-bold tracking-wide animate-pulse">Checking licence…</div>
       </div>
     );
+  }
+
+  if (termsDeclined) {
+    return <ClosedScreen />;
   }
 
   if (dbError) {

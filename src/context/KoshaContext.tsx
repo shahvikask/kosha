@@ -29,6 +29,8 @@ import { foldHolding, financialYearOf, assessmentYearOf } from '../lib/lots';
 import { derivePositions, DerivedState } from '../lib/positions';
 import { maskPan } from '../lib/vault';
 import { packBackup, unpackBackup, verifyRestoreIdentity, VaultBackup, RestoreIdentity, BackupError, BACKUP_KIND, BACKUP_VERSION } from '../lib/backup';
+import { rememberSessionSecret, clearSessionSecret } from '../lib/sessionSecret';
+import { bindScheduledBackupPacker } from '../lib/backupSchedule';
 import {
   VaultAccountPublic,
   toPublicAccount,
@@ -1462,6 +1464,11 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return packBackup(payload, stored.email, password);
   };
 
+  useEffect(() => {
+    bindScheduledBackupPacker((email, password) => createLockedBackup(email, password));
+    return () => bindScheduledBackupPacker(null);
+  });
+
   const hydrateFromRepo = async (r: Repository) => {
     setFamilyMembers(await r.allEntities());
     setHoldings(await r.allHoldings());
@@ -1524,6 +1531,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       writeRememberedEmail(backup.account.email);
       setUnlocked(true);
       setMustRotatePassword(needsPasswordRotation(backup.account.passwordChangedAt));
+      rememberSessionSecret(backup.account.email, identity.password);
       return null;
     } catch (e) {
       return e instanceof Error ? e.message : 'Could not restore that backup.';
@@ -1592,6 +1600,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     writeRememberedEmail(email);
     setUnlocked(true);
     setMustRotatePassword(false);
+    rememberSessionSecret(email, input.password);
     return null;
   };
 
@@ -1608,10 +1617,12 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setAccount(toPublicAccount(stored));
     setUnlocked(true);
     setMustRotatePassword(needsPasswordRotation(stored.passwordChangedAt));
+    rememberSessionSecret(stored.email, password);
     return null;
   };
 
   const lockVault = () => {
+    clearSessionSecret();
     setUnlocked(false);
   };
 
@@ -1636,6 +1647,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setAccount(toPublicAccount(next));
     setMustRotatePassword(false);
     setUnlocked(true);
+    rememberSessionSecret(stored.email, newPassword);
     return null;
   };
 
@@ -1672,6 +1684,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setMustRotatePassword(false);
     setUnlocked(true);
     writeRememberedEmail(stored.email);
+    rememberSessionSecret(stored.email, newPassword);
     return null;
   };
 
@@ -1716,6 +1729,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setUnlocked(false);
     setMustRotatePassword(false);
     clearRememberedEmail();
+    clearSessionSecret();
   };
 
   const deleteAccountAndData = async (): Promise<void> => {
@@ -1736,6 +1750,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setUnlocked(false);
     setMustRotatePassword(false);
     clearRememberedEmail();
+    clearSessionSecret();
     window.location.reload();
   };
 

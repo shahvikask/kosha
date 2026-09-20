@@ -223,6 +223,13 @@ export function suggestedBackupName(now = new Date()): string {
   return `growurdhan_${now.toISOString().slice(0, 10)}.kosha`;
 }
 
+/** Unique per run so last-5 pruning by mtime/name works. */
+export function suggestedScheduledBackupName(now = new Date()): string {
+  const iso = now.toISOString();
+  const stamp = iso.slice(0, 19).replace(/[-:]/g, '').replace('T', '_');
+  return `growurdhan_${stamp}.kosha`;
+}
+
 /** Exposed for tests that inspect the ciphertext. */
 export function backupToBase64(bytes: Uint8Array): string {
   return toB64(bytes);

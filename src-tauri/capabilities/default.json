@@ -13,7 +13,13 @@
           "vault_blob_save",
           "play_licence_status",
           "play_purchase",
-          "play_restore"
+          "play_restore",
+          "backup_pick_folder",
+          "backup_clear_folder",
+          "backup_write_scheduled",
+          "backup_save",
+          "backup_open",
+          "app_exit"
         ]
       }
     }

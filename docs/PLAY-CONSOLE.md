@@ -15,6 +15,7 @@ Complete these in the console. The repo cannot tick them for you.
 - [ ] Paste `marketing/play-listing-en.txt` and `play-listing-hi.txt`
 - [ ] Feature graphic 1024×500 + phone screenshots (at least 2)
 - [ ] Privacy policy URL: `https://shahvikask.github.io/kosha/privacy.html`
+- [ ] Terms URL (optional extra): `https://shahvikask.github.io/kosha/terms.html`
 - [ ] Category: Finance. Ads: **No**
 
 ## App content

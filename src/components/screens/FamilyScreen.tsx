@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useKosha } from '../../context/KoshaContext';
 import { FamilyMember, FamilyRelation, isPrimaryFamilyMember } from '../../types';
 import { MoneyEngine } from '../../lib/money';
@@ -8,6 +8,16 @@ import { suggestedBackupName } from '../../lib/backup';
 import { saveBackupFile, pickBackupFile } from '../../lib/backupIo';
 import { useLicence } from '../../context/LicenseContext';
 import { formatInr, PRICE_INR, PRICE_BUNDLE_INR } from '../../lib/license';
+import {
+  readBackupSchedule,
+  writeBackupSchedule,
+  pickBackupFolder,
+  clearBackupFolder,
+  subscribeBackupSchedule,
+  BACKUP_KEEP_LAST,
+  BackupScheduleSettings,
+} from '../../lib/backupSchedule';
+import { TermsGate } from './TermsGate';
 import {
   Users,
   Plus,
@@ -27,6 +37,8 @@ import {
   Lock,
   Target,
   Coins,
+  Cloud,
+  FolderOpen,
 } from 'lucide-react';
 
 interface FamilyScreenProps {
@@ -89,6 +101,11 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
   const [backupEmail, setBackupEmail] = useState('');
   const [backupPassword, setBackupPassword] = useState('');
   const [backupBusy, setBackupBusy] = useState(false);
+  const [restoreNeedsTerms, setRestoreNeedsTerms] = useState(false);
+  const [schedule, setSchedule] = useState<BackupScheduleSettings>(() => readBackupSchedule());
+  const [scheduleBusy, setScheduleBusy] = useState(false);
+
+  useEffect(() => subscribeBackupSchedule(() => setSchedule(readBackupSchedule())), []);
 
   const calculateAge = (dobString?: string): number | null => {
     if (!dobString) return null;
@@ -254,6 +271,14 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
     } finally {
       setBackupBusy(false);
     }
+  };
+
+  const onRestoreSubmit = () => {
+    if (!backupEmail.trim() || !backupPassword) {
+      setNotification({ type: 'error', message: 'Enter your vault email and password.' });
+      return;
+    }
+    setRestoreNeedsTerms(true);
   };
 
   const handleSaveGoal = async (e: React.FormEvent) => {
@@ -539,7 +564,7 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
           </div>
           <div className="p-3 rounded-xl border" style={{ borderColor: 'var(--border)' }}>
             <Lock className="w-3.5 h-3.5" style={{ color: 'var(--muted)' }} />
-            <div className="font-semibold mt-1">Statements never leave this phone</div>
+            <div className="font-semibold mt-1">Statements stay here unless you save a backup</div>
           </div>
           <div className="p-3 rounded-xl border" style={{ borderColor: 'var(--border)' }}>
             <div className="font-semibold">Locked with your vault email and password. We cannot open the file if you forget them.</div>
@@ -569,6 +594,82 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
               Email and password unlock it
             </div>
           </button>
+          <div
+            className="p-3 md:p-4 rounded-2xl border text-left text-sm col-span-2 space-y-3"
+            style={{ borderColor: 'var(--border)' }}
+          >
+            <div className="flex items-start gap-2">
+              <Cloud className="w-4 h-4 mt-0.5" />
+              <div>
+                <div className="font-bold">Backup schedule</div>
+                <div className="text-xs mt-1" style={{ color: 'var(--muted)' }}>
+                  Encrypted copies in a folder you pick — Google Drive, OneDrive, or Downloads. Last {BACKUP_KEEP_LAST} kept. Runs after unlock, not after the app is killed (the password is never stored).
+                </div>
+              </div>
+            </div>
+            <label className="flex items-center gap-2 text-sm font-semibold">
+              <input
+                type="checkbox"
+                checked={schedule.enabled}
+                onChange={e => writeBackupSchedule({ ...schedule, enabled: e.target.checked })}
+              />
+              Save automatically
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={schedule.onOpen}
+                  disabled={!schedule.enabled}
+                  onChange={e => writeBackupSchedule({ ...schedule, onOpen: e.target.checked })}
+                />
+                When the app opens
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={schedule.onCasImport}
+                  disabled={!schedule.enabled}
+                  onChange={e => writeBackupSchedule({ ...schedule, onCasImport: e.target.checked })}
+                />
+                When a new CAS is imported
+              </label>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={scheduleBusy}
+                onClick={async () => {
+                  setScheduleBusy(true);
+                  const next = await pickBackupFolder();
+                  setSchedule(next);
+                  setScheduleBusy(false);
+                }}
+                className="px-3 py-2 rounded-xl text-xs font-bold border flex items-center gap-1.5"
+                style={{ borderColor: 'var(--border)' }}
+              >
+                <FolderOpen className="w-3.5 h-3.5" />
+                {schedule.folderLabel ? 'Change folder' : 'Choose Drive or OneDrive folder'}
+              </button>
+              {schedule.folderLabel && (
+                <button
+                  type="button"
+                  onClick={async () => setSchedule(await clearBackupFolder())}
+                  className="px-3 py-2 rounded-xl text-xs font-semibold"
+                  style={{ color: 'var(--muted)' }}
+                >
+                  Stop using folder
+                </button>
+              )}
+            </div>
+            <p className="text-[11px]" style={{ color: schedule.lastError ? 'var(--bad)' : 'var(--muted)' }}>
+              {schedule.folderLabel ? `Folder: ${schedule.folderLabel}. ` : 'No folder chosen yet. '}
+              {schedule.lastRunAt
+                ? `Last backup ${new Date(schedule.lastRunAt).toLocaleString()} · ${schedule.lastKept} kept.`
+                : 'No scheduled backup yet.'}
+              {schedule.lastError ? ` ${schedule.lastError}` : ''}
+            </p>
+          </div>
           <button
             onClick={async () => {
               if (
@@ -599,6 +700,7 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
           </p>
           <div className="flex flex-wrap gap-3 text-xs font-semibold" style={{ color: 'var(--accent)' }}>
             <a href="https://shahvikask.github.io/kosha/privacy.html" target="_blank" rel="noreferrer">Privacy policy</a>
+            <a href="https://shahvikask.github.io/kosha/terms.html" target="_blank" rel="noreferrer">Terms</a>
             <a href="https://shahvikask.github.io/kosha/delete-account.html" target="_blank" rel="noreferrer">Delete account (web)</a>
           </div>
         </div>
@@ -777,7 +879,7 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
               <button
                 type="button"
                 disabled={backupBusy}
-                onClick={runBackupGate}
+                onClick={backupGate === 'restore' ? onRestoreSubmit : runBackupGate}
                 className="px-4 py-2 rounded-xl text-xs font-bold"
                 style={{ background: 'var(--accent)', color: 'var(--accent-fg)', opacity: backupBusy ? 0.7 : 1 }}
               >
@@ -786,6 +888,16 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
             </div>
           </div>
         </div>
+      )}
+
+      {restoreNeedsTerms && (
+        <TermsGate
+          reason="restore"
+          onAccept={() => {
+            setRestoreNeedsTerms(false);
+            void runBackupGate();
+          }}
+        />
       )}
 
       {deletingMember && (
