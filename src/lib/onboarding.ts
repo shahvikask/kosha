@@ -19,7 +19,7 @@ export const ONBOARDING_SLIDES: OnboardingSlide[] = [
     icon: 'shield',
     enTitle: 'A family vault. Not another brokerage login.',
     enBody: 'GrowUrDhan is built so Indian families can see every member’s holdings in one private place. We do not sell a demat account. We do not call you. The books live on this phone.',
-    hiTitle: 'परिवार का तिजोरी। किसी ब्रोकर का लॉगिन नहीं।',
+    hiTitle: 'परिवार की तिजोरी। ब्रोकर का लॉगिन नहीं।',
     hiBody: 'GrowUrDhan भारतीय परिवारों के लिए है — एक ही जगह, सबके निवेश। हम डीमैट नहीं बेचते, कॉल नहीं करते। हिसाब इसी फ़ोन पर रहता है।',
   },
   {

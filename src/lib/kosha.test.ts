@@ -4,6 +4,7 @@ import { ruleSetFor, classifyGain, isEquityOriented, grandfatheredCostMinor, app
 import { encryptJson, decryptJson, isEncryptedBlob, generateRecoveryKey, maskPan, WrongPassphraseError } from './vault';
 import { packBackup, unpackBackup, verifyRestoreIdentity, isBinaryBackup, looksLikePlainJsonBackup, BACKUP_KIND, VaultBackup } from './backup';
 import { derivePlan, daysRemaining, TRIAL_DAYS, PRICE_BUNDLE_INR, PRICE_INR, appUnlocked, enhancementsEnabled } from './license';
+import { __test as encTest } from '../db/encryptedStore';
 import { ONBOARDING_SLIDES } from './onboarding';
 import { xirr } from './returns';
 import { classifyHolding, EXPOSURES, WRAPPERS, exposureLabel, l2Label } from './taxonomy';
@@ -1029,6 +1030,14 @@ console.log('\n--- H. Encryption ---');
   eq('sideload with lifetime open', appUnlocked({ plan: 'lifetime', lifetime: true, supportActive: false, daysLeft: 0, trialStartedAt: null, trialEndsAt: null, supportRenewsAt: null, playAccountBound: true, sideloadBlocked: true, source: 'play' }), true);
   eq('lifetime price 249', PRICE_INR.lifetime, 249);
   eq('support later 299', PRICE_INR.supportLater, 299);
+  eq('envelope magic', encTest.MAGIC, 'GUDENC01');
+  const wrapSalt = crypto.getRandomValues(new Uint8Array(16));
+  const wrapKey = await encTest.deriveDeviceKey(wrapSalt);
+  const wrapped = await encTest.encryptBytes(new TextEncoder().encode('vault-bytes'), wrapKey, wrapSalt);
+  eq('magic on packed vault', encTest.hasMagic(wrapped), true);
+  const unwrapped = await encTest.decryptBytes(wrapped, wrapKey, true);
+  eq('envelope round trip', new TextDecoder().decode(unwrapped), 'vault-bytes');
+
 
 
   console.log(`\n${pass} passed, ${fail} failed`);
