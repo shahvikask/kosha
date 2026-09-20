@@ -87,14 +87,14 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddHolding, onOpenAddRecor
           <BrandLogo size="sm" showTagline={false} compact />
         </button>
 
-        <div className="relative shrink-0">
+        <div className="relative min-w-0 flex-1">
           <button
             id="family-selector-btn"
             onClick={() => {
               setIsAddMenuOpen(false);
               setIsFamilyDropdownOpen(v => !v);
             }}
-            className="flex items-center gap-1 h-9 pl-1 pr-1.5 md:pl-2.5 md:pr-3 md:gap-1.5 rounded-xl border"
+            className="flex items-center gap-1.5 h-9 w-full pl-1 pr-2 md:pl-2.5 md:pr-3 rounded-xl border min-w-0"
             style={{ borderColor: 'var(--border)', background: 'var(--card)', color: 'var(--text)' }}
             aria-label={selectedMemberId === 'ALL' ? 'Whole family' : selectedMember?.name || 'Family'}
             aria-expanded={isFamilyDropdownOpen}
@@ -106,7 +106,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddHolding, onOpenAddRecor
             >
               {familyInitial}
             </span>
-            <span className="hidden md:inline text-sm font-medium truncate max-w-[10rem]">
+            <span className="text-sm font-medium truncate min-w-0 flex-1 text-left">
               {selectedMemberId === 'ALL' ? 'Whole family' : selectedMember?.name}
             </span>
             <ChevronDown className="w-3.5 h-3.5 opacity-60 shrink-0" />
@@ -156,8 +156,6 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddHolding, onOpenAddRecor
             </div>
           )}
         </div>
-
-        <div className="flex-1" />
 
         <div className="flex items-center gap-1 md:gap-2 shrink-0">
           <button

@@ -172,7 +172,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpen
         <>
           <div className="grid grid-cols-2 gap-2 md:grid-cols-4 md:gap-3">
             <Action title="Read a statement" hint="CDSL, CAMS, KFin" onClick={() => setActiveScreen('DOCUMENTS')} tint="var(--bucket-govt)" icon={FileSpreadsheet} />
-            <Action title="Add manually" hint="PPF, home, gold" onClick={onOpenAddHolding} tint="var(--accent)" icon={Plus} />
+            <Action title="Add manually" hint="PPF, FD, Gold, etc." onClick={onOpenAddHolding} tint="var(--accent)" icon={Plus} />
             <Action title="See holdings" hint="Search & compare" onClick={() => setActiveScreen('HOLDINGS')} tint="var(--bucket-shares)" icon={WalletCards} />
             <Action title="Demat & folios" hint="Where it sits" onClick={() => setActiveScreen('ACCOUNTS')} tint="var(--bucket-bank)" icon={Landmark} />
           </div>
@@ -420,12 +420,12 @@ const WaterRow: React.FC<{ label: string; value: bigint; widthPct: number; negat
 );
 
 const Action: React.FC<{ title: string; hint: string; onClick: () => void; tint: string; icon: typeof FileSpreadsheet }> = ({ title, hint, onClick, tint, icon: Icon }) => (
-  <button onClick={onClick} className="card p-3 md:p-4 text-left hover:opacity-90 min-h-20" style={{ borderColor: `color-mix(in srgb, ${tint} 35%, var(--border))` }}>
+  <button onClick={onClick} className="card p-3 md:p-4 text-left hover:opacity-90 min-h-20 min-w-0" style={{ borderColor: `color-mix(in srgb, ${tint} 35%, var(--border))` }}>
     <span className="w-8 h-8 md:w-9 md:h-9 rounded-xl flex items-center justify-center mb-1.5 md:mb-2" style={{ background: `color-mix(in srgb, ${tint} 18%, transparent)`, color: tint }}>
       <Icon className="w-4 h-4" />
     </span>
     <div className="font-bold text-sm leading-tight">{title}</div>
-    <div className="text-[11px] md:text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{hint}</div>
+    <div className="text-[11px] md:text-xs mt-0.5 leading-snug" style={{ color: 'var(--muted)' }}>{hint}</div>
   </button>
 );
 const HoldingTable: React.FC<{ rows: GrowthHoldingRow[]; onOpen: (id: string) => void }> = ({ rows, onOpen }) => rows.length === 0 ? <p className="text-xs" style={{ color: 'var(--muted)' }}>Nothing in this slice.</p> : <div className="divide-y" style={{ borderColor: 'var(--border)' }}>{rows.map(r => <button key={r.id} type="button" onClick={() => onOpen(r.id)} className="w-full text-left py-3 flex items-center gap-3 hover:opacity-90"><span className="w-2 h-2 rounded-full shrink-0" style={{ background: BUCKET_COLORS[r.bucket] }} /><div className="min-w-0 flex-1"><div className="text-sm font-medium truncate">{r.name}</div><div className="text-[11px] truncate" style={{ color: 'var(--muted)' }}>{r.ownerName} · {FAMILY_BUCKETS.find(b => b.id === r.bucket)?.title}</div></div><div className="text-right shrink-0">{r.unknownInvested ? <div className="text-xs font-semibold" style={{ color: 'var(--bad)' }}>{UNKNOWN_INVESTED_LABEL}</div> : <><PrivacyValue minor={r.valueMinor} includePaise={false} className="text-sm font-semibold" /><div className="text-[11px]"><PrivacyDelta minor={r.gainMinor} className="text-[11px] font-medium" /></div></>}</div><ChevronRight className="w-4 h-4 shrink-0" style={{ color: 'var(--muted)' }} /></button>)}</div>;

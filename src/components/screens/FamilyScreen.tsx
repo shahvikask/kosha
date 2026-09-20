@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useKosha } from '../../context/KoshaContext';
 import { FamilyMember, FamilyRelation, isPrimaryFamilyMember } from '../../types';
 import { MoneyEngine } from '../../lib/money';
@@ -6,7 +6,6 @@ import { metricsOf } from '../../lib/holdingView';
 import { maskPan } from '../../lib/vault';
 import { suggestedBackupName } from '../../lib/backup';
 import { saveBackupFile, pickBackupFile } from '../../lib/backupIo';
-import { LS_KEYS } from '../../db/migrate';
 import { useLicence } from '../../context/LicenseContext';
 import { formatInr, PRICE_INR, PRICE_BUNDLE_INR } from '../../lib/license';
 import {
@@ -25,7 +24,6 @@ import {
   Download,
   Upload,
   Database,
-  RotateCcw,
   Lock,
   Target,
   Coins,
@@ -62,9 +60,7 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
     createLockedBackup,
     restoreLockedBackup,
     startOver,
-    deleteAccountAndData,
     account,
-    repo,
   } = useKosha();
   const licence = useLicence();
 
@@ -89,15 +85,10 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
   const [goalTarget, setGoalTarget] = useState('');
   const [goalDate, setGoalDate] = useState('');
 
-  const [hasBackupCopy, setHasBackupCopy] = useState(false);
   const [backupGate, setBackupGate] = useState<'export' | 'restore' | null>(null);
   const [backupEmail, setBackupEmail] = useState('');
   const [backupPassword, setBackupPassword] = useState('');
   const [backupBusy, setBackupBusy] = useState(false);
-  useEffect(() => {
-    const keys = Object.values(LS_KEYS);
-    setHasBackupCopy(keys.some(k => localStorage.getItem(`${k}__pre_sqlite_backup`) !== null));
-  }, []);
 
   const calculateAge = (dobString?: string): number | null => {
     if (!dobString) return null;
@@ -262,31 +253,6 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
       setNotification({ type: 'error', message: err?.message || 'Could not finish backup.' });
     } finally {
       setBackupBusy(false);
-    }
-  };
-
-  const handleRebuildFromBackup = async () => {
-    if (
-      !window.confirm(
-        'This will rebuild your records from the copy kept in browser storage. Nothing will be deleted.'
-      )
-    )
-      return;
-    try {
-      for (const k of Object.values(LS_KEYS)) {
-        const backupVal = localStorage.getItem(`${k}__pre_sqlite_backup`);
-        if (backupVal !== null) localStorage.setItem(k, backupVal);
-      }
-      if (repo) await repo.setMeta('migrated_from_localstorage', 'false');
-      await new Promise<void>((resolve, reject) => {
-        const req = indexedDB.deleteDatabase('kosha-store');
-        req.onsuccess = () => resolve();
-        req.onerror = () => reject(req.error);
-        req.onblocked = () => resolve();
-      });
-      window.location.reload();
-    } catch (e: any) {
-      setNotification({ type: 'error', message: e?.message || 'Could not rebuild from backup.' });
     }
   };
 
@@ -604,52 +570,22 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
             </div>
           </button>
           <button
-            disabled={!hasBackupCopy}
-            onClick={handleRebuildFromBackup}
-            className="p-4 rounded-2xl border text-left text-sm disabled:opacity-50"
-            style={{ borderColor: 'var(--border)' }}
-          >
-            <RotateCcw className="w-4 h-4 mb-2" />
-            <div className="font-bold">Rebuild from old copy</div>
-            <div className="text-xs mt-1" style={{ color: 'var(--muted)' }}>
-              {hasBackupCopy ? 'Browser copy is available' : 'No old copy found'}
-            </div>
-          </button>
-          <button
             onClick={async () => {
               if (
                 window.confirm(
-                  'Erase all holdings and records? Self stays. This cannot be undone unless you have a backup.'
+                  'Delete all accounts from this device? Self stays. This cannot be undone unless you have a backup.'
                 )
               ) {
                 await startOver();
                 setNotification({ type: 'warning', message: 'Vault emptied. Self is still here.' });
               }
             }}
-            className="p-3 md:p-4 rounded-2xl border text-left text-sm"
+            className="p-3 md:p-4 rounded-2xl border text-left text-sm col-span-2"
             style={{ borderColor: 'var(--border)', color: 'var(--bad)' }}
           >
             <Trash2 className="w-4 h-4 mb-2" />
             <div className="font-bold">Start over</div>
-            <div className="text-xs mt-1">Empty vault. No sample stocks.</div>
-          </button>
-          <button
-            type="button"
-            onClick={async () => {
-              if (
-                !window.confirm(
-                  'Delete this vault and every record on this phone? Google Play requires this. A locked backup is the only way back. Your Play licence stays on the Play account.',
-                )
-              )
-                return;
-              await deleteAccountAndData();
-            }}
-            className="p-3 md:p-4 rounded-2xl border text-left text-sm"
-            style={{ borderColor: 'var(--border)', color: 'var(--bad)' }}
-          >
-            <Trash2 className="w-4 h-4 mb-2" />
-            <div className="font-bold">Delete account</div>
-            <div className="text-xs mt-1">Wipes this device. Web link also listed below.</div>
+            <div className="text-xs mt-1">Delete all accounts from this device</div>
           </button>
         </div>
         <div className="p-4 rounded-2xl border space-y-2 text-sm" style={{ borderColor: 'var(--border)' }}>
