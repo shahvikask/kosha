@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useKosha } from '../../context/KoshaContext';
 import { BrandLogo } from '../common/BrandLogo';
 import { formatStatementDate, formatStatementDateShort } from '../../lib/casPython';
@@ -12,6 +12,7 @@ import {
   ArrowRightLeft,
   RefreshCw,
   Lock,
+  MoreVertical,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -39,40 +40,85 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddHolding, onOpenAddRecor
 
   const [isFamilyDropdownOpen, setIsFamilyDropdownOpen] = useState(false);
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
+  const barRef = useRef<HTMLElement>(null);
   const selectedMember = familyMembers.find(m => m.id === selectedMemberId);
+
+  const closeMenus = () => {
+    setIsFamilyDropdownOpen(false);
+    setIsAddMenuOpen(false);
+    setIsMoreOpen(false);
+  };
+
+  useEffect(() => {
+    const onPointer = (event: MouseEvent) => {
+      if (!barRef.current) return;
+      if (!barRef.current.contains(event.target as Node)) closeMenus();
+    };
+    document.addEventListener('mousedown', onPointer);
+    return () => document.removeEventListener('mousedown', onPointer);
+  }, []);
+
+  const iconBtn: React.CSSProperties = {
+    borderColor: 'var(--border)',
+    background: 'var(--card)',
+    color: 'var(--text)',
+  };
 
   return (
     <header
+      ref={barRef}
       className="sticky top-0 z-30 border-b backdrop-blur-md"
-      style={{ background: 'color-mix(in srgb, var(--chrome) 92%, transparent)', borderColor: 'var(--border)' }}
+      style={{
+        background: 'color-mix(in srgb, var(--chrome) 92%, transparent)',
+        borderColor: 'var(--border)',
+        paddingTop: 'env(safe-area-inset-top, 0px)',
+      }}
     >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <button type="button" onClick={() => setActiveScreen('HOME')} className="cursor-pointer">
-            <BrandLogo />
-          </button>
-        </div>
+      <div className="max-w-7xl mx-auto px-3 md:px-6 lg:px-8 h-14 md:h-16 flex items-center gap-2 min-w-0">
+        <button
+          type="button"
+          onClick={() => {
+            closeMenus();
+            setActiveScreen('HOME');
+          }}
+          className="cursor-pointer shrink-0"
+          aria-label="GrowUrDhan home"
+        >
+          <BrandLogo size="sm" showTagline={false} compact />
+        </button>
 
-        <div className="relative">
+        <div className="relative min-w-0 flex-1 md:flex-none">
           <button
             id="family-selector-btn"
-            onClick={() => setIsFamilyDropdownOpen(!isFamilyDropdownOpen)}
-            className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl border text-sm font-medium"
+            onClick={() => {
+              setIsAddMenuOpen(false);
+              setIsMoreOpen(false);
+              setIsFamilyDropdownOpen(v => !v);
+            }}
+            className="flex items-center gap-1.5 w-full md:w-auto max-w-full px-2.5 md:px-3.5 h-9 md:h-auto md:py-1.5 rounded-xl border text-sm font-medium min-w-0"
             style={{ borderColor: 'var(--border)', background: 'var(--card)', color: 'var(--text)' }}
           >
             <div
-              className="w-2.5 h-2.5 rounded-full"
+              className="w-2 h-2 rounded-full shrink-0"
               style={{ backgroundColor: selectedMemberId === 'ALL' ? '#38bdf8' : selectedMember?.color || '#38bdf8' }}
             />
-            <span className="truncate max-w-[140px] sm:max-w-[200px]">
-              {selectedMemberId === 'ALL' ? 'Whole family' : selectedMember?.name}
+            <span className="truncate min-w-0">
+              {selectedMemberId === 'ALL' ? (
+                <>
+                  <span className="md:hidden">Family</span>
+                  <span className="hidden md:inline">Whole family</span>
+                </>
+              ) : (
+                selectedMember?.name
+              )}
             </span>
-            <ChevronDown className="w-4 h-4 opacity-60" />
+            <ChevronDown className="w-3.5 h-3.5 opacity-60 shrink-0" />
           </button>
 
           {isFamilyDropdownOpen && (
             <div
-              className="absolute left-0 mt-1.5 w-64 rounded-2xl shadow-2xl border py-1.5 z-50"
+              className="absolute left-0 mt-1.5 w-[min(16rem,calc(100vw-1.5rem))] rounded-2xl shadow-2xl border py-1.5 z-50"
               style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
             >
               <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--muted)' }}>
@@ -83,7 +129,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddHolding, onOpenAddRecor
                   setSelectedMemberId('ALL');
                   setIsFamilyDropdownOpen(false);
                 }}
-                className="w-full text-left px-3.5 py-2 text-sm hover:opacity-80"
+                className="w-full text-left px-3.5 py-2.5 text-sm hover:opacity-80"
                 style={{ color: 'var(--text)' }}
               >
                 Whole family
@@ -96,11 +142,11 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddHolding, onOpenAddRecor
                     setSelectedMemberId(member.id);
                     setIsFamilyDropdownOpen(false);
                   }}
-                  className="w-full text-left px-3.5 py-2 text-sm flex items-center gap-2.5"
+                  className="w-full text-left px-3.5 py-2.5 text-sm flex items-center gap-2.5"
                   style={{ color: 'var(--text)' }}
                 >
                   <div
-                    className="w-6 h-6 rounded-full text-white flex items-center justify-center text-xs font-bold"
+                    className="w-7 h-7 rounded-full text-white flex items-center justify-center text-xs font-bold"
                     style={{ backgroundColor: member.color }}
                   >
                     {member.name.charAt(0)}
@@ -115,35 +161,27 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddHolding, onOpenAddRecor
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="hidden md:flex items-center gap-2 shrink-0">
           <button
             onClick={() => refreshEodPrices()}
             disabled={pricesRefreshing}
             className="p-2 rounded-xl border"
-            style={{ borderColor: 'var(--border)', background: 'var(--card)', color: 'var(--text)' }}
+            style={iconBtn}
             title={pricesAsOf ? `Prices as on ${formatStatementDateShort(pricesAsOf)}` : 'Refresh last close / NAV'}
           >
             <RefreshCw className={`w-4 h-4 ${pricesRefreshing ? 'animate-spin' : ''}`} />
           </button>
-
           <button
             onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
             className="p-2 rounded-xl border"
-            style={{ borderColor: 'var(--border)', background: 'var(--card)', color: 'var(--text)' }}
+            style={iconBtn}
             title={theme === 'light' ? 'Switch to dark' : 'Switch to light'}
           >
             {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
           </button>
-
-          <button
-            onClick={() => lockVault()}
-            className="p-2 rounded-xl border"
-            style={{ borderColor: 'var(--border)', background: 'var(--card)', color: 'var(--text)' }}
-            title="Lock"
-          >
+          <button onClick={() => lockVault()} className="p-2 rounded-xl border" style={iconBtn} title="Lock">
             <Lock className="w-4 h-4" />
           </button>
-
           <button
             id="privacy-toggle-btn"
             onClick={() => setIsPrivacyMasked(prev => !prev)}
@@ -156,56 +194,129 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddHolding, onOpenAddRecor
             title={isPrivacyMasked ? 'Show numbers' : 'Hide numbers'}
           >
             {isPrivacyMasked ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            <span className="text-xs font-medium hidden sm:inline">{isPrivacyMasked ? 'Hidden' : 'Visible'}</span>
+            <span className="text-xs font-medium">{isPrivacyMasked ? 'Hidden' : 'Visible'}</span>
           </button>
+        </div>
 
-          <div className="relative">
-            <button
-              id="header-add-btn"
-              onClick={() => setIsAddMenuOpen(!isAddMenuOpen)}
-              className="text-sm font-bold px-3.5 py-1.5 rounded-xl flex items-center gap-1.5"
-              style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}
+        <div className="relative shrink-0 md:hidden">
+          <button
+            type="button"
+            onClick={() => {
+              setIsFamilyDropdownOpen(false);
+              setIsAddMenuOpen(false);
+              setIsMoreOpen(v => !v);
+            }}
+            className="w-9 h-9 rounded-xl border flex items-center justify-center"
+            style={iconBtn}
+            aria-label="More actions"
+            aria-expanded={isMoreOpen}
+          >
+            <MoreVertical className="w-4 h-4" />
+          </button>
+          {isMoreOpen && (
+            <div
+              className="absolute right-0 mt-1.5 w-56 rounded-2xl shadow-2xl border py-1.5 z-50"
+              style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
             >
-              <Plus className="w-4 h-4 stroke-[2.5]" />
-              <span className="hidden sm:inline">Add</span>
-              <ChevronDown className="w-3.5 h-3.5 opacity-80" />
-            </button>
-            {isAddMenuOpen && (
-              <div
-                className="absolute right-0 mt-1.5 w-60 rounded-2xl shadow-2xl border py-1.5 z-50"
-                style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+              <button
+                onClick={() => {
+                  setIsMoreOpen(false);
+                  refreshEodPrices();
+                }}
+                className="w-full text-left px-3.5 py-2.5 text-sm flex items-center gap-2.5"
+                style={{ color: 'var(--text)' }}
               >
-                <button
-                  onClick={() => {
-                    setIsAddMenuOpen(false);
-                    onOpenAddHolding();
-                  }}
-                  className="w-full text-left px-3.5 py-2.5 text-sm flex items-center gap-2.5"
-                  style={{ color: 'var(--text)' }}
-                >
-                  <Plus className="w-4 h-4" />
-                  <div>
-                    <div className="font-semibold">Add manually</div>
-                    <div className="text-xs" style={{ color: 'var(--muted)' }}>PPF, property, loan, gold</div>
-                  </div>
-                </button>
-                <button
-                  onClick={() => {
-                    setIsAddMenuOpen(false);
-                    onOpenAddRecord();
-                  }}
-                  className="w-full text-left px-3.5 py-2.5 text-sm flex items-center gap-2.5"
-                  style={{ color: 'var(--text)' }}
-                >
-                  <ArrowRightLeft className="w-4 h-4" />
-                  <div>
-                    <div className="font-semibold">Record a buy or sell</div>
-                    <div className="text-xs" style={{ color: 'var(--muted)' }}>Or dividend, EMI, bonus</div>
-                  </div>
-                </button>
-              </div>
-            )}
-          </div>
+                <RefreshCw className={`w-4 h-4 ${pricesRefreshing ? 'animate-spin' : ''}`} />
+                Refresh prices
+              </button>
+              <button
+                onClick={() => {
+                  setTheme(theme === 'light' ? 'dark' : 'light');
+                  setIsMoreOpen(false);
+                }}
+                className="w-full text-left px-3.5 py-2.5 text-sm flex items-center gap-2.5"
+                style={{ color: 'var(--text)' }}
+              >
+                {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+                {theme === 'light' ? 'Dark theme' : 'Light theme'}
+              </button>
+              <button
+                onClick={() => {
+                  setIsPrivacyMasked(prev => !prev);
+                  setIsMoreOpen(false);
+                }}
+                className="w-full text-left px-3.5 py-2.5 text-sm flex items-center gap-2.5"
+                style={{ color: 'var(--text)' }}
+              >
+                {isPrivacyMasked ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                {isPrivacyMasked ? 'Show numbers' : 'Hide numbers'}
+              </button>
+              <button
+                onClick={() => {
+                  setIsMoreOpen(false);
+                  lockVault();
+                }}
+                className="w-full text-left px-3.5 py-2.5 text-sm flex items-center gap-2.5"
+                style={{ color: 'var(--text)' }}
+              >
+                <Lock className="w-4 h-4" />
+                Lock vault
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="relative shrink-0">
+          <button
+            id="header-add-btn"
+            onClick={() => {
+              setIsFamilyDropdownOpen(false);
+              setIsMoreOpen(false);
+              setIsAddMenuOpen(v => !v);
+            }}
+            className="h-9 md:h-auto text-sm font-bold px-2.5 md:px-3.5 py-0 md:py-1.5 rounded-xl flex items-center gap-1"
+            style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}
+            aria-label="Add"
+          >
+            <Plus className="w-4 h-4 stroke-[2.5]" />
+            <span className="hidden sm:inline">Add</span>
+            <ChevronDown className="w-3.5 h-3.5 opacity-80 hidden sm:block" />
+          </button>
+          {isAddMenuOpen && (
+            <div
+              className="absolute right-0 mt-1.5 w-60 rounded-2xl shadow-2xl border py-1.5 z-50"
+              style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+            >
+              <button
+                onClick={() => {
+                  setIsAddMenuOpen(false);
+                  onOpenAddHolding();
+                }}
+                className="w-full text-left px-3.5 py-2.5 text-sm flex items-center gap-2.5"
+                style={{ color: 'var(--text)' }}
+              >
+                <Plus className="w-4 h-4" />
+                <div>
+                  <div className="font-semibold">Add manually</div>
+                  <div className="text-xs" style={{ color: 'var(--muted)' }}>PPF, property, loan, gold</div>
+                </div>
+              </button>
+              <button
+                onClick={() => {
+                  setIsAddMenuOpen(false);
+                  onOpenAddRecord();
+                }}
+                className="w-full text-left px-3.5 py-2.5 text-sm flex items-center gap-2.5"
+                style={{ color: 'var(--text)' }}
+              >
+                <ArrowRightLeft className="w-4 h-4" />
+                <div>
+                  <div className="font-semibold">Record a buy or sell</div>
+                  <div className="text-xs" style={{ color: 'var(--muted)' }}>Or dividend, EMI, bonus</div>
+                </div>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -213,7 +324,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAddHolding, onOpenAddRecor
       lastStatementAsOf ||
       pricesAsOf ? (
         <div
-          className="flex items-center justify-between gap-4 text-[11px] sm:text-xs py-1.5 border-t px-4 sm:px-6"
+          className="hidden md:flex items-center justify-between gap-4 text-xs py-1.5 border-t px-6 lg:px-8"
           style={{ borderColor: 'var(--border)', color: 'var(--muted)', background: 'var(--app)' }}
         >
           <div className="min-w-0 truncate text-left">

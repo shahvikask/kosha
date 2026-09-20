@@ -18,8 +18,6 @@ import {
   AlertTriangle,
   Edit2,
   Trash2,
-  Calendar,
-  CreditCard,
   X,
   Building2,
   UserCheck,
@@ -315,11 +313,11 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
   };
 
   return (
-    <div className="space-y-6 pb-12">
+    <div className="space-y-4 md:space-y-6 pb-2 md:pb-8">
       <div>
-        <h1 className="text-2xl font-bold">Family</h1>
-        <p className="text-sm" style={{ color: 'var(--muted)' }}>
-          People, goals and the vault on this computer. Self cannot be deleted.
+        <h1 className="page-title text-2xl font-bold">Family</h1>
+        <p className="page-lead text-sm" style={{ color: 'var(--muted)' }}>
+          People, goals and the vault on this phone. Self cannot be deleted.
         </p>
       </div>
 
@@ -349,13 +347,13 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
         </div>
       )}
 
-      <div className="card p-6 space-y-6">
+      <div className="card p-4 md:p-6 space-y-4 md:space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-bold flex items-center gap-2">
               <Users className="w-4 h-4" /> People in this vault
             </h2>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
+            <p className="text-xs mt-0.5 hidden md:block" style={{ color: 'var(--muted)' }}>
               Add spouse, children, parents or an HUF. Deleting someone also removes their holdings.
             </p>
           </div>
@@ -368,7 +366,7 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-3">
           {familyMembers.map(member => {
             const summaryData = memberValue(member.id);
             const age = calculateAge(member.dateOfBirth);
@@ -377,93 +375,63 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
             return (
               <div
                 key={member.id}
-                className="p-5 rounded-2xl border space-y-4"
+                className="p-3.5 md:p-5 rounded-2xl border space-y-3"
                 style={{ borderColor: 'var(--border)', background: 'var(--input)' }}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
                     <div
-                      className="w-10 h-10 rounded-2xl text-white font-bold text-sm flex items-center justify-center"
+                      className="w-10 h-10 rounded-2xl text-white font-bold text-sm flex items-center justify-center shrink-0"
                       style={{ backgroundColor: member.color }}
                     >
                       {isHuf ? <Building2 className="w-5 h-5" /> : member.name.charAt(0)}
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="font-bold text-sm">{member.name}</h3>
                         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border" style={{ borderColor: 'var(--border)' }}>
-                          {isHuf ? 'HUF' : isPrimary ? 'Self · cannot delete' : member.relation}
+                          {isHuf ? 'HUF' : isPrimary ? 'Self' : member.relation}
                         </span>
                       </div>
-                      {member.notes && (
-                        <p className="text-[11px] mt-0.5" style={{ color: 'var(--muted)' }}>
-                          {member.notes}
-                        </p>
-                      )}
+                      <p className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--muted)' }}>
+                        {[
+                          member.panMasked || 'PAN not set',
+                          member.dateOfBirth
+                            ? `${new Date(member.dateOfBirth).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}${age !== null ? ` · ${age} yrs` : ''}`
+                            : null,
+                          member.notes,
+                        ].filter(Boolean).join(' · ')}
+                      </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 shrink-0">
                     <button
                       onClick={() => handleOpenEditModal(member)}
-                      className="p-1.5 rounded-lg border text-xs flex items-center gap-1"
+                      className="p-2 rounded-lg border text-xs flex items-center gap-1 min-h-9"
                       style={{ borderColor: 'var(--border)' }}
                     >
-                      <Edit2 className="w-3.5 h-3.5" /> Edit
+                      <Edit2 className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Edit</span>
                     </button>
                     {isPrimary ? (
-                      <span className="p-1.5 text-[11px]" style={{ color: 'var(--muted)' }}>
+                      <span className="p-1.5 text-[11px] hidden sm:inline" style={{ color: 'var(--muted)' }}>
                         Locked
                       </span>
                     ) : (
                       <button
                         onClick={() => setDeletingMember(member)}
-                        className="p-1.5 rounded-lg border text-xs flex items-center gap-1"
+                        className="p-2 rounded-lg border text-xs flex items-center gap-1 min-h-9"
                         style={{ borderColor: 'var(--border)', color: 'var(--bad)' }}
                       >
-                        <Trash2 className="w-3.5 h-3.5" /> Delete
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     )}
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="p-2.5 rounded-xl border" style={{ borderColor: 'var(--border)' }}>
-                    <div className="flex items-center gap-1.5" style={{ color: 'var(--muted)' }}>
-                      <CreditCard className="w-3.5 h-3.5" /> PAN
-                    </div>
-                    <div className="font-mono font-semibold mt-0.5">
-                      {member.panMasked || <span className="italic font-sans">Not set</span>}
-                    </div>
-                  </div>
-                  <div className="p-2.5 rounded-xl border" style={{ borderColor: 'var(--border)' }}>
-                    <div className="flex items-center gap-1.5" style={{ color: 'var(--muted)' }}>
-                      <Calendar className="w-3.5 h-3.5" /> Date of birth
-                    </div>
-                    <div className="font-semibold mt-0.5">
-                      {member.dateOfBirth ? (
-                        <span>
-                          {new Date(member.dateOfBirth).toLocaleDateString('en-IN', {
-                            day: 'numeric',
-                            month: 'short',
-                            year: 'numeric',
-                          })}
-                          {age !== null && (
-                            <span className="font-normal" style={{ color: 'var(--muted)' }}>
-                              {' '}
-                              ({age} yrs)
-                            </span>
-                          )}
-                        </span>
-                      ) : (
-                        <span className="italic font-sans">Not set</span>
-                      )}
-                    </div>
                   </div>
                 </div>
                 <div className="flex items-center justify-between text-xs pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
                   <span style={{ color: 'var(--muted)' }}>
                     {summaryData.count} holding{summaryData.count === 1 ? '' : 's'}
                   </span>
-                  <span className="font-bold">{MoneyEngine.formatRupees(summaryData.valuationMinor, false)}</span>
+                  <span className="font-bold tabular-nums">{MoneyEngine.formatRupees(summaryData.valuationMinor, false)}</span>
                 </div>
               </div>
             );
@@ -471,7 +439,7 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
         </div>
       </div>
 
-      <div className="card p-6 space-y-4">
+      <div className="card p-4 md:p-6 space-y-4">
         <h2 className="text-base font-bold flex items-center gap-2">
           <Target className="w-4 h-4" /> Goals
         </h2>
@@ -537,7 +505,7 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
         </form>
       </div>
 
-      <div className="card p-6 space-y-3">
+      <div className="card p-4 md:p-6 space-y-3">
         <h2 className="text-base font-bold flex items-center gap-2">
           <Coins className="w-4 h-4" /> Gold bonds
         </h2>
@@ -570,7 +538,7 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
         </div>
       </div>
 
-      <div className="card p-6 space-y-4">
+      <div className="card p-4 md:p-6 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h2 className="text-base font-bold flex items-center gap-2">
@@ -590,11 +558,11 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
         </div>
       </div>
 
-      <div className="card p-6 space-y-5">
+      <div className="card p-4 md:p-6 space-y-4">
         <h2 className="text-base font-bold flex items-center gap-2">
-          <Shield className="w-4 h-4" /> Vault on this computer
+          <Shield className="w-4 h-4" /> Vault on this phone
         </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
           <div className="p-3 rounded-xl border" style={{ borderColor: 'var(--border)' }}>
             <div className="flex items-center gap-1.5" style={{ color: 'var(--muted)' }}>
               <Database className="w-3.5 h-3.5" /> Stored here
@@ -605,16 +573,16 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
           </div>
           <div className="p-3 rounded-xl border" style={{ borderColor: 'var(--border)' }}>
             <Lock className="w-3.5 h-3.5" style={{ color: 'var(--muted)' }} />
-            <div className="font-semibold mt-1">Statements never leave this machine</div>
+            <div className="font-semibold mt-1">Statements never leave this phone</div>
           </div>
           <div className="p-3 rounded-xl border" style={{ borderColor: 'var(--border)' }}>
             <div className="font-semibold">Locked with your vault email and password. We cannot open the file if you forget them.</div>
           </div>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-2 md:gap-3">
           <button
             onClick={handleExportBackup}
-            className="p-4 rounded-2xl border text-left text-sm"
+            className="p-3 md:p-4 rounded-2xl border text-left text-sm"
             style={{ borderColor: 'var(--border)' }}
           >
             <Download className="w-4 h-4 mb-2" />
@@ -626,7 +594,7 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
           <button
             type="button"
             onClick={handleImportBackup}
-            className="p-4 rounded-2xl border text-left text-sm"
+            className="p-3 md:p-4 rounded-2xl border text-left text-sm"
             style={{ borderColor: 'var(--border)' }}
           >
             <Upload className="w-4 h-4 mb-2" />
@@ -658,7 +626,7 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
                 setNotification({ type: 'warning', message: 'Vault emptied. Self is still here.' });
               }
             }}
-            className="p-4 rounded-2xl border text-left text-sm"
+            className="p-3 md:p-4 rounded-2xl border text-left text-sm"
             style={{ borderColor: 'var(--border)', color: 'var(--bad)' }}
           >
             <Trash2 className="w-4 h-4 mb-2" />
@@ -676,7 +644,7 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
                 return;
               await deleteAccountAndData();
             }}
-            className="p-4 rounded-2xl border text-left text-sm"
+            className="p-3 md:p-4 rounded-2xl border text-left text-sm"
             style={{ borderColor: 'var(--border)', color: 'var(--bad)' }}
           >
             <Trash2 className="w-4 h-4 mb-2" />
@@ -839,7 +807,7 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
             <p className="text-sm" style={{ color: 'var(--muted)' }}>
               {backupGate === 'export'
                 ? 'Re-enter the same email and password you use to unlock GrowUrDhan. There is no second backup password.'
-                : 'Enter the vault email and password that locked this file. The records on this computer will be replaced.'}
+                : 'Enter the vault email and password that locked this file. The records on this phone will be replaced.'}
             </p>
             <label className="block text-xs font-semibold space-y-1">
               <span>Email (username)</span>

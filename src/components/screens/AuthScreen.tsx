@@ -202,14 +202,14 @@ export const AuthScreen: React.FC = () => {
             <h1 className="text-xl font-bold">{heading}</h1>
             <p className="text-xs mt-1" style={{ color: 'var(--muted)' }}>
               {mode === 'register'
-                ? 'This becomes Self — it cannot be deleted. Money stays on this computer.'
+                ? 'This becomes Self — it cannot be deleted. Money stays on this phone.'
                 : mode === 'restore' && newDeviceRestore
                   ? 'Same email, password, PAN, date of birth and security answers you used at signup.'
                 : mode === 'restore'
-                  ? 'Email and password unlock the file. Records on this computer will be replaced.'
+                  ? 'Email and password unlock the file. Records on this phone will be replaced.'
                 : mode === 'change'
                   ? 'Passwords are renewed every six months.'
-                  : 'Password every time. Your email is remembered on this computer.'}
+                  : 'Password every time. Your email is remembered on this phone.'}
             </p>
           </div>
 

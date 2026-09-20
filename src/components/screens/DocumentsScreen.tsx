@@ -538,49 +538,47 @@ export const DocumentsScreen: React.FC = () => {
   }, [parseResult?.periodTo, reconciliation?.statementDate]);
 
   return (
-    <div className="space-y-6 pb-12">
-      {/* Header & Tabs */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-4 md:space-y-6 pb-2 md:pb-8">
+      <div className="flex flex-col gap-3">
         <div>
-          <h1 className="text-2xl font-bold font-serif text-white tracking-tight">
-            Documents & Records
+          <h1 className="page-title text-2xl font-bold font-serif tracking-tight">
+            Documents
           </h1>
-          <p className="text-xs sm:text-sm text-slate-400">
+          <p className="page-lead text-xs sm:text-sm" style={{ color: 'var(--muted)' }}>
             Encrypted statement reader, Indian capital gains computation & immutable records
           </p>
         </div>
 
-        {/* Bento Tab Switcher */}
-        <div className="flex items-center bg-slate-900 p-1 rounded-2xl border border-slate-800 text-xs sm:text-sm font-semibold">
+        <div className="flex items-center overflow-x-auto p-1 rounded-2xl border text-xs sm:text-sm font-semibold" style={{ background: 'var(--input)', borderColor: 'var(--border)' }}>
           <button
             onClick={() => setActiveTab('IMPORTER')}
-            className={`px-4 py-2 rounded-xl transition-all cursor-pointer ${
+            className={`px-3 md:px-4 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
               activeTab === 'IMPORTER'
                 ? 'bg-amber-400 text-slate-950 font-bold shadow-xs'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            Statement Reader
+            Statement
           </button>
           <button
             onClick={() => setActiveTab('TAXES')}
-            className={`px-4 py-2 rounded-xl transition-all cursor-pointer ${
+            className={`px-3 md:px-4 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
               activeTab === 'TAXES'
                 ? 'bg-amber-400 text-slate-950 font-bold shadow-xs'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            Tax Summary (CA)
+            Tax
           </button>
           <button
             onClick={() => setActiveTab('RECORD_BOOK')}
-            className={`px-4 py-2 rounded-xl transition-all cursor-pointer ${
+            className={`px-3 md:px-4 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
               activeTab === 'RECORD_BOOK'
                 ? 'bg-amber-400 text-slate-950 font-bold shadow-xs'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            Record Book
+            Records
           </button>
         </div>
       </div>
@@ -605,9 +603,8 @@ export const DocumentsScreen: React.FC = () => {
       {/* TAB 1: STATEMENT IMPORTER & RECONCILIATION */}
       {activeTab === 'IMPORTER' && (
         <ErrorBoundary>
-          <div className="space-y-6">
-          {/* STEP 1: ENTITY SELECTION & FILE UPLOAD BENTO CARD */}
-          <div className="bg-slate-900/80 rounded-3xl p-6 sm:p-7 border border-slate-800 backdrop-blur-md shadow-lg space-y-6">
+          <div className="space-y-4 md:space-y-6">
+          <div className="card p-4 md:p-7 space-y-4 md:space-y-6">
             {/* Top Bar: Family Member Target Selector */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-800">
               <div>
@@ -625,7 +622,7 @@ export const DocumentsScreen: React.FC = () => {
                   id="target-family-member-select"
                   value={targetMemberId}
                   onChange={e => handleTargetMemberChange(e.target.value)}
-                  className="px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm font-bold text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-400/50 cursor-pointer min-w-[220px]"
+                  className="px-3 md:px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm font-bold text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-400/50 cursor-pointer w-full sm:min-w-[220px]"
                 >
                   {familyMembers.map(member => (
                     <option key={member.id} value={member.id}>
@@ -657,7 +654,7 @@ export const DocumentsScreen: React.FC = () => {
                   handleFileChange(fakeEvent);
                 }
               }}
-              className={`border border-dashed rounded-2xl p-6 sm:p-8 text-center space-y-4 transition-colors ${
+              className={`border border-dashed rounded-2xl p-4 md:p-8 text-center space-y-3 transition-colors ${
                 isDragging
                   ? 'border-amber-400 bg-amber-400/10'
                   : 'border-slate-700 hover:border-amber-400/60 bg-slate-950/50'
@@ -678,12 +675,12 @@ export const DocumentsScreen: React.FC = () => {
                 </p>
                 {pythonReady === false && (
                   <p className="text-xs text-amber-300 pt-2">
-                    Python casparser is not running. Start the app with <span className="font-mono">npm run dev</span> so PDFs can be read on this computer.
+                    Python casparser is not running. Start the app with <span className="font-mono">npm run dev</span> so PDFs can be read on this device.
                   </p>
                 )}
                 {pythonReady === true && (
                   <p className="text-[11px] text-emerald-400/90 pt-1">
-                    Python casparser is ready on this computer.
+                    Python casparser is ready on this device.
                   </p>
                 )}
               </div>
@@ -792,7 +789,7 @@ export const DocumentsScreen: React.FC = () => {
                   🔒 CAS uses the 10-character PAN in capitals.
                   NPS statements from Protean CRA use the first 4 letters of the
                   first name plus DDMM of birth (e.g. amit1508). GrowUrDhan
-                  tries both automatically. The file stays on this computer.
+                  tries both automatically. The file stays on this device.
                 </p>
               </form>
             )}
@@ -856,7 +853,7 @@ export const DocumentsScreen: React.FC = () => {
 
           {/* TASK 6: RECONCILIATION REVIEW (SRS-UX-033) */}
           {reconciliation && (
-            <div className="bg-slate-900/80 rounded-3xl border border-slate-800 backdrop-blur-md shadow-lg overflow-hidden space-y-6 p-6 sm:p-7 animate-in fade-in">
+            <div className="card overflow-hidden space-y-4 p-4 md:p-7">
               {/* TOP — Header with Date */}
               <div className="space-y-1 pb-4 border-b border-slate-800">
                 <h3 className="text-lg font-bold font-serif text-slate-100">
@@ -1028,20 +1025,20 @@ export const DocumentsScreen: React.FC = () => {
                           .map(l => (
                             <div
                               key={l.line.holdingId}
-                              className="py-2 flex items-start justify-between gap-3 text-xs"
+                              className="py-2.5 flex items-start justify-between gap-3 text-xs"
                             >
-                              <div className="flex items-start gap-3">
+                              <div className="flex items-start gap-2.5 min-w-0">
                                 <input
                                   type="checkbox"
                                   checked={acceptedHoldingIds.has(l.line.holdingId)}
                                   onChange={() => handleToggleLine(l.line.holdingId)}
-                                  className="w-4 h-4 mt-0.5 rounded text-amber-400 focus:ring-0 cursor-pointer accent-amber-400"
+                                  className="w-[18px] h-[18px] mt-0.5 rounded text-amber-400 focus:ring-0 cursor-pointer accent-amber-400 shrink-0"
                                 />
-                                <div>
-                                  <div className="font-bold text-slate-100">
+                                <div className="min-w-0">
+                                  <div className="font-bold text-slate-100 leading-snug">
                                     {displayHoldingName(l.line.holdingName)}
                                   </div>
-                                  <div className="text-slate-300 text-[11px] mt-0.5 leading-relaxed">
+                                  <div className="text-slate-300 text-[11px] mt-0.5 leading-snug line-clamp-2">
                                     {l.message}
                                   </div>
                                 </div>
@@ -1099,20 +1096,20 @@ export const DocumentsScreen: React.FC = () => {
                           .map(l => (
                             <div
                               key={l.line.holdingId}
-                              className="py-2 flex items-start justify-between gap-3 text-xs"
+                              className="py-2.5 flex items-start justify-between gap-3 text-xs"
                             >
-                              <div className="flex items-start gap-3">
+                              <div className="flex items-start gap-2.5 min-w-0">
                                 <input
                                   type="checkbox"
                                   checked={acceptedHoldingIds.has(l.line.holdingId)}
                                   onChange={() => handleToggleLine(l.line.holdingId)}
-                                  className="w-4 h-4 mt-0.5 rounded text-amber-400 focus:ring-0 cursor-pointer accent-amber-400"
+                                  className="w-[18px] h-[18px] mt-0.5 rounded text-amber-400 focus:ring-0 cursor-pointer accent-amber-400 shrink-0"
                                 />
-                                <div>
-                                  <div className="font-bold text-slate-100">
+                                <div className="min-w-0">
+                                  <div className="font-bold text-slate-100 leading-snug">
                                     {displayHoldingName(l.line.holdingName)}
                                   </div>
-                                  <div className="text-slate-300 text-[11px] mt-0.5 leading-relaxed">
+                                  <div className="text-slate-300 text-[11px] mt-0.5 leading-snug line-clamp-2">
                                     {l.message}
                                   </div>
                                 </div>
@@ -1170,20 +1167,20 @@ export const DocumentsScreen: React.FC = () => {
                           .map(l => (
                             <div
                               key={l.line.holdingId}
-                              className="py-2 flex items-start justify-between gap-3 text-xs"
+                              className="py-2.5 flex items-start justify-between gap-3 text-xs"
                             >
-                              <div className="flex items-start gap-3">
+                              <div className="flex items-start gap-2.5 min-w-0">
                                 <input
                                   type="checkbox"
                                   checked={acceptedHoldingIds.has(l.line.holdingId)}
                                   onChange={() => handleToggleLine(l.line.holdingId)}
-                                  className="w-4 h-4 mt-0.5 rounded text-amber-400 focus:ring-0 cursor-pointer accent-amber-400"
+                                  className="w-[18px] h-[18px] mt-0.5 rounded text-amber-400 focus:ring-0 cursor-pointer accent-amber-400 shrink-0"
                                 />
-                                <div>
-                                  <div className="font-bold text-slate-100">
+                                <div className="min-w-0">
+                                  <div className="font-bold text-slate-100 leading-snug">
                                     {displayHoldingName(l.line.holdingName)}
                                   </div>
-                                  <div className="text-slate-300 text-[11px] mt-0.5 leading-relaxed">
+                                  <div className="text-slate-300 text-[11px] mt-0.5 leading-snug line-clamp-2">
                                     {l.message}
                                   </div>
                                 </div>
@@ -1241,20 +1238,20 @@ export const DocumentsScreen: React.FC = () => {
                           .map(l => (
                             <div
                               key={l.line.holdingId}
-                              className="py-2 flex items-start justify-between gap-3 text-xs"
+                              className="py-2.5 flex items-start justify-between gap-3 text-xs"
                             >
-                              <div className="flex items-start gap-3">
+                              <div className="flex items-start gap-2.5 min-w-0">
                                 <input
                                   type="checkbox"
                                   checked={acceptedHoldingIds.has(l.line.holdingId)}
                                   onChange={() => handleToggleLine(l.line.holdingId)}
-                                  className="w-4 h-4 mt-0.5 rounded text-amber-400 focus:ring-0 cursor-pointer accent-amber-400"
+                                  className="w-[18px] h-[18px] mt-0.5 rounded text-amber-400 focus:ring-0 cursor-pointer accent-amber-400 shrink-0"
                                 />
-                                <div>
-                                  <div className="font-bold text-slate-100">
+                                <div className="min-w-0">
+                                  <div className="font-bold text-slate-100 leading-snug">
                                     {displayHoldingName(l.line.holdingName)}
                                   </div>
-                                  <div className="text-slate-300 text-[11px] mt-0.5 leading-relaxed">
+                                  <div className="text-slate-300 text-[11px] mt-0.5 leading-snug line-clamp-2">
                                     {l.message}
                                   </div>
                                 </div>

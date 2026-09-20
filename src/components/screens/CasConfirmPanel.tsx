@@ -43,7 +43,7 @@ export const CasConfirmPanel: React.FC<CasConfirmPanelProps> = ({ result, previo
   );
 
   return (
-    <div className="bg-slate-900/80 rounded-3xl border border-slate-800 backdrop-blur-md shadow-lg overflow-hidden space-y-5 p-6 sm:p-7 animate-in fade-in">
+    <div className="card overflow-hidden space-y-4 p-4 md:p-7">
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 pb-4 border-b border-slate-800">
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-amber-300 text-xs font-bold uppercase tracking-wider">
@@ -71,30 +71,30 @@ export const CasConfirmPanel: React.FC<CasConfirmPanelProps> = ({ result, previo
         )}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="rounded-2xl bg-slate-950/70 border border-slate-800 p-4 space-y-1">
+      <div className="grid grid-cols-3 gap-2 md:gap-3">
+        <div className="rounded-xl md:rounded-2xl bg-slate-950/70 border border-slate-800 p-2.5 md:p-4 space-y-1 min-w-0">
           <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
             Printed on PDF
           </div>
-          <div className="text-xl font-bold text-slate-100 font-mono">
+          <div className="text-sm md:text-xl font-bold text-slate-100 font-mono tabular-nums">
             {formatInrAmount(pdfGrand)}
           </div>
-          <div className="text-[11px] text-slate-500">Grand total from the statement</div>
+          <div className="text-[11px] text-slate-500 hidden md:block">Grand total from the statement</div>
         </div>
-        <div className="rounded-2xl bg-slate-950/70 border border-slate-800 p-4 space-y-1">
+        <div className="rounded-xl md:rounded-2xl bg-slate-950/70 border border-slate-800 p-2.5 md:p-4 space-y-1 min-w-0">
           <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
             Parsed from PDF
           </div>
-          <div className="text-xl font-bold text-slate-100 font-mono">
+          <div className="text-sm md:text-xl font-bold text-slate-100 font-mono tabular-nums">
             {formatInrAmount(parsedGrand)}
           </div>
-          <div className="text-[11px] text-slate-500">
+          <div className="text-[11px] text-slate-500 hidden md:block">
             {result.parsedTotals?.holdingsCount ?? holdings.length} holding
             {(result.parsedTotals?.holdingsCount ?? holdings.length) === 1 ? '' : 's'}
           </div>
         </div>
         <div
-          className={`rounded-2xl border p-4 space-y-1 ${
+          className={`rounded-xl md:rounded-2xl border p-2.5 md:p-4 space-y-1 min-w-0 ${
             complete
               ? 'bg-emerald-950/30 border-emerald-800/50'
               : 'bg-amber-950/30 border-amber-800/50'
@@ -104,13 +104,13 @@ export const CasConfirmPanel: React.FC<CasConfirmPanelProps> = ({ result, previo
             Difference
           </div>
           <div
-            className={`text-xl font-bold font-mono ${
+            className={`text-sm md:text-xl font-bold font-mono tabular-nums ${
               complete ? 'text-emerald-300' : 'text-amber-300'
             }`}
           >
             {delta === 0 ? '₹ 0.00' : formatInrAmount(delta)}
           </div>
-          <div className={`text-[11px] ${complete ? 'text-emerald-400/80' : 'text-amber-300/90'}`}>
+          <div className={`text-[11px] hidden md:block ${complete ? 'text-emerald-400/80' : 'text-amber-300/90'}`}>
             {complete
               ? 'Parsed value matches the PDF total'
               : 'Parsed value does not match the PDF total'}
@@ -228,7 +228,25 @@ export const CasConfirmPanel: React.FC<CasConfirmPanelProps> = ({ result, previo
           {showHoldings ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
         </button>
         {showHoldings && (
-          <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
+          <>
+            <div className="md:hidden divide-y max-h-[420px] overflow-y-auto" style={{ borderColor: 'var(--border)' }}>
+              {holdings.map(h => (
+                <div key={h.id} className="px-3 py-2.5 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold leading-snug">{displayHoldingName(h.holdingName)}</div>
+                    <div className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--muted)' }}>
+                      {[ASSET_CATEGORIES[h.category]?.shortName || h.category, h.folio, h.quantity.toLocaleString('en-IN', { maximumFractionDigits: 3 }) + ' u']
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </div>
+                  </div>
+                  <div className="text-sm font-bold font-mono tabular-nums shrink-0">
+                    {formatInrAmount(h.totalAmount)}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="hidden md:block overflow-x-auto max-h-[420px] overflow-y-auto">
             <table className="w-full text-left text-xs">
               <thead className="sticky top-0 bg-slate-950 text-slate-500 uppercase tracking-wider text-[10px]">
                 <tr>
@@ -267,7 +285,8 @@ export const CasConfirmPanel: React.FC<CasConfirmPanelProps> = ({ result, previo
                 ))}
               </tbody>
             </table>
-          </div>
+            </div>
+          </>
         )}
       </div>
     </div>

@@ -134,7 +134,7 @@ const KoshaMainApp: React.FC = () => {
 
       <div className="flex-1 flex max-w-7xl w-full mx-auto">
         <Sidebar />
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 min-w-0 max-w-full overflow-x-hidden app-main">
+        <main className="flex-1 px-3 py-3 md:p-6 lg:p-8 min-w-0 max-w-full overflow-x-hidden app-main">
           {activeScreen === 'HOME' && (
             <HomeScreen
               onOpenAddHolding={() => setIsAddHoldingOpen(true)}

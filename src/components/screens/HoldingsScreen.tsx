@@ -69,40 +69,43 @@ export const HoldingsScreen: React.FC<Props> = ({ onOpenAddHolding, onOpenHoldin
   };
 
   return (
-    <div className="space-y-5 pb-12">
-      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
-        <div>
-          <div className="text-[10px] uppercase tracking-[0.16em] font-bold mb-1" style={{ color: 'var(--muted)' }}>Portfolio</div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Holdings</h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>See what you own, where it sits, and how much it has gained.</p>
+    <div className="space-y-3 md:space-y-5 pb-2 md:pb-8">
+      <div className="flex items-end justify-between gap-3">
+        <div className="min-w-0">
+          <div className="page-kicker text-[10px] uppercase tracking-[0.16em] font-bold mb-1" style={{ color: 'var(--muted)' }}>Portfolio</div>
+          <h1 className="page-title text-2xl sm:text-3xl font-bold tracking-tight">Holdings</h1>
+          <p className="page-lead text-sm mt-1" style={{ color: 'var(--muted)' }}>See what you own, where it sits, and how much it has gained.</p>
         </div>
-        <button onClick={onOpenAddHolding} className="px-4 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5" style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}><Plus className="w-4 h-4" /> Add manually</button>
+        <button onClick={onOpenAddHolding} className="hidden md:flex px-4 py-2.5 rounded-xl text-sm font-bold items-center justify-center gap-1.5 shrink-0" style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}><Plus className="w-4 h-4" /> Add manually</button>
       </div>
 
       {filteredHoldings.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <Metric label="Invested" value={totals.invested} empty={totals.unknown > 0 && totals.invested === 0n} hint={totals.unknown > 0 ? `${totals.unknown} need what you paid` : undefined} />
-          <Metric label="Current value" value={totals.current} emphasis />
-          <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--border)', background: 'var(--input)' }}>
-            <div className="text-xs" style={{ color: 'var(--muted)' }}>Absolute gain</div>
+        <div className="grid grid-cols-3 gap-2 md:gap-3">
+          <Metric label="Invested" value={totals.invested} empty={totals.unknown > 0 && totals.invested === 0n} hint={totals.unknown > 0 ? `${totals.unknown} need cost` : undefined} />
+          <Metric label="Current" value={totals.current} emphasis />
+          <div className="rounded-xl md:rounded-2xl border p-2.5 md:p-4 min-w-0" style={{ borderColor: 'var(--border)', background: 'var(--input)' }}>
+            <div className="text-[10px] md:text-xs" style={{ color: 'var(--muted)' }}>Gain</div>
             {totals.unknown > 0 && totals.invested === 0n ? (
-              <div className="mt-1 text-lg font-bold" style={{ color: 'var(--bad)' }}>{UNKNOWN_INVESTED_LABEL}</div>
+              <div className="mt-0.5 text-sm md:text-lg font-bold leading-tight" style={{ color: 'var(--bad)' }}>{UNKNOWN_INVESTED_LABEL}</div>
             ) : (
-              <div className="mt-1 flex items-baseline gap-2"><PrivacyDelta minor={totals.gain} className="text-lg font-bold" /><span className="text-xs font-bold" style={{ color: (totalReturn ?? 0) >= 0 ? 'var(--good)' : 'var(--bad)' }}>{formatPct(totalReturn)}</span></div>
+              <div className="mt-0.5">
+                <PrivacyDelta minor={totals.gain} className="text-sm md:text-lg font-bold tabular-nums" />
+                <div className="text-[11px] font-bold" style={{ color: (totalReturn ?? 0) >= 0 ? 'var(--good)' : 'var(--bad)' }}>{formatPct(totalReturn)}</div>
+              </div>
             )}
             {totals.unknown > 0 && totals.invested > 0n && (
-              <div className="text-[11px] mt-1" style={{ color: 'var(--muted)' }}>{totals.unknown} holdings excluded — no buy price</div>
+              <div className="text-[10px] mt-0.5 hidden md:block" style={{ color: 'var(--muted)' }}>{totals.unknown} excluded — no buy price</div>
             )}
           </div>
         </div>
       )}
 
-      <section className="card p-3 sm:p-4 space-y-3">
+      <section className="card p-2.5 md:p-4 space-y-2 md:space-y-3">
         <div className="flex flex-col sm:flex-row gap-2">
-          <div className="relative flex-1"><Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--muted)' }} /><input value={q} onChange={e => setQ(e.target.value)} aria-label="Search holdings" placeholder="Search investment, folio, ISIN, institution or owner…" className="w-full pl-10 pr-3 py-2.5 rounded-xl border text-sm" style={{ background: 'var(--input)', borderColor: 'var(--border)', color: 'var(--text)' }} /></div>
+          <div className="relative flex-1"><Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--muted)' }} /><input value={q} onChange={e => setQ(e.target.value)} aria-label="Search holdings" placeholder="Search name, folio, ISIN…" className="w-full pl-10 pr-3 py-2.5 rounded-xl border text-sm" style={{ background: 'var(--input)', borderColor: 'var(--border)', color: 'var(--text)' }} /></div>
           <div className="relative"><UserRound className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--muted)' }} /><select value={ownerId} onChange={e => setOwnerId(e.target.value)} aria-label="Filter by family member" className="w-full sm:w-48 pl-9 pr-8 py-2.5 rounded-xl border text-sm appearance-none" style={{ background: 'var(--input)', borderColor: 'var(--border)', color: 'var(--text)' }}><option value="ALL">Everyone</option>{familyMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select></div>
         </div>
-        <div className="flex items-center gap-2 overflow-x-auto pb-0.5">
+        <div className="flex items-center gap-2 overflow-x-auto pb-0.5 -mx-0.5 px-0.5">
           <SlidersHorizontal className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--muted)' }} />
           <Chip active={bucket === 'ALL'} onClick={() => setBucket('ALL')}>All</Chip>
           {classChips.map(b => (
@@ -121,13 +124,13 @@ export const HoldingsScreen: React.FC<Props> = ({ onOpenAddHolding, onOpenHoldin
         </div>
       </section>
 
-      <div className="flex items-center justify-between px-1">
-        <div className="text-xs font-semibold" style={{ color: 'var(--muted)' }}>{rows.length} {rows.length === 1 ? 'holding' : 'holdings'} shown</div>
+      <div className="flex items-center justify-between px-0.5">
+        <div className="text-xs font-semibold" style={{ color: 'var(--muted)' }}>{rows.length} {rows.length === 1 ? 'holding' : 'holdings'}</div>
         {closedCount > 0 && !showClosed && <div className="text-[11px]" style={{ color: 'var(--muted)' }}>{closedCount} closed hidden</div>}
       </div>
 
       {rows.length === 0 ? (
-        <div className="card p-8 text-center space-y-2"><div className="text-sm font-semibold">{filteredHoldings.length === 0 ? 'Nothing here yet' : 'No holdings match these filters'}</div><p className="text-xs" style={{ color: 'var(--muted)' }}>{filteredHoldings.length === 0 ? 'Read a statement or add PPF, property, gold or a loan manually.' : 'Try clearing a filter or searching for another investment.'}</p>{hasFilters && filteredHoldings.length > 0 && <button onClick={clearFilters} className="text-xs font-bold" style={{ color: 'var(--accent)' }}>Clear filters</button>}</div>
+        <div className="card p-6 md:p-8 text-center space-y-2"><div className="text-sm font-semibold">{filteredHoldings.length === 0 ? 'Nothing here yet' : 'No holdings match these filters'}</div><p className="text-xs" style={{ color: 'var(--muted)' }}>{filteredHoldings.length === 0 ? 'Read a statement or add PPF, property, gold or a loan manually.' : 'Try clearing a filter or searching for another investment.'}</p>{hasFilters && filteredHoldings.length > 0 && <button onClick={clearFilters} className="text-xs font-bold" style={{ color: 'var(--accent)' }}>Clear filters</button>}</div>
       ) : (
         <div className="card overflow-hidden" style={{ borderColor: 'var(--border)' }}>
           <div className="hidden md:grid grid-cols-[minmax(0,1.7fr)_0.9fr_0.9fr_0.8fr_24px] gap-4 px-4 py-3 border-b text-[10px] uppercase tracking-[0.12em] font-bold" style={{ color: 'var(--muted)', borderColor: 'var(--border)' }}><span>Investment</span><span className="text-right">Invested</span><span className="text-right">Current</span><span className="text-right">Abs. / Ann.</span><span /></div>
@@ -135,7 +138,53 @@ export const HoldingsScreen: React.FC<Props> = ({ onOpenAddHolding, onOpenHoldin
             {rows.map(({ h, m, abs, unknown, ann, annOk }) => {
               const owner = familyMembers.find(fm => fm.id === h.ownerId);
               const good = (abs ?? 0) >= 0;
-              return <button key={h.id} onClick={() => onOpenHoldingDetail(h.id)} className="w-full text-left px-4 py-3.5 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"><div className="grid md:grid-cols-[minmax(0,1.7fr)_0.9fr_0.9fr_0.8fr_24px] gap-3 md:gap-4 items-center"><div className="min-w-0 flex items-start gap-2"><span className="mt-1.5 w-2 h-2 rounded-full shrink-0" style={{ background: BUCKET_COLORS[bucketOf(h)] }} /><div className="min-w-0"><div className="font-semibold text-sm truncate">{displayHoldingName(h.name)}</div><div className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--muted)' }}>{plainCategory(h.category)}{owner ? ` · ${owner.name}` : ''} · {whereHeld(h)}{unitWord(h) && m.qty > 0n ? ` · ${MoneyEngine.toQty(m.qty).toLocaleString('en-IN')} ${unitWord(h)}` : ''}</div></div></div><div className="md:text-right"><div className="md:hidden text-[10px] uppercase tracking-wide font-bold mb-0.5" style={{ color: 'var(--muted)' }}>Invested</div>{unknown ? <span className="text-sm" style={{ color: 'var(--muted)' }}>—</span> : <PrivacyValue minor={m.cost} includePaise={false} className="text-sm" />}</div><div className="md:text-right"><div className="md:hidden text-[10px] uppercase tracking-wide font-bold mb-0.5" style={{ color: 'var(--muted)' }}>Current</div><PrivacyValue minor={m.value} includePaise={false} className="text-sm font-bold" /></div><div className="md:text-right"><div className="md:hidden text-[10px] uppercase tracking-wide font-bold mb-0.5" style={{ color: 'var(--muted)' }}>Abs. / Ann.</div>{unknown ? <div className="text-sm font-semibold" style={{ color: 'var(--bad)' }}>{UNKNOWN_INVESTED_LABEL}</div> : <><PrivacyDelta minor={m.gain} className="text-sm font-semibold" /><div className="text-[11px] font-medium" style={{ color: good ? 'var(--good)' : 'var(--bad)' }}>{formatPct(abs)}</div><div className="text-[11px]" style={{ color: annOk ? 'var(--text)' : 'var(--muted)' }}>Ann. {ann}</div></>}</div><ChevronRight className="hidden md:block w-4 h-4" style={{ color: 'var(--muted)' }} /></div></button>;
+              const meta = [plainCategory(h.category), owner?.name, whereHeld(h), unitWord(h) && m.qty > 0n ? `${MoneyEngine.toQty(m.qty).toLocaleString('en-IN')} ${unitWord(h)}` : '']
+                .filter(Boolean)
+                .join(' · ');
+              return (
+                <button key={h.id} onClick={() => onOpenHoldingDetail(h.id)} className="w-full text-left px-3 py-2.5 md:px-4 md:py-3.5 hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+                  <div className="flex md:hidden items-center gap-2.5">
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: BUCKET_COLORS[bucketOf(h)] }} />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold text-sm truncate">{displayHoldingName(h.name)}</div>
+                      <div className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--muted)' }}>{meta}</div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <PrivacyValue minor={m.value} includePaise={false} className="text-sm font-bold tabular-nums" />
+                      {unknown ? (
+                        <div className="text-[11px] font-semibold" style={{ color: 'var(--bad)' }}>{UNKNOWN_INVESTED_LABEL}</div>
+                      ) : (
+                        <div className="text-[11px] font-medium" style={{ color: good ? 'var(--good)' : 'var(--bad)' }}>
+                          <PrivacyDelta minor={m.gain} className="text-[11px] font-medium" /> {formatPct(abs)}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="hidden md:grid grid-cols-[minmax(0,1.7fr)_0.9fr_0.9fr_0.8fr_24px] gap-4 items-center">
+                    <div className="min-w-0 flex items-start gap-2">
+                      <span className="mt-1.5 w-2 h-2 rounded-full shrink-0" style={{ background: BUCKET_COLORS[bucketOf(h)] }} />
+                      <div className="min-w-0">
+                        <div className="font-semibold text-sm truncate">{displayHoldingName(h.name)}</div>
+                        <div className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--muted)' }}>{meta}</div>
+                      </div>
+                    </div>
+                    <div className="text-right">{unknown ? <span className="text-sm" style={{ color: 'var(--muted)' }}>—</span> : <PrivacyValue minor={m.cost} includePaise={false} className="text-sm" />}</div>
+                    <div className="text-right"><PrivacyValue minor={m.value} includePaise={false} className="text-sm font-bold" /></div>
+                    <div className="text-right">
+                      {unknown ? (
+                        <div className="text-sm font-semibold" style={{ color: 'var(--bad)' }}>{UNKNOWN_INVESTED_LABEL}</div>
+                      ) : (
+                        <>
+                          <PrivacyDelta minor={m.gain} className="text-sm font-semibold" />
+                          <div className="text-[11px] font-medium" style={{ color: good ? 'var(--good)' : 'var(--bad)' }}>{formatPct(abs)}</div>
+                          <div className="text-[11px]" style={{ color: annOk ? 'var(--text)' : 'var(--muted)' }}>Ann. {ann}</div>
+                        </>
+                      )}
+                    </div>
+                    <ChevronRight className="w-4 h-4" style={{ color: 'var(--muted)' }} />
+                  </div>
+                </button>
+              );
             })}
           </div>
         </div>
@@ -145,12 +194,12 @@ export const HoldingsScreen: React.FC<Props> = ({ onOpenAddHolding, onOpenHoldin
 };
 
 const Metric: React.FC<{ label: string; value: bigint; emphasis?: boolean; empty?: boolean; hint?: string }> = ({ label, value, emphasis, empty, hint }) => (
-  <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--border)', background: 'var(--input)' }}>
-    <div className="text-xs" style={{ color: 'var(--muted)' }}>{label}</div>
+  <div className="rounded-xl md:rounded-2xl border p-2.5 md:p-4 min-w-0" style={{ borderColor: 'var(--border)', background: 'var(--input)' }}>
+    <div className="text-[10px] md:text-xs" style={{ color: 'var(--muted)' }}>{label}</div>
     {empty
-      ? <div className={emphasis ? 'text-lg font-bold mt-1' : 'text-lg font-semibold mt-1'} style={{ color: 'var(--muted)' }}>—</div>
-      : <PrivacyValue minor={value} includePaise={false} className={emphasis ? 'text-lg font-bold mt-1' : 'text-lg font-semibold mt-1'} />}
-    {hint && <div className="text-[11px] mt-1" style={{ color: 'var(--muted)' }}>{hint}</div>}
+      ? <div className={`${emphasis ? 'font-bold' : 'font-semibold'} text-sm md:text-lg mt-0.5`} style={{ color: 'var(--muted)' }}>—</div>
+      : <PrivacyValue minor={value} includePaise={false} className={`${emphasis ? 'font-bold' : 'font-semibold'} text-sm md:text-lg mt-0.5 tabular-nums`} />}
+    {hint && <div className="text-[10px] mt-0.5 truncate" style={{ color: 'var(--muted)' }}>{hint}</div>}
   </div>
 );
 const Chip: React.FC<{ active: boolean; disabled?: boolean; onClick: () => void; children: React.ReactNode; tone?: string }> = ({ active, disabled, onClick, children, tone }) => (

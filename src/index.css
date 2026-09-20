@@ -69,6 +69,7 @@ html.theme-light {
   body,
   #root {
     min-height: 100%;
+    min-height: 100dvh;
     color: var(--text);
   }
 
@@ -79,15 +80,22 @@ html.theme-light {
       radial-gradient(1200px 520px at -10% -20%, var(--wash-1), transparent 58%),
       radial-gradient(900px 480px at 110% -10%, var(--wash-2), transparent 52%);
     background-attachment: fixed;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
 
   #root {
     background: transparent;
   }
 
-  body {
-    -webkit-font-smoothing: antialiased;
-    text-rendering: optimizeLegibility;
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
   }
 
   button,
@@ -158,11 +166,23 @@ select {
 
 @media (max-width: 767px) {
   .card {
-    border-radius: 1.25rem;
+    border-radius: 1rem;
+    box-shadow: 0 8px 18px rgba(28, 18, 8, 0.06);
   }
 
   .app-main {
-    padding-bottom: calc(7.5rem + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .page-kicker,
+  .page-lead {
+    display: none;
+  }
+
+  h1.page-title {
+    font-size: 1.25rem;
+    line-height: 1.25;
+    letter-spacing: -0.02em;
   }
 }
 

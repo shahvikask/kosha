@@ -103,13 +103,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpen
         : drill.kind === 'fy' ? `Income · FY ${drill.id}` : null;
 
   return (
-    <div className="space-y-5 sm:space-y-6 pb-12">
-      <section className="card card-hero p-5 sm:p-8 relative overflow-hidden">
-        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-5">
-          <div>
-            <div className="text-xs uppercase tracking-wider font-bold mb-2" style={{ color: 'var(--muted)' }}>{who} · Net worth</div>
-            <PrivacyValue minor={summary.netWorthMinor} showCompact className="text-4xl sm:text-5xl font-extrabold tracking-tight" />
-            <div className="mt-3 flex flex-wrap gap-2">
+    <div className="space-y-3 md:space-y-6 pb-2 md:pb-8">
+      <section className="card card-hero p-4 md:p-8 relative overflow-hidden">
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 md:gap-5">
+          <div className="min-w-0">
+            <div className="text-[10px] md:text-xs uppercase tracking-wider font-bold mb-1 md:mb-2" style={{ color: 'var(--muted)' }}>{who} · Net worth</div>
+            <PrivacyValue minor={summary.netWorthMinor} showCompact className="text-3xl md:text-5xl font-extrabold tracking-tight tabular-nums" includePaise={false} />
+            <div className="mt-3 flex flex-wrap gap-1.5 md:gap-2">
               <DateChip
                 label="Last statement"
                 value={lastStatementAsOf ? formatStatementDateShort(lastStatementAsOf) : 'None yet'}
@@ -127,7 +127,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpen
               />
             </div>
           </div>
-          <div className="rounded-2xl border p-4 min-w-[220px]" style={{ borderColor: k.unknownInvestedCount > 0 && k.investedMinor <= 0n ? 'var(--bad)' : 'var(--border)', background: 'var(--input)' }}>
+          <div className="rounded-xl md:rounded-2xl border p-3 md:p-4 min-w-0 sm:min-w-[220px]" style={{ borderColor: k.unknownInvestedCount > 0 && k.investedMinor <= 0n ? 'var(--bad)' : 'var(--border)', background: 'var(--input)' }}>
             <div className="text-[11px] uppercase tracking-wide font-bold" style={{ color: 'var(--muted)' }}>Absolute return</div>
             {k.unknownInvestedCount > 0 && k.investedMinor <= 0n ? (
               <>
@@ -149,7 +149,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpen
             )}
           </div>
         </div>
-        <div className="mt-5 space-y-2">
+        <div className="mt-4 md:mt-5 space-y-1.5 md:space-y-2">
           <WaterRow label="Invested" value={k.investedMinor} widthPct={barPct(k.investedMinor, k.assetsMinor)} color="var(--accent)" />
           <WaterRow label="Assets" value={k.assetsMinor} widthPct={100} color="var(--accent-2)" />
           <WaterRow label="Loans" value={k.liabilitiesMinor} widthPct={barPct(k.liabilitiesMinor, k.assetsMinor)} negative color="var(--bad)" />
@@ -158,9 +158,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpen
       </section>
 
       {empty && (
-        <div className="card p-8 text-center space-y-4">
-          <h2 className="text-xl font-bold">Start with your statement</h2>
-          <p className="text-sm max-w-md mx-auto" style={{ color: 'var(--muted)' }}>Drop your CAS PDF. We read it on this computer and show every holding for you to confirm. Nothing is added until you say so.</p>
+        <div className="card p-5 md:p-8 text-center space-y-3">
+          <h2 className="text-lg md:text-xl font-bold">Start with your statement</h2>
+          <p className="text-sm max-w-md mx-auto" style={{ color: 'var(--muted)' }}>Drop your CAS PDF. We read it on this phone and show every holding for you to confirm. Nothing is added until you say so.</p>
           <div className="flex flex-wrap justify-center gap-3">
             <button onClick={() => setActiveScreen('DOCUMENTS')} className="px-5 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2" style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}><FileSpreadsheet className="w-4 h-4" />Read a statement</button>
             <button onClick={onOpenAddHolding} className="px-5 py-2.5 rounded-xl font-semibold text-sm border" style={{ borderColor: 'var(--border)', color: 'var(--text)' }}>Add PPF, property or a loan</button>
@@ -170,7 +170,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpen
 
       {!empty && (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-4 md:gap-3">
             <Action title="Read a statement" hint="CDSL, CAMS, KFin" onClick={() => setActiveScreen('DOCUMENTS')} tint="var(--bucket-govt)" icon={FileSpreadsheet} />
             <Action title="Add manually" hint="PPF, home, gold" onClick={onOpenAddHolding} tint="var(--accent)" icon={Plus} />
             <Action title="See holdings" hint="Search & compare" onClick={() => setActiveScreen('HOLDINGS')} tint="var(--bucket-shares)" icon={WalletCards} />
@@ -394,7 +394,7 @@ const DateChip: React.FC<{ label: string; value?: string; valueNode?: React.Reac
   const tint = tone === 'red' ? 'var(--bad)' : tone === 'amber' ? 'var(--warn)' : 'var(--good)';
   return (
   <div
-    className="rounded-xl border px-3 py-1.5"
+    className="rounded-xl border px-2.5 py-1 md:px-3 md:py-1.5"
     style={{
       borderColor: `color-mix(in srgb, ${tint} 45%, var(--border))`,
       background: `color-mix(in srgb, ${tint} 14%, var(--input))`,
@@ -407,25 +407,25 @@ const DateChip: React.FC<{ label: string; value?: string; valueNode?: React.Reac
 };
 
 const WaterRow: React.FC<{ label: string; value: bigint; widthPct: number; negative?: boolean; strong?: boolean; color: string }> = ({ label, value, widthPct, negative, strong, color }) => (
-  <div className="grid grid-cols-[7rem_1fr_auto] sm:grid-cols-[8.5rem_1fr_auto] items-center gap-3">
-    <div className="text-xs font-semibold" style={{ color: strong ? 'var(--text)' : 'var(--muted)' }}>{label}</div>
-    <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--chip)' }}>
+  <div className="grid grid-cols-[4.5rem_1fr_auto] sm:grid-cols-[8.5rem_1fr_auto] items-center gap-2 sm:gap-3">
+    <div className="text-[11px] sm:text-xs font-semibold" style={{ color: strong ? 'var(--text)' : 'var(--muted)' }}>{label}</div>
+    <div className="h-1.5 sm:h-2 rounded-full overflow-hidden" style={{ background: 'var(--chip)' }}>
       <div
         className="h-full rounded-full"
         style={{ width: `${widthPct}%`, background: color, opacity: negative ? 0.75 : 1 }}
       />
     </div>
-    <PrivacyValue minor={value} includePaise={false} className={`text-sm ${strong ? 'font-extrabold' : 'font-semibold'}`} prefix={negative && value > 0n ? '−' : ''} />
+    <PrivacyValue minor={value} includePaise={false} className={`text-xs sm:text-sm tabular-nums ${strong ? 'font-extrabold' : 'font-semibold'}`} prefix={negative && value > 0n ? '−' : ''} />
   </div>
 );
 
 const Action: React.FC<{ title: string; hint: string; onClick: () => void; tint: string; icon: typeof FileSpreadsheet }> = ({ title, hint, onClick, tint, icon: Icon }) => (
-  <button onClick={onClick} className="card p-4 text-left hover:opacity-90" style={{ borderColor: `color-mix(in srgb, ${tint} 35%, var(--border))` }}>
-    <span className="w-9 h-9 rounded-xl flex items-center justify-center mb-2" style={{ background: `color-mix(in srgb, ${tint} 18%, transparent)`, color: tint }}>
+  <button onClick={onClick} className="card p-3 md:p-4 text-left hover:opacity-90 min-h-20" style={{ borderColor: `color-mix(in srgb, ${tint} 35%, var(--border))` }}>
+    <span className="w-8 h-8 md:w-9 md:h-9 rounded-xl flex items-center justify-center mb-1.5 md:mb-2" style={{ background: `color-mix(in srgb, ${tint} 18%, transparent)`, color: tint }}>
       <Icon className="w-4 h-4" />
     </span>
-    <div className="font-bold text-sm">{title}</div>
-    <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{hint}</div>
+    <div className="font-bold text-sm leading-tight">{title}</div>
+    <div className="text-[11px] md:text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{hint}</div>
   </button>
 );
 const HoldingTable: React.FC<{ rows: GrowthHoldingRow[]; onOpen: (id: string) => void }> = ({ rows, onOpen }) => rows.length === 0 ? <p className="text-xs" style={{ color: 'var(--muted)' }}>Nothing in this slice.</p> : <div className="divide-y" style={{ borderColor: 'var(--border)' }}>{rows.map(r => <button key={r.id} type="button" onClick={() => onOpen(r.id)} className="w-full text-left py-3 flex items-center gap-3 hover:opacity-90"><span className="w-2 h-2 rounded-full shrink-0" style={{ background: BUCKET_COLORS[r.bucket] }} /><div className="min-w-0 flex-1"><div className="text-sm font-medium truncate">{r.name}</div><div className="text-[11px] truncate" style={{ color: 'var(--muted)' }}>{r.ownerName} · {FAMILY_BUCKETS.find(b => b.id === r.bucket)?.title}</div></div><div className="text-right shrink-0">{r.unknownInvested ? <div className="text-xs font-semibold" style={{ color: 'var(--bad)' }}>{UNKNOWN_INVESTED_LABEL}</div> : <><PrivacyValue minor={r.valueMinor} includePaise={false} className="text-sm font-semibold" /><div className="text-[11px]"><PrivacyDelta minor={r.gainMinor} className="text-[11px] font-medium" /></div></>}</div><ChevronRight className="w-4 h-4 shrink-0" style={{ color: 'var(--muted)' }} /></button>)}</div>;

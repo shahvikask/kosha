@@ -1432,7 +1432,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const confirmVaultPassword = async (email: string, password: string): Promise<string | null> => {
     if (!repo) return 'Vault is not ready.';
     const stored = await repo.getVaultAccount();
-    if (!stored) return 'No account on this computer.';
+    if (!stored) return 'No account on this device.';
     if (email.trim().toLowerCase() !== stored.email.toLowerCase()) {
       return 'Email or password is wrong.';
     }
@@ -1598,7 +1598,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const login = async (email: string, password: string): Promise<string | null> => {
     if (!repo) return 'Vault is not ready.';
     const stored = await repo.getVaultAccount();
-    if (!stored) return 'No account on this computer. Create one first.';
+    if (!stored) return 'No account on this device. Create one first.';
     if (email.trim().toLowerCase() !== stored.email.toLowerCase()) {
       return 'Email or password is wrong.';
     }
@@ -1647,7 +1647,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   ): Promise<string | null> => {
     if (!repo) return 'Vault is not ready.';
     const stored = await repo.getVaultAccount();
-    if (!stored) return 'No account on this computer.';
+    if (!stored) return 'No account on this device.';
     if (email.trim().toLowerCase() !== stored.email.toLowerCase()) {
       return 'Those answers did not match.';
     }

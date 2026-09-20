@@ -72,8 +72,13 @@ export const Sidebar: React.FC = () => {
       </aside>
 
       <nav
-        className="md:hidden fixed left-0 right-0 z-30 flex items-center justify-around py-2 px-1 border-t"
-        style={{ bottom: 'calc(2.5rem + env(safe-area-inset-bottom, 0px))', background: 'var(--chrome)', borderColor: 'var(--border)', color: 'var(--muted)', paddingBottom: '0.25rem' }}
+        className="md:hidden fixed left-0 right-0 bottom-0 z-40 flex items-stretch justify-around px-1 border-t gud-tabbar"
+        style={{
+          background: 'color-mix(in srgb, var(--chrome) 94%, transparent)',
+          borderColor: 'var(--border)',
+          color: 'var(--muted)',
+          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        }}
         aria-label="Mobile navigation"
       >
         {navItems.map(item => {
@@ -84,14 +89,20 @@ export const Sidebar: React.FC = () => {
               key={item.id}
               onClick={() => setActiveScreen(item.id)}
               aria-current={isActive ? 'page' : undefined}
-              className="flex min-w-0 flex-1 flex-col items-center gap-0.5 px-1 py-1 rounded-xl text-[10px] font-medium"
+              className="flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 py-2 min-h-14 rounded-none text-[10px] font-semibold"
               style={{
                 color: isActive ? item.tint : 'var(--muted)',
-                background: isActive ? `color-mix(in srgb, ${item.tint} 16%, transparent)` : 'transparent',
               }}
             >
-              <Icon className="w-5 h-5" />
-              <span className="truncate max-w-full">{item.label}</span>
+              <span
+                className="w-10 h-7 rounded-full flex items-center justify-center"
+                style={{
+                  background: isActive ? `color-mix(in srgb, ${item.tint} 16%, transparent)` : 'transparent',
+                }}
+              >
+                <Icon className="w-5 h-5" strokeWidth={isActive ? 2.4 : 1.8} />
+              </span>
+              <span className="truncate max-w-full leading-none">{item.label}</span>
             </button>
           );
         })}

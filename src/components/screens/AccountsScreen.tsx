@@ -69,11 +69,11 @@ export const AccountsScreen: React.FC<Props> = ({ onOpenHoldingDetail }) => {
   }, [accounts, holdings, familyMembers, derived, sgbValuationMode, selectedMemberId, kindFilter]);
 
   return (
-    <div className="space-y-4 pb-12">
+    <div className="space-y-3 md:space-y-4 pb-2 md:pb-8">
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Accounts</h1>
-          <p className="text-sm" style={{ color: 'var(--muted)' }}>
+          <h1 className="page-title text-2xl font-bold">Accounts</h1>
+          <p className="page-lead text-sm" style={{ color: 'var(--muted)' }}>
             Demat accounts and mutual-fund folios from your statements. Tap the holding count to see what sits on that folio.
           </p>
         </div>
