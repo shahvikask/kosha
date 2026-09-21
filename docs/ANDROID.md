@@ -70,3 +70,9 @@ Trial is 30 days, so review does not need a purchase. Add licence testers in Pla
 ## Support vs everyone
 
 Security patches go to every licensed install (Play policy and user safety). Annual support unlocks enhancement flags in the app (`enhancementsEnabled`).
+
+## Play reviews
+
+After 7 days from first open, an unlocked vault may show a rating sheet. Submit opens Google Play In-App Review so the rating posts to the Play listing. Close / Not now snoozes 2 days. Family → Rate on Google Play is always available and stops the auto-prompt.
+
+Play may hide the in-app sheet (quota, already reviewed). The app then opens the store listing. Sideloaded test APKs skip the in-app sheet and open the listing. GrowUrDhan does not collect the rating.

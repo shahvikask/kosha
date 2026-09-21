@@ -9,6 +9,7 @@ This branch is for installing GrowUrDhan on a real phone **before** Play product
 - 30-day trial works **without** Google Play, so you can test.
 - Buy buttons on this build use a local test licence, not a real charge.
 - Vault is still encrypted on the phone.
+- The 7-day Play rating prompt still appears. Because this APK is sideloaded, Rate opens the Play listing instead of the in-app review sheet.
 
 ## What this file is not
 

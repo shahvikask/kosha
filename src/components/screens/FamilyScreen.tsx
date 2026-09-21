@@ -8,6 +8,7 @@ import { suggestedBackupName } from '../../lib/backup';
 import { saveBackupFile, pickBackupFile } from '../../lib/backupIo';
 import { useLicence } from '../../context/LicenseContext';
 import { formatInr, PRICE_INR } from '../../lib/license';
+import { rateOnGooglePlay } from '../../lib/feedback';
 import {
   readBackupSchedule,
   writeBackupSchedule,
@@ -39,6 +40,7 @@ import {
   Coins,
   Cloud,
   FolderOpen,
+  Star,
 } from 'lucide-react';
 
 interface FamilyScreenProps {
@@ -699,6 +701,10 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
               : `Trial: ${licence.state.daysLeft} days left. Lifetime ${formatInr(PRICE_INR.lifetime)} is required first. Optional support ${formatInr(PRICE_INR.supportAnnual)} / year after that.`}
           </p>
           <div className="flex flex-wrap gap-3 text-xs font-semibold" style={{ color: 'var(--accent)' }}>
+            <button type="button" onClick={() => void rateOnGooglePlay()} className="inline-flex items-center gap-1">
+              <Star className="w-3 h-3" />
+              Rate on Google Play
+            </button>
             <a href="https://shahvikask.github.io/kosha/privacy.html" target="_blank" rel="noreferrer">Privacy policy</a>
             <a href="https://shahvikask.github.io/kosha/terms.html" target="_blank" rel="noreferrer">Terms</a>
             <a href="https://shahvikask.github.io/kosha/delete-account.html" target="_blank" rel="noreferrer">Delete account (web)</a>

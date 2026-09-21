@@ -17,9 +17,11 @@ import { AuthScreen } from './components/screens/AuthScreen';
 import { OnboardingScreen } from './components/screens/OnboardingScreen';
 import { LicenseScreen } from './components/screens/LicenseScreen';
 import { ClosedScreen } from './components/screens/TermsGate';
+import { FeedbackPrompt } from './components/screens/FeedbackPrompt';
 import { markOnboardingSeen } from './lib/onboarding';
 import { maybeRunScheduledBackup } from './lib/backupSchedule';
 import { setTermsDeclineHandler } from './lib/terms';
+import { claimFeedbackPrompt, loadFeedbackState } from './lib/feedback';
 import { AlertTriangle, CheckCircle2, RefreshCw, X } from 'lucide-react';
 
 const KoshaMainApp: React.FC = () => {
@@ -33,6 +35,7 @@ const KoshaMainApp: React.FC = () => {
   const [isEmergencySheetOpen, setIsEmergencySheetOpen] = useState(false);
   const [isMigrationBannerDismissed, setIsMigrationBannerDismissed] = useState(false);
   const [termsDeclined, setTermsDeclined] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   useEffect(() => {
     setTermsDeclineHandler(() => setTermsDeclined(true));
@@ -49,6 +52,30 @@ const KoshaMainApp: React.FC = () => {
     if (!account || !unlocked || mustRotatePassword) return;
     void maybeRunScheduledBackup('open');
   }, [account, unlocked, mustRotatePassword]);
+
+  useEffect(() => {
+    if (!account || !unlocked || mustRotatePassword) return;
+    if (isAddHoldingOpen || isAddRecordOpen || selectedHoldingIdForDetail || isEmergencySheetOpen) return;
+    if (migration && !migration.verified) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      if (cancelled) return;
+      if (claimFeedbackPrompt(loadFeedbackState())) setFeedbackOpen(true);
+    }, 1800);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [
+    account,
+    unlocked,
+    mustRotatePassword,
+    isAddHoldingOpen,
+    isAddRecordOpen,
+    selectedHoldingIdForDetail,
+    isEmergencySheetOpen,
+    migration?.verified,
+  ]);
 
   const handleOpenAddRecord = (holdingId?: string) => {
     setPreselectedHoldingForRecord(holdingId);
@@ -193,6 +220,7 @@ const KoshaMainApp: React.FC = () => {
         lockToHolding={!!preselectedHoldingForRecord}
       />
       <EmergencySheetModal isOpen={isEmergencySheetOpen} onClose={() => setIsEmergencySheetOpen(false)} />
+      <FeedbackPrompt open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
     </div>
   );
 };

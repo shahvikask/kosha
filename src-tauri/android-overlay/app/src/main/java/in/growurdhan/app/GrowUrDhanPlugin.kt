@@ -31,6 +31,7 @@ import com.android.billingclient.api.QueryProductDetailsParams
 import com.android.billingclient.api.QueryPurchasesParams
 import com.google.android.play.core.integrity.IntegrityManagerFactory
 import com.google.android.play.core.integrity.IntegrityTokenRequest
+import com.google.android.play.core.review.ReviewManagerFactory
 import java.io.File
 import java.security.SecureRandom
 
@@ -253,6 +254,58 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
     @Command
     fun play_restore(invoke: Invoke) {
         play_licence_status(invoke)
+    }
+
+    @Command
+    fun play_review(invoke: Invoke) {
+        if (testApk() || !installedFromPlay()) {
+            openPlayListing()
+            invoke.resolve(reviewResult(false, true))
+            return
+        }
+        try {
+            val manager = ReviewManagerFactory.create(activity)
+            val request = manager.requestReviewFlow()
+            request.addOnCompleteListener { task ->
+                if (!task.isSuccessful) {
+                    openPlayListing()
+                    invoke.resolve(reviewResult(false, true))
+                    return@addOnCompleteListener
+                }
+                manager.launchReviewFlow(activity, task.result).addOnCompleteListener {
+                    invoke.resolve(reviewResult(true, false))
+                }
+            }
+        } catch (_: Exception) {
+            openPlayListing()
+            invoke.resolve(reviewResult(false, true))
+        }
+    }
+
+    @Command
+    fun play_open_listing(invoke: Invoke) {
+        openPlayListing()
+        invoke.resolve(JSObject())
+    }
+
+    private fun reviewResult(launched: Boolean, fallback: Boolean): JSObject {
+        val out = JSObject()
+        out.put("launched", launched)
+        out.put("fallback", fallback)
+        return out
+    }
+
+    private fun openPlayListing() {
+        val id = activity.packageName
+        try {
+            val market = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$id"))
+            market.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            activity.startActivity(market)
+        } catch (_: Exception) {
+            val web = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$id"))
+            web.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            activity.startActivity(web)
+        }
     }
 
     override fun onPurchasesUpdated(result: BillingResult, purchases: MutableList<Purchase>?) {

@@ -8,3 +8,4 @@
 }
 -keepattributes *Annotation*
 -dontwarn com.google.android.play.core.integrity.**
+-dontwarn com.google.android.play.core.review.**

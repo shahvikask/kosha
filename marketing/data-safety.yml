@@ -28,6 +28,15 @@ play_billing:
   shared_with: google_play
   optional: false
 
+# Play In-App Review (Google's collection). The app only opens Play's sheet.
+play_reviews:
+  - user_generated_content
+  purpose: other
+  shared_with: google_play
+  optional: true
+  collected_by: google
+  sent_to_developer_servers: false
+
 # Vault fields stored ON DEVICE only — if the form has "collected by the app" vs "sent off device"
 on_device_only:
   - name

@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { EMPTY_LICENCE, LicenceState, appUnlocked, enhancementsEnabled, loadLicence } from '../lib/license';
 import { hasSeenOnboarding } from '../lib/onboarding';
+import { seedFeedbackClock } from '../lib/feedback';
 
 interface LicenceContextValue {
   ready: boolean;
@@ -24,6 +25,7 @@ export const LicenceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     (async () => {
       const next = await loadLicence();
       if (!alive) return;
+      seedFeedbackClock(next.trialStartedAt);
       setState(next);
       setReady(true);
     })();

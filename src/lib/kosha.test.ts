@@ -4,6 +4,19 @@ import { ruleSetFor, classifyGain, isEquityOriented, grandfatheredCostMinor, app
 import { encryptJson, decryptJson, isEncryptedBlob, generateRecoveryKey, maskPan, WrongPassphraseError } from './vault';
 import { packBackup, unpackBackup, verifyRestoreIdentity, isBinaryBackup, looksLikePlainJsonBackup, BACKUP_KIND, VaultBackup, suggestedScheduledBackupName, suggestedBackupName } from './backup';
 import { derivePlan, daysRemaining, TRIAL_DAYS, PRICE_INR, appUnlocked, enhancementsEnabled, canPurchaseSupport } from './license';
+import {
+  FEEDBACK_FIRST_DELAY_DAYS,
+  FEEDBACK_SNOOZE_DAYS,
+  FEEDBACK_MAX_PROMPTS,
+  PLAY_PACKAGE_ID,
+  EMPTY_FEEDBACK,
+  seedFirstSeen,
+  shouldShowFeedbackPrompt,
+  snoozeFeedback,
+  completeFeedback,
+  claimFeedbackPrompt,
+  resetFeedbackSession,
+} from './feedback';
 import { __test as encTest } from '../db/encryptedStore';
 import { ONBOARDING_SLIDES } from './onboarding';
 import { TERMS_SECTIONS, TERMS_VERSION, TERMS_TEXT_ID, termsPlainText, hasAcceptedCurrentTerms, acceptCurrentTerms } from './terms';
@@ -1077,6 +1090,31 @@ console.log('\n--- H. Encryption ---');
   const scheduledName = suggestedScheduledBackupName(new Date('2026-09-20T12:34:56.000Z'));
   eq('scheduled name has time', /growurdhan_20260920_123456\.kosha/.test(scheduledName), true);
   eq('manual name is date only', suggestedBackupName(new Date('2026-09-20T12:34:56.000Z')), 'growurdhan_2026-09-20.kosha');
+
+  console.log('\n--- AA. Play review prompt ---');
+  eq('first ask is 7 days', FEEDBACK_FIRST_DELAY_DAYS, 7);
+  eq('snooze is 2 days', FEEDBACK_SNOOZE_DAYS, 2);
+  eq('play package id', PLAY_PACKAGE_ID, 'in.growurdhan.app');
+  resetFeedbackSession();
+  const now = new Date('2026-09-21T12:00:00.000Z');
+  const fresh = seedFirstSeen(EMPTY_FEEDBACK, now.toISOString(), now);
+  eq('fresh clock uses trial start', fresh.firstSeenAt, now.toISOString());
+  eq('day 0 hidden', shouldShowFeedbackPrompt(fresh, now), false);
+  eq('day 6 hidden', shouldShowFeedbackPrompt(fresh, new Date('2026-09-27T11:59:00.000Z')), false);
+  eq('day 7 shown', shouldShowFeedbackPrompt(fresh, new Date('2026-09-28T12:00:00.000Z')), true);
+  const snoozed = snoozeFeedback(fresh, new Date('2026-09-28T12:00:00.000Z'));
+  eq('just closed hidden', shouldShowFeedbackPrompt(snoozed, new Date('2026-09-28T12:00:00.000Z')), false);
+  eq('one day later still hidden', shouldShowFeedbackPrompt(snoozed, new Date('2026-09-29T12:00:00.000Z')), false);
+  eq('two days later shown again', shouldShowFeedbackPrompt(snoozed, new Date('2026-09-30T12:00:01.000Z')), true);
+  const rated = completeFeedback(fresh, new Date('2026-09-28T12:00:00.000Z'));
+  eq('after rate never shown', shouldShowFeedbackPrompt(rated, new Date('2026-12-01T00:00:00.000Z')), false);
+  let nag = seedFirstSeen(EMPTY_FEEDBACK, '2026-01-01T00:00:00.000Z', now);
+  for (let i = 0; i < FEEDBACK_MAX_PROMPTS; i++) nag = snoozeFeedback(nag, now);
+  eq('stops after max dismissals', shouldShowFeedbackPrompt(nag, new Date('2026-12-01T00:00:00.000Z')), false);
+  resetFeedbackSession();
+  eq('session claim first', claimFeedbackPrompt(seedFirstSeen(EMPTY_FEEDBACK, '2026-01-01T00:00:00.000Z', now), now), true);
+  eq('session claim once', claimFeedbackPrompt(seedFirstSeen(EMPTY_FEEDBACK, '2026-01-01T00:00:00.000Z', now), now), false);
+  resetFeedbackSession();
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail?1:0);

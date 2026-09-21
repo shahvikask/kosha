@@ -51,3 +51,9 @@ What we ship instead (Payments-policy compliant):
 - [ ] No Stripe, UPI deep links, or “pay on our website” inside the app
 - [ ] Trial and prices stated on onboarding slide 6 and on the licence screen
 - [ ] Support subscription can be cancelled in Play; the lifetime licence remains
+
+## Reviews
+
+- [ ] The app uses Play In-App Review (`play:review-ktx`) after a 7-day wait. That only works on a genuine Play install from an internal / closed / production track.
+- [ ] Leave the store listing public enough for testers to write a review
+- [ ] Ratings land on this app’s Play listing — there is no GrowUrDhan feedback server

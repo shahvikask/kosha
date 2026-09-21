@@ -29,7 +29,15 @@ if (!gradle.includes('billing-ktx')) {
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("com.android.billingclient:billing-ktx:7.1.1")
     implementation("com.google.android.play:integrity:1.4.0")
+    implementation("com.google.android.play:review-ktx:2.0.2")
 `,
+  );
+}
+if (!gradle.includes('review-ktx')) {
+  gradle = gradle.replace(
+    /implementation\("com.google.android.play:integrity:[^"]+"\)/,
+    `implementation("com.google.android.play:integrity:1.4.0")
+    implementation("com.google.android.play:review-ktx:2.0.2")`,
   );
 }
 if (testApk) {

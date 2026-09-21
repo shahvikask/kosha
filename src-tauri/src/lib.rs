@@ -12,7 +12,9 @@ pub fn run() {
             vault_blob_save,
             play_licence_status,
             play_purchase,
-            play_restore
+            play_restore,
+            play_review,
+            play_open_listing
         ])
         .run(tauri::generate_context!())
         .expect("GrowUrDhan failed to start");
@@ -78,6 +80,19 @@ fn play_purchase(_sku: String, _offer: Option<String>) -> Result<(), String> {
 #[tauri::command]
 fn play_restore() -> Result<serde_json::Value, String> {
     play_licence_status()
+}
+
+#[tauri::command]
+fn play_review() -> Result<serde_json::Value, String> {
+    Ok(serde_json::json!({
+        "launched": false,
+        "fallback": true
+    }))
+}
+
+#[tauri::command]
+fn play_open_listing() -> Result<(), String> {
+    Err("Google Play reviews are only available in the Android build.".into())
 }
 
 fn base64_encode(bytes: &[u8]) -> String {
