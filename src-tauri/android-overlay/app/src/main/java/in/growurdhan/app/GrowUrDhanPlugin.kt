@@ -203,6 +203,23 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
         if (!installedFromPlay()) {
             return invoke.reject("Install GrowUrDhan from Google Play to buy a licence.")
         }
+        if (args.sku == "gud_support_annual") {
+            queryKind(client, BillingClient.ProductType.INAPP) { inapp ->
+                val hasLifetime = inapp.any {
+                    it.purchaseState == Purchase.PurchaseState.PURCHASED && it.products.contains("gud_lifetime")
+                }
+                if (!hasLifetime) {
+                    invoke.reject("Buy the ₹249 lifetime licence first. Support cannot be purchased on its own.")
+                    return@queryKind
+                }
+                launchBuy(invoke, client, args)
+            }
+            return
+        }
+        launchBuy(invoke, client, args)
+    }
+
+    private fun launchBuy(invoke: Invoke, client: BillingClient, args: BuyArgs) {
         pendingPurchase = invoke
         val productType = if (args.sku == "gud_support_annual") BillingClient.ProductType.SUBS else BillingClient.ProductType.INAPP
         val product = QueryProductDetailsParams.Product.newBuilder()
@@ -220,7 +237,9 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
                 val wanted = args.offer
                 val offer = offers.firstOrNull { od ->
                     wanted != null && (od.offerId == wanted || od.basePlanId == wanted)
-                } ?: offers.first()
+                } ?: offers.firstOrNull { od -> od.offerId.isNullOrEmpty() && od.basePlanId == "standalone" }
+                    ?: offers.firstOrNull { od -> od.basePlanId == "standalone" }
+                    ?: offers.first()
                 paramsBuilder.setOfferToken(offer.offerToken)
             }
             val flow = BillingFlowParams.newBuilder()

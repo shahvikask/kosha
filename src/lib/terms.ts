@@ -7,7 +7,7 @@ import { isNativeShell, nativeCommand } from './license';
 
 export const TERMS_VERSION = '2026-09-21';
 export const TERMS_EFFECTIVE = '21 September 2026';
-export const TERMS_TEXT_ID = 'GUD-TOS-2026-09-21-v1';
+export const TERMS_TEXT_ID = 'GUD-TOS-2026-09-21-v2';
 export const TERMS_TITLE = 'GrowUrDhan Terms and Conditions';
 
 const LS_ACCEPTED = 'gud.terms.acceptedVersion';
@@ -121,9 +121,9 @@ export const TERMS_SECTIONS: TermsSection[] = [
     heading: '9. Software licence, trial, and Google Play charges',
     body:
       'GrowUrDhan grants you a personal, non-exclusive, non-transferable, revocable licence to use the App on devices where it was legitimately installed, solely to maintain your own (and authorised family) records, subject to these Terms and to Google Play’s terms. The licence is distributed by GrowUrDhan. You do not acquire ownership of the software, trademarks, parsers, or documentation. ' +
-      'A genuine Google Play install may start a thirty (30) day trial on that device. After the trial the vault file may remain on the device but the App may require a lifetime licence sold only through Google Play Billing. Indicative prices (inclusive of applicable Play billing, subject to change in Play Console and to tax): lifetime licence ₹249; lifetime plus first-year support ₹499 (₹249 + ₹250); support in later years ₹299 per year. Play, not GrowUrDhan, processes the payment. ' +
+      'A genuine Google Play install may start a thirty (30) day trial on that device. After the trial the vault file may remain on the device but the App may require a lifetime licence sold only through Google Play Billing. There are only two paid products: (1) a perpetual lifetime licence at ₹249, which does not include support, security-notes channel, or enhancements; and (2) an optional annual support subscription at ₹299 per year. The lifetime licence is mandatory before you may buy the support subscription. Play, not GrowUrDhan, processes the payment. Indicative prices are inclusive of applicable Play billing, subject to change in Play Console and to tax. ' +
       'A sideloaded or extracted APK is not licensed unless a genuine Play licence for the same Play account is already present. You will not circumvent Play Integrity, billing, or sideload locks. ' +
-      'Refunds, chargebacks, and payment disputes are governed by Google Play policy. Support is an optional subscription of enhancements and is not a warranty, not an SLA, and not investment support. Cancelling support does not cancel a lifetime licence already purchased. ' +
+      'Refunds, chargebacks, and payment disputes are governed by Google Play policy. Support is an optional subscription of enhancements and is not a warranty, not an SLA, and not investment support. You may cancel it in Google Play. After cancel, paid support continues until that subscription period ends; then enhancements stop. Cancelling support does not cancel a lifetime licence already purchased. ' +
       'All licences are for personal family use, not for running a commercial bookkeeping bureau, redistribution, or SaaS wrapping of the App.',
   },
   {

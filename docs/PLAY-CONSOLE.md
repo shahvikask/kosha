@@ -31,8 +31,8 @@ Complete these in the console. The repo cannot tick them for you.
 
 - [ ] In-app product `gud_lifetime` — one-time, ₹249, licence testers enabled
 - [ ] Subscription `gud_support_annual` — ₹299 / year
-  - Base plan `standalone`
-  - Intro / offer id `with_licence` at ₹250 for the first year (shown when buying with the lifetime SKU)
+  - Base plan `standalone` (the only offer the app buys)
+  - Leave any leftover intro offer `with_licence` (₹250) **unpublished** — the app no longer sells a first-year bundle
 - [ ] Licence testers for `play.review@growurdhan.in`
 
 ## Trial (read this)

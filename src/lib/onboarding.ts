@@ -58,9 +58,9 @@ export const ONBOARDING_SLIDES: OnboardingSlide[] = [
     id: 'price',
     icon: 'rupee',
     enTitle: 'Thirty days on us. Then a licence you buy once.',
-    enBody: 'Try every feature for 30 days through Google Play. After that, a perpetual licence is ₹249 — once, tied to your Play account, valid on a new phone. Optional annual support is ₹250 the first year, ₹299 later. No surprise in-app store.',
+    enBody: 'Try every feature for 30 days through Google Play. After that, a perpetual licence is ₹249 — once, tied to your Play account, valid on a new phone. That licence does not include support. Optional annual support is ₹299, and only after you hold the lifetime licence. No surprise in-app store.',
     hiTitle: 'तीस दिन हमारे साथ। फिर एक बार का लाइसेंस।',
-    hiBody: 'Google Play से 30 दिन सब कुछ आज़माएँ। उसके बाद स्थायी लाइसेंस ₹249 — एक बार, आपके Play खाते से बँधा, नए फ़ोन पर भी। वार्षिक सहयोग पहले साल ₹250, बाद में ₹299। कोई छुपी दुकान नहीं।',
+    hiBody: 'Google Play से 30 दिन सब कुछ आज़माएँ। उसके बाद स्थायी लाइसेंस ₹249 — एक बार, आपके Play खाते से बँधा, नए फ़ोन पर भी। इसमें सहयोग शामिल नहीं। वार्षिक सहयोग ₹299, और केवल स्थायी लाइसेंस के बाद। कोई छुपी दुकान नहीं।',
   },
 ];
 

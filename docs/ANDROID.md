@@ -15,17 +15,18 @@ Commercial phone app. Windows stays on `GUD-Windows`. Daily UI work stays on `Gr
 | Product id | Type | Price |
 |---|---|---|
 | `gud_lifetime` | One-time | ₹249 |
-| `gud_support_annual` | Subscription, yearly | ₹299. Offer `with_licence` ₹250 first year |
+| `gud_support_annual` | Subscription, yearly | ₹299. Base plan `standalone` only |
 
-Checkout in the app:
+Checkout in the app — **only two options, in this order**:
 
-1. Lifetime only — ₹249
-2. Lifetime + first year support — **₹499** (249 + 250). Not ₹599; that sum was a slip.
-3. Support later (requires lifetime) — ₹299 / year
+1. Lifetime — ₹249 (required after the 30-day trial). Does **not** include support or enhancements.
+2. Annual support — ₹299 / year (optional; disabled until lifetime is owned).
+
+There is no bundle and no per-member seat. Family members stay unlimited inside the ₹249 licence.
 
 Play cannot attach a 30-day free trial to a one-time SKU. A subscription trial would auto-charge, which is not a perpetual licence. The app is free; a genuine Play install starts a 30-day trial; then the user buys `gud_lifetime` through Play Billing. Prices are on the intro, the paywall, and the store listing.
 
-The lifetime product is perpetual. Support can lapse; the vault still opens.
+The lifetime product is perpetual. Support can lapse; the vault still opens. After cancel, support continues until that Play period ends.
 
 Purchases restore on a new phone that uses the **same Google Play account**. A sideloaded APK does not carry the licence.
 

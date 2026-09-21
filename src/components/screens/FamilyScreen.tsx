@@ -7,7 +7,7 @@ import { maskPan } from '../../lib/vault';
 import { suggestedBackupName } from '../../lib/backup';
 import { saveBackupFile, pickBackupFile } from '../../lib/backupIo';
 import { useLicence } from '../../context/LicenseContext';
-import { formatInr, PRICE_INR, PRICE_BUNDLE_INR } from '../../lib/license';
+import { formatInr, PRICE_INR } from '../../lib/license';
 import {
   readBackupSchedule,
   writeBackupSchedule,
@@ -695,8 +695,8 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
             {licence.state.lifetime
               ? licence.state.supportActive
                 ? 'Lifetime plus support. Enhancements stay on.'
-                : `Lifetime licence on this Play account. Support is optional at ${formatInr(PRICE_INR.supportLater)} / year.`
-              : `Trial: ${licence.state.daysLeft} days left. Lifetime ${formatInr(PRICE_INR.lifetime)}. Lifetime + first year support ${formatInr(PRICE_BUNDLE_INR)}.`}
+                : `Lifetime licence on this Play account. Support is optional at ${formatInr(PRICE_INR.supportAnnual)} / year.`
+              : `Trial: ${licence.state.daysLeft} days left. Lifetime ${formatInr(PRICE_INR.lifetime)} is required first. Optional support ${formatInr(PRICE_INR.supportAnnual)} / year after that.`}
           </p>
           <div className="flex flex-wrap gap-3 text-xs font-semibold" style={{ color: 'var(--accent)' }}>
             <a href="https://shahvikask.github.io/kosha/privacy.html" target="_blank" rel="noreferrer">Privacy policy</a>

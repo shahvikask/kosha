@@ -3,9 +3,8 @@ import { Check, Lock, RefreshCw, Shield } from 'lucide-react';
 import {
   LicenceState,
   PRICE_INR,
-  PRICE_BUNDLE_INR,
+  canPurchaseSupport,
   formatInr,
-  purchaseBundle,
   purchaseLifetime,
   purchaseSupport,
   restorePurchases,
@@ -45,44 +44,57 @@ export const LicenseScreen: React.FC<LicenseScreenProps> = ({ state, onChange })
             <Lock className="w-5 h-5" />
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">
-            {state.sideloadBlocked ? 'This copy cannot be licensed' : expired ? 'Your 30-day trial has ended' : 'Choose how you stay'}
+            {state.sideloadBlocked ? 'This copy cannot be licensed' : expired ? 'Your 30-day trial has ended' : 'Two licences. In that order.'}
           </h1>
           <p className="text-sm leading-relaxed" style={{ color: 'var(--muted)' }}>
             {state.sideloadBlocked
               ? 'This copy was not installed from Google Play. A copied APK cannot carry a licence — it lives on the Play account that bought it.'
               : expired
-              ? 'The vault is still on this phone. Unlock it with a Google Play purchase — there is no card form inside GrowUrDhan.'
-              : `Trial: ${state.daysLeft} day${state.daysLeft === 1 ? '' : 's'} left. After that, a one-time licence, bound to your Play account.`}
+              ? 'The vault is still on this phone. Buy the ₹249 lifetime licence through Google Play. Annual support is optional after that.'
+              : `Trial: ${state.daysLeft} day${state.daysLeft === 1 ? '' : 's'} left. After that, a one-time ₹249 licence is required. Support at ₹299 / year can be added only once you hold that licence.`}
           </p>
         </div>
 
         {!state.sideloadBlocked && (
         <div className="space-y-3">
-          <PlanCard
-            eyebrow="Perpetual"
-            title={`Lifetime licence · ${formatInr(PRICE_INR.lifetime)}`}
-            body="Pay once. Use for life on any phone signed into the same Google Play account. No support emails, no extra patches channel."
-            cta={busy === 'a' ? 'Opening Play…' : `Buy ${formatInr(PRICE_INR.lifetime)}`}
-            disabled={Boolean(busy)}
-            onClick={() => run('a', purchaseLifetime)}
-          />
-          <PlanCard
-            featured
-            eyebrow="Recommended"
-            title={`Lifetime + 1 year support · ${formatInr(PRICE_BUNDLE_INR)}`}
-            body={`${formatInr(PRICE_INR.lifetime)} licence plus ${formatInr(PRICE_INR.supportWithLicence)} for the first year of security notes and enhancements. Support then renews at ${formatInr(PRICE_INR.supportLater)} / year. You can cancel support and keep the licence.`}
-            cta={busy === 'b' ? 'Opening Play…' : `Buy ${formatInr(PRICE_BUNDLE_INR)}`}
-            disabled={Boolean(busy)}
-            onClick={() => run('b', purchaseBundle)}
-          />
-          {state.lifetime && !state.supportActive && (
+          {!state.lifetime ? (
             <PlanCard
-              eyebrow="Support only"
-              title={`Annual support · ${formatInr(PRICE_INR.supportLater)} / year`}
-              body="For people who already hold the lifetime licence. Unlocks enhancement drops. Security patches still reach every licensed phone — Play does not allow hiding those."
-              cta={busy === 'c' ? 'Opening Play…' : `Subscribe ${formatInr(PRICE_INR.supportLater)}`}
+              featured
+              eyebrow="1 · Required"
+              title={`Lifetime licence · ${formatInr(PRICE_INR.lifetime)}`}
+              body="Pay once. Opens the vault for life on any phone signed into this Play account. Does not include support, enhancement drops, or a patches channel."
+              cta={busy === 'a' ? 'Opening Play…' : `Buy ${formatInr(PRICE_INR.lifetime)}`}
               disabled={Boolean(busy)}
-              onClick={() => run('c', () => purchaseSupport(false))}
+              onClick={() => run('a', purchaseLifetime)}
+            />
+          ) : (
+            <div className="p-4 rounded-3xl border space-y-1" style={{ borderColor: 'var(--border)', background: 'var(--card)' }}>
+              <div className="text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: 'var(--good)' }}>Lifetime owned</div>
+              <p className="text-sm font-semibold">₹249 perpetual licence is on this Play account.</p>
+            </div>
+          )}
+          {state.supportActive ? (
+            <div className="p-4 rounded-3xl border space-y-1" style={{ borderColor: 'var(--border)', background: 'var(--card)' }}>
+              <div className="text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: 'var(--good)' }}>Support active</div>
+              <p className="text-sm font-semibold">Annual support is on. Cancel in Google Play; it runs until the period ends. The lifetime licence stays.</p>
+            </div>
+          ) : (
+            <PlanCard
+              featured={state.lifetime}
+              eyebrow="2 · Optional"
+              title={`Annual support · ${formatInr(PRICE_INR.supportAnnual)} / year`}
+              body={
+                state.lifetime
+                  ? 'Parser updates, enhancement drops, and support notes. Cancel any time in Google Play. After cancel, this continues until the paid period ends. The ₹249 licence stays.'
+                  : 'Buy the ₹249 lifetime licence first. Support cannot be purchased on its own.'
+              }
+              cta={
+                !canPurchaseSupport(state)
+                  ? 'Lifetime licence required first'
+                  : busy === 'c' ? 'Opening Play…' : `Subscribe ${formatInr(PRICE_INR.supportAnnual)} / year`
+              }
+              disabled={Boolean(busy) || !canPurchaseSupport(state)}
+              onClick={() => run('c', purchaseSupport)}
             />
           )}
         </div>

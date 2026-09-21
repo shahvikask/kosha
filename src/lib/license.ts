@@ -16,12 +16,8 @@ export const SKU_SUPPORT = 'gud_support_annual';
 
 export const PRICE_INR = {
   lifetime: 249,
-  supportWithLicence: 250,
-  supportLater: 299,
+  supportAnnual: 299,
 } as const;
-
-/** Honest checkout total for lifetime + first year of support. */
-export const PRICE_BUNDLE_INR = PRICE_INR.lifetime + PRICE_INR.supportWithLicence;
 
 export type LicencePlan = 'trial' | 'lifetime' | 'lifetime_support' | 'expired';
 
@@ -176,20 +172,19 @@ export async function purchaseLifetime(): Promise<LicenceState> {
   return loadLicence();
 }
 
-export async function purchaseSupport(introOffer: boolean): Promise<LicenceState> {
+export async function purchaseSupport(): Promise<LicenceState> {
+  const current = await loadLicence();
+  if (!canPurchaseSupport(current)) {
+    throw new Error('Buy the ₹249 lifetime licence first. Support cannot be purchased on its own.');
+  }
   if (isTestApk() || !isNativeShell()) {
     const until = new Date();
     until.setFullYear(until.getFullYear() + 1);
     localStorage.setItem(LS_SUPPORT_UNTIL, until.toISOString());
     return loadLicence();
   }
-  await nativeCommand('play_purchase', { sku: SKU_SUPPORT, offer: introOffer ? 'with_licence' : 'standalone' });
+  await nativeCommand('play_purchase', { sku: SKU_SUPPORT, offer: 'standalone' });
   return loadLicence();
-}
-
-export async function purchaseBundle(): Promise<LicenceState> {
-  await purchaseLifetime();
-  return purchaseSupport(true);
 }
 
 export async function restorePurchases(): Promise<LicenceState> {
@@ -206,4 +201,9 @@ export function enhancementsEnabled(state: LicenceState): boolean {
 export function appUnlocked(state: LicenceState): boolean {
   if (state.sideloadBlocked && !state.lifetime) return false;
   return state.lifetime || state.plan === 'trial' || state.plan === 'lifetime_support';
+}
+
+/** Support is sold only after the perpetual licence is on this Play account. */
+export function canPurchaseSupport(state: LicenceState): boolean {
+  return state.lifetime && !state.sideloadBlocked;
 }
