@@ -1041,10 +1041,13 @@ console.log('\n--- H. Encryption ---');
   eq('envelope round trip', new TextDecoder().decode(unwrapped), 'vault-bytes');
 
   console.log('\n--- Z. Terms and backup schedule ---');
-  eq('terms version dated', TERMS_VERSION, '2026-09-20');
-  eq('terms text id stable', TERMS_TEXT_ID, 'GUD-TOS-2026-09-20-v1');
+  eq('terms version dated', TERMS_VERSION, '2026-09-21');
+  eq('terms text id stable', TERMS_TEXT_ID, 'GUD-TOS-2026-09-21-v1');
   eq('terms has 21 sections', TERMS_SECTIONS.length, 21);
   const tos = termsPlainText();
+  eq('no personal name in terms', /Vikas Shah/i.test(tos), false);
+  eq('no proprietor in terms', /Proprietor/i.test(tos), false);
+  eq('company grants the licence', /licence to use the App is granted and distributed solely by GrowUrDhan/.test(tos), true);
   eq('not an investment adviser', /Investment Adviser/i.test(tos), true);
   eq('SEBI named', /SEBI/i.test(tos), true);
   eq('liability cap present', /1,000/.test(tos), true);
