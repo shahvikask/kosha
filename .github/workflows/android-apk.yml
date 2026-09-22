@@ -50,7 +50,10 @@ jobs:
         run: npm ci || npm install
 
       - name: Ensure RGBA icons
-        run: python3 scripts/ensure_rgba_icons.py
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y imagemagick python3-pil
+          python3 scripts/ensure_rgba_icons.py
 
       - name: Init Android project
         run: |
