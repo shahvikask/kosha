@@ -49,6 +49,9 @@ jobs:
       - name: Install JS
         run: npm ci || npm install
 
+      - name: Ensure RGBA icons
+        run: python3 scripts/ensure_rgba_icons.py
+
       - name: Init Android project
         run: |
           npx tauri android init --ci || npx tauri android init || true
