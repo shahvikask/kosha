@@ -1,26 +1,20 @@
-# Kosha Engineering Documentation
+# GrowUrDhan documentation
 
-This directory contains the architectural and engineering source of truth for Kosha.
+Engineering notes for the **GrowUrDhan Android app**.
 
-## Baseline documents
+## Ship and store
 
-- `KOSHA-ARCHITECTURE.md` — product and system architecture
-- `KOSHA-DATA-MODEL.md` — canonical financial domain model
-- `KOSHA-SECURITY.md` — privacy and security requirements
-- `KOSHA-TESTING.md` — testing and release quality gates
-- `KOSHA-CAS-SPEC.md` — CAS ingestion contract and parser requirements
+- `ANDROID.md` — Play AAB, SKUs, encryption, review prompt
+- `ANDROID-APK.md` — sideload test APK on this branch only
+- `PLAY-CONSOLE.md` — listing, Data safety, billing setup
+- `RELEASE-CHANNELS.md` — `GUD-Android-APK` vs `GUD-Android` vs `GUD-Windows`
 
-These documents are intentionally technology-independent where possible so the domain can be reused by the web application and future Android application.
+## Product domain
 
-## Local Python CAS reader
+- `KOSHA-ARCHITECTURE.md` — system shape (on-device vault, no cloud ledger)
+- `KOSHA-DATA-MODEL.md` — holdings, lots, family, documents
+- `KOSHA-SECURITY.md` — encryption and privacy requirements
+- `KOSHA-TESTING.md` — quality gates
+- `KOSHA-CAS-SPEC.md` — CAS / statement import contract
 
-CAS PDFs (CDSL, NSDL, CAMS, KFintech) are parsed on the user's machine. They never leave the device.
-
-`npm run dev` starts Vite and a local Python sidecar on `127.0.0.1:8765`. The Documents tab posts the PDF to that sidecar, auto-detects the issuer, and shows a confirmation page (PDF total vs parsed total) before records are written.
-
-```
-pip install -r scripts/requirements-cas.txt
-npm run dev
-```
-
-Same issuer overwrites the previous snapshot (January then February keeps February, it does not add them). The header shows: `The data is up to date until <statement period end>`.
+CAS PDFs are parsed on the device or on the developer machine. They are not uploaded to GrowUrDhan servers.
