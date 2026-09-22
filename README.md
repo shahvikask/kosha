@@ -1,11 +1,42 @@
-<div align="center">
+# GrowUrDhan (Android)
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+Local-first family wealth tracker for Indian households.
+Application id: `in.growurdhan.app`.
 
-  <h1>Built with AI Studio</h2>
+This branch (`GUD-Android-APK`) is the **sideload test APK**. Production Play AAB lives on `GUD-Android`. Windows stays on `GUD-Windows`.
 
-  <p>The fastest path from prompt to production with Gemini.</p>
+## What this repo is
 
-  <a href="https://aistudio.google.com/apps">Start building</a>
+- React + Vite UI in `src/`
+- Tauri 2 Android shell in `src-tauri/`
+- Play Billing, Integrity, encrypted vault, in-app review in `GrowUrDhanPlugin.kt`
+- Play listing, privacy, terms, and account-deletion pages in `marketing/`
 
-</div>
+## Licence (two products only)
+
+1. Lifetime — ₹249 (required after the 30-day trial)
+2. Annual support — ₹299 / year (optional; lifetime first)
+
+No bundle. No per-member seats. Family members are unlimited under the lifetime licence.
+
+## Docs that belong on this branch
+
+| File | Purpose |
+|---|---|
+| [docs/ANDROID-APK.md](docs/ANDROID-APK.md) | How to sideload the test APK |
+| [docs/ANDROID.md](docs/ANDROID.md) | Play / AAB identity, SKUs, encryption |
+| [docs/PLAY-CONSOLE.md](docs/PLAY-CONSOLE.md) | Store listing and billing checklist |
+| [docs/RELEASE-CHANNELS.md](docs/RELEASE-CHANNELS.md) | Which branch ships what |
+| [docs/README.md](docs/README.md) | Engineering notes index |
+
+## Build
+
+```bash
+npm install
+npm test
+npm run android:prepare
+npm run android:apk    # this branch
+# on GUD-Android: npm run android:aab
+```
+
+Do not upload this branch's APK to Google Play.
