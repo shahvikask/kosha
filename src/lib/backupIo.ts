@@ -16,6 +16,15 @@ function isAndroidUa(): boolean {
   return typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
 }
 
+function backupBytesFromNative(raw: unknown): string | null {
+  if (typeof raw === 'string' && raw) return raw;
+  if (raw && typeof raw === 'object' && 'value' in raw) {
+    const value = (raw as { value?: unknown }).value;
+    if (typeof value === 'string' && value) return value;
+  }
+  return null;
+}
+
 export async function saveBackupFile(filename: string, bytes: Uint8Array): Promise<'saved' | 'cancelled'> {
   if (isNativeShell() && isAndroidUa()) {
     try {
@@ -72,7 +81,8 @@ export async function saveBackupFile(filename: string, bytes: Uint8Array): Promi
 export async function pickBackupFile(): Promise<Uint8Array | null> {
   if (isNativeShell() && isAndroidUa()) {
     try {
-      const b64 = await nativeCommand<string | null>('backup_open');
+      const raw = await nativeCommand<string | { value?: string } | null>('backup_open');
+      const b64 = backupBytesFromNative(raw);
       if (b64) return b64ToBytes(b64);
     } catch {
       /* fall through to input */
