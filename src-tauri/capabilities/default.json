@@ -5,25 +5,6 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
-    {
-      "identifier": "allow-android-vault",
-      "commands": {
-        "allow": [
-          "vault_blob_load",
-          "vault_blob_save",
-          "play_licence_status",
-          "play_purchase",
-          "play_restore",
-          "play_review",
-          "play_open_listing",
-          "backup_pick_folder",
-          "backup_clear_folder",
-          "backup_write_scheduled",
-          "backup_save",
-          "backup_open",
-          "app_exit"
-        ]
-      }
-    }
+    "allow-android-vault"
   ]
 }
