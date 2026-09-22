@@ -230,7 +230,7 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
         client.queryProductDetailsAsync(
             QueryProductDetailsParams.newBuilder().setProductList(listOf(product)).build()
         ) { _, details ->
-            val item: ProductDetails = details.productDetailsList?.firstOrNull()
+            val item: ProductDetails = productDetailsListOf(details).firstOrNull()
                 ?: return@queryProductDetailsAsync invoke.reject("Product ${args.sku} is not in Play Console yet.")
             val paramsBuilder = BillingFlowParams.ProductDetailsParams.newBuilder().setProductDetails(item)
             val offers = item.subscriptionOfferDetails
@@ -318,6 +318,19 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
             invoke?.reject("Purchase cancelled.")
         } else {
             invoke?.reject(result.debugMessage ?: "Play Billing error ${result.responseCode}")
+        }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun productDetailsListOf(details: Any?): List<ProductDetails> {
+        if (details == null) return emptyList()
+        if (details is List<*>) return details.filterIsInstance<ProductDetails>()
+        return try {
+            val method = details.javaClass.methods.firstOrNull { it.name == "getProductDetailsList" }
+            val list = method?.invoke(details)
+            if (list is List<*>) list.filterIsInstance<ProductDetails>() else emptyList()
+        } catch (_: Exception) {
+            emptyList()
         }
     }
 
@@ -514,7 +527,9 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
                 invoke.resolve(null)
                 return
             }
-            invoke.resolve(Base64.encodeToString(bytes, Base64.NO_WRAP))
+            val out = JSObject()
+            out.put("value", Base64.encodeToString(bytes, Base64.NO_WRAP))
+            invoke.resolve(out)
         } catch (e: Exception) {
             invoke.reject(e.message ?: "Could not open that backup.")
         }
