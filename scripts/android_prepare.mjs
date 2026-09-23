@@ -90,16 +90,19 @@ chaquopy {
 }
 `;
 }
+gradle = gradle.replace(
+  /abiFilters\s*\+=\s*listOf\([^)]*armeabi-v7a[^)]*\)/g,
+  'abiFilters += listOf("arm64-v8a")',
+);
 if (!gradle.includes('GUD_CHAQUOPY_ABI')) {
   gradle += `
 // GUD_CHAQUOPY_ABI
-// Python 3.12 on Chaquopy 17 only ships arm64-v8a and x86_64.
+// Keep Tauri universal + 64-bit flavors. Drop 32-bit (no Python 3.12).
 androidComponents {
     beforeVariants { variant ->
         val n = variant.name
-        if (!n.startsWith("arm64") && !n.startsWith("x86_64")) {
-            variant.enable = false
-        }
+        val keep = n.startsWith("arm64") || n.startsWith("x86_64") || n.startsWith("universal")
+        if (!keep) variant.enable = false
     }
 }
 `;
