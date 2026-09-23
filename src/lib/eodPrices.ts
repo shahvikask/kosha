@@ -1,6 +1,7 @@
 import { AssetCategory, Holding, ListedSecurity } from '../types';
 import { MoneyEngine } from './money';
 import { pingCasParser } from './casPython';
+import { isNativeShell, nativeCommand } from './license';
 
 export interface EodCatalogRow {
   isin: string;
@@ -29,6 +30,12 @@ export interface EodRefreshResult {
 }
 
 const EOD_SOURCE = /^(NSE|BSE|AMFI)\b/i;
+
+let heldIsins: () => string[] = () => [];
+
+export function bindHeldIsins(fn: () => string[]): void {
+  heldIsins = fn;
+}
 
 export function isEodPriceSource(source?: string): boolean {
   return !!source && EOD_SOURCE.test(source);
@@ -118,11 +125,31 @@ export function searchListed(
 }
 
 export async function refreshEodFromSidecar(): Promise<EodRefreshResult> {
+  if (isNativeShell()) {
+    try {
+      const isins = heldIsins()
+        .map(s => (s || '').trim().toUpperCase())
+        .filter(s => s.length >= 12);
+      const remote = await nativeCommand<EodRefreshResult>('prices_refresh', {
+        isins: isins.join(','),
+      });
+      if (remote && typeof remote === 'object') {
+        return remote;
+      }
+    } catch (e) {
+      return {
+        ok: false,
+        error: e instanceof Error ? e.message : 'Could not refresh prices on this phone.',
+      };
+    }
+  }
   const up = await pingCasParser();
   if (!up) {
     return {
       ok: false,
-      error: 'The local price reader is not running. Start the app with npm run dev.',
+      error: isNativeShell()
+        ? 'Could not download last close / NAV on this phone.'
+        : 'The local price reader is not running. Start the app with npm run dev.',
     };
   }
   const res = await fetch('/api/cas/prices/refresh', { method: 'POST' });
