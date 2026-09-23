@@ -90,6 +90,20 @@ chaquopy {
 }
 `;
 }
+if (!gradle.includes('GUD_CHAQUOPY_ABI')) {
+  gradle += `
+// GUD_CHAQUOPY_ABI
+// Python 3.12 on Chaquopy 17 only ships arm64-v8a and x86_64.
+androidComponents {
+    beforeVariants { variant ->
+        val n = variant.name
+        if (!n.startsWith("arm64") && !n.startsWith("x86_64")) {
+            variant.enable = false
+        }
+    }
+}
+`;
+}
 if (testApk && !gradle.includes('GUD_TEST_APK')) {
   gradle = gradle.replace(/defaultConfig\s*\{/, `defaultConfig {
         buildConfigField("boolean", "GUD_TEST_APK", "true")
