@@ -1,6 +1,7 @@
 """Minimal pydantic v2 surface for on-device casparser (no pydantic-core)."""
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Union
 
@@ -29,6 +30,16 @@ def model_validator(*, mode: str = "after"):
     return deco
 
 
+def field_validator(*_fields, mode: str = "after"):
+    return model_validator(mode=mode)
+
+
+def computed_field(fn=None, **_kwargs):
+    if fn is None:
+        return lambda f: f
+    return fn
+
+
 class ValidationError(ValueError):
     pass
 
@@ -38,10 +49,12 @@ class ModelMeta(type):
         cls = super().__new__(mcls, name, bases, ns)
         fields: Dict[str, FieldInfo] = {}
         for base in reversed(cls.__mro__):
+            anns = getattr(base, "__annotations__", {})
             for key, val in getattr(base, "__dict__", {}).items():
                 if isinstance(val, FieldInfo):
                     fields[key] = val
-            anns = getattr(base, "__annotations__", {})
+                elif key in anns and not key.startswith("_") and not callable(val):
+                    fields.setdefault(key, FieldInfo(default=val))
             for key in anns:
                 fields.setdefault(key, FieldInfo())
         cls.model_fields = fields
@@ -98,6 +111,9 @@ class BaseModel(metaclass=ModelMeta):
 
     def dict(self, **kwargs):
         return self.model_dump(**kwargs)
+
+    def model_dump_json(self, **kwargs):
+        return json.dumps(self.model_dump(**kwargs), default=str)
 
 
 def _coerce(annotation: Any, val: Any) -> Any:
