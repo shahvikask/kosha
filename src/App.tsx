@@ -22,10 +22,23 @@ import { markOnboardingSeen } from './lib/onboarding';
 import { maybeRunScheduledBackup } from './lib/backupSchedule';
 import { setTermsDeclineHandler } from './lib/terms';
 import { claimFeedbackPrompt, loadFeedbackState } from './lib/feedback';
+import { isNativePickerOpen } from './lib/autoLock';
+import { bindHeldIsins } from './lib/eodPrices';
 import { AlertTriangle, CheckCircle2, RefreshCw, X } from 'lucide-react';
 
 const KoshaMainApp: React.FC = () => {
-  const { activeScreen, dbReady, dbError, migration, account, unlocked, mustRotatePassword } = useKosha();
+  const {
+    activeScreen,
+    dbReady,
+    dbError,
+    migration,
+    account,
+    unlocked,
+    mustRotatePassword,
+    holdings,
+    lockVault,
+    pricesError,
+  } = useKosha();
   const licence = useLicence();
 
   const [isAddHoldingOpen, setIsAddHoldingOpen] = useState(false);
@@ -36,6 +49,7 @@ const KoshaMainApp: React.FC = () => {
   const [isMigrationBannerDismissed, setIsMigrationBannerDismissed] = useState(false);
   const [termsDeclined, setTermsDeclined] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [priceBannerDismissed, setPriceBannerDismissed] = useState(false);
 
   useEffect(() => {
     setTermsDeclineHandler(() => setTermsDeclined(true));
@@ -52,6 +66,45 @@ const KoshaMainApp: React.FC = () => {
     if (!account || !unlocked || mustRotatePassword) return;
     void maybeRunScheduledBackup('open');
   }, [account, unlocked, mustRotatePassword]);
+
+  useEffect(() => {
+    setPriceBannerDismissed(false);
+  }, [pricesError]);
+
+  useEffect(() => {
+    bindHeldIsins(() =>
+      holdings
+        .map(h => (h.isin || '').trim().toUpperCase())
+        .filter(s => s.length >= 12),
+    );
+  }, [holdings]);
+
+  useEffect(() => {
+    if (!unlocked) return;
+    let lockTimer: number | null = null;
+    const armLock = () => {
+      if (lockTimer != null) window.clearTimeout(lockTimer);
+      lockTimer = window.setTimeout(() => {
+        if (isNativePickerOpen()) return;
+        if (document.visibilityState === 'hidden') lockVault();
+      }, 2000);
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') armLock();
+      else if (lockTimer != null) {
+        window.clearTimeout(lockTimer);
+        lockTimer = null;
+      }
+    };
+    const onPageHide = () => armLock();
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', onPageHide);
+    return () => {
+      if (lockTimer != null) window.clearTimeout(lockTimer);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', onPageHide);
+    };
+  }, [unlocked, lockVault]);
 
   useEffect(() => {
     if (!account || !unlocked || mustRotatePassword) return;
@@ -169,6 +222,18 @@ const KoshaMainApp: React.FC = () => {
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {pricesError && !priceBannerDismissed && (
+        <div className="px-4 py-2.5 text-xs sm:text-sm flex items-center justify-between" style={{ background: 'var(--chip)', color: 'var(--text)' }}>
+          <div className="flex items-center gap-2 max-w-7xl mx-auto w-full">
+            <AlertTriangle className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--bad)' }} />
+            <span>{pricesError}</span>
+          </div>
+          <button onClick={() => setPriceBannerDismissed(true)} className="p-1" aria-label="Dismiss price error">
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 

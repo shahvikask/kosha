@@ -2,10 +2,11 @@
  * Save / pick a locked .kosha file on every surface:
  *   web           — File System Access API, then <a download> / file input
  *   Windows exe   — Tauri commands backup_save / backup_open (native dialog)
- *   Android       — plugin ACTION_CREATE_DOCUMENT / file input (not desktop dialogs)
+ *   Android       — plugin ACTION_CREATE_DOCUMENT / ACTION_OPEN_DOCUMENT
  *
  * Encryption lives in backup.ts. This file only moves the bytes.
  */
+import { beginNativePicker, endNativePicker } from './autoLock';
 import { isNativeShell, nativeCommand } from './license';
 
 function isTauriShell(): boolean {
@@ -27,15 +28,20 @@ function backupBytesFromNative(raw: unknown): string | null {
 
 export async function saveBackupFile(filename: string, bytes: Uint8Array): Promise<'saved' | 'cancelled'> {
   if (isNativeShell() && isAndroidUa()) {
+    beginNativePicker();
     try {
       const result = await nativeCommand<{ saved?: boolean } | boolean | null>('backup_save', {
         filename,
         bytesB64: bytesToB64(bytes),
       });
-      if (result === false || (result && typeof result === 'object' && result.saved === false)) return 'cancelled';
+      if (result === false || (result && typeof result === 'object' && result.saved === false)) {
+        return 'cancelled';
+      }
       return 'saved';
-    } catch {
-      /* fall through to download */
+    } catch (e) {
+      throw new Error(e instanceof Error ? e.message : 'Could not save the locked backup on this phone.');
+    } finally {
+      endNativePicker();
     }
   } else if (isTauriShell()) {
     try {
@@ -80,12 +86,16 @@ export async function saveBackupFile(filename: string, bytes: Uint8Array): Promi
 
 export async function pickBackupFile(): Promise<Uint8Array | null> {
   if (isNativeShell() && isAndroidUa()) {
+    beginNativePicker();
     try {
       const raw = await nativeCommand<string | { value?: string } | null>('backup_open');
       const b64 = backupBytesFromNative(raw);
       if (b64) return b64ToBytes(b64);
-    } catch {
-      /* fall through to input */
+      return null;
+    } catch (e) {
+      throw new Error(e instanceof Error ? e.message : 'Could not open a backup on this phone.');
+    } finally {
+      endNativePicker();
     }
   } else if (isTauriShell()) {
     try {
