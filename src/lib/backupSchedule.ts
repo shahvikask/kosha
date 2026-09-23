@@ -4,6 +4,7 @@
  * Password is never persisted — runs only while the vault is unlocked.
  */
 import { suggestedScheduledBackupName } from './backup';
+import { beginNativePicker, endNativePicker } from './autoLock';
 import { isNativeShell, nativeCommand } from './license';
 import { peekSessionSecret } from './sessionSecret';
 
@@ -95,6 +96,7 @@ export function bindScheduledBackupPacker(fn: PackBackupFn | null): void {
 
 export async function pickBackupFolder(): Promise<BackupScheduleSettings> {
   if (isNativeShell()) {
+    beginNativePicker();
     try {
       const result = await nativeCommand<{ label?: string | null; chosen?: boolean } | null>('backup_pick_folder');
       if (!result || result.chosen === false) return readBackupSchedule();
@@ -106,6 +108,8 @@ export async function pickBackupFolder(): Promise<BackupScheduleSettings> {
       return patchSchedule({
         lastError: e instanceof Error ? e.message : 'Could not open the folder picker.',
       });
+    } finally {
+      endNativePicker();
     }
   }
   const picker = window as unknown as {
