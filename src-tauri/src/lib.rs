@@ -14,7 +14,9 @@ pub fn run() {
             play_purchase,
             play_restore,
             play_review,
-            play_open_listing
+            play_open_listing,
+            cas_health,
+            cas_parse
         ])
         .run(tauri::generate_context!())
         .expect("GrowUrDhan failed to start");
@@ -93,6 +95,27 @@ fn play_review() -> Result<serde_json::Value, String> {
 #[tauri::command]
 fn play_open_listing() -> Result<(), String> {
     Err("Google Play reviews are only available in the Android build.".into())
+}
+
+/// Desktop / fallback only. The Android plugin implements the real on-device
+/// Chaquopy casparser and is invoked first as plugin:growurdhan|cas_health.
+#[tauri::command]
+fn cas_health() -> Result<serde_json::Value, String> {
+    Ok(serde_json::json!({
+        "ok": false,
+        "engine": "PYTHON_CASPARSER",
+        "error": "Engine is not running."
+    }))
+}
+
+#[tauri::command]
+fn cas_parse(
+    pdf_base64: String,
+    password: Option<String>,
+    filename: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let _ = (pdf_base64, password, filename);
+    Err("Engine is not running.".into())
 }
 
 fn base64_encode(bytes: &[u8]) -> String {
