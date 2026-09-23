@@ -1,6 +1,6 @@
 [[permission]]
 identifier = "allow-android-vault"
-description = "On-device vault, Play Billing, review, encrypted backup, and official EOD prices."
+description = "On-device vault, Play Billing, review, encrypted backup, official EOD prices, and Python casparser."
 commands.allow = [
   "vault_blob_load",
   "vault_blob_save",
@@ -15,5 +15,7 @@ commands.allow = [
   "backup_save",
   "backup_open",
   "prices_refresh",
+  "cas_health",
+  "cas_parse",
   "app_exit"
 ]
