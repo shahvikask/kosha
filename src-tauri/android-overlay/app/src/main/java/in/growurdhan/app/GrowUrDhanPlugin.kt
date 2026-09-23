@@ -383,11 +383,7 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
     @Command
     fun backup_pick_folder(invoke: Invoke) {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
-        intent.addFlags(
-            Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
-                Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
-        )
+        intent.putExtra("android.content.extra.SHOW_ADVANCED", true)
         startActivityForResult(invoke, intent, "backupPickFolderResult")
     }
 
@@ -476,7 +472,13 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
             type = "application/octet-stream"
             putExtra(Intent.EXTRA_TITLE, pendingSaveName)
         }
-        startActivityForResult(invoke, intent, "backupSaveResult")
+        try {
+            startActivityForResult(invoke, intent, "backupSaveResult")
+        } catch (e: Exception) {
+            pendingSaveBytes = null
+            pendingSaveName = null
+            invoke.reject(e.message ?: "Could not open the save dialog on this phone.")
+        }
     }
 
     @ActivityCallback
@@ -536,6 +538,34 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
     }
 
     @Command
+    fun prices_refresh(invoke: Invoke) {
+        Thread {
+            try {
+                val args = try {
+                    invoke.parseArgs(PricesArgs::class.java)
+                } catch (_: Exception) {
+                    PricesArgs()
+                }
+                val (catalog, asOf, warnings) = PriceFetcher.refresh(args.isins)
+                val out = JSObject()
+                val matched = catalog.length() > 0
+                out.put("ok", matched || asOf != null)
+                out.put("asOf", asOf)
+                out.put("catalog", catalog)
+                out.put("catalogCount", catalog.length())
+                out.put("warnings", warnings)
+                if (!matched && args.isins.isNotBlank()) {
+                    out.put("ok", false)
+                    out.put("error", "No last close or NAV matched the ISINs in this vault.")
+                }
+                invoke.resolve(out)
+            } catch (e: Exception) {
+                invoke.reject(e.message ?: "Could not refresh prices on this phone.")
+            }
+        }.start()
+    }
+
+    @Command
     fun app_exit(invoke: Invoke) {
         invoke.resolve(JSObject())
         activity.finishAffinity()
@@ -563,5 +593,11 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
         var bytesB64: String = ""
         @JvmField
         var keepLast: Int = 5
+    }
+
+    @InvokeArg
+    class PricesArgs {
+        @JvmField
+        var isins: String = ""
     }
 }
