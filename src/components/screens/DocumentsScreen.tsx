@@ -1,1 +1,2 @@
-PLACEHOLDER_DOCS
+// FILE: src/components/screens/DocumentsScreen.tsx
+RESTORE_FROM_LOCAL
