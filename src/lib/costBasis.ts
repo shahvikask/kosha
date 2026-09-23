@@ -13,11 +13,11 @@ const PARCEL_TYPES = new Set(['BUY', 'OPENING_BALANCE', 'SNAPSHOT_ADJUSTMENT', '
 
 export function earliestActiveParcel(
   events: LedgerEvent[],
-  holdingId: string
+  holdingId: string,
 ): LedgerEvent | null {
   const mine = events.filter(e => e.holdingId === holdingId);
   const superseded = new Set(
-    mine.filter(e => e.supersedesEventId).map(e => e.supersedesEventId as string)
+    mine.filter(e => e.supersedesEventId).map(e => e.supersedesEventId as string),
   );
   const parcels = mine
     .filter(e => {
@@ -47,7 +47,7 @@ export function planInvestedCorrection(opts: {
   if (qty <= 0n) return null;
   const acquiredOn = /^\d{4}-\d{2}-\d{2}$/.test(opts.acquiredOn)
     ? opts.acquiredOn
-    : (parcel?.eventDate || holding.acquiredOn || '');
+    : parcel?.eventDate || holding.acquiredOn || '';
   if (!/^\d{4}-\d{2}-\d{2}$/.test(acquiredOn)) return null;
   const total = (qty * unitPriceMinor) / QTY_SCALE;
   const samePrice = parcel != null && BigInt(parcel.unitPriceMinor || '0') === unitPriceMinor;
@@ -62,22 +62,16 @@ export function planInvestedCorrection(opts: {
     quantityScaled: qty.toString(),
     unitPriceMinor: unitPriceMinor.toString(),
     totalAmountMinor: total.toString(),
-    notes: 'Invested updated from your records (statement has no buy price)',
+    notes: 'Purchase date you typed — not the day you edited this. The statement had no buy price.',
     supersedesEventId: parcel?.id,
   };
 }
 
 const RUPEE = 10_000n;
-/** Running-balance products: the passbook figure is both cost and value. */
 const BALANCE_IS_COST = new Set(['PPF', 'EPF', 'SSY', 'FD']);
 
 export const UNKNOWN_INVESTED_LABEL = 'Need what you paid';
 
-/**
- * CDSL/NSDL holdings CAS prints CMP as both value and “invested”.
- * Until the user records what they paid (BUY or CORRECTION), that
- * number is not a cost — hide it and refuse a 0% return.
- */
 export function isUnknownInvested(
   holding: Holding,
   events: LedgerEvent[],
