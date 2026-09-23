@@ -65,7 +65,9 @@ jobs:
           node scripts/android_prepare.mjs
 
       - name: Build debug APK
-        run: npx tauri android build --apk --debug --target aarch64
+        run: |
+          node scripts/android_prepare.mjs
+          npx tauri android build --apk --debug --target aarch64
 
       - name: Stage APK
         run: |
