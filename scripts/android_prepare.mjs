@@ -81,9 +81,7 @@ chaquopy {
         version = "3.12"
         pip {
             options("--find-links", "src/main/python-wheels")
-            install("pydantic>=2.3.0,<3")
             install("python-dateutil>=2.8.2,<3")
-            install("casparser-isin>=2025.3.1")
             install("pypdfium2==5.13.0")
         }
     }
@@ -300,6 +298,10 @@ for (const name of ['cas_parse_server.py', 'cas_android.py', 'eod_prices.py']) {
   const src = join(root, 'scripts', name);
   if (existsSync(src)) cpSync(src, join(pyDst, name));
 }
+const pydanticShim = join(root, 'scripts', 'android_pydantic.py');
+if (existsSync(pydanticShim)) cpSync(pydanticShim, join(pyDst, 'pydantic.py'));
+const isinShim = join(root, 'scripts', 'android_casparser_isin.py');
+if (existsSync(isinShim)) cpSync(isinShim, join(pyDst, 'casparser_isin.py'));
 
 const wheels = join(android, 'app', 'src', 'main', 'python-wheels');
 mkdirSync(wheels, { recursive: true });
