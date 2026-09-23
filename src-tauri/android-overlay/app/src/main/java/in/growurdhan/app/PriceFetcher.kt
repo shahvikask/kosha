@@ -30,12 +30,7 @@ internal object PriceFetcher {
         } catch (e: Exception) {
             warnings.put("NSE close: ${e.message ?: "unavailable"}")
         }
-        val asOf = nseAsOf ?: amfiAsOf
-        val meta = JSONArray()
-        meta.put(asOf ?: JSONObject.NULL)
-        meta.put(amfiAsOf ?: JSONObject.NULL)
-        meta.put(nseAsOf ?: JSONObject.NULL)
-        return Triple(catalog, asOf, warnings)
+        return Triple(catalog, nseAsOf ?: amfiAsOf, warnings)
     }
 
     private fun fillAmfi(wanted: Set<String>, catalog: JSONArray): String? {
@@ -150,9 +145,14 @@ internal object PriceFetcher {
     }
 
     private fun parseNseTimestamp(raw: String): String? {
-        val m = Regex("""(\\d{2})-([A-Z]{3})-(\\d{4})""").find(raw.uppercase(Locale.US)) ?: return null
-        val mon = monthMap()[m.groupValues[2]] ?: return null
-        return "${m.groupValues[3]}-$mon-${m.groupValues[1]}"
+        val parts = raw.uppercase(Locale.US).split("-")
+        if (parts.size < 3) return null
+        val dd = parts[0].filter { it.isDigit() }.padStart(2, '0')
+        if (dd.length != 2) return null
+        val mon = monthMap()[parts[1].take(3)] ?: return null
+        val yyyy = parts[2].filter { it.isDigit() }.take(4)
+        if (yyyy.length != 4) return null
+        return "$yyyy-$mon-$dd"
     }
 
     private fun monthMap() = mapOf(
