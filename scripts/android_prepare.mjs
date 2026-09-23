@@ -12,11 +12,38 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const android = join(root, 'src-tauri', 'gen', 'android');
 const overlay = join(root, 'src-tauri', 'android-overlay');
 const testApk = process.env.GUD_TEST_APK === '1' || process.env.VITE_GUD_TEST_APK === '1';
+const CHAQUOPY = '17.0.0';
 
 if (!existsSync(android)) {
   console.error('Run npx tauri android init first (CI does this).');
   process.exit(1);
 }
+
+const PLUGIN_MANAGEMENT_GROOVY = `pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+    plugins {
+        id "com.chaquo.python" version "${CHAQUOPY}"
+    }
+}
+
+`;
+
+const PLUGIN_MANAGEMENT_KTS = `pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+    plugins {
+        id("com.chaquo.python") version "${CHAQUOPY}"
+    }
+}
+
+`;
 
 const appGradle = join(android, 'app', 'build.gradle.kts');
 let gradle = readFileSync(appGradle, 'utf8');
@@ -34,10 +61,18 @@ if (!gradle.includes('billing-ktx')) {
 `,
   );
 }
-if (!gradle.includes('com.chaquo.python')) {
-  gradle = gradle.replace(/plugins\s*\{/, `plugins {
-    id("com.chaquo.python")
-`);
+if (gradle.includes('com.chaquo.python')) {
+  gradle = gradle.replace(
+    /id\("com\.chaquo\.python"\)(?:\s+version\s+"[^"]+")?/,
+    `id("com.chaquo.python") version "${CHAQUOPY}"`,
+  );
+} else {
+  gradle = gradle.replace(
+    /plugins\s*\{/,
+    `plugins {
+    id("com.chaquo.python") version "${CHAQUOPY}"
+`,
+  );
 }
 if (!gradle.includes('chaquopy {')) {
   gradle += `
@@ -72,25 +107,42 @@ writeFileSync(appGradle, gradle);
 function injectChaquopySettings(filePath) {
   if (!existsSync(filePath)) return;
   let text = readFileSync(filePath, 'utf8');
-  if (text.includes('com.chaquo.python')) return;
+  const kts = filePath.endsWith('.kts');
+  const block = kts ? PLUGIN_MANAGEMENT_KTS : PLUGIN_MANAGEMENT_GROOVY;
+  if (text.includes('com.chaquo.python') && text.includes('pluginManagement')) {
+    writeFileSync(filePath, text);
+    return;
+  }
   if (/pluginManagement\s*\{[\s\S]*?plugins\s*\{/.test(text)) {
     text = text.replace(
       /(pluginManagement\s*\{[\s\S]*?plugins\s*\{)/,
-      `$1
-        id("com.chaquo.python") version "17.0.0"
-`,
+      `$1\n        id${kts ? '("com.chaquo.python")' : ' "com.chaquo.python"'} version "${CHAQUOPY}"\n`,
     );
+    if (!/pluginManagement\s*\{[\s\S]*?mavenCentral\(\)/.test(text)) {
+      text = text.replace(
+        /(pluginManagement\s*\{[\s\S]*?repositories\s*\{)/,
+        `$1\n        mavenCentral()\n        google()\n        gradlePluginPortal()\n`,
+      );
+    }
   } else if (text.includes('pluginManagement')) {
     text = text.replace(
       /pluginManagement\s*\{/,
       `pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
     plugins {
-        id("com.chaquo.python") version "17.0.0"
+        id${kts ? '("com.chaquo.python")' : ' "com.chaquo.python"'} version "${CHAQUOPY}"
     }
 `,
     );
+  } else {
+    text = block + text;
   }
   writeFileSync(filePath, text);
+  console.log('Chaquopy pluginManagement written to', filePath);
 }
 
 injectChaquopySettings(join(android, 'settings.gradle'));
@@ -240,6 +292,14 @@ if (!existsSync(wheelPath)) {
   const url = 'https://github.com/pypdfium2-team/pypdfium2/releases/download/5.13.0/' + wheelName;
   console.log('Downloading', wheelName);
   execSync('curl -fsSL -o "' + wheelPath + '" "' + url + '"', { stdio: 'inherit' });
+}
+
+for (const rel of ['settings.gradle', 'settings.gradle.kts', 'build.gradle.kts', 'app/build.gradle.kts']) {
+  const p = join(android, rel);
+  if (existsSync(p)) {
+    const head = readFileSync(p, 'utf8').split('\n').slice(0, 24).join('\n');
+    console.log('\n--- ' + rel + ' ---\n' + head);
+  }
 }
 
 console.log(testApk ? 'Android overlay applied (TEST APK - on-device Python casparser).' : 'Android overlay applied (Play AAB - on-device Python casparser).');
