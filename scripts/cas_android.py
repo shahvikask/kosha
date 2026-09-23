@@ -10,6 +10,7 @@ import json
 import os
 import sys
 import tempfile
+import traceback
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -17,12 +18,34 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
 
-def health() -> bool:
-    import casparser  # noqa: F401
-    import pypdfium2  # noqa: F401
-    from cas_parse_server import parse_pdf_path  # noqa: F401
+def health() -> str:
+    detail = {"ok": False, "engine": "PYTHON_CASPARSER"}
+    try:
+        import casparser  # noqa: F401
 
-    return True
+        detail["casparser"] = getattr(casparser, "__version__", "yes")
+    except Exception as exc:
+        detail["error"] = f"casparser import failed: {exc}"
+        detail["trace"] = traceback.format_exc()[-800:]
+        return json.dumps(detail)
+    try:
+        import pypdfium2  # noqa: F401
+
+        detail["pypdfium2"] = getattr(pypdfium2, "__version__", "yes")
+    except Exception as exc:
+        detail["error"] = f"pypdfium2 import failed: {exc}"
+        detail["trace"] = traceback.format_exc()[-800:]
+        return json.dumps(detail)
+    try:
+        from cas_parse_server import parse_pdf_path  # noqa: F401
+
+        detail["server"] = True
+    except Exception as exc:
+        detail["error"] = f"cas_parse_server import failed: {exc}"
+        detail["trace"] = traceback.format_exc()[-800:]
+        return json.dumps(detail)
+    detail["ok"] = True
+    return json.dumps(detail)
 
 
 def parse_b64(pdf_b64: str, password: str = "", filename: str = "statement.pdf") -> str:
@@ -39,6 +62,15 @@ def parse_b64(pdf_b64: str, password: str = "", filename: str = "statement.pdf")
         result = parse_pdf_path(path, password or "")
         result["filename"] = filename or "statement.pdf"
         return json.dumps(result, default=str)
+    except Exception as exc:
+        return json.dumps(
+            {
+                "ok": False,
+                "error": f"Failed to parse statement: {exc}",
+                "code": "INTERNAL",
+                "detail": traceback.format_exc()[-1500:],
+            }
+        )
     finally:
         if fd >= 0:
             try:
