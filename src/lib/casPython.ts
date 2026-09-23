@@ -162,10 +162,8 @@ export function upsertCasLatest(
   return { asOf, byOwner };
 }
 
-const PYTHON_DOWN =
-  'The Python CAS reader is not running. From the project folder run npm run dev — it starts the reader automatically. Or run: python3 scripts/cas_parse_server.py';
-const PYTHON_DOWN_PHONE =
-  'Python casparser could not start on this phone. Reinstall the latest GrowUrDhan APK.';
+const PYTHON_DOWN = 'Engine is not running.';
+const PYTHON_DOWN_PHONE = 'Engine is not running.';
 
 async function fileToBase64(file: File): Promise<string> {
   const buf = await file.arrayBuffer();
@@ -184,13 +182,13 @@ function raiseFromPythonResult(data: CasPythonResult): never {
     (err as Error & { name: string }).name = 'PasswordException';
     throw err;
   }
-  throw new Error(data?.error || 'The Python CAS reader could not parse this file.');
+  throw new Error(data?.error || 'Engine is not running.');
 }
 
 export async function pingCasParser(): Promise<boolean> {
   if (isNativeShell()) {
     try {
-      const body = await nativeCommand<{ ok?: boolean }>('cas_health', {});
+      const body = await nativeCommand<{ ok?: boolean; error?: string }>('cas_health', {});
       return body?.ok === true;
     } catch {
       return false;
@@ -220,7 +218,8 @@ export async function parseCasPdfWithPython(
         filename: file.name,
       });
     } catch (e) {
-      throw new Error(e instanceof Error ? e.message : PYTHON_DOWN_PHONE);
+      const msg = e instanceof Error ? e.message : '';
+      throw new Error(msg || PYTHON_DOWN_PHONE);
     }
     const data = (raw?.payload ? JSON.parse(raw.payload) : raw) as CasPythonResult;
     if (!data?.ok) raiseFromPythonResult(data);
