@@ -101,12 +101,27 @@ export function isNativeShell(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
 
+function invokeErrorMessage(e: unknown): string {
+  if (e instanceof Error && e.message) return e.message;
+  if (typeof e === 'string' && e) return e;
+  if (e && typeof e === 'object') {
+    const o = e as Record<string, unknown>;
+    if (typeof o.message === 'string' && o.message) return o.message;
+    if (typeof o.error === 'string' && o.error) return o.error;
+  }
+  return '';
+}
+
 /** Plugin channel first (Android Keystore + Play Billing), then app commands. */
 export async function nativeCommand<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   const { invoke } = await import('@tauri-apps/api/core');
   try {
     return await invoke<T>(`plugin:growurdhan|${cmd}`, args);
-  } catch {
+  } catch (e) {
+    const msg = invokeErrorMessage(e);
+    if (msg && !/not found|unknown command|does not exist|forbidden/i.test(msg)) {
+      throw e instanceof Error ? e : new Error(msg);
+    }
     return invoke<T>(cmd, args);
   }
 }
