@@ -24,8 +24,16 @@ from typing import Any, Optional
 
 ROOT = Path(__file__).resolve().parent.parent
 CAS_SRC = ROOT / "src" / "casparser-main"
-if str(CAS_SRC) not in sys.path:
-    sys.path.insert(0, str(CAS_SRC))
+# Desktop sidecar keeps the vendored tree on sys.path. On Android that
+# directory does not exist (casparser is packaged beside this file). Chaquopy
+# raises FileNotFoundError if a missing path is inserted, which blocks every
+# later import including eod_prices.
+if CAS_SRC.is_dir():
+    if str(CAS_SRC) not in sys.path:
+        sys.path.insert(0, str(CAS_SRC))
+else:
+    missing = str(CAS_SRC)
+    sys.path[:] = [entry for entry in sys.path if entry != missing]
 SCRIPTS = Path(__file__).resolve().parent
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))

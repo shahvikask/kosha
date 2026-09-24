@@ -186,7 +186,7 @@ function diagNote(cmd: string, line: string) {
 /**
  * Vault and Play stay plugin-first.
  * cas_health, cas_parse, and diag_log try the app command first (Rust forwards
- * to Chaquopy on Android) and fall back to the plugin channel. Both attempts are logged.
+ * to Chaquopy on Android). Fall back only when that channel is not registered.
  */
 export async function nativeCommand<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   const { invoke } = await import('@tauri-apps/api/core');
@@ -204,8 +204,15 @@ export async function nativeCommand<T>(cmd: string, args?: Record<string, unknow
       last = e;
       const msg = invokeErrorMessage(e);
       diagNote(cmd, `js ${cmd} via ${channel} FAIL ${msg.slice(0, 500)} ${hint}`.trim());
-      const missing = !msg || /not found|unknown command|does not exist|forbidden/i.test(msg);
-      const tryNext = i === 0 && (appFirst || missing);
+      // Only switch channels when this channel is missing. A real Python error
+      // (FileNotFoundError, bad password, parse failure) must be shown as-is.
+      // "Plugin not found" is Tauri's missing-channel error, not a Python error.
+      const channelMissing =
+        !msg ||
+        /unknown command|does not exist|forbidden/i.test(msg) ||
+        /not allowed/i.test(msg) ||
+        /plugin not found/i.test(msg);
+      const tryNext = i === 0 && channelMissing;
       if (!tryNext) throw e instanceof Error ? e : new Error(msg || 'command failed');
     }
   }
