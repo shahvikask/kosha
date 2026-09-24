@@ -19,7 +19,13 @@ if str(HERE) not in sys.path:
 
 
 def health() -> str:
-    detail = {"ok": False, "engine": "PYTHON_CASPARSER", "python": sys.version}
+    detail = {
+        "ok": False,
+        "engine": "PYTHON_CASPARSER",
+        "python": sys.version,
+        "path": sys.path[:6],
+        "here": str(HERE),
+    }
     try:
         import casparser  # noqa: F401
 

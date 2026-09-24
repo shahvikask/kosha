@@ -3,6 +3,10 @@ use std::path::PathBuf;
 use tauri::plugin::TauriPlugin;
 use tauri::{AppHandle, Manager, Runtime};
 
+struct AndroidBridge<R: Runtime> {
+    plugin: tauri::plugin::PluginHandle<R>,
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -24,10 +28,11 @@ pub fn run() {
 
 fn growurdhan_plugin<R: Runtime>() -> TauriPlugin<R> {
     tauri::plugin::Builder::new("growurdhan")
-        .setup(|_app, api| {
+        .setup(|app, api| {
             #[cfg(target_os = "android")]
             {
-                api.register_android_plugin("in.growurdhan.app", "GrowUrDhanPlugin")?;
+                let handle = api.register_android_plugin("in.growurdhan.app", "GrowUrDhanPlugin")?;
+                app.manage(AndroidBridge { plugin: handle });
             }
             #[cfg(not(target_os = "android"))]
             {
@@ -44,8 +49,6 @@ fn vault_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(dir.join("vault.enc"))
 }
 
-/// Sandboxed file store. On Android the overlay plugin wraps this with
-/// EncryptedFile + Keystore when it is registered; JS still AES-GCM wraps first.
 #[tauri::command]
 fn vault_blob_load(app: AppHandle) -> Result<Option<String>, String> {
     let path = vault_path(&app)?;
@@ -63,7 +66,6 @@ fn vault_blob_save(app: AppHandle, bytes_b64: String) -> Result<(), String> {
     fs::write(path, bytes).map_err(|e| e.to_string())
 }
 
-/// Without the Android Play plugin this must not grant a trial.
 #[tauri::command]
 fn play_licence_status() -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({
@@ -97,25 +99,70 @@ fn play_open_listing() -> Result<(), String> {
     Err("Google Play reviews are only available in the Android build.".into())
 }
 
-/// Desktop / fallback only. The Android plugin implements the real on-device
-/// Chaquopy casparser and is invoked first as plugin:growurdhan|cas_health.
+/// JS first tries plugin:growurdhan|cas_health. If ACL blocks that channel,
+/// it falls through to this command. On Android we must reach Chaquopy
+/// through the registered plugin handle — never return the desktop stub.
 #[tauri::command]
-fn cas_health() -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({
-        "ok": false,
-        "engine": "PYTHON_CASPARSER",
-        "error": "Engine is not running."
-    }))
+fn cas_health<R: Runtime>(app: AppHandle<R>) -> Result<serde_json::Value, String> {
+    #[cfg(target_os = "android")]
+    {
+        let Some(bridge) = app.try_state::<AndroidBridge<R>>() else {
+            return Ok(serde_json::json!({
+                "ok": false,
+                "engine": "PYTHON_CASPARSER",
+                "error": "Android CAS plugin was not registered."
+            }));
+        };
+        return match bridge
+            .plugin
+            .run_mobile_plugin::<serde_json::Value>("cas_health", serde_json::json!({}))
+        {
+            Ok(v) => Ok(v),
+            Err(e) => Ok(serde_json::json!({
+                "ok": false,
+                "engine": "PYTHON_CASPARSER",
+                "error": e.to_string()
+            })),
+        };
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app;
+        Ok(serde_json::json!({
+            "ok": false,
+            "engine": "PYTHON_CASPARSER",
+            "error": "Engine is not running."
+        }))
+    }
 }
 
 #[tauri::command]
-fn cas_parse(
+fn cas_parse<R: Runtime>(
+    app: AppHandle<R>,
     pdf_base64: String,
     password: Option<String>,
     filename: Option<String>,
 ) -> Result<serde_json::Value, String> {
-    let _ = (pdf_base64, password, filename);
-    Err("Engine is not running.".into())
+    #[cfg(target_os = "android")]
+    {
+        let Some(bridge) = app.try_state::<AndroidBridge<R>>() else {
+            return Err("Android CAS plugin was not registered.".into());
+        };
+        let payload = serde_json::json!({
+            "pdfBase64": pdf_base64,
+            "password": password.unwrap_or_default(),
+            "filename": filename.unwrap_or_else(|| "statement.pdf".into()),
+        });
+        return bridge
+            .plugin
+            .run_mobile_plugin::<serde_json::Value>("cas_parse", payload)
+            .map_err(|e| e.to_string());
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (app, pdf_base64, password, filename);
+        Err("Engine is not running.".into())
+    }
 }
 
 fn base64_encode(bytes: &[u8]) -> String {
