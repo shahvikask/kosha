@@ -18,7 +18,7 @@ import {
   CasFileType,
   CasImportMeta,
   formatStatementDate,
-  pingCasParser,
+  readCasHealth,
   npsStatementPassword,
   statementPasswordsToTry,
 } from '../../lib/casPython';
@@ -91,6 +91,7 @@ export const DocumentsScreen: React.FC = () => {
   });
   const [importNotification, setImportNotification] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
   const [pythonReady, setPythonReady] = useState<boolean | null>(null);
+  const [engineDetail, setEngineDetail] = useState<string>('');
   const [isCommitting, setIsCommitting] = useState(false);
   const [recordBookSearch, setRecordBookSearch] = useState<string>('');
   const [recordBookFilterType, setRecordBookFilterType] = useState<string>('ALL');
@@ -118,11 +119,17 @@ export const DocumentsScreen: React.FC = () => {
     let n = 0;
     const tick = () => {
       if (stop) return;
-      pingCasParser().then(ok => {
+      readCasHealth().then(h => {
         if (stop) return;
-        setPythonReady(ok);
+        setPythonReady(h.ok);
+        const err = [h.error, h.logError ? `log write: ${h.logError}` : '']
+          .filter(Boolean)
+          .join(' — ')
+          .replace(/\s+/g, ' ')
+          .slice(0, 400);
+        setEngineDetail(h.ok ? '' : err);
         n += 1;
-        if (!ok && n < 30) setTimeout(tick, 700);
+        if (!h.ok && n < 6) setTimeout(tick, 900);
       });
     };
     tick();
@@ -470,8 +477,19 @@ export const DocumentsScreen: React.FC = () => {
                   <p className="text-xs text-slate-400 leading-relaxed">
                     Supports password-protected <strong>CDSL, NSDL, CAMS, KFintech and NPS</strong> PDFs via Python casparser. Same issuer overwrites the previous file.
                   </p>
-                  {pythonReady === false && (<p className="text-xs text-amber-300 pt-2">Engine is not running.</p>)}
-                  {pythonReady === true && (<p className="text-[11px] text-emerald-400/90 pt-1">Engine is running.</p>)}
+                  {pythonReady === false && (
+                    <div className="pt-2 space-y-1">
+                      <p className="text-xs text-amber-300">Engine is not running.</p>
+                      {engineDetail && <p className="text-[11px] text-amber-200/80 break-words">{engineDetail}</p>}
+                      <p className="text-[11px] text-slate-400">Diagnostics: Download/GrowUrDhan-diagnostics.txt</p>
+                    </div>
+                  )}
+                  {pythonReady === true && (
+                    <div className="pt-1 space-y-1">
+                      <p className="text-[11px] text-emerald-400/90">Engine is running.</p>
+                      <p className="text-[11px] text-slate-500">Diagnostics: Download/GrowUrDhan-diagnostics.txt</p>
+                    </div>
+                  )}
                 </div>
                 <label className="px-5 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs sm:text-sm font-bold rounded-xl cursor-pointer inline-flex items-center gap-2">
                   <FileText className="w-4 h-4 stroke-[2.5]" />

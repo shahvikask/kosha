@@ -198,6 +198,12 @@ if (existsSync(manifest)) {
       '    <uses-permission android:name="com.android.vending.BILLING" />\n    <application',
     );
   }
+  if (!m.includes('WRITE_EXTERNAL_STORAGE')) {
+    m = m.replace(
+      /<application/,
+      '    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />\n    <application',
+    );
+  }
   writeFileSync(manifest, m);
 }
 

@@ -60,13 +60,26 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
             .enablePendingPurchases(pending)
             .build()
         connectBilling()
-        try { ensurePython() } catch (_: Exception) {}
+        Diag.banner(activity)
+        try {
+            ensurePython()
+            val started = try { Python.isStarted() } catch (e: Exception) { Diag.log(activity, "python", "isStarted threw " + Diag.throwable(e)); false }
+            Diag.log(activity, "python", "load ensurePython done started=$started")
+        } catch (e: Exception) {
+            Diag.log(activity, "python", "load ensurePython FAILED " + Diag.throwable(e))
+        }
     }
 
     // Chaquopy docs: Python.start must run on an Application/Activity/Service
     // thread — not a worker thread — exactly once per process.
     private fun ensurePython() {
-        if (Python.isStarted()) return
+        val thread = Thread.currentThread().name + " main=" + (Looper.myLooper() == Looper.getMainLooper())
+        val already = try { Python.isStarted() } catch (e: Exception) {
+            Diag.log(activity, "python", "isStarted before start threw on $thread " + Diag.throwable(e))
+            false
+        }
+        Diag.log(activity, "python", "ensurePython thread=$thread alreadyStarted=$already")
+        if (already) return
         val startNow = {
             if (!Python.isStarted()) {
                 Python.start(AndroidPlatform(activity.applicationContext))
@@ -91,15 +104,9 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
         err?.let { throw it }
     }
 
-    private fun pythonError(e: Exception): String {
-        val parts = mutableListOf<String>()
-        var cur: Throwable? = e
-        while (cur != null && parts.size < 4) {
-            val m = cur.message?.trim().orEmpty()
-            if (m.isNotEmpty() && m !in parts) parts.add(m)
-            cur = cur.cause
-        }
-        return if (parts.isNotEmpty()) parts.joinToString(" | ") else "Engine is not running."
+    private fun pythonError(e: Throwable): String {
+        val text = Diag.throwable(e)
+        return if (text.isBlank()) "Engine is not running (empty ${e.javaClass.name})." else text
     }
 
     private fun connectBilling() {
@@ -157,6 +164,7 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
 
     @Command
     fun vault_blob_load(invoke: Invoke) {
+        Diag.enter(activity, "vault_blob_load")
         try {
             if (!vaultFile.exists()) {
                 invoke.resolve(null)
@@ -173,12 +181,14 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
             out.put("value", Base64.encodeToString(bytes, Base64.NO_WRAP))
             invoke.resolve(out)
         } catch (e: Exception) {
+            Diag.log(activity, Diag.current, "fail " + Diag.throwable(e))
             invoke.reject(e.message ?: "Could not read the encrypted vault.")
         }
     }
 
     @Command
     fun vault_blob_save(invoke: Invoke) {
+        Diag.enter(activity, "vault_blob_save")
         try {
             val args = invoke.parseArgs(SaveArgs::class.java)
             val bytes = Base64.decode(args.bytesB64, Base64.DEFAULT)
@@ -192,12 +202,14 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
             encrypted.openFileOutput().use { it.write(bytes) }
             invoke.resolve(JSObject())
         } catch (e: Exception) {
+            Diag.log(activity, Diag.current, "fail " + Diag.throwable(e))
             invoke.reject(e.message ?: "Could not write the encrypted vault.")
         }
     }
 
     @Command
     fun play_licence_status(invoke: Invoke) {
+        Diag.enter(activity, "play_licence_status")
         resolveLicence(invoke, 0)
     }
 
@@ -239,6 +251,7 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
 
     @Command
     fun play_purchase(invoke: Invoke) {
+        Diag.enter(activity, "play_purchase")
         if (testApk()) {
             invoke.resolve(JSObject())
             return
@@ -297,11 +310,13 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
 
     @Command
     fun play_restore(invoke: Invoke) {
+        Diag.enter(activity, "play_restore")
         play_licence_status(invoke)
     }
 
     @Command
     fun play_review(invoke: Invoke) {
+        Diag.enter(activity, "play_review")
         if (testApk() || !installedFromPlay()) {
             openPlayListing()
             invoke.resolve(reviewResult(false, true))
@@ -328,6 +343,7 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
 
     @Command
     fun play_open_listing(invoke: Invoke) {
+        Diag.enter(activity, "play_open_listing")
         openPlayListing()
         invoke.resolve(JSObject())
     }
@@ -426,6 +442,7 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
 
     @Command
     fun backup_pick_folder(invoke: Invoke) {
+        Diag.enter(activity, "backup_pick_folder")
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
         intent.putExtra("android.content.extra.SHOW_ADVANCED", true)
         startActivityForResult(invoke, intent, "backupPickFolderResult")
@@ -462,6 +479,7 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
 
     @Command
     fun backup_clear_folder(invoke: Invoke) {
+        Diag.enter(activity, "backup_clear_folder")
         val uri = backupTreeUri()
         if (uri != null) {
             try {
@@ -478,6 +496,7 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
 
     @Command
     fun backup_write_scheduled(invoke: Invoke) {
+        Diag.enter(activity, "backup_write_scheduled")
         try {
             val args = invoke.parseArgs(WriteBackupArgs::class.java)
             val uri = backupTreeUri() ?: return invoke.reject("Choose a Google Drive or OneDrive folder first.")
@@ -502,12 +521,14 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
             out.put("label", tree.name ?: "Cloud folder")
             invoke.resolve(out)
         } catch (e: Exception) {
+            Diag.log(activity, Diag.current, "fail " + Diag.throwable(e))
             invoke.reject(e.message ?: "Could not write the scheduled backup.")
         }
     }
 
     @Command
     fun backup_save(invoke: Invoke) {
+        Diag.enter(activity, "backup_save")
         val args = invoke.parseArgs(WriteBackupArgs::class.java)
         pendingSaveBytes = Base64.decode(args.bytesB64, Base64.DEFAULT)
         pendingSaveName = args.filename.ifBlank { "growurdhan.kosha" }
@@ -521,6 +542,7 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
         } catch (e: Exception) {
             pendingSaveBytes = null
             pendingSaveName = null
+            Diag.log(activity, "backup_save", "dialog failed " + Diag.throwable(e))
             invoke.reject(e.message ?: "Could not open the save dialog on this phone.")
         }
     }
@@ -548,12 +570,14 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
             out.put("saved", true)
             invoke.resolve(out)
         } catch (e: Exception) {
+            Diag.log(activity, Diag.current, "fail " + Diag.throwable(e))
             invoke.reject(e.message ?: "Could not write the backup file.")
         }
     }
 
     @Command
     fun backup_open(invoke: Invoke) {
+        Diag.enter(activity, "backup_open")
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "*/*"
@@ -577,32 +601,50 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
             out.put("value", Base64.encodeToString(bytes, Base64.NO_WRAP))
             invoke.resolve(out)
         } catch (e: Exception) {
+            Diag.log(activity, Diag.current, "fail " + Diag.throwable(e))
             invoke.reject(e.message ?: "Could not open that backup.")
         }
     }
 
     @Command
     fun cas_health(invoke: Invoke) {
+        Diag.enter(activity, "cas_health")
         Thread {
             try {
                 ensurePython()
-                val raw = Python.getInstance().getModule("cas_android").callAttr("health").toString()
-                val parsed = try { JSONObject(raw) } catch (_: Exception) { JSONObject() }
+                val py = Python.getInstance()
+                Diag.log(activity, "cas_health", "Python.getInstance ok started=${Python.isStarted()}")
+                val raw = py.getModule("cas_android").callAttr("health").toString()
+                val parsed = try { JSONObject(raw) } catch (je: Exception) {
+                    Diag.log(activity, "cas_health", "health JSON parse failed " + Diag.throwable(je) + " raw=" + raw.take(500))
+                    JSONObject()
+                }
                 val ready = parsed.optBoolean("ok", false)
+                val err = parsed.optString("error", "")
+                val trace = parsed.optString("trace", "")
+                Diag.log(activity, "cas_health", "health ok=$ready error=$err trace=$trace detail=${raw.take(2500)}")
                 val out = JSObject()
                 out.put("ok", ready)
                 out.put("engine", "PYTHON_CASPARSER")
                 out.put("detail", raw)
+                out.put("logPath", Diag.publicPath)
+                out.put("logPrivate", Diag.privatePath)
+                out.put("logError", Diag.lastError)
                 if (!ready) {
-                    val err = parsed.optString("error", "")
-                    if (err.isNotBlank()) out.put("error", err)
+                    val shown = if (err.isNotBlank()) err else if (trace.isNotBlank()) trace else "cas_health ok=false with no error text"
+                    out.put("error", shown)
                 }
                 invoke.resolve(out)
             } catch (e: Exception) {
+                val msg = pythonError(e)
+                Diag.log(activity, "cas_health", "FAILED $msg")
                 val out = JSObject()
                 out.put("ok", false)
                 out.put("engine", "PYTHON_CASPARSER")
-                out.put("error", pythonError(e))
+                out.put("error", msg)
+                out.put("logPath", Diag.publicPath)
+                out.put("logPrivate", Diag.privatePath)
+                out.put("logError", Diag.lastError)
                 invoke.resolve(out)
             }
         }.start()
@@ -610,29 +652,44 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
 
     @Command
     fun cas_parse(invoke: Invoke) {
+        Diag.enter(activity, "cas_parse")
         val args = try {
             invoke.parseArgs(CasParseArgs::class.java)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Diag.log(activity, "cas_parse", "args failed " + Diag.throwable(e))
             invoke.reject("Missing statement file.")
             return
         }
+        val pdfLen = args.pdfBase64?.length ?: 0
+        val passLen = args.password?.length ?: 0
+        Diag.log(activity, "cas_parse", "file=${args.filename} pdfChars=$pdfLen passwordChars=$passLen")
         Thread {
             try {
                 ensurePython()
                 val json = Python.getInstance().getModule("cas_android")
                     .callAttr("parse_b64", args.pdfBase64 ?: "", args.password ?: "", args.filename ?: "statement.pdf")
                     .toString()
+                val parsed = try { JSONObject(json) } catch (_: Exception) { JSONObject() }
+                val holdings = parsed.optJSONArray("holdings")
+                Diag.log(
+                    activity,
+                    "cas_parse",
+                    "result ok=${parsed.optBoolean("ok")} code=${parsed.optString("code")} fileType=${parsed.optString("fileType")} error=${parsed.optString("error")} holdings=${holdings?.length() ?: -1} detail=${parsed.optString("detail").take(1200)}"
+                )
                 val out = JSObject()
                 out.put("payload", json)
                 invoke.resolve(out)
             } catch (e: Exception) {
-                invoke.reject(pythonError(e))
+                val msg = pythonError(e)
+                Diag.log(activity, "cas_parse", "FAILED $msg")
+                invoke.reject(msg)
             }
         }.start()
     }
 
     @Command
     fun prices_refresh(invoke: Invoke) {
+        Diag.enter(activity, "prices_refresh")
         Thread {
             try {
                 val args = try {
@@ -654,13 +711,32 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
                 }
                 invoke.resolve(out)
             } catch (e: Exception) {
+                Diag.log(activity, "prices_refresh", "FAILED " + Diag.throwable(e))
                 invoke.reject(e.message ?: "Could not refresh prices on this phone.")
             }
         }.start()
     }
 
     @Command
+    fun diag_log(invoke: Invoke) {
+        val line = try {
+            invoke.parseArgs(DiagLineArgs::class.java).line
+        } catch (e: Exception) {
+            Diag.log(activity, "diag_log", "args failed " + Diag.throwable(e))
+            ""
+        }
+        if (line.isNotBlank()) Diag.log(activity, "caller", line)
+        val out = JSObject()
+        out.put("ok", Diag.lastError.isBlank())
+        out.put("path", Diag.publicPath)
+        out.put("privatePath", Diag.privatePath)
+        out.put("writeError", Diag.lastError)
+        invoke.resolve(out)
+    }
+
+    @Command
     fun app_exit(invoke: Invoke) {
+        Diag.enter(activity, "app_exit")
         invoke.resolve(JSObject())
         activity.finishAffinity()
     }
@@ -703,5 +779,11 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
         var password: String = ""
         @JvmField
         var filename: String = "statement.pdf"
+    }
+
+    @InvokeArg
+    class DiagLineArgs {
+        @JvmField
+        var line: String = ""
     }
 }

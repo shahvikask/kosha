@@ -20,7 +20,8 @@ pub fn run() {
             play_review,
             play_open_listing,
             cas_health,
-            cas_parse
+            cas_parse,
+            diag_log
         ])
         .run(tauri::generate_context!())
         .expect("GrowUrDhan failed to start");
@@ -49,18 +50,66 @@ fn vault_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(dir.join("vault.enc"))
 }
 
+fn phone_log<R: Runtime>(app: &AppHandle<R>, line: &str) {
+    #[cfg(target_os = "android")]
+    {
+        if let Some(bridge) = app.try_state::<AndroidBridge<R>>() {
+            let _ = bridge.plugin.run_mobile_plugin::<serde_json::Value>(
+                "diag_log",
+                serde_json::json!({ "line": format!("rust {line}") }),
+            );
+        }
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (app, line);
+    }
+}
+
+#[tauri::command]
+fn diag_log<R: Runtime>(app: AppHandle<R>, line: String) -> Result<serde_json::Value, String> {
+    let safe: String = line.chars().take(2000).collect();
+    #[cfg(target_os = "android")]
+    {
+        let Some(bridge) = app.try_state::<AndroidBridge<R>>() else {
+            return Ok(serde_json::json!({
+                "ok": false,
+                "error": "Android plugin was not registered.",
+                "path": "Download/GrowUrDhan-diagnostics.txt"
+            }));
+        };
+        return bridge
+            .plugin
+            .run_mobile_plugin::<serde_json::Value>("diag_log", serde_json::json!({ "line": safe }))
+            .map_err(|e| e.to_string());
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app;
+        Ok(serde_json::json!({
+            "ok": true,
+            "path": "desktop-noop",
+            "echo": safe
+        }))
+    }
+}
+
 #[tauri::command]
 fn vault_blob_load(app: AppHandle) -> Result<Option<String>, String> {
+    phone_log(&app, "vault_blob_load");
     let path = vault_path(&app)?;
     if !path.exists() {
+        phone_log(&app, "vault_blob_load missing");
         return Ok(None);
     }
-    let bytes = fs::read(path).map_err(|e| e.to_string())?;
+    let bytes = fs::read(&path).map_err(|e| e.to_string())?;
+    phone_log(&app, &format!("vault_blob_load bytes={}", bytes.len()));
     Ok(Some(base64_encode(&bytes)))
 }
 
 #[tauri::command]
 fn vault_blob_save(app: AppHandle, bytes_b64: String) -> Result<(), String> {
+    phone_log(&app, &format!("vault_blob_save chars={}", bytes_b64.len()));
     let path = vault_path(&app)?;
     let bytes = base64_decode(&bytes_b64)?;
     fs::write(path, bytes).map_err(|e| e.to_string())
@@ -99,9 +148,8 @@ fn play_open_listing() -> Result<(), String> {
     Err("Google Play reviews are only available in the Android build.".into())
 }
 
-/// JS first tries plugin:growurdhan|cas_health. If ACL blocks that channel,
-/// it falls through to this command. On Android we must reach Chaquopy
-/// through the registered plugin handle — never return the desktop stub.
+/// App-command path used when the plugin ACL blocks plugin:growurdhan|cas_*.
+/// On Android this always calls the Chaquopy plugin handle.
 #[tauri::command]
 fn cas_health<R: Runtime>(app: AppHandle<R>) -> Result<serde_json::Value, String> {
     #[cfg(target_os = "android")]
@@ -110,19 +158,28 @@ fn cas_health<R: Runtime>(app: AppHandle<R>) -> Result<serde_json::Value, String
             return Ok(serde_json::json!({
                 "ok": false,
                 "engine": "PYTHON_CASPARSER",
-                "error": "Android CAS plugin was not registered."
+                "error": "Android CAS plugin was not registered.",
+                "logPath": "Download/GrowUrDhan-diagnostics.txt"
             }));
         };
+        phone_log(&app, "cas_health forwarding to plugin");
         return match bridge
             .plugin
             .run_mobile_plugin::<serde_json::Value>("cas_health", serde_json::json!({}))
         {
-            Ok(v) => Ok(v),
-            Err(e) => Ok(serde_json::json!({
-                "ok": false,
-                "engine": "PYTHON_CASPARSER",
-                "error": e.to_string()
-            })),
+            Ok(v) => {
+                phone_log(&app, &format!("cas_health plugin ok snippet={}", snippet(&v)));
+                Ok(v)
+            }
+            Err(e) => {
+                phone_log(&app, &format!("cas_health plugin err {e}"));
+                Ok(serde_json::json!({
+                    "ok": false,
+                    "engine": "PYTHON_CASPARSER",
+                    "error": e.to_string(),
+                    "logPath": "Download/GrowUrDhan-diagnostics.txt"
+                }))
+            }
         };
     }
     #[cfg(not(target_os = "android"))]
@@ -148,21 +205,44 @@ fn cas_parse<R: Runtime>(
         let Some(bridge) = app.try_state::<AndroidBridge<R>>() else {
             return Err("Android CAS plugin was not registered.".into());
         };
+        let name = filename.clone().unwrap_or_else(|| "statement.pdf".into());
+        let pass_len = password.as_ref().map(|p| p.len()).unwrap_or(0);
+        phone_log(
+            &app,
+            &format!(
+                "cas_parse forward file={name} pdfChars={} passwordChars={pass_len}",
+                pdf_base64.len()
+            ),
+        );
         let payload = serde_json::json!({
             "pdfBase64": pdf_base64,
             "password": password.unwrap_or_default(),
-            "filename": filename.unwrap_or_else(|| "statement.pdf".into()),
+            "filename": name,
         });
         return bridge
             .plugin
             .run_mobile_plugin::<serde_json::Value>("cas_parse", payload)
-            .map_err(|e| e.to_string());
+            .map_err(|e| {
+                phone_log(&app, &format!("cas_parse plugin err {e}"));
+                e.to_string()
+            });
     }
     #[cfg(not(target_os = "android"))]
     {
         let _ = (app, pdf_base64, password, filename);
         Err("Engine is not running.".into())
     }
+}
+
+#[cfg(target_os = "android")]
+fn snippet(v: &serde_json::Value) -> String {
+    let ok = v.get("ok").map(|x| x.to_string()).unwrap_or_default();
+    let err = v.get("error").and_then(|x| x.as_str()).unwrap_or("");
+    let mut s = format!("ok={ok} error={err}");
+    if s.len() > 400 {
+        s.truncate(400);
+    }
+    s
 }
 
 fn base64_encode(bytes: &[u8]) -> String {

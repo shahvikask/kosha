@@ -17,5 +17,6 @@ commands.allow = [
   "prices_refresh",
   "cas_health",
   "cas_parse",
+  "diag_log",
   "app_exit"
 ]

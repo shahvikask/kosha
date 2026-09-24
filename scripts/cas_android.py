@@ -8,6 +8,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import platform
 import sys
 import tempfile
 import traceback
@@ -19,12 +20,20 @@ if str(HERE) not in sys.path:
 
 
 def health() -> str:
+    files = []
+    try:
+        files = sorted(p.name for p in HERE.iterdir())[:40]
+    except Exception as exc:
+        files = [f"listdir failed: {exc}"]
     detail = {
         "ok": False,
         "engine": "PYTHON_CASPARSER",
         "python": sys.version,
+        "machine": platform.machine(),
         "path": sys.path[:6],
         "here": str(HERE),
+        "files": files,
+        "casparserDir": (HERE / "casparser").is_dir(),
     }
     try:
         import casparser  # noqa: F401

@@ -112,18 +112,105 @@ function invokeErrorMessage(e: unknown): string {
   return '';
 }
 
-/** Plugin channel first (Android Keystore + Play Billing), then app commands. */
+const APP_FIRST = new Set(['cas_health', 'cas_parse', 'diag_log']);
+
+function redactArgs(args?: Record<string, unknown>): string {
+  if (!args) return '';
+  const parts: string[] = [];
+  for (const [k, v] of Object.entries(args)) {
+    if (v == null) continue;
+    if (/password|bytesB64|pdfBase64|pan/i.test(k)) {
+      parts.push(`${k}Chars=${typeof v === 'string' ? v.length : 0}`);
+    } else if (typeof v === 'string') {
+      parts.push(`${k}=${v.slice(0, 80)}`);
+    } else if (typeof v === 'number' || typeof v === 'boolean') {
+      parts.push(`${k}=${String(v)}`);
+    } else {
+      parts.push(`${k}=${typeof v}`);
+    }
+  }
+  return parts.join(' ');
+}
+
+function summarize(value: unknown): string {
+  if (value == null) return 'null';
+  if (typeof value !== 'object') return String(value).slice(0, 240);
+  const o = value as Record<string, unknown>;
+  const bits: string[] = [];
+  for (const k of ['ok', 'error', 'engine', 'path', 'privatePath', 'writeError', 'code', 'lifetime', 'integrity']) {
+    if (o[k] != null) bits.push(`${k}=${String(o[k]).slice(0, 240)}`);
+  }
+  if (typeof o.payload === 'string') {
+    try {
+      const parsed = JSON.parse(o.payload) as Record<string, unknown>;
+      bits.push(
+        `payload.ok=${String(parsed.ok)} code=${String(parsed.code ?? '')} fileType=${String(parsed.fileType ?? '')} error=${String(parsed.error ?? '').slice(0, 240)}`
+      );
+    } catch {
+      bits.push(`payloadChars=${o.payload.length}`);
+    }
+  }
+  return bits.join(' ').slice(0, 700) || 'object';
+}
+
+const diagQueue: string[] = [];
+let diagPump: Promise<void> | null = null;
+
+function pumpDiag() {
+  if (diagPump || !isNativeShell()) return;
+  diagPump = (async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    while (diagQueue.length) {
+      const next = diagQueue.shift();
+      if (!next) continue;
+      try {
+        await invoke('diag_log', { line: next });
+      } catch {
+        diagQueue.length = 0;
+        break;
+      }
+    }
+  })().finally(() => {
+    diagPump = null;
+    if (diagQueue.length) pumpDiag();
+  });
+}
+
+function diagNote(cmd: string, line: string) {
+  if (cmd === 'diag_log' || !line) return;
+  diagQueue.push(line.slice(0, 1800));
+  if (diagQueue.length > 40) diagQueue.splice(0, diagQueue.length - 40);
+  pumpDiag();
+}
+
+/**
+ * Vault and Play stay plugin-first.
+ * cas_health, cas_parse, and diag_log try the app command first (Rust forwards
+ * to Chaquopy on Android) and fall back to the plugin channel. Both attempts are logged.
+ */
 export async function nativeCommand<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   const { invoke } = await import('@tauri-apps/api/core');
-  try {
-    return await invoke<T>(`plugin:growurdhan|${cmd}`, args);
-  } catch (e) {
-    const msg = invokeErrorMessage(e);
-    if (msg && !/not found|unknown command|does not exist|forbidden/i.test(msg)) {
-      throw e instanceof Error ? e : new Error(msg);
+  const hint = redactArgs(args);
+  const appFirst = APP_FIRST.has(cmd);
+  const channels = appFirst ? [cmd, `plugin:growurdhan|${cmd}`] : [`plugin:growurdhan|${cmd}`, cmd];
+  let last: unknown;
+  for (let i = 0; i < channels.length; i++) {
+    const channel = channels[i];
+    try {
+      const result = await invoke<T>(channel, args);
+      diagNote(cmd, `js ${cmd} via ${channel} ok ${summarize(result)} ${hint}`.trim());
+      return result;
+    } catch (e) {
+      last = e;
+      const msg = invokeErrorMessage(e);
+      diagNote(cmd, `js ${cmd} via ${channel} FAIL ${msg.slice(0, 500)} ${hint}`.trim());
+      const missing = !msg || /not found|unknown command|does not exist|forbidden/i.test(msg);
+      const tryNext = i === 0 && (appFirst || missing);
+      if (!tryNext) throw e instanceof Error ? e : new Error(msg || 'command failed');
     }
-    return invoke<T>(cmd, args);
   }
+  const msg = invokeErrorMessage(last);
+  throw last instanceof Error ? last : new Error(msg || 'command failed');
 }
 
 function readPreviewState(now = new Date()): LicenceState {

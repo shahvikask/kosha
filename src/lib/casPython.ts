@@ -185,23 +185,53 @@ function raiseFromPythonResult(data: CasPythonResult): never {
   throw new Error(data?.error || 'Engine is not running.');
 }
 
-export async function pingCasParser(): Promise<boolean> {
-  if (isNativeShell()) {
+export const DIAGNOSTICS_PATH = 'Download/GrowUrDhan-diagnostics.txt';
+
+export interface CasHealth {
+  ok: boolean;
+  error?: string;
+  detail?: string;
+  engine?: string;
+  logPath?: string;
+  logPrivate?: string;
+  logError?: string;
+}
+
+export async function readCasHealth(): Promise<CasHealth> {
+  if (!isNativeShell()) {
     try {
-      const body = await nativeCommand<{ ok?: boolean; error?: string }>('cas_health', {});
-      return body?.ok === true;
-    } catch {
-      return false;
+      const res = await fetch('/api/cas/health', { method: 'GET' });
+      if (!res.ok) return { ok: false, error: `health HTTP ${res.status}` };
+      const body = await res.json();
+      return { ok: body?.ok === true, error: body?.error, engine: body?.engine };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : 'Engine is not running.' };
     }
   }
   try {
-    const res = await fetch('/api/cas/health', { method: 'GET' });
-    if (!res.ok) return false;
-    const body = await res.json();
-    return body?.ok === true;
-  } catch {
-    return false;
+    const body = await nativeCommand<CasHealth>('cas_health', {});
+    const detail = typeof body?.detail === 'string' ? body.detail.slice(0, 800) : undefined;
+    return {
+      ok: body?.ok === true,
+      error: body?.error,
+      detail,
+      engine: body?.engine,
+      logPath: body?.logPath || DIAGNOSTICS_PATH,
+      logPrivate: body?.logPrivate,
+      logError: body?.logError,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : 'Engine is not running.',
+      logPath: DIAGNOSTICS_PATH,
+    };
   }
+}
+
+export async function pingCasParser(): Promise<boolean> {
+  const health = await readCasHealth();
+  return health.ok;
 }
 
 export async function parseCasPdfWithPython(
