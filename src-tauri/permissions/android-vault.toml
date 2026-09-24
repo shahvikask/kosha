@@ -18,5 +18,7 @@ commands.allow = [
   "cas_health",
   "cas_parse",
   "diag_log",
+  "diag_status",
+  "diag_set",
   "app_exit"
 ]

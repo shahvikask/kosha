@@ -7,7 +7,7 @@ import { maskPan } from '../../lib/vault';
 import { suggestedBackupName } from '../../lib/backup';
 import { saveBackupFile, pickBackupFile } from '../../lib/backupIo';
 import { useLicence } from '../../context/LicenseContext';
-import { formatInr, PRICE_INR } from '../../lib/license';
+import { formatInr, isNativeShell, nativeCommand, PRICE_INR } from '../../lib/license';
 import { rateOnGooglePlay } from '../../lib/feedback';
 import {
   readBackupSchedule,
@@ -77,6 +77,24 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
     account,
   } = useKosha();
   const licence = useLicence();
+  const [diagOn, setDiagOn] = useState(false);
+  const [diagWarn, setDiagWarn] = useState(false);
+  const [diagError, setDiagError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isNativeShell()) return;
+    let stop = false;
+    nativeCommand<{ enabled?: boolean }>('diag_status')
+      .then(row => {
+        if (!stop) setDiagOn(Boolean(row?.enabled));
+      })
+      .catch(() => {
+        if (!stop) setDiagOn(false);
+      });
+    return () => {
+      stop = true;
+    };
+  }, []);
 
   const [notification, setNotification] = useState<{
     type: 'success' | 'error' | 'warning';
@@ -710,7 +728,75 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
             <a href="https://shahvikask.github.io/kosha/delete-account.html" target="_blank" rel="noreferrer">Delete account (web)</a>
           </div>
         </div>
+        {isNativeShell() && (
+          <div className="p-4 rounded-2xl border space-y-2 text-sm" style={{ borderColor: 'var(--border)' }}>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="font-bold">Diagnostics</div>
+                <div className="text-xs mt-1" style={{ color: 'var(--muted)' }}>
+                  {diagOn ? 'On — writing Download/GrowUrDhan-diagnostics.txt' : 'Off — no diagnostic file is written'}
+                </div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={diagOn}
+                aria-label={diagOn ? 'Diagnostics on' : 'Diagnostics off'}
+                onClick={() => {
+                  setDiagError(null);
+                  if (diagOn) {
+                    void nativeCommand('diag_set', { enabled: false })
+                      .then(() => setDiagOn(false))
+                      .catch(e => setDiagError(e instanceof Error ? e.message : 'Could not turn diagnostics off.'));
+                    return;
+                  }
+                  setDiagWarn(true);
+                }}
+                className="relative h-7 w-12 shrink-0 rounded-full"
+                style={{ background: diagOn ? '#16a34a' : '#94a3b8' }}
+              >
+                <span
+                  className="absolute top-0.5 h-6 w-6 rounded-full bg-white"
+                  style={{ left: diagOn ? 22 : 2 }}
+                />
+              </button>
+            </div>
+            <div className="text-[11px] font-bold" style={{ color: diagOn ? '#16a34a' : '#64748b' }}>
+              {diagOn ? 'On' : 'Off'}
+            </div>
+            {diagError && <p className="text-xs" style={{ color: 'var(--bad)' }}>{diagError}</p>}
+          </div>
+        )}
       </div>
+
+      {diagWarn && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="card max-w-md w-full p-5 space-y-4">
+            <h3 className="font-bold text-base">Diagnostics</h3>
+            <p className="text-sm leading-relaxed" style={{ color: 'var(--text)' }}>
+              Please ensure that this setting remains disabled by default and is only enabled upon request from the Support Team. Leaving it enabled unnecessarily will cause the log file to grow uncontrollably, which may impact system performance and storage capacity.
+            </p>
+            <button
+              type="button"
+              className="w-full py-2.5 rounded-xl text-sm font-bold"
+              style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}
+              onClick={() => {
+                void nativeCommand('diag_set', { enabled: true })
+                  .then(() => {
+                    setDiagOn(true);
+                    setDiagWarn(false);
+                  })
+                  .catch(e => {
+                    setDiagError(e instanceof Error ? e.message : 'Could not turn diagnostics on.');
+                    setDiagWarn(false);
+                  });
+              }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
 
       {isFormOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 overflow-y-auto">

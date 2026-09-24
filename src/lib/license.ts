@@ -112,7 +112,14 @@ function invokeErrorMessage(e: unknown): string {
   return '';
 }
 
-const APP_FIRST = new Set(['cas_health', 'cas_parse', 'diag_log']);
+const APP_FIRST = new Set([
+  'cas_health',
+  'cas_parse',
+  'diag_log',
+  'diag_status',
+  'diag_set',
+  'prices_refresh',
+]);
 
 function redactArgs(args?: Record<string, unknown>): string {
   if (!args) return '';
@@ -185,8 +192,9 @@ function diagNote(cmd: string, line: string) {
 
 /**
  * Vault and Play stay plugin-first.
- * cas_health, cas_parse, and diag_log try the app command first (Rust forwards
- * to Chaquopy on Android). Fall back only when that channel is not registered.
+ * cas_health, cas_parse, diag_*, and prices_refresh try the app command first
+ * (Rust forwards to the Android plugin). Fall back only when that channel is
+ * not registered.
  */
 export async function nativeCommand<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   const { invoke } = await import('@tauri-apps/api/core');

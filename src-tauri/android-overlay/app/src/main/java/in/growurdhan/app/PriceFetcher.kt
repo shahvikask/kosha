@@ -1,7 +1,5 @@
 package `in`.growurdhan.app
 
-import java.io.BufferedReader
-import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Calendar
@@ -18,41 +16,53 @@ internal object PriceFetcher {
             .toSet()
         val catalog = JSONArray()
         val warnings = JSONArray()
-        var amfiAsOf: String? = null
-        var nseAsOf: String? = null
+        var asOf: String? = null
         try {
-            amfiAsOf = fillAmfi(wanted, catalog)
-        } catch (e: Exception) {
-            warnings.put("AMFI NAV: ${e.message ?: "unavailable"}")
-        }
-        try {
-            nseAsOf = fillNseBhav(wanted, catalog)
+            val nse = fillExchange(wanted, catalog, "NSE")
+            if (nse != null) asOf = nse
         } catch (e: Exception) {
             warnings.put("NSE close: ${e.message ?: "unavailable"}")
         }
-        return Triple(catalog, nseAsOf ?: amfiAsOf, warnings)
+        try {
+            val bse = fillExchange(wanted, catalog, "BSE")
+            if (bse != null && (asOf == null || bse > asOf!!)) asOf = bse
+        } catch (e: Exception) {
+            warnings.put("BSE close: ${e.message ?: "unavailable"}")
+        }
+        try {
+            val amfi = fillAmfi(wanted, catalog)
+            if (amfi != null && (asOf == null || amfi > asOf!!)) asOf = amfi
+        } catch (e: Exception) {
+            warnings.put("AMFI NAV: ${e.message ?: "unavailable"}")
+        }
+        return Triple(catalog, asOf, warnings)
     }
 
     private fun fillAmfi(wanted: Set<String>, catalog: JSONArray): String? {
-        val body = httpGet("https://www.amfiindia.com/spages/NAVAll.txt")
-            ?: throw IllegalStateException("AMFI NAV file could not be downloaded.")
+        var body = httpGet("https://www.amfiindia.com/spages/NAVAll.txt")
+        if (body.isNullOrBlank() || !body.contains(';')) {
+            body = httpGet("https://portal.amfiindia.com/spages/NAVAll.txt")
+        }
+        if (body.isNullOrBlank()) throw IllegalStateException("AMFI NAV file could not be downloaded.")
         var asOf: String? = null
         val months = monthMap()
         for (raw in body.split('\n')) {
-            val line = raw.trim()
-            if (line.isEmpty() || !line.contains(';')) continue
-            val cols = line.split(';')
+            val line = raw.trim().removePrefix("\uFEFF")
+            if (!line.contains(';')) continue
+            val cols = line.split(';').map { it.trim() }
             if (cols.size < 6) continue
-            val nav = cols[4].trim().toDoubleOrNull() ?: continue
+            if (cols[0].lowercase(Locale.US).startsWith("scheme")) continue
+            val nav = cols[cols.size - 2].replace(",", "").toDoubleOrNull() ?: continue
             if (nav <= 0.0) continue
-            val dateRaw = cols[5].trim()
-            val iso = parseAmfiDate(dateRaw, months)
-            if (iso != null) asOf = iso
-            val name = cols[3].trim()
-            val code = cols[0].trim()
-            val isins = listOf(cols[1].trim(), cols[2].trim())
+            val dateRaw = cols.last()
+            val iso = parseAmfiDate(dateRaw, months) ?: parseIsoDate(dateRaw)
+            if (iso != null && (asOf == null || iso > asOf!!)) asOf = iso
+            val wide = cols.size >= 8
+            val name = fundName(cols[3], if (wide) cols[4] else "", if (wide) cols[5] else "")
+            val code = cols[0]
+            val isins = listOf(cols[1], cols[2])
                 .map { it.uppercase(Locale.US) }
-                .filter { it.length >= 12 }
+                .filter { it.length >= 12 && it != "NA" && it != "N/A" }
             for (isin in isins) {
                 if (wanted.isNotEmpty() && !wanted.contains(isin)) continue
                 if (alreadyHas(catalog, isin)) continue
@@ -70,68 +80,138 @@ internal object PriceFetcher {
         return asOf
     }
 
-    private fun fillNseBhav(wanted: Set<String>, catalog: JSONArray): String? {
-        val cal = Calendar.getInstance()
-        for (i in 0 until 8) {
+    private fun fundName(name: String, plan: String, option: String): String {
+        val extra = listOf(plan, option).filter { part ->
+            val t = part.trim().uppercase(Locale.US)
+            t.isNotEmpty() && t != "-" && t != "NA" && t != "N/A"
+        }
+        return if (extra.isEmpty()) name else "$name — ${extra.joinToString(" · ")}"
+    }
+
+    private val NSE_SERIES = setOf("EQ", "BE", "SM", "ST", "GB")
+
+    private fun fillExchange(wanted: Set<String>, catalog: JSONArray, exchange: String): String? {
+        val cal = Calendar.getInstance(java.util.TimeZone.getTimeZone("Asia/Kolkata"))
+        var last = "not published for the last sessions"
+        for (i in 0 until 6) {
             val yyyy = cal.get(Calendar.YEAR)
-            val mon = cal.getDisplayName(Calendar.MONTH, Calendar.SHORT, Locale.US)?.uppercase(Locale.US) ?: return null
+            val mm = (cal.get(Calendar.MONTH) + 1).toString().padStart(2, '0')
             val dd = cal.get(Calendar.DAY_OF_MONTH).toString().padStart(2, '0')
-            val url = "https://archives.nseindia.com/content/historical/EQUITIES/$yyyy/$mon/cm${dd}${mon}${yyyy}bhav.csv.zip"
+            val ymd = "$yyyy$mm$dd"
+            val url = if (exchange == "NSE") {
+                "https://nsearchives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_${ymd}_F_0000.csv.zip"
+            } else {
+                "https://www.bseindia.com/download/BhavCopy/Equity/BhavCopy_BSE_CM_0_0_0_${ymd}_F_0000.CSV"
+            }
+            val referer = if (exchange == "NSE") "https://www.nseindia.com/all-reports" else "https://www.bseindia.com/"
             try {
-                val csv = httpGetZipFirst(url)
-                if (csv == null) {
+                val bytes = httpGetBytes(url, referer) ?: run {
                     cal.add(Calendar.DAY_OF_MONTH, -1)
                     continue
                 }
-                var asOf: String? = null
-                val lines = csv.split('\n')
-                if (lines.isEmpty()) {
+                val csv = if (exchange == "NSE") unzipFirst(bytes) else String(bytes, Charsets.UTF_8)
+                if (csv.isNullOrBlank() || csv.startsWith("<")) {
                     cal.add(Calendar.DAY_OF_MONTH, -1)
                     continue
                 }
-                val header = lines[0].split(',').map { it.trim().uppercase(Locale.US) }
-                val isinIdx = header.indexOf("ISIN")
-                val closeIdx = header.indexOf("CLOSE")
-                val symbolIdx = header.indexOf("SYMBOL")
-                val seriesIdx = header.indexOf("SERIES")
-                val tsIdx = header.indexOf("TIMESTAMP")
-                if (isinIdx < 0 || closeIdx < 0) {
+                val parsed = parseUdff(csv, exchange, wanted, catalog)
+                if (!parsed.understood) {
                     cal.add(Calendar.DAY_OF_MONTH, -1)
                     continue
                 }
-                for (line in lines.drop(1)) {
-                    if (line.isBlank()) continue
-                    val cols = line.split(',')
-                    if (cols.size <= maxOf(isinIdx, closeIdx)) continue
-                    val isin = cols[isinIdx].trim().uppercase(Locale.US)
-                    if (isin.length < 12) continue
-                    if (wanted.isNotEmpty() && !wanted.contains(isin)) continue
-                    if (alreadyHas(catalog, isin)) continue
-                    val series = if (seriesIdx >= 0 && cols.size > seriesIdx) cols[seriesIdx].trim() else "EQ"
-                    if (series.isNotEmpty() && series != "EQ" && series != "BE" && series != "SM") continue
-                    val px = cols[closeIdx].trim().toDoubleOrNull() ?: continue
-                    if (px <= 0.0) continue
-                    val symbol = if (symbolIdx >= 0 && cols.size > symbolIdx) cols[symbolIdx].trim() else ""
-                    val ts = if (tsIdx >= 0 && cols.size > tsIdx) cols[tsIdx].trim() else ""
-                    val iso = parseNseTimestamp(ts) ?: "%04d-%02d-%02d".format(yyyy, cal.get(Calendar.MONTH) + 1, cal.get(Calendar.DAY_OF_MONTH))
-                    asOf = iso
-                    val row = JSONObject()
-                    row.put("isin", isin)
-                    row.put("name", symbol)
-                    row.put("symbol", symbol)
-                    row.put("nse", symbol)
-                    row.put("cat", "EQUITY")
-                    row.put("px", px)
-                    row.put("dt", iso)
-                    row.put("src", "NSE close")
-                    catalog.put(row)
+                if (parsed.added > 0) return parsed.asOf
+                return null
+            } catch (e: Exception) {
+                last = e.message ?: last
+            }
+            cal.add(Calendar.DAY_OF_MONTH, -1)
+        }
+        throw IllegalStateException(last)
+    }
+
+    private class Udff(val asOf: String?, val understood: Boolean, val added: Int)
+
+    private fun parseUdff(csv: String, exchange: String, wanted: Set<String>, catalog: JSONArray): Udff {
+        val lines = csv.split('\n')
+        if (lines.isEmpty()) return Udff(null, false, 0)
+        val header = splitCsv(lines[0]).map { it.trim().trim('"').uppercase(Locale.US) }
+        fun idx(name: String) = header.indexOf(name)
+        val isinIdx = idx("ISIN")
+        val closeIdx = idx("CLSPRIC").let { if (it >= 0) it else idx("CLOSE") }
+        if (isinIdx < 0 || closeIdx < 0) return Udff(null, false, 0)
+        val symbolIdx = idx("TCKRSYMB").let { if (it >= 0) it else idx("SYMBOL") }
+        val nameIdx = idx("FININSTRMNM")
+        val seriesIdx = idx("SCTYSRS").let { if (it >= 0) it else idx("SERIES") }
+        val typeIdx = idx("FININSTRMTP")
+        val dateIdx = listOf(idx("TRADDT"), idx("BIZDT"), idx("TIMESTAMP")).firstOrNull { it >= 0 } ?: -1
+        var asOf: String? = null
+        var added = 0
+        for (line in lines.drop(1)) {
+            if (line.isBlank()) continue
+            val cols = splitCsv(line)
+            if (cols.size <= maxOf(isinIdx, closeIdx)) continue
+            val isin = cols[isinIdx].trim().trim('"').uppercase(Locale.US)
+            if (isin.length < 12) continue
+            if (wanted.isNotEmpty() && !wanted.contains(isin)) continue
+            if (alreadyHas(catalog, isin)) continue
+            val series = if (seriesIdx >= 0 && cols.size > seriesIdx) cols[seriesIdx].trim().trim('"').uppercase(Locale.US) else ""
+            if (exchange == "NSE" && series.isNotEmpty() && series !in NSE_SERIES) continue
+            if (exchange == "BSE" && typeIdx >= 0 && cols.size > typeIdx) {
+                val kind = cols[typeIdx].trim().trim('"').uppercase(Locale.US)
+                if (kind.isNotEmpty() && kind != "STK") continue
+            }
+            val px = cols[closeIdx].trim().trim('"').replace(",", "").toDoubleOrNull() ?: continue
+            if (px <= 0.0) continue
+            val symbol = if (symbolIdx >= 0 && cols.size > symbolIdx) cols[symbolIdx].trim().trim('"').uppercase(Locale.US) else ""
+            val name = if (nameIdx >= 0 && cols.size > nameIdx) cols[nameIdx].trim().trim('"') else symbol
+            val rawDate = if (dateIdx >= 0 && cols.size > dateIdx) cols[dateIdx].trim().trim('"') else ""
+            val iso = parseNseTimestamp(rawDate) ?: parseIsoDate(rawDate)
+            if (iso != null) asOf = iso
+            val row = JSONObject()
+            row.put("isin", isin)
+            row.put("name", if (name.isBlank()) symbol else name)
+            row.put("symbol", symbol)
+            if (exchange == "NSE") row.put("nse", symbol) else row.put("bse", symbol)
+            row.put("cat", if (series == "GB") "GOLD_SGB" else "EQUITY")
+            row.put("px", px)
+            row.put("dt", iso ?: rawDate)
+            row.put("src", "$exchange close")
+            catalog.put(row)
+            added += 1
+        }
+        return Udff(if (added > 0) asOf else null, true, added)
+    }
+
+    private fun parseIsoDate(raw: String): String? {
+        val t = raw.trim()
+        return if (t.length >= 10 && t[4] == '-' && t[7] == '-') t.substring(0, 10) else null
+    }
+
+    private fun splitCsv(line: String): List<String> {
+        val out = ArrayList<String>()
+        val cur = StringBuilder()
+        var quoted = false
+        for (ch in line) {
+            when {
+                ch == '"' -> quoted = !quoted
+                ch == ',' && !quoted -> {
+                    out.add(cur.toString())
+                    cur.clear()
                 }
-                return asOf
-            } catch (_: Exception) {
-                cal.add(Calendar.DAY_OF_MONTH, -1)
+                else -> cur.append(ch)
             }
         }
-        return null
+        out.add(cur.toString())
+        return out
+    }
+
+    private fun unzipFirst(bytes: ByteArray): String? {
+        if (bytes.size < 2 || bytes[0] != 'P'.code.toByte() || bytes[1] != 'K'.code.toByte()) return null
+        ZipInputStream(bytes.inputStream()).use { zip ->
+            val entry = zip.nextEntry ?: return null
+            if (entry.isDirectory) return null
+            return zip.bufferedReader().readText()
+        }
     }
 
     private fun parseAmfiDate(raw: String, months: Map<String, String>): String? {
@@ -169,36 +249,29 @@ internal object PriceFetcher {
     }
 
     private fun httpGet(url: String): String? {
-        val conn = (URL(url).openConnection() as HttpURLConnection)
-        conn.connectTimeout = 20000
-        conn.readTimeout = 25000
-        conn.instanceFollowRedirects = true
-        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 GrowUrDhan")
-        conn.setRequestProperty("Accept", "*/*")
-        try {
-            val code = conn.responseCode
-            if (code !in 200..299) return null
-            return conn.inputStream.bufferedReader().use(BufferedReader::readText)
-        } finally {
-            conn.disconnect()
-        }
+        val bytes = httpGetBytes(url, "https://www.amfiindia.com/") ?: return null
+        return String(bytes, Charsets.UTF_8)
     }
 
-    private fun httpGetZipFirst(url: String): String? {
+    private fun httpGetBytes(url: String, referer: String): ByteArray? {
         val conn = (URL(url).openConnection() as HttpURLConnection)
-        conn.connectTimeout = 20000
-        conn.readTimeout = 25000
+        conn.connectTimeout = 10000
+        conn.readTimeout = 40000
         conn.instanceFollowRedirects = true
-        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 GrowUrDhan")
+        conn.setRequestProperty(
+            "User-Agent",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        )
         conn.setRequestProperty("Accept", "*/*")
+        conn.setRequestProperty("Referer", referer)
         try {
             val code = conn.responseCode
             if (code !in 200..299) return null
-            ZipInputStream(conn.inputStream).use { zip ->
-                val entry = zip.nextEntry ?: return null
-                if (entry.isDirectory) return null
-                return InputStreamReader(zip).readText()
-            }
+            val bytes = conn.inputStream.use { it.readBytes() }
+            val head = bytes.take(15).toByteArray()
+            val text = String(head, Charsets.ISO_8859_1).lowercase(Locale.US)
+            if (text.startsWith("<!doctype") || text.startsWith("<html")) return null
+            return bytes
         } finally {
             conn.disconnect()
         }

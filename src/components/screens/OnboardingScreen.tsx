@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Shield, PhoneOff, Lock, FileText, Users, IndianRupee, ChevronRight } from 'lucide-react';
 import { ONBOARDING_SLIDES, markOnboardingSeen, OnboardingSlide } from '../../lib/onboarding';
+import { BrandLogo } from '../common/BrandLogo';
 
 const ICONS: Record<OnboardingSlide['icon'], typeof Shield> = {
   shield: Shield,
@@ -96,11 +97,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onDone }) =>
             />
           ))}
         </div>
-        <img
-          src="/brand/logo.png"
-          alt="GrowUrDhan"
-          className="onboard-logo h-12 sm:h-14 w-auto max-w-[11rem] object-contain"
-        />
+        <BrandLogo size="lg" showTagline={false} />
       </div>
     </div>
   );

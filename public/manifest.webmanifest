@@ -8,8 +8,8 @@
   "theme_color": "#fffaf3",
   "icons": [
     {
-      "src": "/brand/logo.png",
-      "sizes": "192x192",
+      "src": "/brand/mark.png",
+      "sizes": "256x256",
       "type": "image/png",
       "purpose": "any"
     }

@@ -706,8 +706,14 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
                 out.put("catalogCount", catalog.length())
                 out.put("warnings", warnings)
                 if (!matched && args.isins.isNotBlank()) {
+                    val bits = ArrayList<String>()
+                    for (i in 0 until warnings.length()) {
+                        val w = warnings.optString(i)
+                        if (w.isNotBlank()) bits.add(w)
+                    }
+                    val extra = if (bits.isEmpty()) "" else " " + bits.joinToString(" ")
                     out.put("ok", false)
-                    out.put("error", "No last close or NAV matched the ISINs in this vault.")
+                    out.put("error", "No last close or NAV matched the ISINs in this vault.$extra")
                 }
                 invoke.resolve(out)
             } catch (e: Exception) {
@@ -731,6 +737,29 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
         out.put("path", Diag.publicPath)
         out.put("privatePath", Diag.privatePath)
         out.put("writeError", Diag.lastError)
+        invoke.resolve(out)
+    }
+
+    @Command
+    fun diag_status(invoke: Invoke) {
+        val out = JSObject()
+        out.put("ok", true)
+        out.put("enabled", Diag.isEnabled(activity))
+        invoke.resolve(out)
+    }
+
+    @Command
+    fun diag_set(invoke: Invoke) {
+        val on = try {
+            invoke.parseArgs(DiagToggleArgs::class.java).enabled
+        } catch (_: Exception) {
+            false
+        }
+        Diag.setEnabled(activity, on)
+        if (on) Diag.log(activity, "diag", "diagnostics enabled")
+        val out = JSObject()
+        out.put("ok", true)
+        out.put("enabled", Diag.isEnabled(activity))
         invoke.resolve(out)
     }
 
@@ -785,5 +814,11 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
     class DiagLineArgs {
         @JvmField
         var line: String = ""
+    }
+
+    @InvokeArg
+    class DiagToggleArgs {
+        @JvmField
+        var enabled: Boolean = false
     }
 }

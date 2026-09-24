@@ -22,6 +22,8 @@ pub fn run() {
             cas_health,
             cas_parse,
             diag_log,
+            diag_status,
+            diag_set,
             prices_refresh,
             backup_pick_folder,
             backup_clear_folder,
@@ -270,10 +272,28 @@ fn android_plugin<R: Runtime>(
 }
 
 #[tauri::command]
-fn prices_refresh<R: Runtime>(app: AppHandle<R>, isins: Option<String>) -> Result<serde_json::Value, String> {
+async fn prices_refresh<R: Runtime>(app: AppHandle<R>, isins: Option<String>) -> Result<serde_json::Value, String> {
     let list = isins.unwrap_or_default();
-    phone_log(&app, &format!("prices_refresh isinChars={}", list.len()));
-    android_plugin(&app, "prices_refresh", serde_json::json!({ "isins": list }))
+    tauri::async_runtime::spawn_blocking(move || {
+        phone_log(&app, &format!("prices_refresh isinChars={}", list.len()));
+        android_plugin(&app, "prices_refresh", serde_json::json!({ "isins": list }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn diag_status<R: Runtime>(app: AppHandle<R>) -> Result<serde_json::Value, String> {
+    android_plugin(&app, "diag_status", serde_json::json!({}))
+}
+
+#[tauri::command]
+fn diag_set<R: Runtime>(app: AppHandle<R>, enabled: Option<bool>) -> Result<serde_json::Value, String> {
+    android_plugin(
+        &app,
+        "diag_set",
+        serde_json::json!({ "enabled": enabled.unwrap_or(false) }),
+    )
 }
 
 #[tauri::command]
