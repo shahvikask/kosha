@@ -105,7 +105,8 @@ internal object PriceFetcher {
             }
             val referer = if (exchange == "NSE") "https://www.nseindia.com/all-reports" else "https://www.bseindia.com/"
             try {
-                val bytes = httpGetBytes(url, referer) ?: run {
+                val bytes = httpGetBytes(url, referer)
+                if (bytes == null) {
                     cal.add(Calendar.DAY_OF_MONTH, -1)
                     continue
                 }
