@@ -22,7 +22,7 @@ import { markOnboardingSeen } from './lib/onboarding';
 import { maybeRunScheduledBackup } from './lib/backupSchedule';
 import { setTermsDeclineHandler } from './lib/terms';
 import { claimFeedbackPrompt, loadFeedbackState } from './lib/feedback';
-import { isNativePickerOpen } from './lib/autoLock';
+import { AUTO_LOCK_MS, installFileInputPickerGuard, isNativePickerOpen } from './lib/autoLock';
 import { bindHeldIsins } from './lib/eodPrices';
 import { AlertTriangle, CheckCircle2, RefreshCw, X } from 'lucide-react';
 
@@ -79,15 +79,20 @@ const KoshaMainApp: React.FC = () => {
     );
   }, [holdings]);
 
+  useEffect(() => installFileInputPickerGuard(), []);
+
   useEffect(() => {
     if (!unlocked) return;
     let lockTimer: number | null = null;
     const armLock = () => {
       if (lockTimer != null) window.clearTimeout(lockTimer);
       lockTimer = window.setTimeout(() => {
-        if (isNativePickerOpen()) return;
-        if (document.visibilityState === 'hidden') lockVault();
-      }, 2000);
+        if (isNativePickerOpen() || document.visibilityState !== 'hidden') {
+          if (document.visibilityState === 'hidden') armLock();
+          return;
+        }
+        lockVault();
+      }, AUTO_LOCK_MS);
     };
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') armLock();

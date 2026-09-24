@@ -21,7 +21,14 @@ pub fn run() {
             play_open_listing,
             cas_health,
             cas_parse,
-            diag_log
+            diag_log,
+            prices_refresh,
+            backup_pick_folder,
+            backup_clear_folder,
+            backup_write_scheduled,
+            backup_save,
+            backup_open,
+            app_exit
         ])
         .run(tauri::generate_context!())
         .expect("GrowUrDhan failed to start");
@@ -232,6 +239,107 @@ fn cas_parse<R: Runtime>(
         let _ = (app, pdf_base64, password, filename);
         Err("Engine is not running.".into())
     }
+}
+
+/// Kotlin commands that are not implemented in Rust. The JS plugin channel
+/// is not registered on this APK, so these app commands forward to the plugin.
+fn android_plugin<R: Runtime>(
+    app: &AppHandle<R>,
+    cmd: &str,
+    payload: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    #[cfg(target_os = "android")]
+    {
+        let Some(bridge) = app.try_state::<AndroidBridge<R>>() else {
+            return Err("Android plugin was not registered.".into());
+        };
+        phone_log(app, &format!("{cmd} forward"));
+        return bridge
+            .plugin
+            .run_mobile_plugin::<serde_json::Value>(cmd, payload)
+            .map_err(|e| {
+                phone_log(app, &format!("{cmd} plugin err {e}"));
+                e.to_string()
+            });
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (app, cmd, payload);
+        Err("This command is only available in the Android app.".into())
+    }
+}
+
+#[tauri::command]
+fn prices_refresh<R: Runtime>(app: AppHandle<R>, isins: Option<String>) -> Result<serde_json::Value, String> {
+    let list = isins.unwrap_or_default();
+    phone_log(&app, &format!("prices_refresh isinChars={}", list.len()));
+    android_plugin(&app, "prices_refresh", serde_json::json!({ "isins": list }))
+}
+
+#[tauri::command]
+fn backup_pick_folder<R: Runtime>(app: AppHandle<R>) -> Result<serde_json::Value, String> {
+    android_plugin(&app, "backup_pick_folder", serde_json::json!({}))
+}
+
+#[tauri::command]
+fn backup_clear_folder<R: Runtime>(app: AppHandle<R>) -> Result<serde_json::Value, String> {
+    android_plugin(&app, "backup_clear_folder", serde_json::json!({}))
+}
+
+#[tauri::command]
+fn backup_write_scheduled<R: Runtime>(
+    app: AppHandle<R>,
+    filename: String,
+    bytes_b64: String,
+    keep_last: Option<i32>,
+) -> Result<serde_json::Value, String> {
+    phone_log(
+        &app,
+        &format!(
+            "backup_write_scheduled file={filename} chars={}",
+            bytes_b64.len()
+        ),
+    );
+    android_plugin(
+        &app,
+        "backup_write_scheduled",
+        serde_json::json!({
+            "filename": filename,
+            "bytesB64": bytes_b64,
+            "keepLast": keep_last.unwrap_or(5),
+        }),
+    )
+}
+
+#[tauri::command]
+fn backup_save<R: Runtime>(
+    app: AppHandle<R>,
+    filename: String,
+    bytes_b64: String,
+) -> Result<serde_json::Value, String> {
+    phone_log(
+        &app,
+        &format!("backup_save file={filename} chars={}", bytes_b64.len()),
+    );
+    android_plugin(
+        &app,
+        "backup_save",
+        serde_json::json!({
+            "filename": filename,
+            "bytesB64": bytes_b64,
+        }),
+    )
+}
+
+#[tauri::command]
+fn backup_open<R: Runtime>(app: AppHandle<R>) -> Result<serde_json::Value, String> {
+    android_plugin(&app, "backup_open", serde_json::json!({}))
+}
+
+#[tauri::command]
+fn app_exit<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
+    android_plugin(&app, "app_exit", serde_json::json!({}))?;
+    Ok(())
 }
 
 #[cfg(target_os = "android")]
