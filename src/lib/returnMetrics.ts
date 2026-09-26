@@ -115,10 +115,11 @@ export function holdingReturn(
   derived: DerivedState,
   sgbMode: 'MARKET_TRADED' | 'RBI_BENCHMARK',
   asOf: string,
+  ibjaPerGramMinor?: bigint | null,
 ): HoldingReturn {
   const own = events.filter(e => e.holdingId === h.id);
   const profile = profileOf(h, own, asOf);
-  const m = metricsOf(h, derived, sgbMode);
+  const m = metricsOf(h, derived, sgbMode, ibjaPerGramMinor);
 
   const annual = (reason: AnnualReason, pct: number | null = null): Pick<HoldingReturn, 'secondaryPct' | 'secondaryText' | 'annualReason' | 'annualWhy'> => ({
     secondaryPct: pct,

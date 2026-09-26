@@ -67,7 +67,8 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
     ledgerEvents,
     derived,
     sgbValuationMode,
-    setSgbValuationMode,
+    ibjaRupeesPerGram,
+    setIbjaRupeesPerGram,
     goals,
     upsertGoal,
     deleteGoal,
@@ -113,6 +114,10 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
   const [formNotes, setFormNotes] = useState('');
   const [deletingMember, setDeletingMember] = useState<FamilyMember | null>(null);
 
+  const [ibjaDraft, setIbjaDraft] = useState(ibjaRupeesPerGram ? String(ibjaRupeesPerGram) : '');
+  useEffect(() => {
+    setIbjaDraft(ibjaRupeesPerGram ? String(ibjaRupeesPerGram) : '');
+  }, [ibjaRupeesPerGram]);
   const [goalName, setGoalName] = useState('');
   const [goalTarget, setGoalTarget] = useState('');
   const [goalDate, setGoalDate] = useState('');
@@ -138,7 +143,7 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
     const hs = holdings.filter(h => h.ownerId === memberId);
     let val = 0n;
     hs.forEach(h => {
-      const m = metricsOf(h, derived, sgbValuationMode);
+      const m = metricsOf(h, derived, sgbValuationMode, ibjaRupeesPerGram ? MoneyEngine.fromRupees(ibjaRupeesPerGram) : null);
       val += h.category === 'LIABILITY' ? -m.value : m.value;
     });
     return { count: hs.length, valuationMinor: val };
@@ -521,32 +526,31 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
           <Coins className="w-4 h-4" /> Gold bonds
         </h2>
         <p className="text-xs" style={{ color: 'var(--muted)' }}>
-          Use the market price from your statement, or the RBI redemption rate if you have entered it.
+          IBJA 999 rate, in ₹ per gram. It values only SGBs held as an RBI or bank certificate. Demat bonds keep the exchange price. Physical and digital gold are left as you entered them.
         </p>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setSgbValuationMode('MARKET_TRADED')}
-            className="px-3 py-1.5 rounded-full text-xs font-semibold border"
-            style={
-              sgbValuationMode === 'MARKET_TRADED'
-                ? { background: 'var(--accent)', color: 'var(--accent-fg)', borderColor: 'transparent' }
-                : { borderColor: 'var(--border)' }
-            }
-          >
-            Market price
-          </button>
-          <button
-            onClick={() => setSgbValuationMode('RBI_BENCHMARK')}
-            className="px-3 py-1.5 rounded-full text-xs font-semibold border"
-            style={
-              sgbValuationMode === 'RBI_BENCHMARK'
-                ? { background: 'var(--accent)', color: 'var(--accent-fg)', borderColor: 'transparent' }
-                : { borderColor: 'var(--border)' }
-            }
-          >
-            RBI benchmark
-          </button>
-        </div>
+        <label className="block text-xs font-semibold">
+          IBJA 999 (₹/g)
+          <input
+            type="number"
+            inputMode="decimal"
+            min="0"
+            step="0.01"
+            value={ibjaDraft}
+            placeholder="e.g. 7200"
+            onChange={e => setIbjaDraft(e.target.value)}
+            onBlur={() => {
+              const n = parseFloat(ibjaDraft);
+              setIbjaRupeesPerGram(!isNaN(n) && n > 0 ? n : null);
+            }}
+            className="mt-1 w-full max-w-xs px-3 py-2 rounded-xl border text-sm"
+            style={inputStyle}
+          />
+        </label>
+        <p className="text-[11px]" style={{ color: 'var(--muted)' }}>
+          {ibjaRupeesPerGram
+            ? `Certificate bonds use ₹${ibjaRupeesPerGram.toLocaleString('en-IN')} per gram.`
+            : 'No rate saved yet, so certificate bonds stay at the price on each holding.'}
+        </p>
       </div>
 
       <div className="card p-4 md:p-6 space-y-4">

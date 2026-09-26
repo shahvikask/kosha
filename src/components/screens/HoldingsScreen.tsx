@@ -14,20 +14,21 @@ interface Props {
 }
 
 export const HoldingsScreen: React.FC<Props> = ({ onOpenAddHolding, onOpenHoldingDetail }) => {
-  const { filteredHoldings, familyMembers, derived, sgbValuationMode, ledgerEvents } = useKosha();
+  const { filteredHoldings, familyMembers, derived, sgbValuationMode, ibjaRupeesPerGram, ledgerEvents } = useKosha();
   const [q, setQ] = useState('');
   const [bucket, setBucket] = useState<FamilyBucketId | 'ALL'>('ALL');
   const [ownerId, setOwnerId] = useState('ALL');
   const [showClosed, setShowClosed] = useState(false);
 
+  const ibja = ibjaRupeesPerGram && ibjaRupeesPerGram > 0 ? MoneyEngine.fromRupees(ibjaRupeesPerGram) : null;
   const closedCount = useMemo(() => filteredHoldings.filter(h => !isOpenPosition(h, derived)).length, [filteredHoldings, derived]);
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return filteredHoldings
       .map(h => {
-        const m = metricsOf(h, derived, sgbValuationMode);
+        const m = metricsOf(h, derived, sgbValuationMode, ibja);
         const unknown = isUnknownInvested(h, ledgerEvents, m.cost, m.value);
-        const ret = holdingReturn(h, ledgerEvents, derived, sgbValuationMode, new Date().toISOString().slice(0, 10));
+        const ret = holdingReturn(h, ledgerEvents, derived, sgbValuationMode, new Date().toISOString().slice(0, 10), ibja);
         return { h, m, b: bucketOf(h), abs: ret.primaryPct, unknown, ann: ret.secondaryText, annOk: ret.annualReason === 'ok' };
       })
       .filter(r => showClosed || isOpenPosition(r.h, derived))
@@ -39,7 +40,7 @@ export const HoldingsScreen: React.FC<Props> = ({ onOpenAddHolding, onOpenHoldin
         return [r.h.name, r.h.isin, r.h.amc, r.h.symbolOrFolio, owner, r.h.institutionName, r.h.dpName].filter(Boolean).join(' ').toLowerCase().includes(needle);
       })
       .sort((a, b) => (a.m.value < b.m.value ? 1 : -1));
-  }, [filteredHoldings, derived, sgbValuationMode, q, bucket, familyMembers, ownerId, showClosed, ledgerEvents]);
+  }, [filteredHoldings, derived, sgbValuationMode, ibja, q, bucket, familyMembers, ownerId, showClosed, ledgerEvents]);
 
   const totals = useMemo(() => rows.reduce((acc, row) => ({
     invested: acc.invested + (row.unknown ? 0n : row.m.cost),

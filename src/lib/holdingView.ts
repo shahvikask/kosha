@@ -121,12 +121,29 @@ export function unitWord(h: Holding): string {
   return 'units';
 }
 
+export function isCertificateSgb(h: Holding): boolean {
+  const sub = (h.subCategory || '').toLowerCase();
+  if (h.category !== 'GOLD_SGB') return false;
+  if (/physical|digital|other/.test(sub)) return false;
+  return h.details?.goldHoldMode === 'CERTIFICATE';
+}
+
+export function isDematSgb(h: Holding): boolean {
+  const sub = (h.subCategory || '').toLowerCase();
+  if (h.category !== 'GOLD_SGB') return false;
+  if (/physical|digital|other/.test(sub)) return false;
+  return h.details?.goldHoldMode === 'DEMAT';
+}
+
 export function priceMinorOf(
   h: Holding,
-  sgbMode: 'MARKET_TRADED' | 'RBI_BENCHMARK'
+  _sgbMode: 'MARKET_TRADED' | 'RBI_BENCHMARK',
+  ibjaPerGramMinor?: bigint | null
 ): bigint {
-  if (h.category === 'GOLD_SGB' && sgbMode === 'RBI_BENCHMARK' && h.benchmarkPriceMinor) {
-    return BigInt(h.benchmarkPriceMinor);
+  if (isCertificateSgb(h)) {
+    if (ibjaPerGramMinor && ibjaPerGramMinor > 0n) return ibjaPerGramMinor;
+    const saved = BigInt(h.benchmarkPriceMinor || '0');
+    if (saved > 0n) return saved;
   }
   return BigInt(h.currentPriceMinor || '0');
 }
@@ -155,9 +172,10 @@ export function costOf(h: Holding, derived: DerivedState): bigint {
 export function valueOf(
   h: Holding,
   derived: DerivedState,
-  sgbMode: 'MARKET_TRADED' | 'RBI_BENCHMARK'
+  sgbMode: 'MARKET_TRADED' | 'RBI_BENCHMARK',
+  ibjaPerGramMinor?: bigint | null
 ): bigint {
-  return metricsOf(h, derived, sgbMode).value;
+  return metricsOf(h, derived, sgbMode, ibjaPerGramMinor).value;
 }
 
 export interface HoldingMetrics {
@@ -171,7 +189,8 @@ export interface HoldingMetrics {
 export function metricsOf(
   h: Holding,
   derived: DerivedState,
-  sgbMode: 'MARKET_TRADED' | 'RBI_BENCHMARK'
+  sgbMode: 'MARKET_TRADED' | 'RBI_BENCHMARK',
+  ibjaPerGramMinor?: bigint | null
 ): HoldingMetrics {
   if (h.category === 'LIABILITY') {
     const outstanding = BigInt(h.currentPriceMinor || '0');
@@ -185,7 +204,7 @@ export function metricsOf(
     };
   }
   const qty = qtyOf(h, derived);
-  const price = priceMinorOf(h, sgbMode);
+  const price = priceMinorOf(h, sgbMode, ibjaPerGramMinor);
   const value = marketValueMinor(qty, price);
   const cost = costOf(h, derived);
   return { qty, price, value, cost, gain: value - cost };

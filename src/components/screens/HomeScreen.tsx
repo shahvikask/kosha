@@ -9,6 +9,7 @@ import { ExposureNode, EXPOSURES } from '../../lib/taxonomy';
 import { formatStatementDateShort } from '../../lib/casPython';
 import { buildBooksHealth, buildStatementSteps, buildSinceLastStatement, concentrationOf, freshnessTone, firstToLastPct, HealthTone, investedSeriesFrom, issuerLabel, unknownCostRows } from '../../lib/homeDashboard';
 import { UNKNOWN_INVESTED_LABEL } from '../../lib/costBasis';
+import { MoneyEngine } from '../../lib/money';
 
 interface HomeScreenProps {
   onOpenAddHolding: () => void;
@@ -23,12 +24,13 @@ type Drill =
   | { kind: 'fy'; id: string };
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpenHoldingDetail }) => {
-  const { summary, filteredHoldings, familyMembers, selectedMemberId, setActiveScreen, sgbValuationMode, derived, lastStatementAsOf, pricesAsOf, goals, ledgerEvents, casLatest, statementSnaps, statementHoldingSnaps } = useKosha();
+  const { summary, filteredHoldings, familyMembers, selectedMemberId, setActiveScreen, sgbValuationMode, ibjaRupeesPerGram, derived, lastStatementAsOf, pricesAsOf, goals, ledgerEvents, casLatest, statementSnaps, statementHoldingSnaps } = useKosha();
   const [drill, setDrill] = useState<Drill>({ kind: 'none' });
   const [showAllMovers, setShowAllMovers] = useState(false);
   const who = selectedMemberId === 'ALL' ? 'The family' : familyMembers.find(m => m.id === selectedMemberId)?.name || 'Family';
   const asOf = new Date().toISOString().slice(0, 10);
-  const model = useMemo(() => buildGrowthModel(filteredHoldings, ledgerEvents.filter(e => selectedMemberId === 'ALL' || e.ownerId === selectedMemberId), derived, familyMembers, sgbValuationMode, asOf), [filteredHoldings, ledgerEvents, selectedMemberId, derived, familyMembers, sgbValuationMode, asOf]);
+  const ibja = ibjaRupeesPerGram && ibjaRupeesPerGram > 0 ? MoneyEngine.fromRupees(ibjaRupeesPerGram) : null;
+  const model = useMemo(() => buildGrowthModel(filteredHoldings, ledgerEvents.filter(e => selectedMemberId === 'ALL' || e.ownerId === selectedMemberId), derived, familyMembers, sgbValuationMode, asOf, ibja), [filteredHoldings, ledgerEvents, selectedMemberId, derived, familyMembers, sgbValuationMode, asOf, ibja]);
   const upcoming = useMemo(() => upcomingFromHoldings(filteredHoldings, goals), [filteredHoldings, goals]);
   const health = useMemo(() => buildBooksHealth({
     holdings: filteredHoldings,
@@ -38,8 +40,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpen
     casLatest,
     selectedMemberId,
     sgbMode: sgbValuationMode,
+    ibjaPerGramMinor: ibja,
     todayIso: asOf,
-  }), [filteredHoldings, ledgerEvents, selectedMemberId, derived, familyMembers, casLatest, sgbValuationMode, asOf]);
+  }), [filteredHoldings, ledgerEvents, selectedMemberId, derived, familyMembers, casLatest, sgbValuationMode, asOf, ibja]);
   const datesTone = freshnessTone({ statementAsOf: lastStatementAsOf, pricesAsOf, todayIso: asOf });
   const biggest = useMemo(() => {
     const assetRows = model.holdings.filter(h => h.bucket !== 'LOAN' && h.valueMinor > 0n);
@@ -57,9 +60,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpen
       events: ledgerEvents.filter(e => selectedMemberId === 'ALL' || e.ownerId === selectedMemberId),
       selectedMemberId,
       sgbMode: sgbValuationMode,
+      ibjaPerGramMinor: ibja,
       todayIso: asOf,
     }),
-    [statementHoldingSnaps, filteredHoldings, derived, ledgerEvents, selectedMemberId, sgbValuationMode, asOf],
+    [statementHoldingSnaps, filteredHoldings, derived, ledgerEvents, selectedMemberId, sgbValuationMode, asOf, ibja],
   );
   const needCost = useMemo(
     () => unknownCostRows({
@@ -67,8 +71,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpen
       events: ledgerEvents.filter(e => selectedMemberId === 'ALL' || e.ownerId === selectedMemberId),
       derived,
       sgbMode: sgbValuationMode,
+      ibjaPerGramMinor: ibja,
     }),
-    [filteredHoldings, ledgerEvents, selectedMemberId, derived, sgbValuationMode],
+    [filteredHoldings, ledgerEvents, selectedMemberId, derived, sgbValuationMode, ibja],
   );
   const filedSteps = statementSteps.filter(s => !s.isLivePad);
   const empty = filteredHoldings.length === 0;

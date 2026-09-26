@@ -10,12 +10,15 @@ import {
   formatCalendarDate,
   whereHeld,
   displayHoldingName,
+  isCertificateSgb,
+  isDematSgb,
 } from '../../lib/holdingView';
 import { X, Edit3, Plus, Trash2, Calendar, Coins } from 'lucide-react';
 import { resumeEmiDate } from '../../lib/emi';
 import { holdingReturn, isStatementOnlyHistory } from '../../lib/returnMetrics';
 import { detailsLines, nameLooksLikeEtf, usesUnits } from '../../lib/holdingForm';
 import { isUnknownInvested, planInvestedCorrection, UNKNOWN_INVESTED_LABEL } from '../../lib/costBasis';
+import { holdingHasStatementHistory } from '../../lib/holdingForm';
 
 interface HoldingDetailModalProps {
   holdingId: string | null;
@@ -38,6 +41,7 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
     deleteHolding,
     correctInvested,
     sgbValuationMode,
+    ibjaRupeesPerGram,
     derived,
   } = useKosha();
 
@@ -70,7 +74,8 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
 
   const catInfo = ASSET_CATEGORIES[holding.category];
   const owner = familyMembers.find(m => m.id === holding.ownerId);
-  const m = metricsOf(holding, derived, sgbValuationMode);
+  const ibja = ibjaRupeesPerGram && ibjaRupeesPerGram > 0 ? MoneyEngine.fromRupees(ibjaRupeesPerGram) : null;
+  const m = metricsOf(holding, derived, sgbValuationMode, ibja);
   const holdingEvents = ledgerEvents
     .filter(ev => ev.holdingId === holding.id)
     .sort((a, b) => b.eventDate.localeCompare(a.eventDate));
@@ -425,6 +430,16 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
               {catInfo.isLiability ? 'Still owed' : 'Worth today'}
             </div>
             <PrivacyValue minor={m.value} className="text-xl font-bold" showCompact includePaise={false} />
+            {isCertificateSgb(holding) && (
+              <p className="text-[11px] mt-1" style={{ color: 'var(--muted)' }}>
+                {ibja ? `RBI certificate, priced at the family IBJA rate of ₹${ibjaRupeesPerGram?.toLocaleString('en-IN')} /g.` : 'RBI certificate. Add the IBJA rate on the Family screen to price this.'}
+              </p>
+            )}
+            {isDematSgb(holding) && ibja && m.qty > 0n && (
+              <p className="text-[11px] mt-1" style={{ color: 'var(--muted)' }}>
+                Exchange price is used here. RBI redemption would be ₹{Math.round(Number((m.qty * ibja) / QTY_SCALE) / 10000).toLocaleString('en-IN')}.
+              </p>
+            )}
           </div>
           <div className="p-4 rounded-2xl border" style={{ borderColor: 'var(--border)', background: 'var(--input)' }}>
             <div className="text-xs mb-1" style={{ color: 'var(--muted)' }}>
@@ -654,10 +669,18 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
           </button>
           <button
             onClick={() => {
-              if (window.confirm('Remove this holding? Buy/sell history is kept.')) {
-                deleteHolding(holding.id);
-                onClose();
+              const fromStatement = holdingHasStatementHistory(holding, ledgerEvents);
+              if (fromStatement) {
+                if (window.confirm('Remove this holding? Records from the statement are kept.')) {
+                  deleteHolding(holding.id, false);
+                  onClose();
+                }
+                return;
               }
+              if (!window.confirm('Remove this holding?')) return;
+              const also = window.confirm('Also delete it from the record book? OK deletes those records. Cancel keeps them.');
+              deleteHolding(holding.id, also);
+              onClose();
             }}
             className="px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 border"
             style={{ borderColor: 'var(--border)', color: 'var(--bad)' }}
@@ -699,9 +722,10 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
 };
 
 const ReturnPanel: React.FC<{ holding: import('../../types').Holding }> = ({ holding }) => {
-  const { ledgerEvents, derived, sgbValuationMode } = useKosha();
+  const { ledgerEvents, derived, sgbValuationMode, ibjaRupeesPerGram } = useKosha();
   const asOf = new Date().toISOString().slice(0, 10);
-  const r = holdingReturn(holding, ledgerEvents, derived, sgbValuationMode, asOf);
+  const ibja = ibjaRupeesPerGram && ibjaRupeesPerGram > 0 ? MoneyEngine.fromRupees(ibjaRupeesPerGram) : null;
+  const r = holdingReturn(holding, ledgerEvents, derived, sgbValuationMode, asOf, ibja);
   const absColor = r.unknownInvested ? 'var(--bad)' : (r.primaryPct ?? 0) >= 0 ? 'var(--good)' : 'var(--bad)';
   const annColor = r.annualReason === 'ok'
     ? ((r.secondaryPct ?? 0) >= 0 ? 'var(--good)' : 'var(--bad)')

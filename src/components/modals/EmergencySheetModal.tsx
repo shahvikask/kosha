@@ -11,7 +11,7 @@ interface EmergencySheetModalProps {
 }
 
 export const EmergencySheetModal: React.FC<EmergencySheetModalProps> = ({ isOpen, onClose }) => {
-  const { holdings, familyMembers, accounts, summary, derived, sgbValuationMode, lastStatementAsOf } =
+  const { holdings, familyMembers, accounts, summary, derived, sgbValuationMode, ibjaRupeesPerGram, lastStatementAsOf } =
     useKosha();
 
   if (!isOpen) return null;
@@ -136,7 +136,7 @@ export const EmergencySheetModal: React.FC<EmergencySheetModalProps> = ({ isOpen
                 <tbody>
                   {holdings.map(h => {
                     const owner = familyMembers.find(m => m.id === h.ownerId);
-                    const val = metricsOf(h, derived, sgbValuationMode).value;
+                    const val = metricsOf(h, derived, sgbValuationMode, ibjaRupeesPerGram && ibjaRupeesPerGram > 0 ? MoneyEngine.fromRupees(ibjaRupeesPerGram) : null).value;
                     return (
                       <tr key={h.id} className="border-t" style={{ borderColor: 'var(--border)' }}>
                         <td className="py-2">

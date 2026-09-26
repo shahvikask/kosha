@@ -89,7 +89,9 @@ eq('liquid fund NOT equity', isEquityOriented('MUTUAL_FUND','Liquid Fund'), fals
 eq('flexi cap IS equity', isEquityOriented('MUTUAL_FUND','Flexi Cap Fund'), true);
 eq('debt classified DEBT_SLAB', classifyGain('MUTUAL_FUND','Corporate Bond Fund',false), 'DEBT_SLAB');
 eq('equity short = STCG', classifyGain('MUTUAL_FUND','Flexi Cap Fund',false), 'STCG_EQUITY');
-eq('SGB exempt', classifyGain('GOLD_SGB','',true), 'SGB_EXEMPT');
+eq('SGB certificate redemption is exempt', classifyGain('GOLD_SGB', 'Sovereign Gold Bond', true, 'CERTIFICATE'), 'SGB_EXEMPT');
+eq('SGB demat sale is not exempt', classifyGain('GOLD_SGB', 'Sovereign Gold Bond', true, 'DEMAT'), 'DEBT_SLAB');
+eq('physical gold is not SGB exempt', classifyGain('GOLD_SGB', 'Physical gold (24K)', true), 'DEBT_SLAB');
 
 console.log('\n--- F. Versioned rules + grandfathering ---');
 const r=ruleSetFor('AY26-27')!;
@@ -749,10 +751,10 @@ const sgbH: Holding = {
 eq('SGB is payout interest', interestKindOf(sgbH), 'SGB');
 eq('SGB principal is grams × issue', Number(interestSpecOf(sgbH)!.principalMinor) / 1e4, 31190);
 const sgbPlan = planInterestCatchUp(sgbH, '2020-03-31', []);
-eq('SGB posts two FY coupons', sgbPlan?.events.length, 2);
-eq('SGB first coupon on 31 Mar 2019', sgbPlan?.events[0].eventDate, '2019-03-31');
+eq('SGB posts three half-year coupons', sgbPlan?.events.length, 3);
+eq('SGB first coupon six months after issue', sgbPlan?.events[0].eventDate, '2019-03-08');
 eq('SGB does not add to gold value', sgbPlan?.currentPriceMinor, undefined);
-eq('SGB coupon is on issue not CMP', Number(BigInt(sgbPlan!.events[1].totalAmountMinor)) / 1e4 > 700, true);
+eq('SGB coupon is half of 2.5% on issue', Math.round(Number(BigInt(sgbPlan!.events[0].totalAmountMinor)) / 1e4), 390);
 const sgbAgain = planInterestCatchUp(sgbH, '2020-03-31', sgbPlan!.events.map(e => e.eventDate));
 eq('SGB catch-up is idempotent', sgbAgain, null);
 
@@ -783,9 +785,19 @@ const fdW: Holding = {
 eq('FD kind', interestKindOf(fdW), 'FD');
 eq('FD without rate uses none if 0', interestKindOf({ ...fdW, interestRatePercent: undefined }), 'FD');
 eq('FD needs a rate to post', planInterestCatchUp({ ...fdW, interestRatePercent: undefined }, '2027-03-31', []), null);
-const fdPay: Holding = { ...fdW, details: { compounding: 'QUARTERLY' } };
-const fdPayPlan = planInterestCatchUp(fdPay, '2027-03-31', []);
+eq('FD with no payout choice does not post', planInterestCatchUp(fdW, '2027-03-31', []), null);
+const fdPay: Holding = { ...fdW, acquiredOn: '2026-04-01', details: { compounding: 'QUARTERLY' } };
+const fdPayPlan = planInterestCatchUp(fdPay, '2027-04-01', []);
 eq('payout FD does not raise the deposit', fdPayPlan?.currentPriceMinor, undefined);
+eq('quarterly FD pays four times', fdPayPlan?.events.length, 4);
+const fdCum: Holding = { ...fdW, acquiredOn: '2026-04-01', details: { compounding: 'CUMULATIVE' } };
+const fdCumPlan = planInterestCatchUp(fdCum, '2027-03-31', []);
+eq('cumulative FD compounds quarterly', Number(BigInt(fdCumPlan!.events[0].totalAmountMinor)) / 1e4 > 75000, true);
+const scss: Holding = { ...fdW, id: 'h_scss', name: 'SCSS', subCategory: 'SCSS', interestRatePercent: undefined, acquiredOn: '2026-04-01' };
+eq('SCSS uses the default rate', interestKindOf(scss), 'SCSS');
+const scssPlan = planInterestCatchUp(scss, '2026-10-02', []);
+eq('SCSS pays quarterly and does not grow', scssPlan?.currentPriceMinor, undefined);
+eq('SCSS first coupon is one quarter later', scssPlan?.events[0].eventDate, '2026-07-01');
 const aifH: Holding = { ...hold('h_aif2', 'SPECIALISED', 25000, 170, 170, 'AIF'), name: 'INDIA DISCOVERY FUND II - CLASS B1' };
 eq('AIF is not an interest product', interestKindOf(aifH), null);
 

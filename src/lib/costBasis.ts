@@ -68,7 +68,7 @@ export function planInvestedCorrection(opts: {
 }
 
 const RUPEE = 10_000n;
-const BALANCE_IS_COST = new Set(['PPF', 'EPF', 'SSY', 'FD']);
+const BALANCE_IS_COST = new Set(['PPF', 'EPF', 'SSY', 'FD', 'SCSS', 'POMIS', 'NSC', 'KVP', 'RD', 'FRSB']);
 
 export const UNKNOWN_INVESTED_LABEL = 'Need what you paid';
 

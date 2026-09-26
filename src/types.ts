@@ -21,7 +21,7 @@ export type NpsTier = 'I' | 'II';
 export type NpsCra = 'PROT' | 'CAMS' | 'KFIN';
 export type AifCategory = 'I' | 'II' | 'III';
 export type OwnershipKind = 'SELF' | 'JOINT' | 'HUF' | 'SPOUSE';
-export type Compounding = 'MONTHLY' | 'QUARTERLY' | 'YEARLY' | 'CUMULATIVE';
+export type Compounding = 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY' | 'CUMULATIVE';
 export type RateType = 'FLOATING' | 'FIXED';
 export type MfPlan = 'DIRECT' | 'REGULAR';
 export type MfOption = 'GROWTH' | 'IDCW';
@@ -36,6 +36,8 @@ export interface HoldingDetails {
   goldHallmark?: string;
   earlyExitDate?: string;
   annualContributionMinor?: string;
+  /** Date of that contribution. PPF/SSY deposits after the 5th earn next year. */
+  contributionOn?: string;
   compounding?: Compounding;
   tdsApplicable?: boolean;
   npsTier?: NpsTier;
@@ -154,7 +156,7 @@ export const ASSET_SUBCATEGORIES: Record<AssetCategory, string[]> = {
   EQUITY: ['Large cap', 'Mid cap', 'Small cap', 'Multi & flexi cap', 'Sector & thematic', 'Other'],
   MUTUAL_FUND: ['Equity fund', 'Debt fund', 'Hybrid fund', 'Index / ETF', 'ELSS (tax saving)', 'Other'],
   GOLD_SGB: ['Sovereign Gold Bond', 'Physical gold (24K)', 'Digital gold', 'Other'],
-  FIXED_INCOME: ['PPF', 'EPF', 'NPS', 'Sukanya Samriddhi (SSY)', 'Bank FD', 'Bond / GOI', 'Other'],
+  FIXED_INCOME: ['PPF', 'EPF', 'NPS', 'Sukanya Samriddhi (SSY)', 'Bank FD', 'SCSS', 'NSC', 'KVP', 'POMIS', 'Post Office RD', 'RBI Floating Rate Bond', 'Bond / GOI', 'Other'],
   REAL_ESTATE: ['Residential', 'Commercial', 'Land', 'REIT', 'InvIT', 'Other'],
   SPECIALISED: ['PMS', 'AIF', 'Unlisted equity', 'ESOP', 'Other'],
   CASH_BANK: ['Savings account', 'Current account', 'Liquid / overnight', 'Other'],

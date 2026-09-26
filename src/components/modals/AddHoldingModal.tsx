@@ -28,6 +28,7 @@ import {
   usesUnits,
 } from '../../lib/holdingForm';
 import { X, Tag, Target, Check } from 'lucide-react';
+import { defaultInterestRate, kindForSubcategory } from '../../lib/interest';
 
 interface AddHoldingModalProps {
   isOpen: boolean;
@@ -164,9 +165,17 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
   const applySubDefaults = (cat: AssetCategory, sub: string) => {
     if (cat === 'GOLD_SGB' && sub.startsWith('Sovereign')) {
       setCouponOrInterestRate(String(defaultSgbCoupon()));
-    } else if (cat === 'GOLD_SGB') {
+      return;
+    }
+    if (cat === 'GOLD_SGB') {
       setCouponOrInterestRate('');
       setIssuePriceRupees('');
+      return;
+    }
+    if (cat === 'FIXED_INCOME') {
+      const kind = kindForSubcategory(sub);
+      const rate = kind ? defaultInterestRate(kind) : null;
+      setCouponOrInterestRate(rate != null ? String(rate) : '');
     }
   };
 
@@ -1030,6 +1039,11 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
                 <input type="number" step="any" placeholder="Max ₹1.5 lakh" value={fyContributionRupees} onChange={e => setFyContributionRupees(e.target.value)} className={inp} />
               </div>
               <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Date of that deposit</label>
+                <input type="date" value={extra.contributionOn || ''} onChange={e => patchExtra({ contributionOn: e.target.value || undefined })} className={inp} />
+                <p className="text-[11px] text-slate-500 mt-1">Optional. After the 5th, it earns from the next year.</p>
+              </div>
+              <div>
                 <label className="text-xs font-semibold text-slate-300 block mb-1">Bank / post office</label>
                 <input type="text" placeholder="e.g. SBI" value={institutionName} onChange={e => setInstitutionName(e.target.value)} className={inp} />
               </div>
@@ -1090,6 +1104,11 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
                 <input type="number" step="any" placeholder="Max ₹1.5 lakh" value={fyContributionRupees} onChange={e => setFyContributionRupees(e.target.value)} className={inp} />
               </div>
               <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Date of that deposit</label>
+                <input type="date" value={extra.contributionOn || ''} onChange={e => patchExtra({ contributionOn: e.target.value || undefined })} className={inp} />
+                <p className="text-[11px] text-slate-500 mt-1">Optional. After the 5th, it earns from the next year.</p>
+              </div>
+              <div>
                 <label className="text-xs font-semibold text-slate-300 block mb-1">Bank / post office</label>
                 <input type="text" placeholder="e.g. SBI" value={institutionName} onChange={e => setInstitutionName(e.target.value)} className={inp} />
               </div>
@@ -1108,6 +1127,7 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
                   <option value="">Not sure</option>
                   <option value="CUMULATIVE">Cumulative (paid at maturity)</option>
                   <option value="QUARTERLY">Quarterly payout</option>
+                  <option value="HALF_YEARLY">Half-yearly payout</option>
                   <option value="MONTHLY">Monthly payout</option>
                   <option value="YEARLY">Yearly payout</option>
                 </select>
@@ -1124,6 +1144,31 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
                 <input type="checkbox" checked={!!extra.tdsApplicable} onChange={e => patchExtra({ tdsApplicable: e.target.checked || undefined })} />
                 TDS deducted (interest above the 194A limit)
               </label>
+            </div>
+          )}
+
+          {category === 'FIXED_INCOME' && /^(SCSS|NSC|KVP|POMIS|Post Office RD|RBI Floating Rate Bond)$/.test(subCategory) && (
+            <div className={panel}>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Interest rate (% p.a.)</label>
+                <input type="number" step="0.01" value={couponOrInterestRate} onChange={e => setCouponOrInterestRate(e.target.value)} className={inp} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Matures</label>
+                <input type="date" value={maturityDate} onChange={e => setMaturityDate(e.target.value)} className={inp} />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Bank / post office</label>
+                <input type="text" placeholder="e.g. SBI or post office" value={institutionName} onChange={e => setInstitutionName(e.target.value)} className={inp} />
+              </div>
+              <p className="sm:col-span-2 text-[11px] text-slate-500">
+                {subCategory === 'SCSS' && '8.2% is paid out every quarter. The deposit does not grow.'}
+                {subCategory === 'POMIS' && '7.4% is paid out every month. The deposit does not grow.'}
+                {subCategory === 'NSC' && '7.7% compounds once a year and is paid only when the certificate matures. Each year is still recorded for tax.'}
+                {subCategory === 'KVP' && '7.5% compounds once a year. The amount doubles in 115 months and is paid at maturity.'}
+                {subCategory === 'Post Office RD' && '6.7% compounds quarterly on the balance you enter. Instalments are not rebuilt month by month.'}
+                {subCategory === 'RBI Floating Rate Bond' && 'Paid on 1 January and 1 July. The rate is NSC + 0.35% (8.05% while NSC is 7.7%). Face value does not grow.'}
+              </p>
             </div>
           )}
 

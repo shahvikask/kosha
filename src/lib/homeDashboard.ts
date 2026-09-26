@@ -107,6 +107,7 @@ export function buildBooksHealth(opts: {
   casLatest: CasLatestState;
   selectedMemberId: string;
   sgbMode: 'MARKET_TRADED' | 'RBI_BENCHMARK';
+  ibjaPerGramMinor?: bigint | null;
   todayIso: string;
 }): BooksHealth {
   const findings: HealthFinding[] = [];
@@ -118,7 +119,7 @@ export function buildBooksHealth(opts: {
   for (const h of holdings) {
     if (h.category === 'LIABILITY') continue;
     if (!isOpenPosition(h, opts.derived)) continue;
-    const m = metricsOf(h, opts.derived, opts.sgbMode);
+    const m = metricsOf(h, opts.derived, opts.sgbMode, opts.ibjaPerGramMinor);
     if (isUnknownInvested(h, events, m.cost, m.value)) costEq.push(h);
   }
   if (costEq.length > 0) {
@@ -188,7 +189,7 @@ export function buildBooksHealth(opts: {
         title: missing.length === 1
           ? `No FY ${prevFy} interest on ${missing[0]}`
           : `${missing.length} deposits have no FY ${prevFy} interest`,
-        detail: 'PPF, EPF, SSY, FD and SGB coupons are usually credited by 31 March. Open the holding to add it.',
+        detail: 'Open the holding and confirm the interest. Payout schemes post on their own dates; PPF, SSY and EPF post on 31 March.',
         count: missing.length,
         go: 'HOLDINGS',
       });
@@ -358,6 +359,7 @@ export function buildSinceLastStatement(opts: {
   events: LedgerEvent[];
   selectedMemberId: string;
   sgbMode: 'MARKET_TRADED' | 'RBI_BENCHMARK';
+  ibjaPerGramMinor?: bigint | null;
   todayIso: string;
 }): SinceLastStatement {
   const inScope = (ownerId: string) => opts.selectedMemberId === 'ALL' || ownerId === opts.selectedMemberId;
@@ -379,7 +381,7 @@ export function buildSinceLastStatement(opts: {
   for (const snap of latest.values()) {
     const h = opts.holdings.find(x => x.id === snap.holdingId);
     if (!h) continue;
-    const now = metricsOf(h, opts.derived, opts.sgbMode).value;
+    const now = metricsOf(h, opts.derived, opts.sgbMode, opts.ibjaPerGramMinor).value;
     thenMinor += snap.valueMinor;
     nowMinor += now;
     const delta = now - snap.valueMinor;
@@ -433,12 +435,13 @@ export function unknownCostRows(opts: {
   events: LedgerEvent[];
   derived: DerivedState;
   sgbMode: 'MARKET_TRADED' | 'RBI_BENCHMARK';
+  ibjaPerGramMinor?: bigint | null;
 }): UnknownCostRow[] {
   const out: UnknownCostRow[] = [];
   for (const h of opts.holdings) {
     if (h.category === 'LIABILITY') continue;
     if (!isOpenPosition(h, opts.derived)) continue;
-    const m = metricsOf(h, opts.derived, opts.sgbMode);
+    const m = metricsOf(h, opts.derived, opts.sgbMode, opts.ibjaPerGramMinor);
     if (!isUnknownInvested(h, opts.events, m.cost, m.value)) continue;
     out.push({ id: h.id, name: displayHoldingName(h.name), valueMinor: m.value });
   }

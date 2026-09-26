@@ -21,6 +21,7 @@ export const AccountsScreen: React.FC<Props> = ({ onOpenHoldingDetail }) => {
     familyMembers,
     derived,
     sgbValuationMode,
+    ibjaRupeesPerGram,
     selectedMemberId,
   } = useKosha();
 
@@ -44,7 +45,7 @@ export const AccountsScreen: React.FC<Props> = ({ onOpenHoldingDetail }) => {
           !h.accountId && (h.accountNumberMasked === a.identifierMasked || h.symbolOrFolio === a.identifierMasked)
         ));
         const valued = hs
-          .map(h => ({ h, m: metricsOf(h, derived, sgbValuationMode) }))
+          .map(h => ({ h, m: metricsOf(h, derived, sgbValuationMode, ibjaRupeesPerGram && ibjaRupeesPerGram > 0 ? MoneyEngine.fromRupees(ibjaRupeesPerGram) : null) }))
           .filter(r => r.h.category === 'LIABILITY' || r.m.qty > 0n)
           .sort((x, y) => (x.m.value < y.m.value ? 1 : -1));
         const value = valued.reduce((s, r) => s + r.m.value, 0n);
@@ -66,7 +67,7 @@ export const AccountsScreen: React.FC<Props> = ({ onOpenHoldingDetail }) => {
         return r.kind === 'Demat';
       })
       .sort((x, y) => (x.value < y.value ? 1 : -1));
-  }, [accounts, holdings, familyMembers, derived, sgbValuationMode, selectedMemberId, kindFilter]);
+  }, [accounts, holdings, familyMembers, derived, sgbValuationMode, ibjaRupeesPerGram, selectedMemberId, kindFilter]);
 
   return (
     <div className="space-y-3 md:space-y-4 pb-2 md:pb-8">

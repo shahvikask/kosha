@@ -210,6 +210,7 @@ export function buildGrowthModel(
   members: FamilyMember[],
   sgbMode: 'MARKET_TRADED' | 'RBI_BENCHMARK',
   asOf: string,
+  ibjaPerGramMinor?: bigint | null,
 ): GrowthModel {
   const byId = new Map(holdings.map(h => [h.id, h]));
   const nameOf = (id: string) => members.find(m => m.id === id)?.name || 'Family';
@@ -226,7 +227,7 @@ export function buildGrowthModel(
   const memberMap = new Map<string, { value: bigint; count: number }>();
 
   for (const h of holdings) {
-    const m = metricsOf(h, derived, sgbMode);
+    const m = metricsOf(h, derived, sgbMode, ibjaPerGramMinor);
     const pos = derived.positions.get(h.id);
     const real = pos ? pos.realisedGainMinor : 0n;
     realised += real;

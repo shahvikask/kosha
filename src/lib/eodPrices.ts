@@ -2,6 +2,7 @@ import { AssetCategory, Holding, ListedSecurity } from '../types';
 import { MoneyEngine } from './money';
 import { pingCasParser } from './casPython';
 import { isNativeShell, nativeCommand } from './license';
+import { isReitLike } from './holdingForm';
 
 export interface EodCatalogRow {
   isin: string;
@@ -68,9 +69,8 @@ export function applyCatalogPrices(
   const next = holdings.map(h => {
     const isin = (h.isin || '').toUpperCase();
     if (!isin) return h;
-    if (h.category === 'LIABILITY' || h.category === 'REAL_ESTATE' || h.category === 'CASH_BANK') {
-      return h;
-    }
+    if (h.category === 'LIABILITY' || h.category === 'CASH_BANK') return h;
+    if (h.category === 'REAL_ESTATE' && !isReitLike(h.subCategory)) return h;
     const row = byIsin.get(isin);
     if (!row) return h;
     if (h.currentPriceMinor === row.closeMinor && isEodPriceSource(h.priceSource)) {

@@ -89,6 +89,9 @@ interface KoshaContextType {
   setIsPrivacyMasked: (val: boolean | ((prev: boolean) => boolean)) => void;
   sgbValuationMode: 'MARKET_TRADED' | 'RBI_BENCHMARK';
   setSgbValuationMode: (mode: 'MARKET_TRADED' | 'RBI_BENCHMARK') => void;
+  /** IBJA 999 ₹/g. Prices RBI-certificate SGBs only. */
+  ibjaRupeesPerGram: number | null;
+  setIbjaRupeesPerGram: (rupees: number | null) => void;
   theme: ThemeName;
   setTheme: (theme: ThemeName) => void;
   summary: PortfolioSummary;
@@ -104,7 +107,7 @@ interface KoshaContextType {
   // Actions
   addHolding: (holding: NewHoldingInput) => Promise<Holding>;
   updateHolding: (id: string, updates: Partial<Holding>) => Promise<void>;
-  deleteHolding: (id: string) => Promise<void>;
+  deleteHolding: (id: string, deleteRecords?: boolean) => Promise<void>;
   appendLedgerEvent: (event: Omit<LedgerEvent, 'id' | 'createdAt'>) => Promise<LedgerEvent>;
   addLedgerEvent?: (e: LedgerEvent) => Promise<void>;
   correctEvent: (eventId: string, corrected: Partial<LedgerEvent>) => Promise<void>;
@@ -330,6 +333,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [selectedMemberId, setSelectedMemberId] = useState<string>('ALL');
   const [isPrivacyMasked, setIsPrivacyMaskedState] = useState<boolean>(false);
   const [sgbValuationMode, setSgbValuationModeState] = useState<'MARKET_TRADED' | 'RBI_BENCHMARK'>('MARKET_TRADED');
+  const [ibjaRupeesPerGram, setIbjaRupeesPerGramState] = useState<number | null>(null);
   const [theme, setThemeState] = useState<ThemeName>(() => readStoredTheme() || 'light');
   const [activeScreen, setActiveScreen] = useState<AppScreen>('HOME');
   const [casLatest, setCasLatest] = useState<CasLatestState>(EMPTY_CAS_LATEST);
@@ -402,6 +406,9 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             if (prefs.privacy === true) setIsPrivacyMaskedState(true);
             if (prefs.sgb === 'RBI_BENCHMARK' || prefs.sgb === 'MARKET_TRADED') {
               setSgbValuationModeState(prefs.sgb);
+            }
+            if (typeof prefs.ibja === 'number' && prefs.ibja > 0) {
+              setIbjaRupeesPerGramState(prefs.ibja);
             }
             if (prefs.theme === 'light' || prefs.theme === 'dark') {
               setThemeState(prefs.theme);
@@ -493,11 +500,13 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const persistUiPrefs = async (next: {
     privacy?: boolean;
     sgb?: 'MARKET_TRADED' | 'RBI_BENCHMARK';
+    ibja?: number | null;
     theme?: ThemeName;
   }) => {
     const payload = {
       privacy: next.privacy ?? isPrivacyMasked,
       sgb: next.sgb ?? sgbValuationMode,
+      ibja: next.ibja === undefined ? ibjaRupeesPerGram : next.ibja,
       theme: next.theme ?? theme,
     };
     if (repo) await repo.setMeta('ui_prefs', JSON.stringify(payload));
@@ -523,6 +532,16 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     persistUiPrefs({ theme: next });
   };
 
+  const setIbjaRupeesPerGram = (rupees: number | null) => {
+    const next = rupees != null && rupees > 0 ? rupees : null;
+    setIbjaRupeesPerGramState(next);
+    persistUiPrefs({ ibja: next });
+  };
+
+  const ibjaPerGramMinor = ibjaRupeesPerGram && ibjaRupeesPerGram > 0
+    ? MoneyEngine.fromRupees(ibjaRupeesPerGram)
+    : null;
+
   const summary = useMemo((): PortfolioSummary => {
     let totalAssetsMinor = 0n;
     let totalLiabilitiesMinor = 0n;
@@ -531,7 +550,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     let totalRealisedGainsMinor = 0n;
 
     filteredHoldings.forEach(h => {
-      const m = metricsOf(h, derived, sgbValuationMode);
+      const m = metricsOf(h, derived, sgbValuationMode, ibjaPerGramMinor);
       if (h.category === 'LIABILITY') {
         totalLiabilitiesMinor += m.value;
       } else {
@@ -587,7 +606,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       xirrPercent,
       totalGainPercent: totalGainPct,
     };
-  }, [filteredHoldings, filteredEvents, holdings, sgbValuationMode, derived]);
+  }, [filteredHoldings, filteredEvents, holdings, sgbValuationMode, ibjaPerGramMinor, derived]);
 
   // Actions writing through SQLite Repository first
   const addLedgerEvent = async (e: LedgerEvent) => {
@@ -761,12 +780,13 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   };
 
-  const deleteHolding = async (id: string): Promise<void> => {
-    console.info('The records of what you bought and sold will be kept. Only the holding is removed.');
+  const deleteHolding = async (id: string, deleteRecords = false): Promise<void> => {
     if (repo) {
+      if (deleteRecords) await repo.deleteHoldingEvents(id);
       await repo.deleteHolding(id);
     }
     setHoldings(prev => prev.filter(h => h.id !== id));
+    if (deleteRecords) setLedgerEvents(prev => prev.filter(e => e.holdingId !== id));
   };
 
   const correctEvent = async (eventId: string, corrected: Partial<LedgerEvent>): Promise<void> => {
@@ -983,7 +1003,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const holding = holdingMap.get(disposal.holdingId);
       const category: AssetCategory = holding ? holding.category : 'EQUITY';
 
-      const taxType = classifyGain(category, holding?.subCategory, disposal.isLongTerm);
+      const taxType = classifyGain(category, holding?.subCategory, disposal.isLongTerm, holding?.details?.goldHoldMode);
 
       let applicableRate = 'Your slab rate — we cannot compute this';
       if (taxType === 'LTCG_EQUITY') {
@@ -991,7 +1011,9 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       } else if (taxType === 'STCG_EQUITY') {
         applicableRate = '20% under Sec 111A';
       } else if (taxType === 'SGB_EXEMPT') {
-        applicableRate = 'Exempt Sec 47(ix)';
+        applicableRate = 'Exempt — RBI redemption of a certificate SGB';
+      } else if (category === 'GOLD_SGB') {
+        applicableRate = 'Not exempt. Exchange sale, physical gold and digital gold are taxed.';
       } else if (taxType === 'REAL_ESTATE_LTCG') {
         applicableRate = '12.5% / 20%';
       } else {
@@ -1853,6 +1875,8 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setIsPrivacyMasked,
         sgbValuationMode,
         setSgbValuationMode,
+        ibjaRupeesPerGram,
+        setIbjaRupeesPerGram,
         theme,
         setTheme,
         summary,

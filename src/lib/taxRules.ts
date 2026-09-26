@@ -9,7 +9,7 @@
  * RATES MUST BE VERIFIED against the Finance Act for each year before
  * release. The structure is the point; the numbers are inputs.
  */
-import { AssetCategory } from '../types';
+import { AssetCategory, GoldHoldMode } from '../types';
 
 export type GainClass =
   | 'LTCG_EQUITY'
@@ -103,9 +103,16 @@ export function isEquityOriented(category: AssetCategory, subCategory?: string):
 export function classifyGain(
   category: AssetCategory,
   subCategory: string | undefined,
-  isLongTerm: boolean
+  isLongTerm: boolean,
+  goldHoldMode?: GoldHoldMode
 ): GainClass {
-  if (category === 'GOLD_SGB') return 'SGB_EXEMPT';
+  if (category === 'GOLD_SGB') {
+    const sub = (subCategory || '').toLowerCase();
+    const physical = /physical|digital|other/.test(sub);
+    const sovereign = !physical && (/sovereign|\bsgb\b/.test(sub) || sub === '');
+    if (sovereign && goldHoldMode === 'CERTIFICATE') return 'SGB_EXEMPT';
+    return 'DEBT_SLAB';
+  }
   if (category === 'REAL_ESTATE') return 'REAL_ESTATE_LTCG';
   if (isEquityOriented(category, subCategory)) {
     return isLongTerm ? 'LTCG_EQUITY' : 'STCG_EQUITY';

@@ -262,9 +262,13 @@ export class Repository {
     return rows.map(rowToHolding);
   }
 
-  /** Removes the holding row. Its events remain (SRS-LED-001). */
+  /** Removes the holding row. Its events remain unless deleteHoldingEvents is called. */
   async deleteHolding(holdingId: string): Promise<void> {
     await this.db.exec(`DELETE FROM holding WHERE holding_id = ?`, [holdingId]);
+  }
+
+  async deleteHoldingEvents(holdingId: string): Promise<void> {
+    await this.db.exec(`DELETE FROM ledger_event WHERE holding_id = ?`, [holdingId]);
   }
 
   // ---------- accounts (demat / folio) ----------

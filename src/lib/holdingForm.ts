@@ -3,7 +3,7 @@
  * Equities and funds keep the listed picker; this module also covers
  * gold, govt schemes, property, alternatives, bank cash and loans.
  */
-import { AssetCategory, Holding, HoldingDetails, MfHeldAs, MfOption, MfPlan } from '../types';
+import { AssetCategory, Holding, HoldingDetails, LedgerEvent, MfHeldAs, MfOption, MfPlan } from '../types';
 import { addCalendarMonths } from './emi';
 
 export function usesUnits(
@@ -220,6 +220,11 @@ export function defaultSgbCoupon(): number {
   return 2.5;
 }
 
+export function holdingHasStatementHistory(h: Holding, events: LedgerEvent[]): boolean {
+  if (/CAS Statement|Tradebook/i.test(h.priceSource || '')) return true;
+  return events.some(e => e.holdingId === h.id && !!e.importBatchId);
+}
+
 export function suggestLockInDates(
   category: AssetCategory,
   subCategory: string,
@@ -321,10 +326,19 @@ export function detailsLines(h: Holding): { label: string; value: string }[] {
   if (d.goldHallmark) out.push({ label: 'Hallmark / invoice', value: d.goldHallmark });
   if (d.earlyExitDate) out.push({ label: 'First exit (after year 5)', value: d.earlyExitDate });
   if (d.annualContributionMinor) out.push({ label: 'Yearly contribution', value: rupees(d.annualContributionMinor) });
+  if (d.contributionOn) out.push({ label: 'Contribution date', value: d.contributionOn });
+  if (d.compounding) {
+    const pay =
+      d.compounding === 'CUMULATIVE' ? 'Cumulative, compounded quarterly' :
+      d.compounding === 'HALF_YEARLY' ? 'Half-yearly payout' :
+      d.compounding === 'QUARTERLY' ? 'Quarterly payout' :
+      d.compounding === 'MONTHLY' ? 'Monthly payout' :
+      'Yearly payout';
+    out.push({ label: 'Interest', value: pay });
+  }
   if (d.npsTier) out.push({ label: 'NPS tier', value: `Tier ${d.npsTier}` });
   if (d.npsCra) out.push({ label: 'CRA', value: d.npsCra === 'PROT' ? 'Protean' : d.npsCra });
   if (d.npsPfm) out.push({ label: 'Pension fund', value: d.npsPfm });
-  if (d.compounding) out.push({ label: 'Compounding', value: d.compounding.toLowerCase() });
   if (d.tdsApplicable) out.push({ label: 'TDS', value: 'Yes (Form 16A / 26AS)' });
   if (d.faceValueMinor) out.push({ label: 'Face value', value: rupees(d.faceValueMinor) });
   if (d.areaSqFt) out.push({ label: 'Area', value: `${d.areaSqFt} sq ft` });
