@@ -2,15 +2,15 @@
  * Interest catch-up for Indian schemes.
  *
  * Rates below are the July–September 2026 small-savings rates and the
- * FY 2025-26 EPF rate. A passbook balance is never rebuilt for past years:
- * PPF, SSY, EPF, NSC, KVP, RD and cumulative FDs only post a year that
- * ends after the last valuation. Payout products (SGB, SCSS, POMIS, the
- * RBI bond, GOI bonds, payout FDs) are cash, so they are filled from the
- * purchase date and are not added to the holding.
+ * FY 2025-26 EPF rate. When the stored balance is still the amount deposited,
+ * PPF, SSY, EPF, NSC, KVP, RD and a cumulative FD are projected from that
+ * deposit, including earlier financial years. A balance the user typed
+ * (Manual Verified) is left as they saved it. Payout products (SGB, SCSS, POMIS, the
+ * RBI bond, GOI bonds, payout FDs) are cash from the purchase date and are
+ * not added to the holding. REIT monthly income is a separate cash record.
  *
  * PPF / SSY month-end "lowest balance from the 5th" needs every deposit.
- * Without those dates the annual credit is on the balance already stored.
- * A single contribution is included only when its date is filled in.
+ * Without those dates the annual credit uses the deposited amount.
  */
 import { Holding, LedgerEvent } from '../types';
 import { QTY_SCALE } from './money';
@@ -28,7 +28,8 @@ export type InterestKind =
   | 'KVP'
   | 'RD'
   | 'FRSB'
-  | 'BOND';
+  | 'BOND'
+  | 'OTHER';
 
 export interface InterestSpec {
   kind: InterestKind;
@@ -59,6 +60,7 @@ const DEFAULT_RATE: Record<InterestKind, number | null> = {
   RD: 6.7,
   FRSB: 8.05,
   BOND: null,
+  OTHER: null,
 };
 
 const PAYOUT_KIND = new Set<InterestKind>(['SGB', 'SCSS', 'POMIS', 'FRSB', 'BOND']);
@@ -97,7 +99,10 @@ export function interestKindOf(h: Holding): InterestKind | null {
   if (nameLooksLikeSgb(h.name) && !/physical|digital/.test(sub)) return 'SGB';
   if (h.category !== 'FIXED_INCOME') return null;
   if (/\bnps\b/.test(`${sub} ${h.name}`.toLowerCase())) return null;
-  return kindForSubcategory(`${h.subCategory || ''} ${h.name}`);
+  const kind = kindForSubcategory(`${h.subCategory || ''} ${h.name}`);
+  if (kind) return kind;
+  if (sub === 'other' && (h.interestRatePercent ?? 0) > 0) return 'OTHER';
+  return null;
 }
 
 export function defaultInterestRate(kind: InterestKind): number | null {
@@ -169,6 +174,17 @@ function compoundQuarterlyMinor(principalMinor: bigint, ratePercent: number, mon
   return interest > 0n ? interest : 0n;
 }
 
+function investedMinor(h: Holding, qtyScaled?: bigint): bigint {
+  const qty = qtyScaled != null ? qtyScaled : BigInt(h.quantityScaled || '0');
+  const avg = BigInt(h.averageCostPerUnitMinor || '0');
+  if (qty <= 0n || avg <= 0n) return 0n;
+  return (qty * avg) / QTY_SCALE;
+}
+
+export function valueIsUserLocked(h: Holding): boolean {
+  return /Manual Verified/.test(h.priceSource || '');
+}
+
 export function sgbPrincipalMinor(h: Holding, qtyScaled?: bigint): bigint {
   const qty = qtyScaled != null ? qtyScaled : BigInt(h.quantityScaled || '0');
   const issue = BigInt(h.issuePriceMinor || '0');
@@ -231,6 +247,10 @@ export function interestSpecOf(h: Holding, qtyScaled?: bigint): InterestSpec | n
   }
   if (kind === 'FD') {
     const cumulative = h.details?.compounding === 'CUMULATIVE';
+    const deposited = investedMinor(h, qtyScaled);
+    const balance = BigInt(h.currentPriceMinor || '0');
+    const principal = !cumulative && deposited > 0n ? deposited : balance;
+    if (principal <= 0n) return null;
     return {
       kind,
       mode: cumulative ? 'COMPOUND' : 'PAYOUT',
@@ -289,6 +309,44 @@ function payoutDates(h: Holding, spec: InterestSpec, asOf: string): string[] {
   return steppedDates(acquired, stepMonths, asOf, maturity);
 }
 
+/** Next payout or 31 March credit on or after asOf. Null when the scheme has ended. */
+export function nextScheduledInterestDate(h: Holding, asOf: string): string | null {
+  const spec = interestSpecOf(h);
+  if (!spec) return null;
+  const acquired = (h.acquiredOn || '').slice(0, 10);
+  const maturity = (h.maturityDate || '').slice(0, 10) || undefined;
+  const today = (asOf || '').slice(0, 10);
+  if (!acquired || !today) return null;
+  if (maturity && today > maturity) return null;
+  if (spec.mode === 'COMPOUND') {
+    const horizon = maturity && maturity < '2099-03-31' ? maturity : '2099-03-31';
+    return fyEndDatesAfter(acquired, horizon).find(d => d >= today && (!maturity || d <= maturity)) || null;
+  }
+  if (spec.kind === 'FRSB') {
+    const start = parseIso(today);
+    if (!start) return null;
+    for (let y = start.y; y <= start.y + 3; y += 1) {
+      for (const md of ['01-01', '07-01']) {
+        const d = `${y}-${md}`;
+        if (d < today || d <= acquired) continue;
+        if (maturity && d > maturity) return null;
+        return d;
+      }
+    }
+    return null;
+  }
+  const { stepMonths } = periodsFor(spec.kind, h);
+  let cursor = addMonthsIso(acquired, stepMonths);
+  let guard = 0;
+  while (cursor && guard < 600) {
+    if (maturity && cursor > maturity) return null;
+    if (cursor >= today) return cursor;
+    cursor = addMonthsIso(cursor, stepMonths);
+    guard += 1;
+  }
+  return null;
+}
+
 function contributionThisFy(h: Holding, fyEnd: string): { amount: bigint; earnsThisYear: boolean } | null {
   if (h.details?.compounding) return null;
   const kind = interestKindOf(h);
@@ -317,8 +375,21 @@ export function planInterestCatchUp(
   const maturity = (h.maturityDate || '').slice(0, 10);
 
   let dates: string[];
+  let opening = spec.principalMinor;
+  const deposited = investedMinor(h, qtyScaled);
+  const projectFromDeposit =
+    spec.mode === 'COMPOUND' &&
+    !valueIsUserLocked(h) &&
+    !!acquired &&
+    deposited > 0n &&
+    opening === deposited;
   if (spec.mode === 'PAYOUT') {
     dates = payoutDates(h, spec, asOf).filter(d => !posted.has(d));
+  } else if (valueIsUserLocked(h)) {
+    return null;
+  } else if (projectFromDeposit) {
+    dates = fyEndDatesAfter(acquired, asOf).filter(d => (!maturity || d <= maturity));
+    opening = deposited;
   } else {
     const after = maxIso(valuedOn, acquired);
     if (!after) return null;
@@ -326,9 +397,10 @@ export function planInterestCatchUp(
   }
   if (dates.length === 0) return null;
 
-  let principal = spec.principalMinor;
+  let principal = opening;
   const events: InterestCatchUpPlan['events'] = [];
   for (const date of dates) {
+    if (!projectFromDeposit && posted.has(date)) continue;
     const contrib = spec.mode === 'COMPOUND' ? contributionThisFy(h, date) : null;
     let base = principal;
     if (contrib?.earnsThisYear) base += contrib.amount;
@@ -337,27 +409,34 @@ export function planInterestCatchUp(
       : spec.quarterlyCompound
         ? compoundQuarterlyMinor(base, spec.ratePercent, monthsHeldInFy(acquired, date))
         : interestMinor(base, spec.ratePercent, monthsHeldInFy(acquired, date));
-    if (amt <= 0n) continue;
-    events.push({
-      holdingId: h.id,
-      holdingName: h.name,
-      ownerId: h.ownerId,
-      eventType: 'INTEREST',
-      eventDate: date,
-      quantityScaled: '0',
-      unitPriceMinor: '0',
-      totalAmountMinor: amt.toString(),
-      notes: interestNote(spec, date),
-    });
+    if (amt <= 0n) {
+      if (spec.mode === 'COMPOUND' && contrib && !contrib.earnsThisYear) principal += contrib.amount;
+      continue;
+    }
+    if (!posted.has(date)) {
+      events.push({
+        holdingId: h.id,
+        holdingName: h.name,
+        ownerId: h.ownerId,
+        eventType: 'INTEREST',
+        eventDate: date,
+        quantityScaled: '0',
+        unitPriceMinor: '0',
+        totalAmountMinor: amt.toString(),
+        notes: interestNote(spec, date),
+      });
+    }
     if (spec.mode === 'COMPOUND') {
       principal = base + amt;
       if (contrib && !contrib.earnsThisYear) principal += contrib.amount;
     }
   }
   if (events.length === 0) return null;
+  const grown = spec.mode === 'COMPOUND' ? principal.toString() : undefined;
+  if (grown && grown === (h.currentPriceMinor || '')) return null;
   return {
     events,
-    currentPriceMinor: spec.mode === 'COMPOUND' ? principal.toString() : undefined,
+    currentPriceMinor: grown,
   };
 }
 
@@ -403,6 +482,8 @@ function interestNote(spec: InterestSpec, date: string): string {
       return `RBI floating-rate bond interest on ${date} (${rate}%)`;
     case 'BOND':
       return `Bond coupon on ${date} (${rate}% on face value)`;
+    case 'OTHER':
+      return `Interest for FY ${fy} (${rate}%)`;
   }
 }
 
@@ -425,4 +506,81 @@ function maxIso(a?: string, b?: string): string {
   if (!x) return y;
   if (!y) return x;
   return x >= y ? x : y;
+}
+
+export function clampIncomeDay(day: number): number {
+  if (!Number.isFinite(day)) return 1;
+  const n = Math.round(day);
+  if (n < 1) return 1;
+  if (n > 28) return 28;
+  return n;
+}
+
+function isoYmd(y: number, m: number, d: number): string {
+  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+/** Paydays from start through asOf, clamped to day 1–28, stopping after incomeEnd. */
+export function monthlyIncomeDates(startIso: string, day: number, asOf: string, endIso?: string): string[] {
+  const start = (startIso || '').slice(0, 10);
+  const today = (asOf || '').slice(0, 10);
+  const end = (endIso || '').slice(0, 10);
+  const s = parseIso(start);
+  if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(today)) return [];
+  const d = clampIncomeDay(day);
+  let y = s.y;
+  let m = s.m;
+  let cursor = isoYmd(y, m, d);
+  if (cursor < start) {
+    m += 1;
+    if (m > 12) { m = 1; y += 1; }
+    cursor = isoYmd(y, m, d);
+  }
+  const out: string[] = [];
+  let guard = 0;
+  while (cursor <= today && guard < 480) {
+    if (end && /^\d{4}-\d{2}-\d{2}$/.test(end) && cursor > end) break;
+    out.push(cursor);
+    m += 1;
+    if (m > 12) { m = 1; y += 1; }
+    cursor = isoYmd(y, m, d);
+    guard += 1;
+  }
+  return out;
+}
+
+export function planMonthlyIncome(
+  h: Holding,
+  asOf: string,
+  alreadyPostedDates?: Iterable<string>
+): InterestCatchUpPlan['events'] | null {
+  const amount = BigInt(h.details?.monthlyIncomeMinor || '0');
+  if (amount <= 0n) return null;
+  const start = (h.details?.incomeStart || h.acquiredOn || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) return null;
+  const posted = new Set(alreadyPostedDates || []);
+  const dates = monthlyIncomeDates(start, h.details?.incomeDay ?? 1, asOf, h.details?.incomeEnd)
+    .filter(d => !posted.has(d));
+  if (dates.length === 0) return null;
+  return dates.map(date => ({
+    holdingId: h.id,
+    holdingName: h.name,
+    ownerId: h.ownerId,
+    eventType: 'DIVIDEND',
+    eventDate: date,
+    quantityScaled: '0',
+    unitPriceMinor: '0',
+    totalAmountMinor: amount.toString(),
+    notes: `Monthly income on ${date}`,
+  }));
+}
+
+export function nextMonthlyIncomeDate(h: Holding, asOf: string): string | null {
+  const amount = BigInt(h.details?.monthlyIncomeMinor || '0');
+  if (amount <= 0n) return null;
+  const start = (h.details?.incomeStart || h.acquiredOn || '').slice(0, 10);
+  const today = (asOf || '').slice(0, 10);
+  const horizon = addMonthsIso(today, 36) || today;
+  const dates = monthlyIncomeDates(start, h.details?.incomeDay ?? 1, horizon, h.details?.incomeEnd);
+  return dates.find(d => d >= today) || null;
 }

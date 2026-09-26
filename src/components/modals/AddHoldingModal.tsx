@@ -108,6 +108,10 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
   const [commitmentRupees, setCommitmentRupees] = useState('');
   const [capitalCalledRupees, setCapitalCalledRupees] = useState('');
   const [faceValueRupees, setFaceValueRupees] = useState('');
+  const [monthlyIncomeRupees, setMonthlyIncomeRupees] = useState('');
+  const [incomeDay, setIncomeDay] = useState('');
+  const [incomeStart, setIncomeStart] = useState('');
+  const [incomeEnd, setIncomeEnd] = useState('');
   const [extra, setExtra] = useState<HoldingDetails>({});
   const [listedExchange, setListedExchange] = useState('');
   const [rta, setRta] = useState('');
@@ -119,6 +123,20 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
   const aifLumpsum = isAif && extra.altHoldMode !== 'DEMAT';
   const unitAsset = usesUnits(category, subCategory, extra);
   const isPms = category === 'SPECIALISED' && subCategory === 'PMS';
+  const autoValue = category === 'FIXED_INCOME' && (
+    subCategory === 'PPF' ||
+    subCategory === 'EPF' ||
+    subCategory.startsWith('Sukanya') ||
+    subCategory === 'Bank FD' ||
+    subCategory === 'SCSS' ||
+    subCategory === 'NSC' ||
+    subCategory === 'KVP' ||
+    subCategory === 'POMIS' ||
+    subCategory === 'Post Office RD' ||
+    subCategory === 'RBI Floating Rate Bond' ||
+    subCategory === 'Other'
+  );
+  const singleBalance = autoValue || (category === 'FIXED_INCOME' && subCategory === 'NPS');
   const isEtf = category === 'MUTUAL_FUND' && (nameLooksLikeEtf(name) || nameLooksLikeEtf(picked?.name));
   const heldAsDemat = extra.mfHeldAs === 'DEMAT' || isEtf;
   const showAcquiredOn = true;
@@ -195,11 +213,15 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
     setLocation('');
     setMaturityDate('');
     setAcquiredOn('');
-    setExtra({});
+    setExtra(next === 'FIXED_INCOME' && sub === 'Bank FD' ? { compounding: 'CUMULATIVE' } : {});
     setFyContributionRupees('');
     setCommitmentRupees('');
     setCapitalCalledRupees('');
     setFaceValueRupees('');
+    setMonthlyIncomeRupees('');
+    setIncomeDay('');
+    setIncomeStart('');
+    setIncomeEnd('');
     setListedExchange('');
     setRta('');
     setChargesRupees('');
@@ -209,6 +231,16 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
   const handleSubCategory = (sub: string) => {
     setSubCategory(sub);
     applySubDefaults(category, sub);
+    if (sub === 'Bank FD') {
+      setExtra(prev => ({ ...prev, compounding: 'CUMULATIVE' }));
+    } else {
+      setExtra(prev => {
+        if (!prev.compounding) return prev;
+        const next = { ...prev };
+        delete next.compounding;
+        return next;
+      });
+    }
     if (acquiredOn) {
       const suggested = suggestLockInDates(category, sub, acquiredOn);
       if (suggested.maturity && !maturityDate) setMaturityDate(suggested.maturity);
@@ -271,6 +303,11 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
 
     let costNum = parseFloat(costPerUnitRupees) || 0;
     let currentPriceNum = parseFloat(currentPriceRupees) || costNum;
+    if (singleBalance) {
+      const deposited = parseFloat(costPerUnitRupees) || parseFloat(currentPriceRupees) || 0;
+      costNum = deposited;
+      currentPriceNum = deposited;
+    }
     if (aifLumpsum) {
       const called = parseFloat(capitalCalledRupees);
       const commit = parseFloat(commitmentRupees);
@@ -306,6 +343,15 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
     if (called) details.capitalCalledMinor = called;
     const face = rupeesToMinor(faceValueRupees);
     if (face) details.faceValueMinor = face;
+    if (category === 'FIXED_INCOME' && subCategory === 'Bank FD' && !details.compounding) {
+      details.compounding = 'CUMULATIVE';
+    }
+    const incomeMinor = rupeesToMinor(monthlyIncomeRupees);
+    if (incomeMinor) details.monthlyIncomeMinor = incomeMinor;
+    const incomeDayNum = parseInt(incomeDay, 10);
+    if (!isNaN(incomeDayNum) && incomeDayNum > 0) details.incomeDay = Math.min(28, Math.max(1, incomeDayNum));
+    if (incomeStart) details.incomeStart = incomeStart;
+    if (incomeEnd) details.incomeEnd = incomeEnd;
     if (category === 'GOLD_SGB' && subCategory.startsWith('Physical') && !details.goldPurity) {
       details.goldPurity = '24K';
     }
@@ -709,6 +755,27 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
                 )}
               </div>
             </div>
+          ) : singleBalance ? (
+            <div>
+              <label className={lbl}>{autoValue ? 'Amount deposited (₹) *' : 'Current value (₹) *'}</label>
+              <input
+                type="number"
+                step="any"
+                required
+                placeholder="e.g. 150000"
+                value={costPerUnitRupees}
+                onChange={e => {
+                  setCostPerUnitRupees(e.target.value);
+                  setCurrentPriceRupees(e.target.value);
+                }}
+                className={inp}
+              />
+              <p className="text-[11px] text-slate-500 mt-1">
+                {autoValue
+                  ? 'Today’s value is calculated from this amount, the start date and the rate. You can change it later on the holding.'
+                  : 'NPS is a market value, not interest. Use the latest statement balance.'}
+              </p>
+            </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
@@ -1035,18 +1102,10 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
                 <input type="date" value={maturityDate} onChange={e => setMaturityDate(e.target.value)} className={inp} />
               </div>
               <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1">This FY contribution (₹)</label>
-                <input type="number" step="any" placeholder="Max ₹1.5 lakh" value={fyContributionRupees} onChange={e => setFyContributionRupees(e.target.value)} className={inp} />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1">Date of that deposit</label>
-                <input type="date" value={extra.contributionOn || ''} onChange={e => patchExtra({ contributionOn: e.target.value || undefined })} className={inp} />
-                <p className="text-[11px] text-slate-500 mt-1">Optional. After the 5th, it earns from the next year.</p>
-              </div>
-              <div>
                 <label className="text-xs font-semibold text-slate-300 block mb-1">Bank / post office</label>
                 <input type="text" placeholder="e.g. SBI" value={institutionName} onChange={e => setInstitutionName(e.target.value)} className={inp} />
               </div>
+              <p className="sm:col-span-2 text-[11px] text-slate-500">7.1% is added on 31 March. Enter only what you deposited — the balance is calculated.</p>
             </div>
           )}
 
@@ -1060,7 +1119,7 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
                 <label className="text-xs font-semibold text-slate-300 block mb-1">Employer / EPFO</label>
                 <input type="text" placeholder="e.g. Current employer" value={institutionName} onChange={e => setInstitutionName(e.target.value)} className={inp} />
               </div>
-              <p className="sm:col-span-2 text-[11px] text-slate-500">Use the 12-digit UAN, not the old office member ID. All jobs sit under one UAN.</p>
+              <p className="sm:col-span-2 text-[11px] text-slate-500">8.25% for FY 2025-26 is added on 31 March. Enter the deposited balance. EPS does not earn interest.</p>
             </div>
           )}
 
@@ -1100,18 +1159,10 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
                 <input type="date" value={maturityDate} onChange={e => setMaturityDate(e.target.value)} className={inp} />
               </div>
               <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1">This FY contribution (₹)</label>
-                <input type="number" step="any" placeholder="Max ₹1.5 lakh" value={fyContributionRupees} onChange={e => setFyContributionRupees(e.target.value)} className={inp} />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1">Date of that deposit</label>
-                <input type="date" value={extra.contributionOn || ''} onChange={e => patchExtra({ contributionOn: e.target.value || undefined })} className={inp} />
-                <p className="text-[11px] text-slate-500 mt-1">Optional. After the 5th, it earns from the next year.</p>
-              </div>
-              <div>
                 <label className="text-xs font-semibold text-slate-300 block mb-1">Bank / post office</label>
                 <input type="text" placeholder="e.g. SBI" value={institutionName} onChange={e => setInstitutionName(e.target.value)} className={inp} />
               </div>
+              <p className="sm:col-span-2 text-[11px] text-slate-500">8.2% is added on 31 March. Enter only what you deposited — the balance is calculated.</p>
             </div>
           )}
 
@@ -1123,12 +1174,11 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-300 block mb-1">Compounding</label>
-                <select value={extra.compounding || ''} onChange={e => patchExtra({ compounding: (e.target.value || undefined) as HoldingDetails['compounding'] })} className={inp}>
-                  <option value="">Not sure</option>
-                  <option value="CUMULATIVE">Cumulative (paid at maturity)</option>
+                <select value={extra.compounding || 'CUMULATIVE'} onChange={e => patchExtra({ compounding: e.target.value as HoldingDetails['compounding'] })} className={inp}>
+                  <option value="CUMULATIVE">Cumulative — grows until maturity</option>
+                  <option value="MONTHLY">Monthly payout</option>
                   <option value="QUARTERLY">Quarterly payout</option>
                   <option value="HALF_YEARLY">Half-yearly payout</option>
-                  <option value="MONTHLY">Monthly payout</option>
                   <option value="YEARLY">Yearly payout</option>
                 </select>
               </div>
@@ -1144,6 +1194,7 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
                 <input type="checkbox" checked={!!extra.tdsApplicable} onChange={e => patchExtra({ tdsApplicable: e.target.checked || undefined })} />
                 TDS deducted (interest above the 194A limit)
               </label>
+              <p className="sm:col-span-2 text-[11px] text-slate-500">Cumulative deposits grow inside the FD. Payout options record the cash and leave the deposit as you booked it. Earlier years are filled in.</p>
             </div>
           )}
 
@@ -1166,7 +1217,7 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
                 {subCategory === 'POMIS' && '7.4% is paid out every month. The deposit does not grow.'}
                 {subCategory === 'NSC' && '7.7% compounds once a year and is paid only when the certificate matures. Each year is still recorded for tax.'}
                 {subCategory === 'KVP' && '7.5% compounds once a year. The amount doubles in 115 months and is paid at maturity.'}
-                {subCategory === 'Post Office RD' && '6.7% compounds quarterly on the balance you enter. Instalments are not rebuilt month by month.'}
+                {subCategory === 'Post Office RD' && '6.7% compounds quarterly. Past years are filled in from the amount deposited.'}
                 {subCategory === 'RBI Floating Rate Bond' && 'Paid on 1 January and 1 July. The rate is NSC + 0.35% (8.05% while NSC is 7.7%). Face value does not grow.'}
               </p>
             </div>
@@ -1207,6 +1258,7 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
                 <label className="text-xs font-semibold text-slate-300 block mb-1">Bank / institution</label>
                 <input type="text" placeholder="e.g. SBI" value={institutionName} onChange={e => setInstitutionName(e.target.value)} className={inp} />
               </div>
+              <p className="sm:col-span-2 text-[11px] text-slate-500">If you enter a rate, each 31 March is calculated from the amount deposited.</p>
             </div>
           )}
 
@@ -1229,6 +1281,28 @@ export const AddHoldingModal: React.FC<AddHoldingModalProps> = ({ isOpen, onClos
                 <label className="text-xs font-semibold text-slate-300 block mb-1">Manager / vehicle</label>
                 <input type="text" placeholder="e.g. Embassy sponsor SPV" value={institutionName} onChange={e => setInstitutionName(e.target.value)} className={inp} />
               </div>
+            </div>
+          )}
+
+          {isReit && (
+            <div className={panel}>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Monthly income (₹)</label>
+                <input type="number" step="any" placeholder="optional" value={monthlyIncomeRupees} onChange={e => setMonthlyIncomeRupees(e.target.value)} className={inp} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Paid on day (1–28)</label>
+                <input type="number" min={1} max={28} step="1" placeholder="15" value={incomeDay} onChange={e => setIncomeDay(e.target.value)} className={inp} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">From</label>
+                <input type="date" value={incomeStart} onChange={e => setIncomeStart(e.target.value)} className={inp} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Until</label>
+                <input type="date" value={incomeEnd} onChange={e => setIncomeEnd(e.target.value)} className={inp} />
+              </div>
+              <p className="sm:col-span-2 text-[11px] text-slate-500">Optional. Recorded every month on that day, starting from the date you give, and it stops on the end date.</p>
             </div>
           )}
 

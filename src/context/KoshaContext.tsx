@@ -65,7 +65,7 @@ import {
   MemberStatementAsOf,
 } from '../lib/casPython';
 import { planEmiCatchUp, applyEmiPlan } from '../lib/emi';
-import { planInterestCatchUp, applyInterestPlan } from '../lib/interest';
+import { planInterestCatchUp, applyInterestPlan, planMonthlyIncome } from '../lib/interest';
 import { planInvestedCorrection, isUnknownInvested } from '../lib/costBasis';
 import { findDuplicatePanMember } from '../lib/pan';
 import { applyCatalogPrices, catalogToListed, isEodPriceSource, refreshEodFromSidecar } from '../lib/eodPrices';
@@ -106,7 +106,7 @@ interface KoshaContextType {
 
   // Actions
   addHolding: (holding: NewHoldingInput) => Promise<Holding>;
-  updateHolding: (id: string, updates: Partial<Holding>) => Promise<void>;
+  updateHolding: (id: string, updates: Partial<Holding>) => Promise<Holding | void>;
   deleteHolding: (id: string, deleteRecords?: boolean) => Promise<void>;
   appendLedgerEvent: (event: Omit<LedgerEvent, 'id' | 'createdAt'>) => Promise<LedgerEvent>;
   addLedgerEvent?: (e: LedgerEvent) => Promise<void>;
@@ -115,6 +115,8 @@ interface KoshaContextType {
     unitPriceRupees: number;
     acquiredOn: string;
     issuePriceRupees?: number;
+    /** Latest saved holding, so a current-value edit is not overwritten. */
+    seed?: Holding;
   }) => Promise<void>;
   addFamilyMember: (member: Omit<FamilyMember, 'id'> & { pan?: string }) => Promise<FamilyMember>;
   updateFamilyMember: (id: string, updates: Partial<FamilyMember> & { pan?: string }) => Promise<void>;
@@ -197,6 +199,18 @@ function interestEventsFromPlan(
   }));
 }
 
+function incomeEventsFromPlan(
+  holdingId: string,
+  events: NonNullable<ReturnType<typeof planMonthlyIncome>>
+): LedgerEvent[] {
+  const now = new Date().toISOString();
+  return events.map(e => ({
+    ...e,
+    id: `ev_inc_${holdingId}_${e.eventDate}`,
+    createdAt: now,
+  }));
+}
+
 async function catchUpHoldings(
   r: Repository,
   holdings: Holding[],
@@ -226,6 +240,15 @@ async function catchUpHoldings(
       const rows = interestEventsFromPlan(h.id, intPlan);
       current = applyInterestPlan(current, intPlan);
       await r.commitEmiCatchUp(current, rows);
+      extra.push(...rows);
+    }
+    const postedInc = [...events, ...extra]
+      .filter(e => e.holdingId === h.id && e.eventType === 'DIVIDEND' && (e.notes || '').startsWith('Monthly income'))
+      .map(e => e.eventDate);
+    const incPlan = planMonthlyIncome(current, asOf, postedInc);
+    if (incPlan) {
+      const rows = incomeEventsFromPlan(h.id, incPlan);
+      await r.appendEvents(rows);
       extra.push(...rows);
     }
     next.push(current);
@@ -701,17 +724,26 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
 
     let saved = newHolding;
+    const booked: LedgerEvent[] = [];
     if (rest.category === 'LIABILITY' && repo) {
       const plan = planEmiCatchUp(newHolding, new Date().toISOString().slice(0, 10));
       if (plan) {
         const rows = emiEventsFromPlan(newId, plan);
         saved = applyEmiPlan(newHolding, plan);
         await repo.commitEmiCatchUp(saved, rows);
-        setLedgerEvents(prev => [...rows, ...prev]);
+        booked.push(...rows);
       }
+    }
+    if (repo) {
+      const caught = await persistInterestCatchUp(saved, ledgerEvents);
+      saved = caught.holding;
+      booked.push(...caught.extra);
+      const income = await persistMonthlyIncome(saved, ledgerEvents);
+      booked.push(...income);
     }
 
     setHoldings(prev => [saved, ...prev.filter(h => h.id !== newId)]);
+    if (booked.length) setLedgerEvents(prev => [...booked, ...prev]);
     return saved;
   };
 
@@ -723,6 +755,12 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const posted = events
       .filter(e => e.holdingId === holding.id && e.eventType === 'INTEREST')
       .map(e => e.eventDate);
+    if (repo) {
+      const stored = await repo.eventsForHolding(holding.id);
+      for (const e of stored) {
+        if (e.eventType === 'INTEREST') posted.push(e.eventDate);
+      }
+    }
     const qty = BigInt(holding.quantityScaled || '0');
     const plan = planInterestCatchUp(holding, asOf, posted, qty > 0n ? qty : undefined);
     if (!plan) return { holding, extra: [] };
@@ -732,7 +770,28 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return { holding: next, extra: rows };
   };
 
-  const updateHolding = async (id: string, updates: Partial<Holding>): Promise<void> => {
+  const persistMonthlyIncome = async (
+    holding: Holding,
+    events: LedgerEvent[]
+  ): Promise<LedgerEvent[]> => {
+    const asOf = new Date().toISOString().slice(0, 10);
+    const posted = events
+      .filter(e => e.holdingId === holding.id && e.eventType === 'DIVIDEND' && (e.notes || '').startsWith('Monthly income'))
+      .map(e => e.eventDate);
+    if (repo) {
+      const stored = await repo.eventsForHolding(holding.id);
+      for (const e of stored) {
+        if (e.eventType === 'DIVIDEND' && (e.notes || '').startsWith('Monthly income')) posted.push(e.eventDate);
+      }
+    }
+    const plan = planMonthlyIncome(holding, asOf, posted);
+    if (!plan) return [];
+    const rows = incomeEventsFromPlan(holding.id, plan);
+    if (repo) await repo.appendEvents(rows);
+    return rows;
+  };
+
+  const updateHolding = async (id: string, updates: Partial<Holding>): Promise<Holding | void> => {
     const { quantityScaled, averageCostPerUnitMinor, ...allowedUpdates } = updates;
     const existing = holdings.find(h => h.id === id);
     if (!existing) return;
@@ -767,7 +826,10 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     setHoldings(prev => prev.map(h => (h.id === id ? updatedHolding : h)));
+    const income = await persistMonthlyIncome(updatedHolding, extra.length ? [...extra, ...ledgerEvents] : ledgerEvents);
+    if (income.length) extra = [...extra, ...income];
     if (extra.length) setLedgerEvents(prev => [...extra, ...prev]);
+    return updatedHolding;
   };
 
   const updateHoldingPrice = async (id: string, newPriceRupees: number): Promise<void> => {
@@ -808,9 +870,9 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const correctInvested = async (
     holdingId: string,
-    input: { unitPriceRupees: number; acquiredOn: string; issuePriceRupees?: number }
+    input: { unitPriceRupees: number; acquiredOn: string; issuePriceRupees?: number; seed?: Holding }
   ): Promise<void> => {
-    const existing = holdings.find(h => h.id === holdingId);
+    const existing = input.seed || holdings.find(h => h.id === holdingId);
     if (!existing) return;
     const unitPriceMinor = MoneyEngine.fromRupees(input.unitPriceRupees);
     if (unitPriceMinor <= 0n) return;

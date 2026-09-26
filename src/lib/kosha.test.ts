@@ -28,7 +28,7 @@ import { LedgerEvent, Holding } from '../types';
 import { eventLabel, bucketOf, upcomingFromHoldings, displayHoldingName, accountTitle, inferAmcFromSchemeName, looksLikeSgb, metricsOf, isOpenPosition, orderBucketsByPresence } from './holdingView';
 import { formatStatementDate, latestAsOfForOwner, statementAsOfByMember, parseCasLatest, npsStatementPassword, statementPasswordsToTry } from './casPython';
 import { addCalendarMonths, dueEmiDates, planEmiCatchUp, resumeEmiDate } from './emi';
-import { planInterestCatchUp, fyEndDatesAfter, monthsHeldInFy, interestMinor, interestKindOf, interestSpecOf } from './interest';
+import { planInterestCatchUp, fyEndDatesAfter, monthsHeldInFy, interestMinor, interestKindOf, interestSpecOf, planMonthlyIncome, nextMonthlyIncomeDate } from './interest';
 import { planInvestedCorrection, earliestActiveParcel, isUnknownInvested, UNKNOWN_INVESTED_LABEL } from './costBasis';
 import { absoluteReturnPct, annualReturnPct, incomeByFinancialYear, buildGrowthModel, formatPct } from './growth';
 import { profileOf, holdingReturn, isStatementOnlyHistory, investedHasChanged } from './returnMetrics';
@@ -800,6 +800,91 @@ eq('SCSS pays quarterly and does not grow', scssPlan?.currentPriceMinor, undefin
 eq('SCSS first coupon is one quarter later', scssPlan?.events[0].eventDate, '2026-07-01');
 const aifH: Holding = { ...hold('h_aif2', 'SPECIALISED', 25000, 170, 170, 'AIF'), name: 'INDIA DISCOVERY FUND II - CLASS B1' };
 eq('AIF is not an interest product', interestKindOf(aifH), null);
+
+const fdOld: Holding = {
+  ...hold('h_fd_old', 'FIXED_INCOME', 1, 100000, 100000, 'Bank FD'),
+  name: 'HDFC FD 2023',
+  interestRatePercent: 7,
+  acquiredOn: '2023-04-01',
+  details: { compounding: 'CUMULATIVE' },
+  lastPriceUpdated: '2026-09-26T00:00:00Z',
+  priceSource: 'Manual Initial Entry',
+};
+const fdOldPlan = planInterestCatchUp(fdOld, '2026-09-26', []);
+eq('cumulative FD backfills three financial years', fdOldPlan?.events.map(e => e.eventDate).join(','), '2024-03-31,2025-03-31,2026-03-31');
+eq('cumulative FD balance grows', BigInt(fdOldPlan!.currentPriceMinor!) > BigInt(fdOld.currentPriceMinor), true);
+eq('second year interest is larger', BigInt(fdOldPlan!.events[1].totalAmountMinor) > BigInt(fdOldPlan!.events[0].totalAmountMinor), true);
+const fdGrown: Holding = {
+  ...fdOld,
+  currentPriceMinor: fdOldPlan!.currentPriceMinor,
+  lastPriceUpdated: '2026-09-26T00:00:00Z',
+  priceSource: 'FY interest',
+};
+eq('second catch-up does not repeat', planInterestCatchUp(fdGrown, '2026-09-26', fdOldPlan!.events.map(e => e.eventDate)), null);
+
+const fdMonth: Holding = {
+  ...fdOld,
+  id: 'h_fd_month',
+  acquiredOn: '2024-01-15',
+  details: { compounding: 'MONTHLY' },
+};
+const fdMonthPlan = planInterestCatchUp(fdMonth, '2024-04-20', []);
+eq('monthly payout posts each 15th', fdMonthPlan?.events.map(e => e.eventDate).join(','), '2024-02-15,2024-03-15,2024-04-15');
+eq('payout FD does not grow the deposit', fdMonthPlan?.currentPriceMinor, undefined);
+
+const ppfOpen: Holding = {
+  ...hold('h_ppf_open', 'FIXED_INCOME', 1, 100000, 100000, 'PPF'),
+  name: 'PPF from deposit',
+  interestRatePercent: 7.1,
+  acquiredOn: '2022-04-01',
+  priceSource: 'Manual Initial Entry',
+};
+const ppfOpenPlan = planInterestCatchUp(ppfOpen, '2026-09-26', []);
+eq('PPF equal to deposit backfills four years', ppfOpenPlan?.events.length, 4);
+eq('PPF first credit is 31 Mar 2023', ppfOpenPlan?.events[0].eventDate, '2023-03-31');
+eq('locked PPF balance is not rebuilt', planInterestCatchUp({ ...ppfOpen, priceSource: 'Manual Verified Entry' }, '2026-09-26', []), null);
+const ppfGrown: Holding = {
+  ...ppfOpen,
+  currentPriceMinor: ppfOpenPlan!.currentPriceMinor,
+  lastPriceUpdated: '2026-09-26T00:00:00Z',
+};
+eq('PPF catch-up is idempotent', planInterestCatchUp(ppfGrown, '2026-09-26', ppfOpenPlan!.events.map(e => e.eventDate)), null);
+
+const otherH: Holding = {
+  ...hold('h_other', 'FIXED_INCOME', 1, 50000, 50000, 'Other'),
+  name: 'Staff deposit',
+  interestRatePercent: 6,
+  acquiredOn: '2025-04-01',
+};
+eq('other with a rate compounds', interestKindOf(otherH), 'OTHER');
+eq('other posts last 31 March', planInterestCatchUp(otherH, '2026-09-26', [])?.events[0].eventDate, '2026-03-31');
+
+const reitInc: Holding = {
+  ...hold('h_reit_inc', 'REAL_ESTATE', 100, 300, 320, 'REIT'),
+  name: 'Embassy Office Parks REIT',
+  acquiredOn: '2026-01-01',
+  details: {
+    monthlyIncomeMinor: String(15000 * 10000),
+    incomeDay: 15,
+    incomeStart: '2026-01-10',
+    incomeEnd: '2026-03-20',
+  },
+};
+const incomePlan = planMonthlyIncome(reitInc, '2026-09-26', []);
+eq('REIT income stops at the end date', incomePlan?.map(e => e.eventDate).join(','), '2026-01-15,2026-02-15,2026-03-15');
+eq('REIT income note', incomePlan?.[0].notes?.startsWith('Monthly income'), true);
+eq('REIT income amount', Number(BigInt(incomePlan![0].totalAmountMinor)) / 1e4, 15000);
+eq('REIT income does not repeat', planMonthlyIncome(reitInc, '2026-09-26', incomePlan!.map(e => e.eventDate)), null);
+eq('next REIT payday', nextMonthlyIncomeDate(reitInc, '2026-02-01'), '2026-02-15');
+eq('no payday after the end date', nextMonthlyIncomeDate(reitInc, '2026-03-16'), null);
+const dayClamp: Holding = {
+  ...reitInc,
+  id: 'h_reit_day',
+  details: { monthlyIncomeMinor: String(1000 * 10000), incomeDay: 31, incomeStart: '2026-01-01' },
+};
+eq('income day clamps to 28', planMonthlyIncome(dayClamp, '2026-01-31', [])?.[0].eventDate, '2026-01-28');
+const reitUp = upcomingFromHoldings([reitInc], [], '2026-01-01');
+eq('coming up includes monthly income', reitUp.some(i => i.kind === 'INCOME' && i.date === '2026-01-15'), true);
 
 console.log('\n--- X. Home books health, concentration, freshness ---');
 eq('days 12 Sep to 16 Sep', daysBetweenIso('2026-09-12', '2026-09-16'), 4);

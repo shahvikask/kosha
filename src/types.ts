@@ -65,6 +65,11 @@ export interface HoldingDetails {
   boId?: string;
   /** REIT / AIF: demat units (CAS) vs direct lumpsum (no NAV). */
   altHoldMode?: AltHoldMode;
+  /** REIT / InvIT optional cash distribution. */
+  monthlyIncomeMinor?: string;
+  incomeDay?: number;
+  incomeStart?: string;
+  incomeEnd?: string;
 }
 
 export interface CategoryInfo {

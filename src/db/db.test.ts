@@ -61,6 +61,20 @@ const famSpouse:FamilyMember = {id:'f2',name:'Spouse',relation:'Spouse',color:'#
   eq('holding gone', (await repo.allHoldings()).length, 0);
   eq('events kept', (await repo.allEvents()).length, 1);
 
+  console.log('\n--- D2. Yes deletes that holding\'s records; the book stays append-only ---');
+  await repo.deleteHoldingEvents('h1');
+  eq('records for the holding are gone', (await repo.allEvents()).length, 0);
+  const trigAfter = await drv.query<{name:string}>(
+    `SELECT name FROM sqlite_master WHERE type='trigger' AND name='tg_ledger_event__no_delete'`);
+  eq('append-only trigger restored', trigAfter.length, 1);
+  await repo.upsertHolding(hold('h1','Reliance Industries',2950));
+  await repo.appendEvent(ev('e1','BUY','2024-03-14',100,2450));
+  let blockedAgain = false;
+  try { await drv.exec(`DELETE FROM ledger_event WHERE ledger_event_id='e1'`); }
+  catch (e) { blockedAgain = isAppendOnlyViolation(e); }
+  eq('DELETE still blocked', blockedAgain, true);
+  eq('event kept after blocked delete', (await repo.allEvents()).length, 1);
+
   console.log('\n--- E. Duplicate detection in SQL ---');
   await repo.upsertHolding(hold('h1','Reliance Industries',2950));
   const e2 = ev('e2','BUY','2024-03-14',100,2450);

@@ -2,12 +2,12 @@ import React, { useMemo, useState } from 'react';
 import { useKosha } from '../../context/KoshaContext';
 import { PrivacyValue, PrivacyDelta } from '../common/PrivacyValue';
 import { FAMILY_BUCKETS, upcomingFromHoldings, formatCalendarDate, FamilyBucketId, bucketOf } from '../../lib/holdingView';
-import { FileSpreadsheet, Target, Calendar, ChevronRight, ArrowUpRight, ShieldCheck, ShieldAlert, Plus, WalletCards, Landmark } from 'lucide-react';
+import { FileSpreadsheet, Target, Calendar, ChevronRight, ArrowUpRight, ShieldCheck, ShieldAlert, Plus, WalletCards, Landmark, X } from 'lucide-react';
 import { Donut, HBars, SplitBar, TimeStepChart } from '../growth/Charts';
 import { buildGrowthModel, formatPct, GrowthHoldingRow, BUCKET_COLORS } from '../../lib/growth';
 import { ExposureNode, EXPOSURES } from '../../lib/taxonomy';
 import { formatStatementDateShort } from '../../lib/casPython';
-import { buildBooksHealth, buildStatementSteps, buildSinceLastStatement, concentrationOf, freshnessTone, firstToLastPct, HealthTone, investedSeriesFrom, issuerLabel, unknownCostRows } from '../../lib/homeDashboard';
+import { buildBooksHealth, buildStatementSteps, buildSinceLastStatement, concentrationOf, freshnessTone, firstToLastPct, HealthFinding, HealthTone, investedSeriesFrom, issuerLabel, unknownCostRows } from '../../lib/homeDashboard';
 import { UNKNOWN_INVESTED_LABEL } from '../../lib/costBasis';
 import { MoneyEngine } from '../../lib/money';
 
@@ -23,10 +23,28 @@ type Drill =
   | { kind: 'member'; id: string }
   | { kind: 'fy'; id: string };
 
+const HEALTH_DISMISS_KEY = 'kosha.health.dismissed';
+
+function healthFindingKey(f: Pick<HealthFinding, 'kind' | 'title'>): string {
+  return `${f.kind}|${f.title}`;
+}
+
+function readDismissedHealth(): string[] {
+  try {
+    const raw = localStorage.getItem(HEALTH_DISMISS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter(x => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
 export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpenHoldingDetail }) => {
   const { summary, filteredHoldings, familyMembers, selectedMemberId, setActiveScreen, sgbValuationMode, ibjaRupeesPerGram, derived, lastStatementAsOf, pricesAsOf, goals, ledgerEvents, casLatest, statementSnaps, statementHoldingSnaps } = useKosha();
   const [drill, setDrill] = useState<Drill>({ kind: 'none' });
   const [showAllMovers, setShowAllMovers] = useState(false);
+  const [showAllUpcoming, setShowAllUpcoming] = useState(false);
+  const [dismissedHealth, setDismissedHealth] = useState<string[]>(() => readDismissedHealth());
   const who = selectedMemberId === 'ALL' ? 'The family' : familyMembers.find(m => m.id === selectedMemberId)?.name || 'Family';
   const asOf = new Date().toISOString().slice(0, 10);
   const ibja = ibjaRupeesPerGram && ibjaRupeesPerGram > 0 ? MoneyEngine.fromRupees(ibjaRupeesPerGram) : null;
@@ -43,6 +61,27 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpen
     ibjaPerGramMinor: ibja,
     todayIso: asOf,
   }), [filteredHoldings, ledgerEvents, selectedMemberId, derived, familyMembers, casLatest, sgbValuationMode, asOf, ibja]);
+  const dismissedSet = useMemo(() => new Set(dismissedHealth), [dismissedHealth]);
+  const visibleFindings = health.findings.filter(f => !dismissedSet.has(healthFindingKey(f)));
+  const visibleTone: HealthTone = visibleFindings.some(f => f.tone === 'red')
+    ? 'red'
+    : visibleFindings.some(f => f.tone === 'amber')
+      ? 'amber'
+      : 'ok';
+  const visibleHeadline = visibleTone === 'ok'
+    ? 'Books look consistent'
+    : visibleFindings.length === 1
+      ? '1 thing to check'
+      : `${visibleFindings.length} things to check`;
+  const dismissFinding = (f: HealthFinding) => {
+    const key = healthFindingKey(f);
+    setDismissedHealth(prev => {
+      if (prev.includes(key)) return prev;
+      const next = [...prev, key];
+      try { localStorage.setItem(HEALTH_DISMISS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  };
   const datesTone = freshnessTone({ statementAsOf: lastStatementAsOf, pricesAsOf, todayIso: asOf });
   const biggest = useMemo(() => {
     const assetRows = model.holdings.filter(h => h.bucket !== 'LOAN' && h.valueMinor > 0n);
@@ -185,22 +224,31 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpen
           <section className="card p-4 sm:p-5">
             <div className="flex items-start justify-between gap-3 mb-2">
               <div className="flex items-center gap-2">
-                {health.tone === 'ok'
+                {visibleTone === 'ok'
                   ? <ShieldCheck className="w-4 h-4" style={{ color: 'var(--good)' }} />
-                  : <ShieldAlert className="w-4 h-4" style={{ color: health.tone === 'red' ? 'var(--bad)' : 'var(--accent)' }} />}
+                  : <ShieldAlert className="w-4 h-4" style={{ color: visibleTone === 'red' ? 'var(--bad)' : 'var(--accent)' }} />}
                 <h2 className="text-sm font-bold">Books health</h2>
               </div>
-              <span className="text-[11px] font-semibold" style={{ color: health.tone === 'ok' ? 'var(--good)' : health.tone === 'red' ? 'var(--bad)' : 'var(--accent)' }}>{health.headline}</span>
+              <span className="text-[11px] font-semibold" style={{ color: visibleTone === 'ok' ? 'var(--good)' : visibleTone === 'red' ? 'var(--bad)' : 'var(--accent)' }}>{visibleHeadline}</span>
             </div>
-            {health.findings.length === 0 ? (
+            {visibleFindings.length === 0 ? (
               <p className="text-xs" style={{ color: 'var(--muted)' }}>Invested, statements and family PAN look in order for this view.</p>
             ) : (
               <ul className="space-y-2">
-                {health.findings.map(f => (
-                  <li key={f.kind}>
-                    <button type="button" onClick={() => setActiveScreen(f.go)} className="w-full text-left rounded-xl border px-3 py-2 hover:opacity-90" style={{ borderColor: 'var(--border)', background: 'var(--input)' }}>
+                {visibleFindings.map(f => (
+                  <li key={healthFindingKey(f)} className="flex items-stretch gap-1 rounded-xl border" style={{ borderColor: 'var(--border)', background: 'var(--input)' }}>
+                    <button type="button" onClick={() => setActiveScreen(f.go)} className="flex-1 text-left px-3 py-2 hover:opacity-90">
                       <div className="text-sm font-semibold">{f.title}</div>
                       <div className="text-[11px] mt-0.5" style={{ color: 'var(--muted)' }}>{f.detail}</div>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Dismiss"
+                      onClick={() => dismissFinding(f)}
+                      className="px-2 shrink-0"
+                      style={{ color: 'var(--muted)' }}
+                    >
+                      <X className="w-3.5 h-3.5" />
                     </button>
                   </li>
                 ))}
@@ -382,7 +430,22 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onOpenAddHolding, onOpen
           </div>
 
           {goalRows.length > 0 && <div className="card p-6 space-y-4"><div className="flex items-center justify-between"><h2 className="text-base font-bold flex items-center gap-2"><Target className="w-4 h-4" /> Goals</h2><button className="text-xs font-semibold" style={{ color: 'var(--accent)' }} onClick={() => setActiveScreen('FAMILY')}>Edit</button></div>{goalRows.map(row => <div key={row.g.id} className="space-y-1"><div className="flex justify-between text-sm"><span className="font-medium">{row.g.name}</span><span style={{ color: 'var(--muted)' }}>{row.pct}%</span></div><div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--chip)' }}><div className="h-full rounded-full" style={{ width: `${row.pct}%`, background: 'var(--accent)' }} /></div></div>)}</div>}
-          {upcoming.length > 0 && <div className="card p-6 space-y-3"><h2 className="text-base font-bold flex items-center gap-2"><Calendar className="w-4 h-4" /> Coming up</h2>{upcoming.map(u => <button key={u.id} onClick={() => u.holdingId && onOpenHoldingDetail(u.holdingId)} className="w-full flex items-center justify-between text-left text-sm py-1"><span>{u.title}</span><span style={{ color: 'var(--muted)' }}>{formatCalendarDate(u.date)}</span></button>)}</div>}
+          {upcoming.length > 0 && (
+            <div className="card p-6 space-y-3">
+              <h2 className="text-base font-bold flex items-center gap-2"><Calendar className="w-4 h-4" /> Coming up</h2>
+              {(showAllUpcoming ? upcoming : upcoming.slice(0, 2)).map(u => (
+                <button key={u.id} onClick={() => u.holdingId && onOpenHoldingDetail(u.holdingId)} className="w-full flex items-center justify-between text-left text-sm py-1">
+                  <span>{u.title}</span>
+                  <span style={{ color: 'var(--muted)' }}>{formatCalendarDate(u.date)}</span>
+                </button>
+              ))}
+              {upcoming.length > 2 && (
+                <button type="button" onClick={() => setShowAllUpcoming(v => !v)} className="text-xs font-semibold" style={{ color: 'var(--accent)' }}>
+                  {showAllUpcoming ? 'Show less' : `Show ${upcoming.length - 2} more`}
+                </button>
+              )}
+            </div>
+          )}
         </>
       )}
     </div>

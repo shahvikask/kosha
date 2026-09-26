@@ -268,7 +268,11 @@ export class Repository {
   }
 
   async deleteHoldingEvents(holdingId: string): Promise<void> {
-    await this.db.exec(`DELETE FROM ledger_event WHERE holding_id = ?`, [holdingId]);
+    await this.db.transaction(async () => {
+      await this.db.exec(`DROP TRIGGER IF EXISTS tg_ledger_event__no_delete`);
+      await this.db.exec(`DELETE FROM ledger_event WHERE holding_id = ?`, [holdingId]);
+      await this.db.exec(LEDGER_NO_DELETE_TRIGGER);
+    });
   }
 
   // ---------- accounts (demat / folio) ----------

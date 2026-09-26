@@ -16,7 +16,7 @@ import {
 import { X, Edit3, Plus, Trash2, Calendar, Coins } from 'lucide-react';
 import { resumeEmiDate } from '../../lib/emi';
 import { holdingReturn, isStatementOnlyHistory } from '../../lib/returnMetrics';
-import { detailsLines, nameLooksLikeEtf, usesUnits } from '../../lib/holdingForm';
+import { detailsLines, isReitLike, nameLooksLikeEtf, nameLooksLikeReit, usesUnits } from '../../lib/holdingForm';
 import { isUnknownInvested, planInvestedCorrection, UNKNOWN_INVESTED_LABEL } from '../../lib/costBasis';
 import { holdingHasStatementHistory } from '../../lib/holdingForm';
 
@@ -60,6 +60,10 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
   const [editInvested, setEditInvested] = useState('');
   const [editAcquiredOn, setEditAcquiredOn] = useState('');
   const [editIssuePrice, setEditIssuePrice] = useState('');
+  const [editIncome, setEditIncome] = useState('');
+  const [editIncomeDay, setEditIncomeDay] = useState('');
+  const [editIncomeStart, setEditIncomeStart] = useState('');
+  const [editIncomeEnd, setEditIncomeEnd] = useState('');
   const [editError, setEditError] = useState('');
 
   useEffect(() => {
@@ -84,6 +88,7 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
   const isGovt = /ppf|epf|nps|sukanya|ssy/i.test(`${holding.name} ${holding.subCategory}`);
   const isSgb = holding.category === 'GOLD_SGB' && /sovereign|^sgb$/i.test(holding.subCategory || 'Sovereign');
   const unitBased = usesUnits(holding.category, holding.subCategory, holding.details);
+  const isReit = isReitLike(holding.subCategory) || nameLooksLikeReit(holding.name);
   const paidPerUnitMinor = m.qty > 0n ? (m.cost * QTY_SCALE) / m.qty : m.cost;
   const paidPerUnitRupees = MoneyEngine.toRupees(paidPerUnitMinor);
   const statementOnly = isStatementOnlyHistory(holdingEvents);
@@ -111,6 +116,10 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
     setEditInvested(paidPerUnitRupees > 0 ? String(paidPerUnitRupees) : '');
     setEditAcquiredOn(holding.acquiredOn || '');
     setEditIssuePrice(holding.issuePriceMinor ? String(MoneyEngine.toRupees(BigInt(holding.issuePriceMinor))) : '');
+    setEditIncome(holding.details?.monthlyIncomeMinor ? String(MoneyEngine.toRupees(BigInt(holding.details.monthlyIncomeMinor))) : '');
+    setEditIncomeDay(holding.details?.incomeDay != null ? String(holding.details.incomeDay) : '');
+    setEditIncomeStart(holding.details?.incomeStart || '');
+    setEditIncomeEnd(holding.details?.incomeEnd || '');
     setEditError('');
     setIsEditingAll(true);
   };
@@ -132,12 +141,33 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
         : holding.category === 'FIXED_INCOME'
           ? { interestRatePercent: !isNaN(coupon) ? coupon : holding.interestRatePercent }
           : { interestRatePercent: !isNaN(rate) ? rate : holding.interestRatePercent };
-    await updateHolding(holding.id, {
+    const priceUnchanged = editPrice === MoneyEngine.toRupees(m.price).toString();
+    const pricePatch = priceUnchanged
+      ? {}
+      : {
+          currentPriceMinor: MoneyEngine.fromRupees(priceVal).toString(),
+          lastPriceUpdated: new Date().toISOString(),
+          priceSource: 'Manual Verified Entry',
+        };
+    let details = holding.details;
+    if (isReit) {
+      const inc = parseFloat(editIncome);
+      const day = parseInt(editIncomeDay, 10);
+      const nextDetails = { ...(holding.details || {}) };
+      if (!isNaN(inc) && inc > 0) nextDetails.monthlyIncomeMinor = MoneyEngine.fromRupees(inc).toString();
+      else delete nextDetails.monthlyIncomeMinor;
+      if (!isNaN(day) && day > 0) nextDetails.incomeDay = Math.min(28, Math.max(1, day));
+      else delete nextDetails.incomeDay;
+      if (editIncomeStart) nextDetails.incomeStart = editIncomeStart;
+      else delete nextDetails.incomeStart;
+      if (editIncomeEnd) nextDetails.incomeEnd = editIncomeEnd;
+      else delete nextDetails.incomeEnd;
+      details = nextDetails;
+    }
+    const saved = await updateHolding(holding.id, {
       name: editName.trim(),
       symbolOrFolio: editSymbol.trim() || holding.symbolOrFolio,
-      currentPriceMinor: MoneyEngine.fromRupees(priceVal).toString(),
-      lastPriceUpdated: new Date().toISOString(),
-      priceSource: 'Manual Verified Entry',
+      ...pricePatch,
       ...ratePatch,
       nextCouponDate: editNextCoupon || undefined,
       maturityDate: editMaturity || undefined,
@@ -147,6 +177,7 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
       monthlyEmiMinor: !isNaN(emiVal) && emiVal > 0 ? MoneyEngine.fromRupees(emiVal).toString() : holding.monthlyEmiMinor,
       remainingEmiCount: !isNaN(remainVal) ? remainVal : holding.remainingEmiCount,
       ...(editAcquiredOn ? { acquiredOn: editAcquiredOn } : {}),
+      ...(isReit ? { details } : {}),
     });
     if (!catInfo.isLiability && !isNaN(investedVal) && investedVal > 0) {
       let unitRupees = investedVal;
@@ -171,6 +202,7 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
         unitPriceRupees: unitRupees,
         acquiredOn: when,
         issuePriceRupees: !isNaN(issueVal) && issueVal > 0 ? issueVal : undefined,
+        seed: saved || undefined,
       });
     }
     setIsEditingAll(false);
@@ -255,7 +287,7 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
                 />
               </label>
               <label className="block">
-                <span style={{ color: 'var(--muted)' }}>{holding.category === 'LIABILITY' ? 'Outstanding (₹)' : 'Price per unit (₹)'}</span>
+                <span style={{ color: 'var(--muted)' }}>{holding.category === 'LIABILITY' ? 'Outstanding (₹)' : unitBased ? 'Price per unit (₹)' : 'Current value (₹)'}</span>
                 <input
                   type="number"
                   step="any"
@@ -402,6 +434,56 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
                   </label>
                 </>
               )}
+              {isReit && (
+                <>
+                  <label className="block">
+                    <span style={{ color: 'var(--muted)' }}>Monthly income (₹)</span>
+                    <input
+                      type="number"
+                      step="any"
+                      placeholder="optional"
+                      value={editIncome}
+                      onChange={e => setEditIncome(e.target.value)}
+                      className="w-full mt-1 px-3 py-2 rounded-xl border"
+                      style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--text)' }}
+                    />
+                  </label>
+                  <label className="block">
+                    <span style={{ color: 'var(--muted)' }}>Paid on day (1–28)</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={28}
+                      step="1"
+                      placeholder="15"
+                      value={editIncomeDay}
+                      onChange={e => setEditIncomeDay(e.target.value)}
+                      className="w-full mt-1 px-3 py-2 rounded-xl border"
+                      style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--text)' }}
+                    />
+                  </label>
+                  <label className="block">
+                    <span style={{ color: 'var(--muted)' }}>Income from</span>
+                    <input
+                      type="date"
+                      value={editIncomeStart}
+                      onChange={e => setEditIncomeStart(e.target.value)}
+                      className="w-full mt-1 px-3 py-2 rounded-xl border"
+                      style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--text)' }}
+                    />
+                  </label>
+                  <label className="block">
+                    <span style={{ color: 'var(--muted)' }}>Income until</span>
+                    <input
+                      type="date"
+                      value={editIncomeEnd}
+                      onChange={e => setEditIncomeEnd(e.target.value)}
+                      className="w-full mt-1 px-3 py-2 rounded-xl border"
+                      style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--text)' }}
+                    />
+                  </label>
+                </>
+              )}
             </div>
             <p className="text-[11px]" style={{ color: 'var(--muted)' }}>
               CDSL/NSDL holdings statements print today's market price, not what you paid. Put in (Invested) and absolute return use the price you paid. Units still come from the statement — record a buy or sell to change them. Purchase date is optional.
@@ -432,7 +514,7 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
             <PrivacyValue minor={m.value} className="text-xl font-bold" showCompact includePaise={false} />
             {isCertificateSgb(holding) && (
               <p className="text-[11px] mt-1" style={{ color: 'var(--muted)' }}>
-                {ibja ? `RBI certificate, priced at the family IBJA rate of ₹${ibjaRupeesPerGram?.toLocaleString('en-IN')} /g.` : 'RBI certificate. Add the IBJA rate on the Family screen to price this.'}
+                {ibja ? `RBI certificate, priced at ₹${ibjaRupeesPerGram?.toLocaleString('en-IN')} /g.` : 'RBI certificate. The price saved on this holding is used.'}
               </p>
             )}
             {isDematSgb(holding) && ibja && m.qty > 0n && (
@@ -668,19 +750,22 @@ export const HoldingDetailModal: React.FC<HoldingDetailModalProps> = ({
             <Plus className="w-3.5 h-3.5" /> {catInfo.isLiability ? 'Record an extra payment' : 'Record a buy or sell'}
           </button>
           <button
-            onClick={() => {
+            onClick={async () => {
               const fromStatement = holdingHasStatementHistory(holding, ledgerEvents);
-              if (fromStatement) {
-                if (window.confirm('Remove this holding? Records from the statement are kept.')) {
-                  deleteHolding(holding.id, false);
+              try {
+                if (fromStatement) {
+                  if (!window.confirm('Remove this holding? Records from the statement are kept.')) return;
+                  await deleteHolding(holding.id, false);
                   onClose();
+                  return;
                 }
-                return;
+                if (!window.confirm('Remove this holding?')) return;
+                const also = window.confirm('Also delete it from the record book? Yes deletes those records. Cancel keeps them.');
+                await deleteHolding(holding.id, also);
+                onClose();
+              } catch (err) {
+                window.alert(err instanceof Error ? err.message : 'Could not remove this holding.');
               }
-              if (!window.confirm('Remove this holding?')) return;
-              const also = window.confirm('Also delete it from the record book? OK deletes those records. Cancel keeps them.');
-              deleteHolding(holding.id, also);
-              onClose();
             }}
             className="px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 border"
             style={{ borderColor: 'var(--border)', color: 'var(--bad)' }}

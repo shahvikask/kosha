@@ -37,7 +37,6 @@ import {
   Database,
   Lock,
   Target,
-  Coins,
   Cloud,
   FolderOpen,
   Star,
@@ -68,7 +67,6 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
     derived,
     sgbValuationMode,
     ibjaRupeesPerGram,
-    setIbjaRupeesPerGram,
     goals,
     upsertGoal,
     deleteGoal,
@@ -114,10 +112,6 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
   const [formNotes, setFormNotes] = useState('');
   const [deletingMember, setDeletingMember] = useState<FamilyMember | null>(null);
 
-  const [ibjaDraft, setIbjaDraft] = useState(ibjaRupeesPerGram ? String(ibjaRupeesPerGram) : '');
-  useEffect(() => {
-    setIbjaDraft(ibjaRupeesPerGram ? String(ibjaRupeesPerGram) : '');
-  }, [ibjaRupeesPerGram]);
   const [goalName, setGoalName] = useState('');
   const [goalTarget, setGoalTarget] = useState('');
   const [goalDate, setGoalDate] = useState('');
@@ -519,38 +513,6 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
             Save goal
           </button>
         </form>
-      </div>
-
-      <div className="card p-4 md:p-6 space-y-3">
-        <h2 className="text-base font-bold flex items-center gap-2">
-          <Coins className="w-4 h-4" /> Gold bonds
-        </h2>
-        <p className="text-xs" style={{ color: 'var(--muted)' }}>
-          IBJA 999 rate, in ₹ per gram. It values only SGBs held as an RBI or bank certificate. Demat bonds keep the exchange price. Physical and digital gold are left as you entered them.
-        </p>
-        <label className="block text-xs font-semibold">
-          IBJA 999 (₹/g)
-          <input
-            type="number"
-            inputMode="decimal"
-            min="0"
-            step="0.01"
-            value={ibjaDraft}
-            placeholder="e.g. 7200"
-            onChange={e => setIbjaDraft(e.target.value)}
-            onBlur={() => {
-              const n = parseFloat(ibjaDraft);
-              setIbjaRupeesPerGram(!isNaN(n) && n > 0 ? n : null);
-            }}
-            className="mt-1 w-full max-w-xs px-3 py-2 rounded-xl border text-sm"
-            style={inputStyle}
-          />
-        </label>
-        <p className="text-[11px]" style={{ color: 'var(--muted)' }}>
-          {ibjaRupeesPerGram
-            ? `Certificate bonds use ₹${ibjaRupeesPerGram.toLocaleString('en-IN')} per gram.`
-            : 'No rate saved yet, so certificate bonds stay at the price on each holding.'}
-        </p>
       </div>
 
       <div className="card p-4 md:p-6 space-y-4">

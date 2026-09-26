@@ -3,6 +3,7 @@ import { DerivedState, marketValueMinor } from './positions';
 import { QTY_SCALE } from './money';
 import { formatStatementDate } from './casPython';
 import { usesUnits } from './holdingForm';
+import { nextMonthlyIncomeDate, nextScheduledInterestDate } from './interest';
 
 export type ThemeName = 'dark' | 'light';
 export type FamilyBucketId =
@@ -210,7 +211,7 @@ export function metricsOf(
   return { qty, price, value, cost, gain: value - cost };
 }
 
-export type UpcomingKind = 'SGB_COUPON' | 'MATURITY' | 'GOAL' | 'EMI';
+export type UpcomingKind = 'SGB_COUPON' | 'MATURITY' | 'GOAL' | 'EMI' | 'INCOME';
 
 export interface UpcomingItem {
   id: string;
@@ -226,6 +227,7 @@ export function upcomingFromHoldings(
   asOf = new Date().toISOString().slice(0, 10)
 ): UpcomingItem[] {
   const out: UpcomingItem[] = [];
+  const couponFor = new Set<string>();
   for (const h of holdings) {
     if (h.category === 'LIABILITY' && h.nextCouponDate && h.nextCouponDate >= asOf && h.emiStatus !== 'STOPPED') {
       out.push({
@@ -236,6 +238,7 @@ export function upcomingFromHoldings(
         holdingId: h.id,
       });
     } else if (h.category !== 'LIABILITY' && h.nextCouponDate && h.nextCouponDate >= asOf) {
+      couponFor.add(h.id);
       out.push({
         id: `c_${h.id}`,
         date: h.nextCouponDate,
@@ -244,6 +247,28 @@ export function upcomingFromHoldings(
             ? `Gold bond interest · ${displayHoldingName(h.name)}`
             : `Interest · ${displayHoldingName(h.name)}`,
         kind: 'SGB_COUPON',
+        holdingId: h.id,
+      });
+    }
+    if (!couponFor.has(h.id) && h.category !== 'LIABILITY') {
+      const next = nextScheduledInterestDate(h, asOf);
+      if (next) {
+        out.push({
+          id: `n_${h.id}`,
+          date: next,
+          title: `Interest · ${displayHoldingName(h.name)}`,
+          kind: 'SGB_COUPON',
+          holdingId: h.id,
+        });
+      }
+    }
+    const incomeOn = nextMonthlyIncomeDate(h, asOf);
+    if (incomeOn) {
+      out.push({
+        id: `i_${h.id}`,
+        date: incomeOn,
+        title: `Monthly income · ${displayHoldingName(h.name)}`,
+        kind: 'INCOME',
         holdingId: h.id,
       });
     }
@@ -275,7 +300,7 @@ export function upcomingFromHoldings(
       });
     }
   }
-  return out.sort((a, b) => a.date.localeCompare(b.date)).slice(0, 8);
+  return out.sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title)).slice(0, 24);
 }
 
 export function formatCalendarDate(iso?: string | null): string {
