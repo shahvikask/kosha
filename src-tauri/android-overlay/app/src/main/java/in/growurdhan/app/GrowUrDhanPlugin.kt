@@ -967,10 +967,11 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
             .build()
         Identity.getAuthorizationClient(activity).authorize(request)
             .addOnSuccessListener { result ->
-                if (result.hasResolution() || result.accessToken.isNullOrBlank()) {
+                val token = result.accessToken
+                if (result.hasResolution() || token.isNullOrBlank()) {
                     bad("Gmail needs you to connect again.")
                 } else {
-                    ok(result.accessToken)
+                    ok(token)
                 }
             }
             .addOnFailureListener { e -> bad(e.message ?: "Could not use this Gmail.") }
