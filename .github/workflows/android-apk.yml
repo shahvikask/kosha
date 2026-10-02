@@ -2,7 +2,7 @@ name: GrowUrDhan Android APK (device test)
 
 on:
   push:
-    branches: [GUD-Android-APK]
+    branches: [GUD-Android-APK, GUD-Android-Gmail]
   workflow_dispatch:
 
 env:
@@ -49,6 +49,13 @@ jobs:
           echo "$SDK/ndk/27.2.12479018" >> "$GITHUB_PATH"
           echo "ANDROID_NDK_HOME=$SDK/ndk/27.2.12479018" >> "$GITHUB_ENV"
           echo "NDK_HOME=$SDK/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+      - name: Install stable test signing key
+        run: |
+          test -f src-tauri/keystore/gud-test.keystore
+          mkdir -p "$HOME/.android"
+          cp src-tauri/keystore/gud-test.keystore "$HOME/.android/debug.keystore"
+          keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | grep -E 'SHA1:|Owner:'
 
       - name: Install JS
         run: npm ci || npm install
