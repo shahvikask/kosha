@@ -18,6 +18,8 @@ import {
   SCHEMA_V5_SQL,
   SCHEMA_V6_SQL,
   SCHEMA_V7_COLUMNS,
+  SCHEMA_V8_COLUMNS,
+  SCHEMA_V8_SQL,
   LEDGER_NO_DELETE_TRIGGER,
 } from './schema';
 import { LedgerEvent, Holding, FamilyMember, FamilyRelation, isPrimaryFamilyMember, DematOrFolioAccount, FamilyGoal, ImportBatchInfo, ListedSecurity, StatementSnapRow, StatementHoldingSnap } from '../types';
@@ -56,6 +58,10 @@ export class Repository {
     }
     if (current < 7) {
       await this.applyColumns(SCHEMA_V7_COLUMNS);
+    }
+    if (current < 8) {
+      await this.applyColumns(SCHEMA_V8_COLUMNS);
+      await this.db.exec(SCHEMA_V8_SQL);
     }
 
     if (rows.length === 0) {
@@ -484,8 +490,9 @@ export class Repository {
     await this.db.exec(
       `INSERT INTO entity (
          entity_id, entity_type, display_name, pan_masked, pan_for_statements,
-         date_of_birth, relation, color, notes, is_primary, is_active, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,1,?)
+         date_of_birth, relation, color, notes, is_primary, is_active, created_at,
+         cas_id, pran, gmail_sync)
+       VALUES (?,?,?,?,?,?,?,?,?,?,1,?,?,?,?)
        ON CONFLICT(entity_id) DO UPDATE SET
          entity_type=excluded.entity_type,
          display_name=excluded.display_name,
@@ -496,19 +503,40 @@ export class Repository {
          color=excluded.color,
          notes=excluded.notes,
          is_primary=excluded.is_primary,
-         is_active=1`,
+         is_active=1,
+         cas_id=excluded.cas_id,
+         pran=excluded.pran,
+         gmail_sync=excluded.gmail_sync`,
       [m.id, entityType, m.name, m.panMasked ?? null, m.panForStatements ?? null,
        m.dateOfBirth ?? null, m.relation, m.color ?? null, m.notes ?? null,
-       isPrimary, new Date().toISOString()] as SqlValue[]);
+       isPrimary, new Date().toISOString(),
+       m.casId ?? null, m.pran ?? null, m.gmailSync ? 1 : 0] as SqlValue[]);
   }
 
   async allEntities(): Promise<FamilyMember[]> {
     const rows = await this.db.query<Record<string, SqlValue>>(
       `SELECT entity_id, entity_type, display_name, pan_masked, pan_for_statements,
-              date_of_birth, relation, color, notes, is_primary, is_active
+              date_of_birth, relation, color, notes, is_primary, is_active,
+              cas_id, pran, gmail_sync
        FROM entity WHERE is_active = 1
        ORDER BY is_primary DESC, created_at ASC`);
     return rows.map(rowToEntity);
+  }
+
+  async gmailFileSeen(messageId: string, attachmentId: string): Promise<boolean> {
+    const rows = await this.db.query<{ n: number }>(
+      `SELECT COUNT(*) AS n FROM gmail_seen WHERE message_id = ? AND attachment_id = ?`,
+      [messageId, attachmentId]);
+    return Number(rows[0]?.n ?? 0) > 0;
+  }
+
+  async markGmailFileSeen(messageId: string, attachmentId: string, filename: string, entityId: string): Promise<void> {
+    await this.db.exec(
+      `INSERT INTO gmail_seen (message_id, attachment_id, filename, entity_id, seen_at)
+       VALUES (?,?,?,?,?)
+       ON CONFLICT(message_id, attachment_id) DO UPDATE SET
+         filename=excluded.filename, entity_id=excluded.entity_id, seen_at=excluded.seen_at`,
+      [messageId, attachmentId, filename, entityId || null, new Date().toISOString()]);
   }
 
   /**
@@ -896,6 +924,9 @@ function rowToEntity(r: Record<string, SqlValue>): FamilyMember {
     dateOfBirth: r.date_of_birth ? s(r.date_of_birth) : undefined,
     notes: r.notes ? s(r.notes) : undefined,
     isPrimary: Number(r.is_primary) === 1 || relation === 'Self',
+    casId: r.cas_id ? s(r.cas_id) : undefined,
+    pran: r.pran ? s(r.pran) : undefined,
+    gmailSync: Number(r.gmail_sync) === 1,
   };
 }
 

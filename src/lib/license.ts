@@ -119,6 +119,12 @@ const APP_FIRST = new Set([
   'diag_status',
   'diag_set',
   'prices_refresh',
+  'gmail_connect',
+  'gmail_disconnect',
+  'gmail_status',
+  'gmail_search',
+  'gmail_fetch',
+  'gmail_advance',
 ]);
 
 function redactArgs(args?: Record<string, unknown>): string {

@@ -13,7 +13,7 @@
  * casparser emits (CDSL, NSDL, CAMS, KFin) has a home.
  */
 
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 export const SCHEMA_V1 = `
 PRAGMA foreign_keys = ON;
@@ -397,3 +397,21 @@ export const SCHEMA_V7_COLUMNS: [string, string, string][] = [
   ['holding', 'acquired_on', 'acquired_on TEXT'],
   ['holding', 'details_json', 'details_json TEXT'],
 ];
+
+/** Gmail statement match keys. Hidden on the profile form. */
+export const SCHEMA_V8_COLUMNS: [string, string, string][] = [
+  ['entity', 'cas_id', 'cas_id TEXT'],
+  ['entity', 'pran', 'pran TEXT'],
+  ['entity', 'gmail_sync', 'gmail_sync INTEGER NOT NULL DEFAULT 0'],
+];
+
+export const SCHEMA_V8_SQL = `
+CREATE TABLE IF NOT EXISTS gmail_seen (
+  message_id     TEXT NOT NULL,
+  attachment_id  TEXT NOT NULL,
+  filename       TEXT,
+  entity_id      TEXT,
+  seen_at        TEXT NOT NULL,
+  PRIMARY KEY (message_id, attachment_id)
+);
+`;

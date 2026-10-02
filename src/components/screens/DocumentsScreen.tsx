@@ -23,6 +23,7 @@ import {
   statementPasswordsToTry,
 } from '../../lib/casPython';
 import { maybeRunScheduledBackup } from '../../lib/backupSchedule';
+import { classifyStatementFilename } from '../../lib/statementMail';
 import { CasConfirmPanel } from './CasConfirmPanel';
 import {
   checkImportPan,
@@ -55,6 +56,7 @@ export const DocumentsScreen: React.FC = () => {
     ledgerEvents,
     computeTaxSummary,
     importStatementRecords,
+    updateFamilyMember,
     cleanDuplicatesAndHeal,
     derived,
     casLatest,
@@ -361,6 +363,13 @@ export const DocumentsScreen: React.FC = () => {
         closeHoldingIds,
       } : undefined;
       const res = await importStatementRecords(recordsToImport, targetMemberId, isPython ? 'REPLACE_SNAPSHOT' : 'SYNC_UPDATE', casMeta);
+      const named = classifyStatementFilename(casMeta?.filename || selectedFile?.name || '');
+      if (named && targetMemberId) {
+        const patch: { casId?: string; pran?: string } = {};
+        if (named.casId) patch.casId = named.casId;
+        if (named.pran) patch.pran = named.pran;
+        if (patch.casId || patch.pran) await updateFamilyMember(targetMemberId, patch);
+      }
       const asOf = parseResult?.periodTo ? formatStatementDate(parseResult.periodTo) : formattedStatementDate;
       setImportNotification({
         type: 'success',

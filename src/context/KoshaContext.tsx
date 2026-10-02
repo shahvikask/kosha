@@ -121,6 +121,8 @@ interface KoshaContextType {
   addFamilyMember: (member: Omit<FamilyMember, 'id'> & { pan?: string }) => Promise<FamilyMember>;
   updateFamilyMember: (id: string, updates: Partial<FamilyMember> & { pan?: string }) => Promise<void>;
   deleteFamilyMember: (id: string) => Promise<{ deletedHoldingsCount: number; deletedEventsCount: number }>;
+  gmailFileSeen: (messageId: string, attachmentId: string) => Promise<boolean>;
+  markGmailFileSeen: (messageId: string, attachmentId: string, filename: string, entityId: string) => Promise<void>;
   computeTaxSummary: (financialYear: string) => TaxSummary;
   importStatementRecords: (
     records: StatementImportRecord[],
@@ -981,6 +983,16 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       await repo.upsertEntity(updated);
     }
     setFamilyMembers(prev => prev.map(m => (m.id === id ? updated : m)));
+  };
+
+  const gmailFileSeen = async (messageId: string, attachmentId: string): Promise<boolean> => {
+    if (!repo) return false;
+    return repo.gmailFileSeen(messageId, attachmentId);
+  };
+
+  const markGmailFileSeen = async (messageId: string, attachmentId: string, filename: string, entityId: string): Promise<void> => {
+    if (!repo) return;
+    await repo.markGmailFileSeen(messageId, attachmentId, filename, entityId);
   };
 
   const deleteFamilyMember = async (id: string): Promise<{ deletedHoldingsCount: number; deletedEventsCount: number }> => {
@@ -1958,6 +1970,8 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         addFamilyMember,
         updateFamilyMember,
         deleteFamilyMember,
+        gmailFileSeen,
+        markGmailFileSeen,
         computeTaxSummary,
         importStatementRecords,
         lastStatementAsOf:

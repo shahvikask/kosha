@@ -183,6 +183,12 @@ export interface FamilyMember {
   notes?: string;
   /** Exactly one member is primary (Self). Cannot be deleted. */
   isPrimary?: boolean;
+  /** CDSL attachment id, recorded from the first imported file name. Not shown as a field. */
+  casId?: string;
+  /** NPS PRAN, recorded from the first imported file name. Not shown as a field. */
+  pran?: string;
+  /** When on, Gmail sync may import this member's statements. */
+  gmailSync?: boolean;
 }
 
 /** Official close / NAV row from NSE, BSE or AMFI (not live). */

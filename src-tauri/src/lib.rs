@@ -25,6 +25,12 @@ pub fn run() {
             diag_status,
             diag_set,
             prices_refresh,
+            gmail_connect,
+            gmail_disconnect,
+            gmail_status,
+            gmail_search,
+            gmail_fetch,
+            gmail_advance,
             backup_pick_folder,
             backup_clear_folder,
             backup_write_scheduled,
@@ -269,6 +275,70 @@ fn android_plugin<R: Runtime>(
         let _ = (app, cmd, payload);
         Err("This command is only available in the Android app.".into())
     }
+}
+
+#[tauri::command]
+fn gmail_connect<R: Runtime>(app: AppHandle<R>) -> Result<serde_json::Value, String> {
+    android_plugin(&app, "gmail_connect", serde_json::json!({}))
+}
+
+#[tauri::command]
+fn gmail_disconnect<R: Runtime>(app: AppHandle<R>, email: String) -> Result<serde_json::Value, String> {
+    android_plugin(&app, "gmail_disconnect", serde_json::json!({ "email": email }))
+}
+
+#[tauri::command]
+fn gmail_status<R: Runtime>(app: AppHandle<R>) -> Result<serde_json::Value, String> {
+    android_plugin(&app, "gmail_status", serde_json::json!({}))
+}
+
+#[tauri::command]
+fn gmail_search<R: Runtime>(
+    app: AppHandle<R>,
+    email: String,
+    page_token: Option<String>,
+) -> Result<serde_json::Value, String> {
+    android_plugin(
+        &app,
+        "gmail_search",
+        serde_json::json!({ "email": email, "pageToken": page_token.unwrap_or_default() }),
+    )
+}
+
+#[tauri::command]
+fn gmail_fetch<R: Runtime>(
+    app: AppHandle<R>,
+    email: String,
+    message_id: String,
+    attachment_id: String,
+) -> Result<serde_json::Value, String> {
+    android_plugin(
+        &app,
+        "gmail_fetch",
+        serde_json::json!({
+            "email": email,
+            "messageId": message_id,
+            "attachmentId": attachment_id,
+        }),
+    )
+}
+
+#[tauri::command]
+fn gmail_advance<R: Runtime>(
+    app: AppHandle<R>,
+    email: String,
+    page_token: Option<String>,
+    done: Option<bool>,
+) -> Result<serde_json::Value, String> {
+    android_plugin(
+        &app,
+        "gmail_advance",
+        serde_json::json!({
+            "email": email,
+            "pageToken": page_token.unwrap_or_default(),
+            "done": done.unwrap_or(false),
+        }),
+    )
 }
 
 #[tauri::command]

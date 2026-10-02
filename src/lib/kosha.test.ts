@@ -38,7 +38,28 @@ import { applyCatalogPrices, catalogToListed, searchListed, isEodPriceSource } f
 import { findMatchingHolding, holdingIdentityKey, isPlaceholderName, preferSchemeName } from './matchHolding';
 import { StatementImportRecord } from '../types';
 import { buildBooksHealth, buildStatementSteps, buildSinceLastStatement, concentrationOf, daysBetweenIso, freshnessTone, previousFinancialYear, fyEndIso, unknownCostRows, firstToLastPct, investedSeriesFrom } from './homeDashboard';
-import { usesUnits, identifierLabel, suggestLockInDates, looksLikeUan, looksLikePran, looksLikeNsdlDpId, looksLikeNsdlClientId, looksLikeBoid, defaultSgbCoupon, inferMfPlan, inferMfOption, nameLooksLikeEtf, dematAccountMask, detailsLines, recategorizeCasAsset, casHoldingSubCategory, casImportDetails, nameLooksLikeReit, nameLooksLikeAif } from './holdingForm';
+import { classifyStatementFilename, decideStatementMail, issuerFromSender, newestNamedStatements } from './statementMail';
+import {
+  usesUnits,
+  identifierLabel,
+  looksLikeUan,
+  looksLikePran,
+  defaultSgbCoupon,
+  suggestLockInDates,
+  looksLikeNsdlDpId,
+  looksLikeNsdlClientId,
+  looksLikeBoid,
+  inferMfPlan,
+  inferMfOption,
+  nameLooksLikeEtf,
+  dematAccountMask,
+  detailsLines,
+  nameLooksLikeReit,
+  nameLooksLikeAif,
+  recategorizeCasAsset,
+  casHoldingSubCategory,
+  casImportDetails,
+} from './holdingForm';
 
 let pass=0, fail=0;
 const eq=(n:string,a:any,b:any)=>{const ok=String(a)===String(b);ok?pass++:fail++;console.log(`${ok?'ok  ':'FAIL'} ${n}: ${a}${ok?'':' | want '+b}`)};
@@ -1212,6 +1233,32 @@ console.log('\n--- H. Encryption ---');
   eq('session claim first', claimFeedbackPrompt(seedFirstSeen(EMPTY_FEEDBACK, '2026-01-01T00:00:00.000Z', now), now), true);
   eq('session claim once', claimFeedbackPrompt(seedFirstSeen(EMPTY_FEEDBACK, '2026-01-01T00:00:00.000Z', now), now), false);
   resetFeedbackSession();
+
+  const cdsl = classifyStatementFilename('AUG2026_AA07970379_TXN.pdf');
+  eq('cdsl cas id', cdsl && cdsl.casId, 'AA07970379');
+  eq('cdsl holdings file', classifyStatementFilename('MAR2022_AA07970379_HLD.pdf')?.variant, 'HLD');
+  eq('nps pran', classifyStatementFilename('1120330238_Aug2026.pdf')?.pran, '1120330238');
+  eq('cdsl sender', issuerFromSender('eCAS <eCAS@cdslstatement.com>'), 'CDSL');
+  eq('nps sender', issuerFromSender('nps-statements@mailer.proteantech.in'), 'NPS');
+  const members = [
+    { id: 'a', gmailSync: true, casId: 'AA07970379', pran: '1120330238' },
+    { id: 'b', gmailSync: false, casId: 'ZZ00000000' },
+  ];
+  eq('cdsl match', decideStatementMail({ filename: 'AUG2026_AA07970379_TXN.pdf', from: 'eCAS@cdslstatement.com' }, members).action, 'download');
+  eq('other cas skipped', decideStatementMail({ filename: 'AUG2026_BB11111111_TXN.pdf', from: 'eCAS@cdslstatement.com' }, members).action, 'skip');
+  eq('nps match', decideStatementMail({ filename: '1120330238_Aug2026.pdf', from: 'nps-statements@mailer.proteantech.in' }, members).action, 'download');
+  eq('cams needs pan later', decideStatementMail({ filename: 'statement.pdf', from: 'donotreply@camsonline.com' }, members).action, 'download');
+  const picked = newestNamedStatements([
+    { filename: 'JUL2021_AA07970379_TXN.pdf' },
+    { filename: 'AUG2026_AA07970379_HLD.pdf' },
+    { filename: 'AUG2026_AA07970379_TXN.pdf' },
+    { filename: '1120330238_Jul2021.pdf' },
+    { filename: '1120330238_Aug2026.pdf' },
+  ]);
+  eq('keeps newest cdsl and nps', picked.keep.length, 2);
+  eq('keeps txn over holdings', picked.keep.some(f => f.filename === 'AUG2026_AA07970379_TXN.pdf'), true);
+  eq('keeps newest nps', picked.keep.some(f => f.filename === '1120330238_Aug2026.pdf'), true);
+  eq('older months set aside', picked.older.length, 3);
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail?1:0);

@@ -1,12 +1,14 @@
 package `in`.growurdhan.app
 
 import android.app.Activity
+import android.accounts.Account
 import android.content.Intent
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.util.Base64
 import androidx.activity.result.ActivityResult
+import androidx.activity.result.IntentSenderRequest
 import androidx.documentfile.provider.DocumentFile
 import androidx.security.crypto.EncryptedFile
 import androidx.security.crypto.EncryptedSharedPreferences
@@ -32,6 +34,9 @@ import com.android.billingclient.api.QueryPurchasesParams
 import com.google.android.play.core.integrity.IntegrityManagerFactory
 import com.google.android.play.core.integrity.IntegrityTokenRequest
 import com.google.android.play.core.review.ReviewManagerFactory
+import com.google.android.gms.auth.api.identity.AuthorizationRequest
+import com.google.android.gms.auth.api.identity.Identity
+import com.google.android.gms.common.api.Scope
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
 import org.json.JSONObject
@@ -52,6 +57,8 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
     private var pendingPurchase: Invoke? = null
     private var pendingSaveBytes: ByteArray? = null
     private var pendingSaveName: String? = null
+    private val gmail = GmailClient(activity)
+    private val gmailScope = "https://www.googleapis.com/auth/gmail.readonly"
 
     override fun load(webView: android.webkit.WebView) {
         val pending = PendingPurchasesParams.newBuilder().enableOneTimeProducts().build()
@@ -820,5 +827,172 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
     class DiagToggleArgs {
         @JvmField
         var enabled: Boolean = false
+    }
+
+    @Command
+    fun gmail_connect(invoke: Invoke) {
+        Diag.enter(activity, "gmail_connect")
+        handler.post { authorizeGmail(invoke, null) }
+    }
+
+    @Command
+    fun gmail_disconnect(invoke: Invoke) {
+        val email = invoke.parseArgs(GmailEmailArgs::class.java).email
+        gmail.forget(email)
+        val out = JSObject()
+        out.put("ok", true)
+        invoke.resolve(out)
+    }
+
+    @Command
+    fun gmail_status(invoke: Invoke) {
+        invoke.resolve(JSObject.fromJSONObject(gmail.status()))
+    }
+
+    @Command
+    fun gmail_search(invoke: Invoke) {
+        val args = invoke.parseArgs(GmailEmailArgs::class.java)
+        Thread {
+            try {
+                val token = tokenFor(args.email)
+                invoke.resolve(JSObject.fromJSONObject(gmail.listPdfs(token, args.email, args.pageToken)))
+            } catch (e: Exception) {
+                invoke.reject(e.message ?: "Could not look through Gmail.")
+            }
+        }.start()
+    }
+
+    @Command
+    fun gmail_fetch(invoke: Invoke) {
+        val args = invoke.parseArgs(GmailFetchArgs::class.java)
+        Thread {
+            try {
+                val token = tokenFor(args.email)
+                val out = JSObject()
+                out.put("ok", true)
+                out.put("bytesB64", gmail.fetchPdf(token, args.messageId, args.attachmentId))
+                invoke.resolve(out)
+            } catch (e: Exception) {
+                invoke.reject(e.message ?: "Could not download that statement.")
+            }
+        }.start()
+    }
+
+    @Command
+    fun gmail_advance(invoke: Invoke) {
+        val args = invoke.parseArgs(GmailEmailArgs::class.java)
+        if (args.done) gmail.advance(args.email) else gmail.savePage(args.email, args.pageToken)
+        val out = JSObject()
+        out.put("ok", true)
+        invoke.resolve(out)
+    }
+
+    @ActivityCallback
+    fun gmailAuthResult(invoke: Invoke, result: ActivityResult) {
+        if (result.resultCode != Activity.RESULT_OK || result.data == null) {
+            invoke.reject("Google sign-in was cancelled.")
+            return
+        }
+        try {
+            val auth = Identity.getAuthorizationClient(activity).getAuthorizationResultFromIntent(result.data)
+            finishGmailAuth(invoke, auth.accessToken)
+        } catch (e: Exception) {
+            invoke.reject(e.message ?: "Google sign-in failed.")
+        }
+    }
+
+    private fun authorizeGmail(invoke: Invoke, email: String?) {
+        val builder = AuthorizationRequest.builder().setRequestedScopes(listOf(Scope(gmailScope)))
+        if (!email.isNullOrBlank()) builder.setAccount(Account(email, "com.google"))
+        Identity.getAuthorizationClient(activity).authorize(builder.build())
+            .addOnSuccessListener { result ->
+                if (result.hasResolution()) {
+                    val pending = result.pendingIntent
+                    if (pending == null) {
+                        invoke.reject("Google sign-in could not open.")
+                        return@addOnSuccessListener
+                    }
+                    startIntentSenderForResult(invoke, IntentSenderRequest.Builder(pending).build(), "gmailAuthResult")
+                } else {
+                    finishGmailAuth(invoke, result.accessToken)
+                }
+            }
+            .addOnFailureListener { e ->
+                invoke.reject(e.message ?: "Google sign-in failed.")
+            }
+    }
+
+    private fun finishGmailAuth(invoke: Invoke, token: String?) {
+        if (token.isNullOrBlank()) {
+            invoke.reject("Google did not allow Gmail to be read.")
+            return
+        }
+        Thread {
+            try {
+                val email = gmail.profileEmail(token)
+                if (email.isBlank()) {
+                    invoke.reject("Gmail did not return an email address.")
+                    return@Thread
+                }
+                gmail.remember(email)
+                val out = JSObject()
+                out.put("ok", true)
+                out.put("email", email)
+                invoke.resolve(out)
+            } catch (e: Exception) {
+                invoke.reject(e.message ?: "Could not read this Gmail account.")
+            }
+        }.start()
+    }
+
+    private fun tokenFor(email: String): String {
+        if (email.isBlank()) throw IllegalStateException("Choose a Gmail account first.")
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            throw IllegalStateException("Gmail refresh must not run on the screen thread.")
+        }
+        val latch = java.util.concurrent.CountDownLatch(1)
+        var token: String? = null
+        var err: String? = null
+        handler.post { authorizeForToken(email, { token = it; latch.countDown() }, { err = it; latch.countDown() }) }
+        if (!latch.await(20, java.util.concurrent.TimeUnit.SECONDS)) {
+            throw IllegalStateException("Gmail sign-in timed out. Connect again.")
+        }
+        return token ?: throw IllegalStateException(err ?: "Gmail needs you to connect again.")
+    }
+
+    private fun authorizeForToken(email: String, ok: (String) -> Unit, bad: (String) -> Unit) {
+        val request = AuthorizationRequest.builder()
+            .setRequestedScopes(listOf(Scope(gmailScope)))
+            .setAccount(Account(email, "com.google"))
+            .build()
+        Identity.getAuthorizationClient(activity).authorize(request)
+            .addOnSuccessListener { result ->
+                if (result.hasResolution() || result.accessToken.isNullOrBlank()) {
+                    bad("Gmail needs you to connect again.")
+                } else {
+                    ok(result.accessToken)
+                }
+            }
+            .addOnFailureListener { e -> bad(e.message ?: "Could not use this Gmail.") }
+    }
+
+    @InvokeArg
+    class GmailEmailArgs {
+        @JvmField
+        var email: String = ""
+        @JvmField
+        var pageToken: String = ""
+        @JvmField
+        var done: Boolean = false
+    }
+
+    @InvokeArg
+    class GmailFetchArgs {
+        @JvmField
+        var email: String = ""
+        @JvmField
+        var messageId: String = ""
+        @JvmField
+        var attachmentId: String = ""
     }
 }

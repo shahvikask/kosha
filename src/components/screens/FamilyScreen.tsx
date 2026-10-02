@@ -19,6 +19,7 @@ import {
   BackupScheduleSettings,
 } from '../../lib/backupSchedule';
 import { TermsGate } from './TermsGate';
+import { connectGmail, disconnectGmail, gmailStatus, runGmailSync, GmailAccountStatus } from '../../lib/gmailSync';
 import {
   Users,
   Plus,
@@ -74,11 +75,23 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
     restoreLockedBackup,
     startOver,
     account,
+    importStatementRecords,
+    casLatest,
+    gmailFileSeen,
+    markGmailFileSeen,
   } = useKosha();
   const licence = useLicence();
   const [diagOn, setDiagOn] = useState(false);
   const [diagWarn, setDiagWarn] = useState(false);
   const [diagError, setDiagError] = useState<string | null>(null);
+  const [gmailAccounts, setGmailAccounts] = useState<GmailAccountStatus[]>([]);
+  const [gmailBusy, setGmailBusy] = useState(false);
+  const [gmailNote, setGmailNote] = useState<string | null>(null);
+
+  const refreshGmail = () => {
+    if (!isNativeShell()) return;
+    gmailStatus().then(setGmailAccounts).catch(() => setGmailAccounts([]));
+  };
 
   useEffect(() => {
     if (!isNativeShell()) return;
@@ -93,6 +106,10 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
     return () => {
       stop = true;
     };
+  }, []);
+
+  useEffect(() => {
+    refreshGmail();
   }, []);
 
   const [notification, setNotification] = useState<{
@@ -674,6 +691,99 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
             <div className="font-bold">Start over</div>
             <div className="text-xs mt-1">Delete all accounts from this device</div>
           </button>
+        </div>
+        <div className="p-4 rounded-2xl border space-y-3 text-sm" style={{ borderColor: 'var(--border)' }}>
+          <div className="font-bold">Gmail statements</div>
+          <p className="text-xs leading-relaxed" style={{ color: 'var(--muted)' }}>
+            Import one statement by hand first. That records the CDSL CAS ID or the NPS PRAN.
+            Later sync only downloads files for members you turn on. NSDL, CAMS, and KFintech
+            files are matched by the PAN inside the PDF, because those names do not contain an ID.
+          </p>
+          {familyMembers.map(member => (
+            <div key={member.id} className="flex items-center justify-between gap-3">
+              <div>
+                <div className="font-semibold">{member.name}</div>
+                <div className="text-[11px]" style={{ color: 'var(--muted)' }}>
+                  {member.casId ? `CAS ID ${member.casId}` : 'No CAS ID yet'}
+                  {' · '}
+                  {member.pran ? `PRAN ${member.pran}` : 'No PRAN yet'}
+                </div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={Boolean(member.gmailSync)}
+                aria-label={`${member.name} Gmail sync`}
+                onClick={() => void updateFamilyMember(member.id, { gmailSync: !member.gmailSync })}
+                className="w-11 h-6 rounded-full relative shrink-0"
+                style={{ background: member.gmailSync ? '#16a34a' : '#94a3b8' }}
+              >
+                <span className="absolute top-0.5 w-5 h-5 rounded-full bg-white" style={{ left: member.gmailSync ? 22 : 2 }} />
+              </button>
+            </div>
+          ))}
+          {isNativeShell() ? (
+            <div className="space-y-2">
+              {gmailAccounts.map(accountRow => (
+                <div key={accountRow.email} className="flex items-center justify-between gap-2 text-xs">
+                  <span>{accountRow.email}{accountRow.first ? ' · first sync looks back to 2019' : ''}</span>
+                  <button type="button" className="font-semibold" style={{ color: 'var(--muted)' }} onClick={() => void disconnectGmail(accountRow.email).then(refreshGmail)}>
+                    Remove
+                  </button>
+                </div>
+              ))}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={gmailBusy}
+                  className="px-3 py-2 rounded-xl text-xs font-semibold text-white"
+                  style={{ background: '#0f766e' }}
+                  onClick={() => {
+                    setGmailBusy(true);
+                    setGmailNote(null);
+                    void connectGmail()
+                      .then(email => {
+                        setGmailNote(email ? `Connected ${email}.` : 'Connected.');
+                        refreshGmail();
+                      })
+                      .catch(e => setGmailNote(e instanceof Error ? e.message : 'Could not connect Gmail.'))
+                      .finally(() => setGmailBusy(false));
+                  }}
+                >
+                  {gmailAccounts.length ? 'Add another Gmail' : 'Connect Gmail'}
+                </button>
+                <button
+                  type="button"
+                  disabled={gmailBusy || gmailAccounts.length === 0}
+                  className="px-3 py-2 rounded-xl text-xs font-semibold"
+                  style={{ border: '1px solid var(--border)' }}
+                  onClick={() => {
+                    setGmailBusy(true);
+                    setGmailNote('Looking through Gmail…');
+                    void runGmailSync({
+                      members: familyMembers,
+                      casLatest,
+                      importStatementRecords,
+                      updateFamilyMember,
+                      seen: gmailFileSeen,
+                      markSeen: markGmailFileSeen,
+                    })
+                      .then(setGmailNote)
+                      .catch(e => setGmailNote(e instanceof Error ? e.message : 'Gmail sync failed.'))
+                      .finally(() => {
+                        setGmailBusy(false);
+                        refreshGmail();
+                      });
+                  }}
+                >
+                  Sync now
+                </button>
+              </div>
+              {gmailNote && <p className="text-[11px]" style={{ color: 'var(--muted)' }}>{gmailNote}</p>}
+            </div>
+          ) : (
+            <p className="text-[11px]" style={{ color: 'var(--muted)' }}>Gmail sync runs in the Android app, not in the browser.</p>
+          )}
         </div>
         <div className="p-4 rounded-2xl border space-y-2 text-sm" style={{ borderColor: 'var(--border)' }}>
           <div className="font-bold">Licence</div>
