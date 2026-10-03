@@ -889,16 +889,24 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
 
     @ActivityCallback
     fun gmailAuthResult(invoke: Invoke, result: ActivityResult) {
-        if (result.resultCode != Activity.RESULT_OK || result.data == null) {
-            invoke.reject("Google sign-in was cancelled.")
+        val code = result.resultCode
+        Diag.log(activity, "gmail_connect", "auth result code=" + code + " hasData=" + (result.data != null))
+        if (result.data != null) {
+            try {
+                val auth = Identity.getAuthorizationClient(activity).getAuthorizationResultFromIntent(result.data)
+                finishGmailAuth(invoke, auth.accessToken)
+                return
+            } catch (e: Exception) {
+                Diag.log(activity, "gmail_connect", "auth result err " + Diag.throwable(e))
+                invoke.reject(e.message ?: "Google sign-in failed.")
+                return
+            }
+        }
+        if (code != Activity.RESULT_OK) {
+            invoke.reject("Google closed sign-in (code " + code + "). Choose shahvikask@gmail.com and allow read access.")
             return
         }
-        try {
-            val auth = Identity.getAuthorizationClient(activity).getAuthorizationResultFromIntent(result.data)
-            finishGmailAuth(invoke, auth.accessToken)
-        } catch (e: Exception) {
-            invoke.reject(e.message ?: "Google sign-in failed.")
-        }
+        invoke.reject("Google sign-in returned no account.")
     }
 
     private fun authorizeGmail(invoke: Invoke, email: String?) {
@@ -912,7 +920,7 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
                         invoke.reject("Google sign-in could not open.")
                         return@addOnSuccessListener
                     }
-                    startIntentSenderForResult(invoke, IntentSenderRequest.Builder(pending).build(), "gmailAuthResult")
+                    startIntentSenderForResult(invoke, IntentSenderRequest.Builder(pending.intentSender).build(), "gmailAuthResult")
                 } else {
                     finishGmailAuth(invoke, result.accessToken)
                 }
