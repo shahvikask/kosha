@@ -125,6 +125,9 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
   const [formPanForStatements, setFormPanForStatements] = useState('');
   const [rememberPan, setRememberPan] = useState(false);
   const [formDob, setFormDob] = useState('');
+  const [formCasId, setFormCasId] = useState('');
+  const [formPran, setFormPran] = useState('');
+  const [idPrompt, setIdPrompt] = useState('');
   const [formColor, setFormColor] = useState('#0284c7');
   const [formNotes, setFormNotes] = useState('');
   const [deletingMember, setDeletingMember] = useState<FamilyMember | null>(null);
@@ -168,6 +171,9 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
     setFormPanForStatements('');
     setRememberPan(false);
     setFormDob('');
+    setFormCasId('');
+    setFormPran('');
+    setIdPrompt('');
     setFormColor(COLOR_PALETTE[familyMembers.length % COLOR_PALETTE.length].hex);
     setFormNotes('');
     setIsFormOpen(true);
@@ -181,6 +187,9 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
     setFormPanForStatements(member.panForStatements || '');
     setRememberPan(Boolean(member.panForStatements));
     setFormDob(member.dateOfBirth || '');
+    setFormCasId(member.casId || '');
+    setFormPran(member.pran || '');
+    setIdPrompt('');
     setFormColor(member.color || '#0284c7');
     setFormNotes(member.notes || '');
     setIsFormOpen(true);
@@ -207,6 +216,12 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
           dateOfBirth: formDob.trim() || undefined,
           color: formColor,
           notes: formNotes.trim() || undefined,
+          casId: formCasId.trim().toUpperCase() || undefined,
+          pran: formPran.trim() || undefined,
+          casIdSource: formCasId.trim() ? 'profile' : undefined,
+          pranSource: formPran.trim() ? 'profile' : undefined,
+          casSyncAfter: formCasId.trim() ? undefined : editingMember.casSyncAfter,
+          pranSyncAfter: formPran.trim() ? undefined : editingMember.pranSyncAfter,
         });
         setNotification({ type: 'success', message: `Saved ${formName.trim()}.` });
       } else {
@@ -221,6 +236,10 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
           dateOfBirth: formDob.trim() || undefined,
           color: formColor,
           notes: formNotes.trim() || undefined,
+          casId: formCasId.trim().toUpperCase() || undefined,
+          pran: formPran.trim() || undefined,
+          casIdSource: formCasId.trim() ? 'profile' : undefined,
+          pranSource: formPran.trim() ? 'profile' : undefined,
         });
         setNotification({ type: 'success', message: `Added ${formName.trim()}.` });
       }
@@ -695,9 +714,10 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
         <div className="p-4 rounded-2xl border space-y-3 text-sm" style={{ borderColor: 'var(--border)' }}>
           <div className="font-bold">Gmail statements</div>
           <p className="text-xs leading-relaxed" style={{ color: 'var(--muted)' }}>
-            Import one statement by hand first. That records the CDSL CAS ID or the NPS PRAN.
-            Later sync only downloads files for members you turn on. NSDL, CAMS, and KFintech
-            files are matched by the PAN inside the PDF, because those names do not contain an ID.
+            One connected Gmail covers every member you turn on. Add another Gmail only if
+            someone's statements are in a different inbox. Type a CAS ID or PRAN to import the
+            whole history. A hand import fills the missing id and later sync takes only newer files.
+            NSDL, CAMS, and KFintech files are matched by the PAN inside the PDF.
           </p>
           {familyMembers.map(member => (
             <div key={member.id} className="flex items-center justify-between gap-3">
@@ -714,7 +734,14 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
                 role="switch"
                 aria-checked={Boolean(member.gmailSync)}
                 aria-label={`${member.name} Gmail sync`}
-                onClick={() => void updateFamilyMember(member.id, { gmailSync: !member.gmailSync })}
+                onClick={() => {
+                  if (!member.gmailSync && !member.casId && !member.pran) {
+                    handleOpenEditModal(member);
+                    setIdPrompt('Enter a CAS ID or PRAN, or leave both blank and import one statement by hand. Sync stays off until one of those is done.');
+                    return;
+                  }
+                  void updateFamilyMember(member.id, { gmailSync: !member.gmailSync });
+                }}
                 className="w-11 h-6 rounded-full relative shrink-0"
                 style={{ background: member.gmailSync ? '#16a34a' : '#94a3b8' }}
               >
@@ -739,11 +766,17 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
                   className="px-3 py-2 rounded-xl text-xs font-semibold text-white"
                   style={{ background: '#0f766e' }}
                   onClick={() => {
+                    const primary = familyMembers.find(m => m.isPrimary) || familyMembers[0];
+                    if (primary && !primary.casId && !primary.pran && !idPrompt) {
+                      handleOpenEditModal(primary);
+                      setIdPrompt('Enter a CAS ID or PRAN if you have one. Both can stay blank. Save, then tap Connect Gmail again.');
+                      return;
+                    }
                     setGmailBusy(true);
                     setGmailNote(null);
                     void connectGmail()
                       .then(email => {
-                        setGmailNote(email ? `Connected ${email}.` : 'Connected.');
+                        setGmailNote(email ? `Connected ${email}. Other members can use this inbox.` : 'Connected.');
                         refreshGmail();
                       })
                       .catch(e => setGmailNote(e instanceof Error ? e.message : 'Could not connect Gmail.'))
@@ -768,7 +801,10 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
                       seen: gmailFileSeen,
                       markSeen: markGmailFileSeen,
                     })
-                      .then(setGmailNote)
+                      .then(note => {
+                        try { localStorage.setItem('gud.gmailSyncedOnce', '1'); } catch { /* ignore */ }
+                        setGmailNote(note);
+                      })
                       .catch(e => setGmailNote(e instanceof Error ? e.message : 'Gmail sync failed.'))
                       .finally(() => {
                         setGmailBusy(false);
@@ -995,7 +1031,35 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
                 <button type="button" onClick={() => setIsFormOpen(false)} className="px-4 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--border)' }}>
                   Cancel
                 </button>
-                <button type="submit" className="px-5 py-2 rounded-xl text-xs font-bold" style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}>
+                
+              {idPrompt && <p className="text-xs" style={{ color: 'var(--muted)' }}>{idPrompt}</p>}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold block mb-1">CDSL CAS ID</label>
+                  <input
+                    value={formCasId}
+                    onChange={e => setFormCasId(e.target.value.toUpperCase())}
+                    className="w-full px-3.5 py-2.5 rounded-xl border text-sm font-mono"
+                    style={inputStyle}
+                    placeholder="Optional, e.g. AA07970379"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold block mb-1">NPS PRAN</label>
+                  <input
+                    value={formPran}
+                    onChange={e => setFormPran(e.target.value.replace(/\D/g, '').slice(0, 12))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border text-sm font-mono"
+                    style={inputStyle}
+                    placeholder="Optional"
+                    inputMode="numeric"
+                  />
+                </div>
+              </div>
+              <p className="text-[11px]" style={{ color: 'var(--muted)' }}>
+                Neither is required. If you type one, Gmail imports every matching statement. If a hand import fills it, later sync only takes files after that statement.
+              </p>
+<button type="submit" className="px-5 py-2 rounded-xl text-xs font-bold" style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}>
                   {editingMember ? 'Save' : 'Add'}
                 </button>
               </div>

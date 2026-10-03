@@ -1,7 +1,7 @@
 import { nativeCommand } from './license';
 import { parseCasPdfWithPython, statementPasswordsToTry, CasImportMeta, CasLatestState, CasFileType } from './casPython';
 import { FamilyMember, StatementImportRecord } from '../types';
-import { decideStatementMail, classifyStatementFilename, issuerFromSender, newestNamedStatements, statementMonthKey } from './statementMail';
+import { decideStatementMail, classifyStatementFilename, issuerFromSender, filesForMember, memberHasStatementId, statementMonthKey } from './statementMail';
 import { pansMatch } from './pan';
 
 export interface GmailAccountStatus {
@@ -26,8 +26,8 @@ type ImportFn = (
   casMeta?: CasImportMeta,
 ) => Promise<unknown>;
 
-const MAX_PAGES = 4;
-const MAX_DOWNLOADS = 12;
+const MAX_PAGES = 8;
+const MAX_DOWNLOADS = 40;
 
 function fileFromBase64(name: string, b64: string): File {
   const bin = atob(b64);
@@ -136,7 +136,21 @@ export async function runGmailSync(opts: {
       }
     }
 
-    const { keep, older } = newestNamedStatements(batch);
+    const ready = enabled.filter(memberHasStatementId);
+    if (!ready.length) waitingForId = true;
+    const older: ListedFile[] = [];
+    const keep: ListedFile[] = [];
+    const claimed = new Set<string>();
+    for (const member of ready) {
+      const picked = filesForMember(batch, member);
+      for (const file of picked.keep) {
+        const key = `${file.messageId}:${file.attachmentId}`;
+        if (claimed.has(key)) continue;
+        claimed.add(key);
+        keep.push(file);
+      }
+      older.push(...picked.older.filter(file => !claimed.has(`${file.messageId}:${file.attachmentId}`)));
+    }
     for (const file of older) {
       await opts.markSeen(file.messageId, file.attachmentId, file.filename, '');
       skipped += 1;
@@ -156,11 +170,6 @@ export async function runGmailSync(opts: {
       if (decision.action !== 'download') continue;
       const likelyType = named?.issuer || issuerFromSender(file.from) || '';
       const likelyOwner = decision.ownerId;
-      if (fileMonth && likelyOwner && likelyType && monthOf(knownAsOf(likelyOwner, likelyType)) > fileMonth) {
-        await opts.markSeen(file.messageId, file.attachmentId, file.filename, likelyOwner);
-        skipped += 1;
-        continue;
-      }
       used += 1;
       try {
         const fetched = await nativeCommand<{ bytesB64?: string; error?: string }>('gmail_fetch', {
@@ -188,7 +197,8 @@ export async function runGmailSync(opts: {
           if (!decision.ownerId && !parsed.investorPan) continue;
           const fileType = (parsed.fileType || likelyType || 'CDSL') as CasFileType;
           const previous = knownAsOf(member.id, fileType);
-          if (parsed.periodTo && previous && parsed.periodTo < previous) {
+          const fromImport = (fileType === 'NPS' ? member.pranSource : member.casIdSource) === 'import';
+          if (fromImport && parsed.periodTo && previous && parsed.periodTo < previous) {
             await opts.markSeen(file.messageId, file.attachmentId, file.filename, member.id);
             skipped += 1;
             done = true;
@@ -207,8 +217,16 @@ export async function runGmailSync(opts: {
           };
           await opts.importStatementRecords(parsed.importRecords, member.id, 'REPLACE_SNAPSHOT', meta);
           const patch: Partial<FamilyMember> = {};
-          if (named?.casId) patch.casId = named.casId;
-          if (named?.pran) patch.pran = named.pran;
+          if (named?.casId && !member.casId) {
+            patch.casId = named.casId;
+            patch.casIdSource = 'import';
+            if (parsed.periodTo) patch.casSyncAfter = parsed.periodTo;
+          }
+          if (named?.pran && !member.pran) {
+            patch.pran = named.pran;
+            patch.pranSource = 'import';
+            if (parsed.periodTo) patch.pranSyncAfter = parsed.periodTo;
+          }
           if (patch.casId || patch.pran) await opts.updateFamilyMember(member.id, patch);
           if (parsed.periodTo) importedAsOf.set(`${member.id}|${fileType}`, parsed.periodTo);
           await opts.markSeen(file.messageId, file.attachmentId, file.filename, member.id);
@@ -247,7 +265,7 @@ export async function runGmailSync(opts: {
   }
 
   const tail = waitingForId
-    ? ' Import one statement by hand first so the CAS ID or PRAN is recorded, then sync again.'
+    ? ' Enter a CAS ID or PRAN on the profile, or import one statement by hand, then sync again.'
     : more
       ? ' More mail is still there. Tap sync again.'
       : '';

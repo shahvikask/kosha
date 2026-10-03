@@ -13,7 +13,7 @@
  * casparser emits (CDSL, NSDL, CAMS, KFin) has a home.
  */
 
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 export const SCHEMA_V1 = `
 PRAGMA foreign_keys = ON;
@@ -405,6 +405,14 @@ export const SCHEMA_V8_COLUMNS: [string, string, string][] = [
   ['entity', 'gmail_sync', 'gmail_sync INTEGER NOT NULL DEFAULT 0'],
 ];
 
+
+/** How a CAS id or PRAN was recorded, and the hand-import cutoff. */
+export const SCHEMA_V9_COLUMNS: [string, string, string][] = [
+  ['entity', 'cas_id_source', 'cas_id_source TEXT'],
+  ['entity', 'pran_source', 'pran_source TEXT'],
+  ['entity', 'cas_sync_after', 'cas_sync_after TEXT'],
+  ['entity', 'pran_sync_after', 'pran_sync_after TEXT'],
+];
 export const SCHEMA_V8_SQL = `
 CREATE TABLE IF NOT EXISTS gmail_seen (
   message_id     TEXT NOT NULL,

@@ -365,9 +365,18 @@ export const DocumentsScreen: React.FC = () => {
       const res = await importStatementRecords(recordsToImport, targetMemberId, isPython ? 'REPLACE_SNAPSHOT' : 'SYNC_UPDATE', casMeta);
       const named = classifyStatementFilename(casMeta?.filename || selectedFile?.name || '');
       if (named && targetMemberId) {
-        const patch: { casId?: string; pran?: string } = {};
-        if (named.casId) patch.casId = named.casId;
-        if (named.pran) patch.pran = named.pran;
+        const member = familyMembers.find(m => m.id === targetMemberId);
+        const patch: { casId?: string; pran?: string; casIdSource?: 'import'; pranSource?: 'import'; casSyncAfter?: string; pranSyncAfter?: string } = {};
+        if (named.casId && !member?.casId) {
+          patch.casId = named.casId;
+          patch.casIdSource = 'import';
+          if (parseResult?.periodTo) patch.casSyncAfter = parseResult.periodTo;
+        }
+        if (named.pran && !member?.pran) {
+          patch.pran = named.pran;
+          patch.pranSource = 'import';
+          if (parseResult?.periodTo) patch.pranSyncAfter = parseResult.periodTo;
+        }
         if (patch.casId || patch.pran) await updateFamilyMember(targetMemberId, patch);
       }
       const asOf = parseResult?.periodTo ? formatStatementDate(parseResult.periodTo) : formattedStatementDate;

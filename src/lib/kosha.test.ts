@@ -38,7 +38,7 @@ import { applyCatalogPrices, catalogToListed, searchListed, isEodPriceSource } f
 import { findMatchingHolding, holdingIdentityKey, isPlaceholderName, preferSchemeName } from './matchHolding';
 import { StatementImportRecord } from '../types';
 import { buildBooksHealth, buildStatementSteps, buildSinceLastStatement, concentrationOf, daysBetweenIso, freshnessTone, previousFinancialYear, fyEndIso, unknownCostRows, firstToLastPct, investedSeriesFrom } from './homeDashboard';
-import { classifyStatementFilename, decideStatementMail, issuerFromSender, newestNamedStatements } from './statementMail';
+import { classifyStatementFilename, decideStatementMail, issuerFromSender, newestNamedStatements, filesForMember } from './statementMail';
 import {
   usesUnits,
   identifierLabel,
@@ -1259,6 +1259,18 @@ console.log('\n--- H. Encryption ---');
   eq('keeps txn over holdings', picked.keep.some(f => f.filename === 'AUG2026_AA07970379_TXN.pdf'), true);
   eq('keeps newest nps', picked.keep.some(f => f.filename === '1120330238_Aug2026.pdf'), true);
   eq('older months set aside', picked.older.length, 3);
+  const history = filesForMember([
+    { filename: 'JUL2021_AA07970379_TXN.pdf' },
+    { filename: 'AUG2026_AA07970379_TXN.pdf' },
+    { filename: '1113981321_Jan2024.pdf' },
+    { filename: '1113981321_Aug2026.pdf' },
+  ], { id: 'a', casId: 'AA07970379', pran: '1113981321', casIdSource: 'profile', pranSource: 'profile' });
+  eq('typed id keeps history', history.keep.length, 4);
+  const after = filesForMember([
+    { filename: '1113981321_Jan2024.pdf' },
+    { filename: '1113981321_Aug2026.pdf' },
+  ], { id: 'a', pran: '1113981321', pranSource: 'import', pranSyncAfter: '2024-01-31' });
+  eq('hand import keeps only later nps', after.keep.map(f => f.filename).join(','), '1113981321_Aug2026.pdf');
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail?1:0);

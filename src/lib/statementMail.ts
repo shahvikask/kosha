@@ -19,6 +19,10 @@ export interface MailMemberRef {
   gmailSync?: boolean;
   casId?: string;
   pran?: string;
+  casIdSource?: 'profile' | 'import';
+  pranSource?: 'profile' | 'import';
+  casSyncAfter?: string;
+  pranSyncAfter?: string;
 }
 
 export type MailDecision =
@@ -148,4 +152,72 @@ export function newestNamedStatements<T extends { filename: string }>(
     }
   }
   return { keep: [...best.values(), ...unnamed], older };
+}
+
+export function memberHasStatementId(member: MailMemberRef): boolean {
+  return Boolean((member.casId || '').trim() || (member.pran || '').trim());
+}
+
+/** YYYY-MM from an ISO period, or from a CDSL/NPS file name. */
+export function monthKeyOf(periodOrName?: string | null): string {
+  const raw = (periodOrName || '').trim();
+  if (/^\d{4}-\d{2}/.test(raw)) return raw.slice(0, 7);
+  return statementMonthKey(raw) || '';
+}
+
+/**
+ * Profile-typed id: keep every month, so the book and the history can be built.
+ * Id filled by a hand import: keep only months after that statement.
+ * Same month keeps the transaction file over the holdings file.
+ */
+export function filesForMember<T extends { filename: string }>(
+  files: T[],
+  member: MailMemberRef,
+): { keep: T[]; older: T[] } {
+  const keep: T[] = [];
+  const older: T[] = [];
+  const best = new Map<string, T>();
+  for (const file of files) {
+    const named = classifyStatementFilename(file.filename);
+    const month = statementMonthKey(file.filename) || '';
+    if (named?.casId) {
+      if ((member.casId || '').toUpperCase() !== named.casId) {
+        older.push(file);
+        continue;
+      }
+      const cutoff = member.casIdSource === 'import' ? monthKeyOf(member.casSyncAfter) : '';
+      if (cutoff && month && month <= cutoff) {
+        older.push(file);
+        continue;
+      }
+      const key = `c:${named.casId}:${month || file.filename}`;
+      const prev = best.get(key);
+      if (!prev || statementRank(file.filename) > statementRank(prev.filename)) {
+        if (prev) older.push(prev);
+        best.set(key, file);
+      } else older.push(file);
+      continue;
+    }
+    if (named?.pran) {
+      if ((member.pran || '') !== named.pran) {
+        older.push(file);
+        continue;
+      }
+      const cutoff = member.pranSource === 'import' ? monthKeyOf(member.pranSyncAfter) : '';
+      if (cutoff && month && month <= cutoff) {
+        older.push(file);
+        continue;
+      }
+      const key = `p:${named.pran}:${month || file.filename}`;
+      const prev = best.get(key);
+      if (!prev || statementRank(file.filename) > statementRank(prev.filename)) {
+        if (prev) older.push(prev);
+        best.set(key, file);
+      } else older.push(file);
+      continue;
+    }
+    keep.push(file);
+  }
+  keep.push(...best.values());
+  return { keep, older };
 }

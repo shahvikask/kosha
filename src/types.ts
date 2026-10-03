@@ -183,10 +183,16 @@ export interface FamilyMember {
   notes?: string;
   /** Exactly one member is primary (Self). Cannot be deleted. */
   isPrimary?: boolean;
-  /** CDSL attachment id, recorded from the first imported file name. Not shown as a field. */
+  /** CDSL CAS id. Typed on the profile, or filled from the first imported file name. */
   casId?: string;
-  /** NPS PRAN, recorded from the first imported file name. Not shown as a field. */
+  /** NPS PRAN. Typed on the profile, or filled from the first imported file name. */
   pran?: string;
+  /** profile = typed by the user (sync the whole history). import = filled from a hand import (sync only later files). */
+  casIdSource?: 'profile' | 'import';
+  pranSource?: 'profile' | 'import';
+  /** Period end of the hand-imported statement. Later mail only, when the id came from that import. */
+  casSyncAfter?: string;
+  pranSyncAfter?: string;
   /** When on, Gmail sync may import this member's statements. */
   gmailSync?: boolean;
 }

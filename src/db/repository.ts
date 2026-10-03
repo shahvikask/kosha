@@ -20,6 +20,7 @@ import {
   SCHEMA_V7_COLUMNS,
   SCHEMA_V8_COLUMNS,
   SCHEMA_V8_SQL,
+  SCHEMA_V9_COLUMNS,
   LEDGER_NO_DELETE_TRIGGER,
 } from './schema';
 import { LedgerEvent, Holding, FamilyMember, FamilyRelation, isPrimaryFamilyMember, DematOrFolioAccount, FamilyGoal, ImportBatchInfo, ListedSecurity, StatementSnapRow, StatementHoldingSnap } from '../types';
@@ -62,6 +63,9 @@ export class Repository {
     if (current < 8) {
       await this.applyColumns(SCHEMA_V8_COLUMNS);
       await this.db.exec(SCHEMA_V8_SQL);
+    }
+    if (current < 9) {
+      await this.applyColumns(SCHEMA_V9_COLUMNS);
     }
 
     if (rows.length === 0) {
@@ -491,8 +495,8 @@ export class Repository {
       `INSERT INTO entity (
          entity_id, entity_type, display_name, pan_masked, pan_for_statements,
          date_of_birth, relation, color, notes, is_primary, is_active, created_at,
-         cas_id, pran, gmail_sync)
-       VALUES (?,?,?,?,?,?,?,?,?,?,1,?,?,?,?)
+         cas_id, pran, gmail_sync, cas_id_source, pran_source, cas_sync_after, pran_sync_after)
+       VALUES (?,?,?,?,?,?,?,?,?,?,1,?,?,?,?,?,?,?,?)
        ON CONFLICT(entity_id) DO UPDATE SET
          entity_type=excluded.entity_type,
          display_name=excluded.display_name,
@@ -506,18 +510,23 @@ export class Repository {
          is_active=1,
          cas_id=excluded.cas_id,
          pran=excluded.pran,
-         gmail_sync=excluded.gmail_sync`,
+         gmail_sync=excluded.gmail_sync,
+         cas_id_source=excluded.cas_id_source,
+         pran_source=excluded.pran_source,
+         cas_sync_after=excluded.cas_sync_after,
+         pran_sync_after=excluded.pran_sync_after`,
       [m.id, entityType, m.name, m.panMasked ?? null, m.panForStatements ?? null,
        m.dateOfBirth ?? null, m.relation, m.color ?? null, m.notes ?? null,
        isPrimary, new Date().toISOString(),
-       m.casId ?? null, m.pran ?? null, m.gmailSync ? 1 : 0] as SqlValue[]);
+       m.casId ?? null, m.pran ?? null, m.gmailSync ? 1 : 0,
+       m.casIdSource ?? null, m.pranSource ?? null, m.casSyncAfter ?? null, m.pranSyncAfter ?? null] as SqlValue[]);
   }
 
   async allEntities(): Promise<FamilyMember[]> {
     const rows = await this.db.query<Record<string, SqlValue>>(
       `SELECT entity_id, entity_type, display_name, pan_masked, pan_for_statements,
               date_of_birth, relation, color, notes, is_primary, is_active,
-              cas_id, pran, gmail_sync
+              cas_id, pran, gmail_sync, cas_id_source, pran_source, cas_sync_after, pran_sync_after
        FROM entity WHERE is_active = 1
        ORDER BY is_primary DESC, created_at ASC`);
     return rows.map(rowToEntity);
@@ -926,6 +935,10 @@ function rowToEntity(r: Record<string, SqlValue>): FamilyMember {
     isPrimary: Number(r.is_primary) === 1 || relation === 'Self',
     casId: r.cas_id ? s(r.cas_id) : undefined,
     pran: r.pran ? s(r.pran) : undefined,
+    casIdSource: r.cas_id_source === 'profile' || r.cas_id_source === 'import' ? r.cas_id_source : undefined,
+    pranSource: r.pran_source === 'profile' || r.pran_source === 'import' ? r.pran_source : undefined,
+    casSyncAfter: r.cas_sync_after ? s(r.cas_sync_after) : undefined,
+    pranSyncAfter: r.pran_sync_after ? s(r.pran_sync_after) : undefined,
     gmailSync: Number(r.gmail_sync) === 1,
   };
 }

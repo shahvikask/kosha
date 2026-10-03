@@ -83,6 +83,48 @@ jobs:
           find src-tauri/gen/android src-tauri/target -name '*.apk' -exec cp {} dist-apk/ \;
           ls -la dist-apk
 
+      - name: Resign APK with the stable test key
+        run: |
+          set -euo pipefail
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort | tail -1)
+          python3 - << 'PY'
+          import struct, pathlib, zipfile, shutil, os
+          src = next(pathlib.Path('dist-apk').glob('*.apk'))
+          raw = src.read_bytes()
+          eocd = raw.rfind(b'PK\x05\x06')
+          cd_off = struct.unpack_from('<I', raw, eocd + 16)[0]
+          magic = b'APK Sig Block 42'
+          sig_off = raw.rfind(magic, 0, cd_off)
+          if sig_off < 0:
+              stripped = raw
+          else:
+              block_size = struct.unpack_from('<Q', raw, sig_off - 8)[0]
+              block_start = sig_off - block_size + 8
+              stripped = raw[:block_start] + raw[cd_off:]
+              # fix central-directory offset
+              new_cd = block_start
+              eocd = stripped.rfind(b'PK\x05\x06')
+              stripped = stripped[:eocd+16] + struct.pack('<I', new_cd) + stripped[eocd+20:]
+          tmp = pathlib.Path('dist-apk/unsigned.apk')
+          tmp.write_bytes(stripped)
+          # drop v1 signature entries
+          out = pathlib.Path('dist-apk/stripped.apk')
+          with zipfile.ZipFile(tmp, 'r') as zin, zipfile.ZipFile(out, 'w') as zout:
+              for info in zin.infolist():
+                  if info.filename.startswith('META-INF/'):
+                      continue
+                  zout.writestr(info, zin.read(info.filename))
+          print('stripped', out)
+          PY
+          "$BT/zipalign" -f -p 4 dist-apk/stripped.apk dist-apk/aligned.apk
+          "$BT/apksigner" sign --ks src-tauri/keystore/gud-test.keystore \
+            --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android \
+            --out dist-apk/growurdhan-test.apk dist-apk/aligned.apk
+          "$BT/apksigner" verify --print-certs dist-apk/growurdhan-test.apk | tee dist-apk/certs.txt
+          grep -q 'C6:7F:A0:CE:F9:55:DC:B7:E9:BE:F5:F3:2C:26:D9:60:91:ED:49:21' dist-apk/certs.txt
+          find dist-apk -name '*.apk' ! -name 'growurdhan-test.apk' -delete
+          ls -la dist-apk
+
       - uses: actions/upload-artifact@v4
         with:
           name: GrowUrDhan-Android-APK

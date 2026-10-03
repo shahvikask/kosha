@@ -20,6 +20,7 @@ import { ClosedScreen } from './components/screens/TermsGate';
 import { FeedbackPrompt } from './components/screens/FeedbackPrompt';
 import { markOnboardingSeen } from './lib/onboarding';
 import { maybeRunScheduledBackup } from './lib/backupSchedule';
+import { runGmailSync } from './lib/gmailSync';
 import { setTermsDeclineHandler } from './lib/terms';
 import { claimFeedbackPrompt, loadFeedbackState } from './lib/feedback';
 import { AUTO_LOCK_MS, installFileInputPickerGuard, isNativePickerOpen } from './lib/autoLock';
@@ -38,6 +39,12 @@ const KoshaMainApp: React.FC = () => {
     holdings,
     lockVault,
     pricesError,
+    familyMembers,
+    casLatest,
+    importStatementRecords,
+    updateFamilyMember,
+    gmailFileSeen,
+    markGmailFileSeen,
   } = useKosha();
   const licence = useLicence();
 
@@ -66,6 +73,22 @@ const KoshaMainApp: React.FC = () => {
     if (!account || !unlocked || mustRotatePassword) return;
     void maybeRunScheduledBackup('open');
   }, [account, unlocked, mustRotatePassword]);
+
+  useEffect(() => {
+    if (!account || !unlocked || !dbReady) return;
+    let once = false;
+    try { once = localStorage.getItem('gud.gmailSyncedOnce') === '1'; } catch { once = false; }
+    if (!once) return;
+    if (!familyMembers.some(m => m.gmailSync && (m.casId || m.pran))) return;
+    void runGmailSync({
+      members: familyMembers,
+      casLatest,
+      importStatementRecords,
+      updateFamilyMember,
+      seen: gmailFileSeen,
+      markSeen: markGmailFileSeen,
+    }).catch(() => undefined);
+  }, [account, unlocked, dbReady]);
 
   useEffect(() => {
     setPriceBannerDismissed(false);
