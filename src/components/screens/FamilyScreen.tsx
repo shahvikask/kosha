@@ -912,7 +912,7 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
 
       {isFormOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 overflow-y-auto">
-          <div className="card max-w-lg w-full p-6 space-y-5 my-8">
+          <div className="card max-w-lg w-full p-6 space-y-5 my-8 max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-lg flex items-center gap-2">
                 <UserCheck className="w-5 h-5" />
@@ -1027,39 +1027,36 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
                   placeholder="Nominee on HDFC demat, etc."
                 />
               </div>
+              {idPrompt && <p className="text-xs" style={{ color: 'var(--muted)' }}>{idPrompt}</p>}
+              <div>
+                <label className="text-xs font-semibold block mb-1">CDSL CAS ID</label>
+                <input
+                  value={formCasId}
+                  onChange={e => setFormCasId(e.target.value.toUpperCase())}
+                  className="w-full px-3.5 py-2.5 rounded-xl border text-sm font-mono"
+                  style={inputStyle}
+                  placeholder="Optional, e.g. AA07970379"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold block mb-1">NPS PRAN</label>
+                <input
+                  value={formPran}
+                  onChange={e => setFormPran(e.target.value.replace(/\D/g, '').slice(0, 12))}
+                  className="w-full px-3.5 py-2.5 rounded-xl border text-sm font-mono"
+                  style={inputStyle}
+                  placeholder="Optional"
+                  inputMode="numeric"
+                />
+              </div>
+              <p className="text-[11px]" style={{ color: 'var(--muted)' }}>
+                Neither is required. A typed id imports every matching statement. A hand import fills a blank id, and later sync takes only newer files.
+              </p>
               <div className="flex justify-end gap-2">
                 <button type="button" onClick={() => setIsFormOpen(false)} className="px-4 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--border)' }}>
                   Cancel
                 </button>
-                
-              {idPrompt && <p className="text-xs" style={{ color: 'var(--muted)' }}>{idPrompt}</p>}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-semibold block mb-1">CDSL CAS ID</label>
-                  <input
-                    value={formCasId}
-                    onChange={e => setFormCasId(e.target.value.toUpperCase())}
-                    className="w-full px-3.5 py-2.5 rounded-xl border text-sm font-mono"
-                    style={inputStyle}
-                    placeholder="Optional, e.g. AA07970379"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold block mb-1">NPS PRAN</label>
-                  <input
-                    value={formPran}
-                    onChange={e => setFormPran(e.target.value.replace(/\D/g, '').slice(0, 12))}
-                    className="w-full px-3.5 py-2.5 rounded-xl border text-sm font-mono"
-                    style={inputStyle}
-                    placeholder="Optional"
-                    inputMode="numeric"
-                  />
-                </div>
-              </div>
-              <p className="text-[11px]" style={{ color: 'var(--muted)' }}>
-                Neither is required. If you type one, Gmail imports every matching statement. If a hand import fills it, later sync only takes files after that statement.
-              </p>
-<button type="submit" className="px-5 py-2 rounded-xl text-xs font-bold" style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}>
+                <button type="submit" className="px-5 py-2 rounded-xl text-xs font-bold" style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}>
                   {editingMember ? 'Save' : 'Add'}
                 </button>
               </div>

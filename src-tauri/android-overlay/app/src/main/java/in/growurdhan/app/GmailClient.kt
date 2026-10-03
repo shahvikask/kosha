@@ -79,7 +79,7 @@ class GmailClient(private val context: Context) {
     fun listPdfs(token: String, email: String, pageToken: String): JSONObject {
         val after = afterOf(email).ifBlank { "2019/01/01" }
         val q = "$STATEMENT_QUERY after:$after"
-        val url = StringBuilder("https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=20&q=")
+        val url = StringBuilder("https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=8&q=")
         url.append(URLEncoder.encode(q, "UTF-8"))
         if (pageToken.isNotBlank()) {
             url.append("&pageToken=").append(URLEncoder.encode(pageToken, "UTF-8"))
@@ -91,6 +91,7 @@ class GmailClient(private val context: Context) {
             for (i in 0 until messages.length()) {
                 val id = messages.getJSONObject(i).optString("id")
                 if (id.isBlank()) continue
+                if (i > 0) Thread.sleep(120)
                 collectPdfs(token, id, files)
             }
         }
@@ -164,6 +165,10 @@ class GmailClient(private val context: Context) {
         val code = conn.responseCode
         val stream = if (code in 200..299) conn.inputStream else conn.errorStream
         val text = stream?.bufferedReader()?.use { it.readText() } ?: ""
+        if (code == 403 || code == 429) {
+            val reason = try { org.json.JSONObject(text).optJSONObject("error")?.optString("message").orEmpty() } catch (_: Exception) { "" }
+            throw IllegalStateException(if (reason.isBlank()) "Gmail refused the request ($code)." else "Gmail refused the request ($code): $reason")
+        }
         if (code !in 200..299) throw IllegalStateException("Gmail refused the request ($code).")
         return text
     }
