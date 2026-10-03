@@ -753,7 +753,7 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
             <div className="space-y-2">
               {gmailAccounts.map(accountRow => (
                 <div key={accountRow.email} className="flex items-center justify-between gap-2 text-xs">
-                  <span>{accountRow.email}{accountRow.first ? ' · first sync looks back to 2019' : ''}</span>
+                  <span>{accountRow.email}{accountRow.first ? ' · from January 2026' : ''}</span>
                   <button type="button" className="font-semibold" style={{ color: 'var(--muted)' }} onClick={() => void disconnectGmail(accountRow.email).then(refreshGmail)}>
                     Remove
                   </button>
@@ -792,7 +792,7 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
                   style={{ border: '1px solid var(--border)' }}
                   onClick={() => {
                     setGmailBusy(true);
-                    setGmailNote('Looking through Gmail…');
+                    setGmailNote('Syncing in the background. You can open other tabs.');
                     void runGmailSync({
                       members: familyMembers,
                       casLatest,
@@ -815,7 +815,12 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
                   Sync now
                 </button>
               </div>
-              {gmailNote && <p className="text-[11px]" style={{ color: 'var(--muted)' }}>{gmailNote}</p>}
+              {(gmailBusy || gmailNote) && (
+                <p className="text-[11px] flex items-center gap-2" style={{ color: 'var(--muted)' }}>
+                  {gmailBusy && <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-current border-t-transparent animate-spin" />}
+                  {gmailBusy ? (gmailNote || 'Syncing…') : gmailNote}
+                </p>
+              )}
             </div>
           ) : (
             <p className="text-[11px]" style={{ color: 'var(--muted)' }}>Gmail sync runs in the Android app, not in the browser.</p>

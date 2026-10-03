@@ -92,6 +92,10 @@ export function decideStatementMail(
   }
 
   if (sender === 'NSDL' || sender === 'CAMS' || sender === 'KFINTECH') {
+    const base = statementBasename(file.filename).toLowerCase();
+    if (/accountstatement|fatca|declaration|form\b|invoice|receipt/.test(base)) {
+      return { action: 'skip', remember: true, reason: 'not a holdings statement' };
+    }
     return { action: 'download' };
   }
 
@@ -159,10 +163,16 @@ export function memberHasStatementId(member: MailMemberRef): boolean {
 }
 
 /** YYYY-MM from an ISO period, or from a CDSL/NPS file name. */
+export const SYNC_FROM_MONTH = '2026-01';
+
 export function monthKeyOf(periodOrName?: string | null): string {
   const raw = (periodOrName || '').trim();
   if (/^\d{4}-\d{2}/.test(raw)) return raw.slice(0, 7);
   return statementMonthKey(raw) || '';
+}
+
+export function isOnOrAfterSyncFloor(month: string): boolean {
+  return Boolean(month) && month >= SYNC_FROM_MONTH;
 }
 
 /**
@@ -185,12 +195,16 @@ export function filesForMember<T extends { filename: string }>(
         older.push(file);
         continue;
       }
+      if (month && !isOnOrAfterSyncFloor(month)) {
+        older.push(file);
+        continue;
+      }
       const cutoff = member.casIdSource === 'import' ? monthKeyOf(member.casSyncAfter) : '';
       if (cutoff && month && month <= cutoff) {
         older.push(file);
         continue;
       }
-      const key = `c:${named.casId}:${month || file.filename}`;
+      const key = `c:${named.casId}`;
       const prev = best.get(key);
       if (!prev || statementRank(file.filename) > statementRank(prev.filename)) {
         if (prev) older.push(prev);
@@ -203,12 +217,16 @@ export function filesForMember<T extends { filename: string }>(
         older.push(file);
         continue;
       }
+      if (month && !isOnOrAfterSyncFloor(month)) {
+        older.push(file);
+        continue;
+      }
       const cutoff = member.pranSource === 'import' ? monthKeyOf(member.pranSyncAfter) : '';
       if (cutoff && month && month <= cutoff) {
         older.push(file);
         continue;
       }
-      const key = `p:${named.pran}:${month || file.filename}`;
+      const key = `p:${named.pran}`;
       const prev = best.get(key);
       if (!prev || statementRank(file.filename) > statementRank(prev.filename)) {
         if (prev) older.push(prev);

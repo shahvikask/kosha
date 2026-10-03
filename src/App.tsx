@@ -57,6 +57,7 @@ const KoshaMainApp: React.FC = () => {
   const [termsDeclined, setTermsDeclined] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [priceBannerDismissed, setPriceBannerDismissed] = useState(false);
+  const [gmailSyncing, setGmailSyncing] = useState(false);
 
   useEffect(() => {
     setTermsDeclineHandler(() => setTermsDeclined(true));
@@ -73,6 +74,12 @@ const KoshaMainApp: React.FC = () => {
     if (!account || !unlocked || mustRotatePassword) return;
     void maybeRunScheduledBackup('open');
   }, [account, unlocked, mustRotatePassword]);
+
+  useEffect(() => {
+    const onSync = (event: Event) => setGmailSyncing(Boolean((event as CustomEvent).detail));
+    window.addEventListener('gud-gmail-sync', onSync);
+    return () => window.removeEventListener('gud-gmail-sync', onSync);
+  }, []);
 
   useEffect(() => {
     if (!account || !unlocked || !dbReady) return;
@@ -296,6 +303,12 @@ const KoshaMainApp: React.FC = () => {
       </div>
 
       <StatusBar />
+      {gmailSyncing && (
+        <div className="fixed bottom-20 right-4 z-40 flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold shadow" style={{ background: 'var(--card)', color: 'var(--text)', border: '1px solid var(--border)' }}>
+          <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-current border-t-transparent animate-spin" />
+          Syncing Gmail
+        </div>
+      )}
 
       <AddHoldingModal isOpen={isAddHoldingOpen} onClose={() => setIsAddHoldingOpen(false)} />
       <HoldingDetailModal

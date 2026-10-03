@@ -26,8 +26,13 @@ type ImportFn = (
   casMeta?: CasImportMeta,
 ) => Promise<unknown>;
 
-const MAX_PAGES = 8;
-const MAX_DOWNLOADS = 40;
+const MAX_PAGES = 4;
+const MAX_DOWNLOADS = 8;
+
+function yieldToUi(): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, 0));
+}
+
 
 function fileFromBase64(name: string, b64: string): File {
   const bin = atob(b64);
@@ -79,6 +84,8 @@ export async function runGmailSync(opts: {
   seen: (messageId: string, attachmentId: string) => Promise<boolean>;
   markSeen: (messageId: string, attachmentId: string, filename: string, entityId: string) => Promise<void>;
 }): Promise<string> {
+  window.dispatchEvent(new CustomEvent('gud-gmail-sync', { detail: true }));
+  try {
   const accounts = await gmailStatus();
   if (!accounts.length) return 'Connect a Gmail account first.';
   const enabled = opts.members.filter(m => m.gmailSync);
@@ -171,6 +178,7 @@ export async function runGmailSync(opts: {
       const likelyType = named?.issuer || issuerFromSender(file.from) || '';
       const likelyOwner = decision.ownerId;
       used += 1;
+      await yieldToUi();
       try {
         const fetched = await nativeCommand<{ bytesB64?: string; error?: string }>('gmail_fetch', {
           email: account.email,
@@ -269,5 +277,9 @@ export async function runGmailSync(opts: {
     : more
       ? ' More mail is still there. Tap sync again.'
       : '';
-  return `Imported ${imported}. Skipped ${skipped}. Could not open ${failed}.${tail}`;
+  const summary = `Imported ${imported}. Skipped ${skipped}. Could not open ${failed}.${tail}`;
+  return summary;
+  } finally {
+    window.dispatchEvent(new CustomEvent('gud-gmail-sync', { detail: false }));
+  }
 }

@@ -1265,7 +1265,7 @@ console.log('\n--- H. Encryption ---');
     { filename: '1113981321_Jan2024.pdf' },
     { filename: '1113981321_Aug2026.pdf' },
   ], { id: 'a', casId: 'AA07970379', pran: '1113981321', casIdSource: 'profile', pranSource: 'profile' });
-  eq('typed id keeps history', history.keep.length, 4);
+  eq('typed id keeps newest 2026 files only', history.keep.map(f => f.filename).sort().join(','), '1113981321_Aug2026.pdf,AUG2026_AA07970379_TXN.pdf');
   const after = filesForMember([
     { filename: '1113981321_Jan2024.pdf' },
     { filename: '1113981321_Aug2026.pdf' },

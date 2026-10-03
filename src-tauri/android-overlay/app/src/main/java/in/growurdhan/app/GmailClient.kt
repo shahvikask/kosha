@@ -77,7 +77,7 @@ class GmailClient(private val context: Context) {
     }
 
     fun listPdfs(token: String, email: String, pageToken: String): JSONObject {
-        val after = afterOf(email).ifBlank { "2019/01/01" }
+        val after = afterOf(email).ifBlank { "2026/01/01" }
         val q = "$STATEMENT_QUERY after:$after"
         val url = StringBuilder("https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=8&q=")
         url.append(URLEncoder.encode(q, "UTF-8"))
