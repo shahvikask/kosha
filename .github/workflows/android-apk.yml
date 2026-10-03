@@ -121,7 +121,7 @@ jobs:
             --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android \
             --out dist-apk/growurdhan-test.apk dist-apk/aligned.apk
           "$BT/apksigner" verify --print-certs dist-apk/growurdhan-test.apk | tee dist-apk/certs.txt
-          grep -q 'C6:7F:A0:CE:F9:55:DC:B7:E9:BE:F5:F3:2C:26:D9:60:91:ED:49:21' dist-apk/certs.txt
+          grep -qi 'c67fa0cef955dcb7e9bef5f32c26d96091ed4921' dist-apk/certs.txt
           find dist-apk -name '*.apk' ! -name 'growurdhan-test.apk' -delete
           ls -la dist-apk
 
