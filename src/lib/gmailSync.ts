@@ -124,7 +124,11 @@ export async function runGmailSync(opts: {
       });
       if (listed.historyId) historyId = listed.historyId;
       for (const file of listed.files || []) {
-        if (await opts.seen(file.messageId, file.attachmentId)) {
+        const month = statementMonthKey(file.filename) || '';
+        const namedSeen = classifyStatementFilename(file.filename);
+        const owner = opts.members.find(m => namedSeen?.casId ? (m.casId || '').toUpperCase() === namedSeen.casId : namedSeen?.pran && (m.pran || '').includes(namedSeen.pran));
+        const bookMonth = owner ? knownAsOf(owner.id, namedSeen?.issuer || '').slice(0, 7) : '';
+        if (await opts.seen(file.messageId, file.attachmentId) && (!month || !bookMonth || month <= bookMonth)) {
           skipped += 1;
           continue;
         }
@@ -223,8 +227,9 @@ export async function runGmailSync(opts: {
           if (!decision.ownerId && !parsed.investorPan) continue;
           const fileType = (parsed.fileType || likelyType || 'CDSL') as CasFileType;
           const previous = knownAsOf(member.id, fileType);
-          const fromImport = (fileType === 'NPS' ? member.pranSource : member.casIdSource) === 'import';
-          if (fromImport && parsed.periodTo && previous && parsed.periodTo < previous) {
+          const incoming = (parsed.periodTo || fileMonth || '').slice(0, 7);
+          const have = previous.slice(0, 7);
+          if (incoming && have && incoming < have) {
             await opts.markSeen(file.messageId, file.attachmentId, file.filename, member.id);
             skipped += 1;
             done = true;
@@ -296,7 +301,7 @@ export async function runGmailSync(opts: {
 
   const tail = [
     npsWaiting ? 'NPS is waiting for a PRAN on the profile.' : '',
-    waitingForId ? 'Enter a CAS ID or PRAN, or import one statement by hand, then sync again.' : '',
+    waitingForId && !opts.members.some(m => m.casId || m.pran) ? 'Enter a CAS ID or PRAN, or import one statement by hand, then sync again.' : '',
     more ? 'More mail is still there. Tap sync again.' : '',
     failed ? `Could not open ${failed}.` : '',
   ].filter(Boolean).join(' ');
