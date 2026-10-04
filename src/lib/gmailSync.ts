@@ -131,7 +131,7 @@ export async function runGmailSync(opts: {
         const decision = decideStatementMail(file, opts.members);
         if (decision.action === 'skip') {
           const named = classifyStatementFilename(file.filename);
-          if (named?.pran && !opts.members.some(m => m.pran === named.pran)) {
+          if (named?.pran && !opts.members.some(m => (m.pran || '').length > 0)) {
             npsWaiting = true;
             held = true;
           } else if (decision.remember) {

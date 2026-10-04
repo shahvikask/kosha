@@ -84,16 +84,18 @@ export function decideStatementMail(
 
   if (named?.issuer === 'NPS' || sender === 'NPS') {
     if (!named?.pran) return { action: 'skip', remember: false, reason: 'NPS file name has no PRAN' };
-    const owner = enabled.find(m => (m.pran || '') === named.pran);
+    const owner = enabled.find(m => pranMatches(m.pran, named.pran));
     if (owner) return { action: 'download', ownerId: owner.id };
+    // Protean often puts a short id in the file name. Open it and match the PAN inside.
+    if (enabled.length === 1 && (enabled[0].pran || enabled[0].casId)) return { action: 'download', ownerId: enabled[0].id };
     const anyRecorded = enabled.some(m => (m.pran || '').trim());
     if (!anyRecorded) return { action: 'skip', remember: false, reason: 'import one NPS statement by hand first' };
-    return { action: 'skip', remember: true, reason: 'PRAN does not match a member' };
+    return { action: 'skip', remember: false, reason: 'PRAN does not match a member' };
   }
 
   if (sender === 'NSDL' || sender === 'CAMS' || sender === 'KFINTECH') {
     const base = statementBasename(file.filename).toLowerCase();
-    if (/accountstatement|fatca|declaration|form\b|invoice|receipt/.test(base)) {
+    if (/accountstatement|fatca|declaration|form\b|invoice|receipt|capitalgain|q[1-4]_20|dfp\d/.test(base)) {
       return { action: 'skip', remember: true, reason: 'not a holdings statement' };
     }
     return { action: 'download' };
@@ -162,6 +164,14 @@ export function memberHasStatementId(member: MailMemberRef): boolean {
   return Boolean((member.casId || '').trim() || (member.pran || '').trim());
 }
 
+/** Filename ids are often the last 10 digits of a 12-digit PRAN. */
+export function pranMatches(profile?: string | null, fileId?: string | null): boolean {
+  const a = (profile || '').replace(/\D/g, '');
+  const b = (fileId || '').replace(/\D/g, '');
+  if (!a || !b) return false;
+  return a === b || a.endsWith(b) || b.endsWith(a);
+}
+
 /** YYYY-MM from an ISO period, or from a CDSL/NPS file name. */
 export const SYNC_FROM_MONTH = '2026-01';
 
@@ -213,9 +223,8 @@ export function filesForMember<T extends { filename: string }>(
       continue;
     }
     if (named?.pran) {
-      if ((member.pran || '') !== named.pran) {
-        older.push(file);
-        continue;
+      if (member.pran && !pranMatches(member.pran, named.pran)) {
+        // Keep it. Protean file names are often a short id; the PAN inside decides.
       }
       if (month && !isOnOrAfterSyncFloor(month)) {
         older.push(file);
