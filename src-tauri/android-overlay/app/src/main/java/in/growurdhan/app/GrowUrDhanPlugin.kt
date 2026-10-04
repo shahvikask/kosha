@@ -855,7 +855,11 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
         Thread {
             try {
                 val token = tokenFor(args.email)
-                invoke.resolve(JSObject.fromJSONObject(gmail.listPdfs(token, args.email, args.pageToken)))
+                val listed = if (args.pageToken.isBlank() && gmail.historyOf(args.email).isNotBlank())
+                    gmail.listSince(token, args.email)
+                else
+                    gmail.listPdfs(token, args.email, args.pageToken)
+                invoke.resolve(JSObject.fromJSONObject(listed))
             } catch (e: Exception) {
                 invoke.reject(e.message ?: "Could not look through Gmail.")
             }
@@ -881,7 +885,10 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
     @Command
     fun gmail_advance(invoke: Invoke) {
         val args = invoke.parseArgs(GmailEmailArgs::class.java)
-        if (args.done) gmail.advance(args.email) else gmail.savePage(args.email, args.pageToken)
+        if (args.done) {
+            gmail.advance(args.email)
+            gmail.saveHistory(args.email, args.historyId)
+        } else gmail.savePage(args.email, args.pageToken)
         val out = JSObject()
         out.put("ok", true)
         invoke.resolve(out)
@@ -993,6 +1000,8 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
         var pageToken: String = ""
         @JvmField
         var done: Boolean = false
+        @JvmField
+        var historyId: String = ""
     }
 
     @InvokeArg

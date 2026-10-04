@@ -44,6 +44,13 @@ class GmailClient(private val context: Context) {
 
     fun pageOf(email: String): String = prefs().getString("page.$email", "") ?: ""
 
+    fun historyOf(email: String): String = prefs().getString("history.$email", "") ?: ""
+
+    fun saveHistory(email: String, historyId: String) {
+        if (historyId.isBlank()) return
+        prefs().edit().putString("history.$email", historyId).remove("page.$email").apply()
+    }
+
     fun savePage(email: String, pageToken: String) {
         val edit = prefs().edit()
         if (pageToken.isBlank()) edit.remove("page.$email") else edit.putString("page.$email", pageToken)
@@ -63,6 +70,7 @@ class GmailClient(private val context: Context) {
             row.put("after", after)
             row.put("first", after.isEmpty())
             row.put("page", pageOf(email))
+            row.put("historyId", historyOf(email))
             accounts.put(row)
         }
         val out = JSONObject()
@@ -99,6 +107,44 @@ class GmailClient(private val context: Context) {
         out.put("ok", true)
         out.put("files", files)
         out.put("pageToken", listed.optString("nextPageToken"))
+        out.put("historyId", listed.optString("historyId"))
+        return out
+    }
+
+    /** Mail added since the last successful replace. A 404 means the cursor expired. */
+    fun listSince(token: String, email: String): JSONObject {
+        val start = historyOf(email)
+        if (start.isBlank()) return listPdfs(token, email, "")
+        val url = "https://gmail.googleapis.com/gmail/v1/users/me/history?maxResults=20&historyTypes=messageAdded&startHistoryId=" +
+            URLEncoder.encode(start, "UTF-8")
+        val listed = try {
+            JSONObject(httpGet(url, token))
+        } catch (e: IllegalStateException) {
+            if (e.message?.contains("(404)") == true) {
+                prefs().edit().remove("history.$email").apply()
+                return listPdfs(token, email, "")
+            }
+            throw e
+        }
+        val files = JSONArray()
+        val history = listed.optJSONArray("history")
+        if (history != null) {
+            for (i in 0 until history.length()) {
+                val added = history.getJSONObject(i).optJSONArray("messagesAdded") ?: continue
+                for (j in 0 until added.length()) {
+                    val id = added.getJSONObject(j).optJSONObject("message")?.optString("id").orEmpty()
+                    if (id.isBlank()) continue
+                    if (files.length() > 0) Thread.sleep(120)
+                    collectPdfs(token, id, files)
+                }
+            }
+        }
+        val out = JSONObject()
+        out.put("ok", true)
+        out.put("files", files)
+        out.put("pageToken", "")
+        out.put("historyId", listed.optString("historyId").ifBlank { start })
+        out.put("incremental", true)
         return out
     }
 

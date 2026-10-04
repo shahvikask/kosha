@@ -9,6 +9,7 @@ export interface GmailAccountStatus {
   after: string;
   first: boolean;
   page?: string;
+  historyId?: string;
 }
 
 interface ListedFile {
@@ -96,7 +97,9 @@ export async function runGmailSync(opts: {
   let failed = 0;
   let more = false;
   let waitingForId = false;
+  let npsWaiting = false;
   const importedAsOf = new Map<string, string>();
+  const replaced: string[] = [];
 
   const knownAsOf = (ownerId: string, fileType: string): string => {
     return importedAsOf.get(`${ownerId}|${fileType}`)
@@ -111,13 +114,15 @@ export async function runGmailSync(opts: {
     let finished = false;
     let held = false;
     let accountFailed = 0;
+    let historyId = account.historyId || '';
     const batch: ListedFile[] = [];
 
     while (pages < MAX_PAGES) {
-      const listed = await nativeCommand<{ files?: ListedFile[]; pageToken?: string }>('gmail_search', {
+      const listed = await nativeCommand<{ files?: ListedFile[]; pageToken?: string; historyId?: string }>('gmail_search', {
         email: account.email,
         pageToken,
       });
+      if (listed.historyId) historyId = listed.historyId;
       for (const file of listed.files || []) {
         if (await opts.seen(file.messageId, file.attachmentId)) {
           skipped += 1;
@@ -125,7 +130,11 @@ export async function runGmailSync(opts: {
         }
         const decision = decideStatementMail(file, opts.members);
         if (decision.action === 'skip') {
-          if (decision.remember) {
+          const named = classifyStatementFilename(file.filename);
+          if (named?.pran && !opts.members.some(m => m.pran === named.pran)) {
+            npsWaiting = true;
+            held = true;
+          } else if (decision.remember) {
             await opts.markSeen(file.messageId, file.attachmentId, file.filename, '');
           } else {
             held = true;
@@ -174,6 +183,15 @@ export async function runGmailSync(opts: {
       const fileMonth = statementMonthKey(file.filename);
       const named = classifyStatementFilename(file.filename);
       const decision = decideStatementMail(file, opts.members);
+      if (decision.action === 'download' && decision.ownerId && fileMonth) {
+        const fileType = named?.issuer || issuerFromSender(file.from) || '';
+        const have = knownAsOf(decision.ownerId, fileType);
+        if (have && fileMonth < have.slice(0, 7)) {
+          await opts.markSeen(file.messageId, file.attachmentId, file.filename, decision.ownerId);
+          skipped += 1;
+          continue;
+        }
+      }
       if (decision.action !== 'download') continue;
       const likelyType = named?.issuer || issuerFromSender(file.from) || '';
       const likelyOwner = decision.ownerId;
@@ -222,8 +240,12 @@ export async function runGmailSync(opts: {
             pdfGrandTotal: parsed.pdfTotals?.grand ?? parsed.summary.totalValuation ?? 0,
             parsedGrandTotal: parsed.parsedTotals?.holdingsValue ?? parsed.summary.totalValuation ?? 0,
             complete: parsed.parseComplete === true,
+            closeHoldingIds: opts.casLatest?.byOwner[member.id]?.[fileType]?.holdingIds,
           };
           await opts.importStatementRecords(parsed.importRecords, member.id, 'REPLACE_SNAPSHOT', meta);
+          const month = (parsed.periodTo || fileMonth || '').slice(0, 7);
+          const count = parsed.holdings?.length || parsed.importRecords.length;
+          replaced.push(`Replaced ${fileType} book with ${month || 'the newest statement'}, ${count} holdings.`);
           const patch: Partial<FamilyMember> = {};
           if (named?.casId && !member.casId) {
             patch.casId = named.casId;
@@ -258,8 +280,8 @@ export async function runGmailSync(opts: {
     }
 
     if (held) waitingForId = true;
-    if (finished && !held && !deferred && accountFailed === 0) {
-      await nativeCommand('gmail_advance', { email: account.email, done: true });
+    if (finished && !held && !deferred && accountFailed === 0 && historyId) {
+      await nativeCommand('gmail_advance', { email: account.email, done: true, historyId });
     } else if (held || deferred) {
       await nativeCommand('gmail_advance', { email: account.email, done: false, pageToken: startPage });
       more = true;
@@ -272,12 +294,13 @@ export async function runGmailSync(opts: {
     }
   }
 
-  const tail = waitingForId
-    ? ' Enter a CAS ID or PRAN on the profile, or import one statement by hand, then sync again.'
-    : more
-      ? ' More mail is still there. Tap sync again.'
-      : '';
-  const summary = `Imported ${imported}. Skipped ${skipped}. Could not open ${failed}.${tail}`;
+  const tail = [
+    npsWaiting ? 'NPS is waiting for a PRAN on the profile.' : '',
+    waitingForId ? 'Enter a CAS ID or PRAN, or import one statement by hand, then sync again.' : '',
+    more ? 'More mail is still there. Tap sync again.' : '',
+    failed ? `Could not open ${failed}.` : '',
+  ].filter(Boolean).join(' ');
+  const summary = replaced.length ? `${replaced.join(' ')} ${tail}`.trim() : `Imported ${imported}. Skipped ${skipped}. ${tail}`.trim();
   return summary;
   } finally {
     window.dispatchEvent(new CustomEvent('gud-gmail-sync', { detail: false }));
