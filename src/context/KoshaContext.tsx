@@ -1423,8 +1423,13 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const prevIds = Array.isArray(casMeta.closeHoldingIds)
             ? casMeta.closeHoldingIds
             : casLatest.byOwner[effectiveOwnerId]?.[casMeta.fileType]?.holdingIds || [];
+        const namesInFile = new Set(snapshotLines.map(l => l.holdingName.trim().toLowerCase()));
+        const closable = prevIds.filter(id => {
+          const h = currentWorkingHoldings.find(x => x.id === id);
+          return !h || !namesInFile.has(h.name.trim().toLowerCase());
+        });
         snapshotLines.push(
-          ...snapshotLinesToClose(prevIds, snapshotLines, currentWorkingHoldings, statementDate, ledgerEvents)
+          ...snapshotLinesToClose(closable, snapshotLines, currentWorkingHoldings, statementDate, ledgerEvents)
         );
       }
 
