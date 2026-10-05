@@ -1501,6 +1501,20 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setLedgerEvents(prev => [...newEventsToCommit, ...prev]);
     }
 
+    // A statement line must have a holding row. Events without one show as
+    // "no longer listed" and drop out of the total.
+    if (repo) {
+      const needed = new Set(newEventsToCommit.map(e => e.holdingId));
+      for (const h of currentWorkingHoldings) {
+        if (!needed.has(h.id)) continue;
+        try {
+          await repo.upsertHolding(h);
+        } catch {
+          await repo.upsertHolding({ ...h, accountId: undefined });
+        }
+      }
+    }
+
     const sanitized = sanitizeAndDeduplicateHoldings(currentWorkingHoldings);
     setHoldings(sanitized.holdings);
 
