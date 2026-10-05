@@ -102,8 +102,11 @@ export async function runGmailSync(opts: {
   const replaced: string[] = [];
 
   const knownAsOf = (ownerId: string, fileType: string): string => {
+    const member = opts.members.find(m => m.id === ownerId);
+    const fromProfile = fileType === 'NPS' ? member?.pranSyncAfter : member?.casSyncAfter;
     return importedAsOf.get(`${ownerId}|${fileType}`)
       || opts.casLatest?.byOwner[ownerId]?.[fileType as CasFileType]?.periodTo
+      || fromProfile
       || '';
   };
 
@@ -255,14 +258,14 @@ export async function runGmailSync(opts: {
           if (named?.casId && !member.casId) {
             patch.casId = named.casId;
             patch.casIdSource = 'import';
-            if (parsed.periodTo) patch.casSyncAfter = parsed.periodTo;
           }
           if (named?.pran && !member.pran) {
             patch.pran = named.pran;
             patch.pranSource = 'import';
-            if (parsed.periodTo) patch.pranSyncAfter = parsed.periodTo;
           }
-          if (patch.casId || patch.pran) await opts.updateFamilyMember(member.id, patch);
+          if (fileType === 'NPS' && parsed.periodTo) patch.pranSyncAfter = parsed.periodTo;
+          if (fileType !== 'NPS' && parsed.periodTo) patch.casSyncAfter = parsed.periodTo;
+          if (patch.casId || patch.pran || patch.casSyncAfter || patch.pranSyncAfter) await opts.updateFamilyMember(member.id, patch);
           if (parsed.periodTo) importedAsOf.set(`${member.id}|${fileType}`, parsed.periodTo);
           await opts.markSeen(file.messageId, file.attachmentId, file.filename, member.id);
           imported += 1;
