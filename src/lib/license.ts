@@ -81,7 +81,6 @@ export function daysRemaining(trialStartedAt: string, now = new Date()): number 
 
 export function derivePlan(input: {
   lifetime: boolean;
-  gmail: boolean;
   supportActive: boolean;
   trialStartedAt: string | null;
   now?: Date;
