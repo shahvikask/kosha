@@ -33,7 +33,7 @@
     ],
     "android": {
       "minSdkVersion": 26,
-      "versionCode": 2001
+      "versionCode": 2003
     }
   }
 }
