@@ -7,7 +7,7 @@ import { maskPan } from '../../lib/vault';
 import { suggestedBackupName } from '../../lib/backup';
 import { saveBackupFile, pickBackupFile } from '../../lib/backupIo';
 import { useLicence } from '../../context/LicenseContext';
-import { formatInr, isNativeShell, nativeCommand, PRICE_INR } from '../../lib/license';
+import { formatInr, gmailSyncAllowed, isNativeShell, nativeCommand, PRICE_INR } from '../../lib/license';
 import { rateOnGooglePlay } from '../../lib/feedback';
 import {
   readBackupSchedule,
@@ -783,7 +783,7 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
                       .finally(() => setGmailBusy(false));
                   }}
                 >
-                  {gmailAccounts.length ? 'Add another Gmail' : 'Connect Gmail'}
+                  {gmailSyncAllowed(licence.state) ? (gmailAccounts.length ? 'Add another Gmail' : 'Connect Gmail') : 'Gmail sync is a paid upgrade'}
                 </button>
                 <button
                   type="button"
@@ -830,10 +830,14 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
           <div className="font-bold">Licence</div>
           <p className="text-xs leading-relaxed" style={{ color: 'var(--muted)' }}>
             {licence.state.lifetime
-              ? licence.state.supportActive
-                ? 'Lifetime plus support. Enhancements stay on.'
-                : `Lifetime licence on this Play account. Support is optional at ${formatInr(PRICE_INR.supportAnnual)} / year.`
-              : `Trial: ${licence.state.daysLeft} days left. Lifetime ${formatInr(PRICE_INR.lifetime)} is required first. Optional support ${formatInr(PRICE_INR.supportAnnual)} / year after that.`}
+              ? licence.state.gmail
+                ? licence.state.supportActive
+                  ? 'Gmail sync licence and annual service are on. The perpetual licence stays if you cancel the annual service.'
+                  : `Gmail sync licence is on. Annual service is optional at ${formatInr(PRICE_INR.supportAnnual)} / year for security updates and improvements.`
+                : licence.state.supportActive
+                  ? `Manual licence and annual service are on. Gmail sync is a one-time ${formatInr(PRICE_INR.gmailUpgrade)} upgrade.`
+                  : `Manual licence is on. Gmail sync is a one-time ${formatInr(PRICE_INR.gmailUpgrade)} upgrade. Annual service is ${formatInr(PRICE_INR.supportAnnual)} / year.`
+              : `Trial: ${licence.state.daysLeft} days left. Manual licence ${formatInr(PRICE_INR.lifetime)}, or ${formatInr(PRICE_INR.gmail)} with Gmail sync. Annual service ${formatInr(PRICE_INR.supportAnnual)} / year after a perpetual licence.`}
           </p>
           <div className="flex flex-wrap gap-3 text-xs font-semibold" style={{ color: 'var(--accent)' }}>
             <button type="button" onClick={() => void rateOnGooglePlay()} className="inline-flex items-center gap-1">
