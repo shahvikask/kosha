@@ -19,6 +19,12 @@ if (!existsSync(android)) {
   process.exit(1);
 }
 
+// android init copies Tauri's default loop icon. Replace it with the brand mark.
+execSync('npx tauri icon src-tauri/icons/icon.png --ios-color "#07131f"', {
+  cwd: root,
+  stdio: 'inherit',
+});
+
 const PLUGIN_MANAGEMENT_GROOVY = `pluginManagement {
     repositories {
         google()
