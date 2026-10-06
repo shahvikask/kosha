@@ -217,7 +217,7 @@ export const AuthScreen: React.FC = () => {
 
       <div className="relative z-10 w-full max-w-md">
         <div className="flex justify-center mb-6">
-          <BrandLogo size="lg" />
+          <BrandLogo size="lg" layout="stack" />
         </div>
         <div className="card p-6 sm:p-8 space-y-4">
           <div>
