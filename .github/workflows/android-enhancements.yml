@@ -1,9 +1,9 @@
 name: GrowUrDhan support-channel notes
 
-# Play delivers one AAB to every installer. Security patches always ship.
-# This workflow only records enhancement notes for people who hold the
-# annual support subscription. The app gates those features in licence.ts
-# (enhancementsEnabled). It does not hide security fixes.
+# Play delivers one AAB to every installer, including after the annual
+# service lapses or is cancelled. That update still installs.
+# New features inside it unlock only while gud_support_annual is active
+# (or during the 30-day trial). licence.ts enhancementsEnabled is the gate.
 
 on:
   push:

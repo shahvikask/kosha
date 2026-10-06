@@ -241,7 +241,12 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
         queryKind(client, BillingClient.ProductType.INAPP) { inapp ->
             val owned = inapp.filter { it.purchaseState == Purchase.PurchaseState.PURCHASED }
             acknowledgeAll(client, owned)
-            result.put("lifetime", owned.any { it.products.contains("gud_lifetime") })
+            val ids = owned.flatMap { it.products }.toSet()
+            val manual = ids.contains("gud_lifetime")
+            val gmailDirect = ids.contains("gud_gmail")
+            val gmailUpgrade = ids.contains("gud_gmail_upgrade")
+            result.put("lifetime", manual || gmailDirect || gmailUpgrade)
+            result.put("gmail", gmailDirect || gmailUpgrade)
             queryKind(client, BillingClient.ProductType.SUBS) { subs ->
                 val live = subs.filter { it.purchaseState == Purchase.PurchaseState.PURCHASED }
                 acknowledgeAll(client, live)
@@ -268,13 +273,29 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
         if (!installedFromPlay()) {
             return invoke.reject("Install GrowUrDhan from Google Play to buy a licence.")
         }
-        if (args.sku == "gud_support_annual") {
+        if (args.sku == "gud_support_annual" || args.sku == "gud_lifetime" || args.sku == "gud_gmail" || args.sku == "gud_gmail_upgrade") {
             queryKind(client, BillingClient.ProductType.INAPP) { inapp ->
-                val hasLifetime = inapp.any {
-                    it.purchaseState == Purchase.PurchaseState.PURCHASED && it.products.contains("gud_lifetime")
+                val ids = inapp.filter { it.purchaseState == Purchase.PurchaseState.PURCHASED }
+                    .flatMap { it.products }.toSet()
+                val manual = ids.contains("gud_lifetime")
+                val gmailDirect = ids.contains("gud_gmail")
+                val gmailUpgrade = ids.contains("gud_gmail_upgrade")
+                val perpetual = manual || gmailDirect || gmailUpgrade
+                val gmailOn = gmailDirect || gmailUpgrade
+                if (args.sku == "gud_support_annual" && !perpetual) {
+                    invoke.reject("Buy a perpetual licence first. The annual service cannot be purchased on its own.")
+                    return@queryKind
                 }
-                if (!hasLifetime) {
-                    invoke.reject("Buy the \u20b9249 lifetime licence first. Support cannot be purchased on its own.")
+                if (args.sku == "gud_lifetime" && perpetual) {
+                    invoke.reject("A perpetual licence is already on this Play account.")
+                    return@queryKind
+                }
+                if (args.sku == "gud_gmail" && (manual || gmailOn)) {
+                    invoke.reject(if (gmailOn) "Gmail sync is already on this Play account." else "The ₹499 licence is closed. Use the ₹250 upgrade.")
+                    return@queryKind
+                }
+                if (args.sku == "gud_gmail_upgrade" && (!manual || gmailOn)) {
+                    invoke.reject(if (!manual) "Buy the ₹249 licence before the ₹250 upgrade." else "Gmail sync is already on this Play account.")
                     return@queryKind
                 }
                 launchBuy(invoke, client, args)

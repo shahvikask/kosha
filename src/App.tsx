@@ -21,6 +21,7 @@ import { FeedbackPrompt } from './components/screens/FeedbackPrompt';
 import { markOnboardingSeen } from './lib/onboarding';
 import { maybeRunScheduledBackup } from './lib/backupSchedule';
 import { runGmailSync } from './lib/gmailSync';
+import { gmailSyncAllowed } from './lib/license';
 import { setTermsDeclineHandler } from './lib/terms';
 import { claimFeedbackPrompt, loadFeedbackState } from './lib/feedback';
 import { AUTO_LOCK_MS, installFileInputPickerGuard, isNativePickerOpen } from './lib/autoLock';
@@ -83,6 +84,7 @@ const KoshaMainApp: React.FC = () => {
 
   useEffect(() => {
     if (!account || !unlocked || !dbReady) return;
+    if (!gmailSyncAllowed(licence.state)) return;
     let once = false;
     try { once = localStorage.getItem('gud.gmailSyncedOnce') === '1'; } catch { once = false; }
     if (!once) return;
@@ -95,7 +97,7 @@ const KoshaMainApp: React.FC = () => {
       seen: gmailFileSeen,
       markSeen: markGmailFileSeen,
     }).catch(() => undefined);
-  }, [account, unlocked, dbReady]);
+  }, [account, unlocked, dbReady, licence.state]);
 
   useEffect(() => {
     setPriceBannerDismissed(false);
