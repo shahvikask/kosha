@@ -4,6 +4,9 @@ import {
   LicenceState,
   PRICE_INR,
   canPurchaseSupport,
+  canPurchaseLifetime,
+  canPurchaseGmailDirect,
+  canPurchaseGmailUpgrade,
   formatInr,
   purchaseLifetime,
   purchaseGmailPlan,
@@ -45,60 +48,66 @@ export const LicenseScreen: React.FC<LicenseScreenProps> = ({ state, onChange })
             <Lock className="w-5 h-5" />
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">
-            {state.sideloadBlocked ? 'This copy cannot be licensed' : expired ? 'Your 30-day trial has ended' : 'Two licences. In that order.'}
+            {state.sideloadBlocked ? 'This copy cannot be licensed' : expired ? 'Your 30-day trial has ended' : 'Choose a licence'}
           </h1>
           <p className="text-sm leading-relaxed" style={{ color: 'var(--muted)' }}>
             {state.sideloadBlocked
               ? 'This copy was not installed from Google Play. A copied APK cannot carry a licence — it lives on the Play account that bought it.'
-              : expired
-              ? 'The vault is still on this phone. Buy the ₹249 lifetime licence through Google Play. Annual support is optional after that.'
-              : `Trial: ${state.daysLeft} day${state.daysLeft === 1 ? '' : 's'} left. After that, a one-time ₹249 licence is required. Support at ₹299 / year can be added only once you hold that licence.`}
+              : 'The trial included every feature, including Gmail sync. A ₹249 licence keeps the vault and turns Gmail off. ₹499 keeps Gmail. After ₹249, only the ₹250 upgrade turns Gmail back on. The ₹199 yearly service is what unlocks new features. The app update itself still installs if that year ends.'}
           </p>
         </div>
 
         {!state.sideloadBlocked && (
         <div className="space-y-3">
-          {!state.lifetime ? (
+          {canPurchaseLifetime(state) && (
             <PlanCard
               featured
-              eyebrow="1 · Required"
+              eyebrow="Manual"
               title={`Lifetime licence · ${formatInr(PRICE_INR.lifetime)}`}
-              body="Pay once. Opens the vault for life on any phone signed into this Play account. Does not include support, enhancement drops, or a patches channel."
+              body="Pay once. The vault stays open. Gmail sync turns off, even if you used it during the trial. The ₹499 Gmail licence is then closed. You can add Gmail later for ₹250."
               cta={busy === 'a' ? 'Opening Play…' : `Buy ${formatInr(PRICE_INR.lifetime)}`}
               disabled={Boolean(busy)}
               onClick={() => run('a', purchaseLifetime)}
             />
-          ) : state.gmail ? null : (
-            <div className="p-4 rounded-3xl border space-y-1" style={{ borderColor: 'var(--border)', background: 'var(--card)' }}>
-              <div className="text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: 'var(--good)' }}>Manual licence owned</div>
-              <p className="text-sm font-semibold">₹249 perpetual licence is on this Play account. Gmail sync is not included.</p>
-            </div>
           )}
-          {!state.gmail && (
+          {canPurchaseGmailDirect(state) && (
             <PlanCard
-              featured={state.lifetime}
-              eyebrow={state.lifetime ? 'Upgrade' : 'Gmail sync'}
-              title={state.lifetime
-                ? `Add Gmail sync · ${formatInr(PRICE_INR.gmailUpgrade)}`
-                : `Gmail sync licence · ${formatInr(PRICE_INR.gmail)}`}
-              body={state.lifetime
-                ? 'You already have the ₹249 manual licence. Pay the ₹250 difference to turn on Gmail statement sync. This is a one-time upgrade, not a subscription.'
-                : 'One-time ₹499. Includes the perpetual licence and Gmail statement sync. The ₹249 manual plan is not required if you buy this.'}
-              cta={busy === 'g' ? 'Opening Play…' : state.lifetime ? `Pay difference ${formatInr(PRICE_INR.gmailUpgrade)}` : `Buy ${formatInr(PRICE_INR.gmail)}`}
+              featured
+              eyebrow="Gmail sync"
+              title={`Gmail sync licence · ${formatInr(PRICE_INR.gmail)}`}
+              body="Pay once. Includes the perpetual licence and Gmail sync. The ₹249 licence and the ₹250 upgrade are not offered after this."
+              cta={busy === 'g' ? 'Opening Play…' : `Buy ${formatInr(PRICE_INR.gmail)}`}
               disabled={Boolean(busy)}
               onClick={() => run('g', purchaseGmailPlan)}
             />
           )}
+          {canPurchaseGmailUpgrade(state) && (
+            <PlanCard
+              featured
+              eyebrow="Upgrade"
+              title={`Add Gmail sync · ${formatInr(PRICE_INR.gmailUpgrade)}`}
+              body="The ₹249 licence is already on this Play account, so the ₹499 product stays closed. ₹250 turns Gmail sync back on."
+              cta={busy === 'g' ? 'Opening Play…' : `Pay difference ${formatInr(PRICE_INR.gmailUpgrade)}`}
+              disabled={Boolean(busy)}
+              onClick={() => run('g', purchaseGmailPlan)}
+            />
+          )}
+          {state.lifetime && !state.gmail && (
+            <div className="p-4 rounded-3xl border space-y-1" style={{ borderColor: 'var(--border)', background: 'var(--card)' }}>
+              <div className="text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: 'var(--good)' }}>Manual licence owned</div>
+              <p className="text-sm font-semibold">₹249 is on this Play account. Gmail sync is off.</p>
+            </div>
+          )}
           {state.gmail && (
             <div className="p-4 rounded-3xl border space-y-1" style={{ borderColor: 'var(--border)', background: 'var(--card)' }}>
               <div className="text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: 'var(--good)' }}>Gmail sync owned</div>
-              <p className="text-sm font-semibold">Perpetual licence with Gmail sync is on this Play account.</p>
+              <p className="text-sm font-semibold">Perpetual licence with Gmail sync is on. The ₹249 and ₹250 products stay closed.</p>
             </div>
           )}
           {state.supportActive ? (
             <div className="p-4 rounded-3xl border space-y-1" style={{ borderColor: 'var(--border)', background: 'var(--card)' }}>
               <div className="text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: 'var(--good)' }}>Support active</div>
-              <p className="text-sm font-semibold">Annual support is on. Cancel in Google Play; it runs until the period ends. The lifetime licence stays.</p>
+              <p className="text-sm font-semibold">Annual service is on. New features stay available until this paid year ends, including after you cancel. The perpetual licence stays either way.</p>
             </div>
           ) : (
             <PlanCard
@@ -107,8 +116,8 @@ export const LicenseScreen: React.FC<LicenseScreenProps> = ({ state, onChange })
               title={`Annual service · ${formatInr(PRICE_INR.supportAnnual)} / year`}
               body={
                 state.lifetime
-                  ? 'Yearly recurring service for security updates, enhancements, and app improvements. Google Play bills ₹199 each year until you cancel. The perpetual licence stays.'
-                  : 'Buy a perpetual licence first (₹249 manual, or ₹499 with Gmail sync). The annual service cannot be purchased on its own.'
+                  ? 'While this year is paid, new features and improvements stay on. If you cancel, they stay until the paid period ends, then they lock. The app update still installs, and the perpetual licence stays.'
+                  : 'Buy a perpetual licence first. The annual service cannot be purchased on its own. Without it, app updates still install, but new features stay off.'
               }
               cta={
                 !canPurchaseSupport(state)

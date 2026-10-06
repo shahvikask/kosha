@@ -3,7 +3,7 @@ import { derivePositions, openingBalanceFor, marketValueMinor } from './position
 import { ruleSetFor, classifyGain, isEquityOriented, grandfatheredCostMinor, applyRateMinor } from './taxRules';
 import { encryptJson, decryptJson, isEncryptedBlob, generateRecoveryKey, maskPan, WrongPassphraseError } from './vault';
 import { packBackup, unpackBackup, verifyRestoreIdentity, isBinaryBackup, looksLikePlainJsonBackup, BACKUP_KIND, VaultBackup, suggestedScheduledBackupName, suggestedBackupName } from './backup';
-import { derivePlan, daysRemaining, TRIAL_DAYS, PRICE_INR, appUnlocked, enhancementsEnabled, canPurchaseSupport } from './license';
+import { derivePlan, daysRemaining, TRIAL_DAYS, PRICE_INR, appUnlocked, enhancementsEnabled, canPurchaseSupport, canPurchaseLifetime, canPurchaseGmailDirect, canPurchaseGmailUpgrade, gmailSyncAllowed, inTrial } from './license';
 import {
   FEEDBACK_FIRST_DELAY_DAYS,
   FEEDBACK_SNOOZE_DAYS,
@@ -458,7 +458,8 @@ eq('paused posts nothing', paused, null);
 const skipped = planEmiCatchUp(loan, '2026-09-09', ['2026-07-05']);
 eq('skips already posted Jul', skipped && skipped.events.map(e => e.eventDate).join(','), '2026-08-05,2026-09-05');
 eq('resume jumps past gap', resumeEmiDate('2026-07-05', '2026-09-09'), '2026-10-05');
-const emiUp = upcomingFromHoldings([{ ...loan, nextCouponDate: '2026-10-05' }], []);
+const emiSoon = new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10);
+const emiUp = upcomingFromHoldings([{ ...loan, nextCouponDate: emiSoon }], []);
 eq('upcoming EMI not gold-bond', emiUp.some(i => i.kind === 'EMI' && i.title.includes('HDFC Car Loan')), true);
 
 console.log('\n--- P. Import PAN must match the selected member ---');
@@ -1169,6 +1170,18 @@ console.log('\n--- H. Encryption ---');
   eq('sideload with lifetime open', appUnlocked({ plan: 'lifetime', lifetime: true, gmail: false, supportActive: false, daysLeft: 0, trialStartedAt: null, trialEndsAt: null, supportRenewsAt: null, playAccountBound: true, sideloadBlocked: true, source: 'play' }), true);
   eq('support blocked without lifetime', canPurchaseSupport({ plan: 'trial', lifetime: false, gmail: false, supportActive: false, daysLeft: 30, trialStartedAt: new Date().toISOString(), trialEndsAt: null, supportRenewsAt: null, playAccountBound: false, sideloadBlocked: false, source: 'preview' }), false);
   eq('support allowed after lifetime', canPurchaseSupport({ plan: 'lifetime', lifetime: true, gmail: false, supportActive: false, daysLeft: 0, trialStartedAt: null, trialEndsAt: null, supportRenewsAt: null, playAccountBound: true, sideloadBlocked: false, source: 'play' }), true);
+  const trialState = { plan: 'trial' as const, lifetime: false, gmail: false, supportActive: false, daysLeft: 20, trialStartedAt: new Date().toISOString(), trialEndsAt: null, supportRenewsAt: null, playAccountBound: false, sideloadBlocked: false, source: 'play' as const };
+  eq('trial has every feature', inTrial(trialState) && gmailSyncAllowed(trialState) && enhancementsEnabled(trialState), true);
+  const manual = { plan: 'lifetime' as const, lifetime: true, gmail: false, supportActive: false, daysLeft: 0, trialStartedAt: null, trialEndsAt: null, supportRenewsAt: null, playAccountBound: true, sideloadBlocked: false, source: 'play' as const };
+  eq('249 turns gmail off', gmailSyncAllowed(manual), false);
+  eq('249 closes the 499 product', canPurchaseGmailDirect(manual), false);
+  eq('249 offers the 250 upgrade', canPurchaseGmailUpgrade(manual), true);
+  eq('249 hides itself', canPurchaseLifetime(manual), false);
+  const gmailPlan = { ...manual, gmail: true };
+  eq('499 keeps gmail on', gmailSyncAllowed(gmailPlan), true);
+  eq('499 closes 249 and 250', !canPurchaseLifetime(gmailPlan) && !canPurchaseGmailUpgrade(gmailPlan) && !canPurchaseGmailDirect(gmailPlan), true);
+  eq('lapsed annual locks new features', enhancementsEnabled(manual), false);
+  eq('paid annual opens new features', enhancementsEnabled({ ...manual, supportActive: true, plan: 'lifetime_support' }), true);
   eq('envelope magic', encTest.MAGIC, 'GUDENC01');
   const wrapSalt = crypto.getRandomValues(new Uint8Array(16));
   const wrapKey = await encTest.deriveDeviceKey(wrapSalt);
@@ -1178,8 +1191,8 @@ console.log('\n--- H. Encryption ---');
   eq('envelope round trip', new TextDecoder().decode(unwrapped), 'vault-bytes');
 
   console.log('\n--- Z. Terms and backup schedule ---');
-  eq('terms version dated', TERMS_VERSION, '2026-10-05');
-  eq('terms text id stable', TERMS_TEXT_ID, 'GUD-TOS-2026-10-05-v3');
+  eq('terms version dated', TERMS_VERSION, '2026-10-06');
+  eq('terms text id stable', TERMS_TEXT_ID, 'GUD-TOS-2026-10-06-v4');
   eq('terms has 21 sections', TERMS_SECTIONS.length, 21);
   const tos = termsPlainText();
   eq('no personal name in terms', /Vikas Shah/i.test(tos), false);

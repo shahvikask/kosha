@@ -134,6 +134,7 @@ fn vault_blob_save(app: AppHandle, bytes_b64: String) -> Result<(), String> {
 fn play_licence_status() -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({
         "lifetime": false,
+        "gmail": false,
         "supportActive": false,
         "integrity": false,
         "trialStartedAt": serde_json::Value::Null

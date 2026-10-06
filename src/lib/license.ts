@@ -272,8 +272,10 @@ export async function loadLicence(now = new Date()): Promise<LicenceState> {
   if (isNativeShell()) {
     try {
       const remote = await nativeCommand<Partial<LicenceState> & { ok?: boolean; integrity?: boolean }>('play_licence_status');
-      const lifetime = Boolean(remote.lifetime);
-      const gmail = Boolean(remote.gmail) || lifetime && Boolean((remote as { gmailSku?: boolean }).gmailSku);
+      const ownsManual = Boolean(remote.lifetime);
+      const ownsGmail = Boolean(remote.gmail);
+      const lifetime = ownsManual || ownsGmail;
+      const gmail = ownsGmail;
       const supportActive = Boolean(remote.supportActive);
       const trialStartedAt = remote.trialStartedAt || now.toISOString();
       const derived = derivePlan({ lifetime, supportActive, trialStartedAt, now });
@@ -283,7 +285,7 @@ export async function loadLicence(now = new Date()): Promise<LicenceState> {
         ...derived,
         trialStartedAt,
         lifetime,
-        gmail: Boolean(remote.gmail),
+        gmail,
         supportActive,
         supportRenewsAt: remote.supportRenewsAt || null,
         playAccountBound: lifetime || supportActive,
@@ -298,8 +300,13 @@ export async function loadLicence(now = new Date()): Promise<LicenceState> {
 }
 
 export async function purchaseLifetime(): Promise<LicenceState> {
+  const current = await loadLicence();
+  if (!canPurchaseLifetime(current)) {
+    throw new Error('The ₹249 licence is not available. The Gmail licence already includes perpetual access.');
+  }
   if (isTestApk() || !isNativeShell()) {
     localStorage.setItem(LS_LIFETIME, '1');
+    localStorage.removeItem(LS_GMAIL);
     return loadLicence();
   }
   await nativeCommand('play_purchase', { sku: SKU_LIFETIME });
@@ -309,7 +316,16 @@ export async function purchaseLifetime(): Promise<LicenceState> {
 export async function purchaseGmailPlan(): Promise<LicenceState> {
   const current = await loadLicence();
   if (current.gmail) return current;
+  if (!current.lifetime && !canPurchaseGmailDirect(current)) {
+    throw new Error('The ₹499 Gmail licence is not available after the ₹249 licence. Use the ₹250 upgrade.');
+  }
   const upgrade = current.lifetime;
+  if (!upgrade && !canPurchaseGmailDirect(current)) {
+    throw new Error('The ₹499 Gmail licence is not available on this account.');
+  }
+  if (upgrade && !canPurchaseGmailUpgrade(current)) {
+    throw new Error('The ₹250 Gmail upgrade is only for an account that already holds the ₹249 licence.');
+  }
   if (isTestApk() || !isNativeShell()) {
     localStorage.setItem(LS_LIFETIME, '1');
     localStorage.setItem(LS_GMAIL, '1');
@@ -341,8 +357,14 @@ export async function restorePurchases(): Promise<LicenceState> {
   return loadLicence();
 }
 
+export function inTrial(state: LicenceState): boolean {
+  return state.plan === 'trial' && state.daysLeft > 0;
+}
+
+/** New features stay on during the trial and while the annual subscription is paid. */
 export function enhancementsEnabled(state: LicenceState): boolean {
-  return state.supportActive && (state.lifetime || state.plan === 'lifetime_support');
+  if (inTrial(state)) return true;
+  return state.supportActive && state.lifetime;
 }
 
 export function appUnlocked(state: LicenceState): boolean {
@@ -352,11 +374,29 @@ export function appUnlocked(state: LicenceState): boolean {
 
 /** Annual service is sold only after a perpetual licence is on this Play account. */
 export function canPurchaseSupport(state: LicenceState): boolean {
-  return state.lifetime && !state.sideloadBlocked;
+  return state.lifetime && !state.sideloadBlocked && !state.supportActive;
 }
 
-/** Gmail sync is the ₹499 plan, or ₹249 plus the ₹250 upgrade. Test APKs stay open. */
+/** ₹249 is hidden once any perpetual product, including the ₹499 Gmail licence, is owned. */
+export function canPurchaseLifetime(state: LicenceState): boolean {
+  return !state.lifetime && !state.gmail && !state.sideloadBlocked;
+}
+
+/** ₹499 is only for a first purchase. After ₹249, the ₹250 upgrade is the only Gmail product. */
+export function canPurchaseGmailDirect(state: LicenceState): boolean {
+  return !state.lifetime && !state.gmail && !state.sideloadBlocked;
+}
+
+export function canPurchaseGmailUpgrade(state: LicenceState): boolean {
+  return state.lifetime && !state.gmail && !state.sideloadBlocked;
+}
+
+/**
+ * Trial includes Gmail. After the trial, Gmail stays off on the ₹249 licence
+ * until gud_gmail_upgrade is owned, and on when gud_gmail or the upgrade is owned.
+ */
 export function gmailSyncAllowed(state: LicenceState): boolean {
-  if (isTestApk()) return true;
-  return state.lifetime && state.gmail && !state.sideloadBlocked;
+  if (state.sideloadBlocked && !state.lifetime) return false;
+  if (inTrial(state)) return true;
+  return state.lifetime && state.gmail;
 }
