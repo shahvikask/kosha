@@ -128,6 +128,7 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
   const [formCasId, setFormCasId] = useState('');
   const [formPran, setFormPran] = useState('');
   const [idPrompt, setIdPrompt] = useState('');
+  const [gmailPromptFor, setGmailPromptFor] = useState<string | null>(null);
   const [formColor, setFormColor] = useState('#0284c7');
   const [formNotes, setFormNotes] = useState('');
   const [deletingMember, setDeletingMember] = useState<FamilyMember | null>(null);
@@ -174,6 +175,7 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
     setFormCasId('');
     setFormPran('');
     setIdPrompt('');
+    setGmailPromptFor(null);
     setFormColor(COLOR_PALETTE[familyMembers.length % COLOR_PALETTE.length].hex);
     setFormNotes('');
     setIsFormOpen(true);
@@ -190,6 +192,7 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
     setFormCasId(member.casId || '');
     setFormPran(member.pran || '');
     setIdPrompt('');
+    setGmailPromptFor(null);
     setFormColor(member.color || '#0284c7');
     setFormNotes(member.notes || '');
     setIsFormOpen(true);
@@ -222,6 +225,9 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
           pranSource: formPran.trim() ? 'profile' : undefined,
           casSyncAfter: formCasId.trim() ? undefined : editingMember.casSyncAfter,
           pranSyncAfter: formPran.trim() ? undefined : editingMember.pranSyncAfter,
+          gmailSync: gmailPromptFor === editingMember.id && Boolean(formCasId.trim() || formPran.trim())
+            ? true
+            : editingMember.gmailSync,
         });
         setNotification({ type: 'success', message: `Saved ${formName.trim()}.` });
       } else {
@@ -746,7 +752,8 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
                   }
                   if (!member.gmailSync && !member.casId && !member.pran) {
                     handleOpenEditModal(member);
-                    setIdPrompt('Enter a CAS ID or PRAN, or leave both blank and import one statement by hand. Sync stays off until one of those is done.');
+                    setGmailPromptFor(member.id);
+                    setIdPrompt('Enter a CAS ID or PRAN, or leave both blank and import one statement by hand. Sync turns on when you save an id.');
                     return;
                   }
                   void updateFamilyMember(member.id, { gmailSync: !member.gmailSync });
@@ -783,7 +790,7 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
                     }
                     setGmailBusy(true);
                     setGmailNote(null);
-                    void connectGmail()
+                    void connectGmail(gmailAccounts.length > 0)
                       .then(email => {
                         setGmailNote(email ? `Connected ${email}. Other members can use this inbox.` : 'Connected.');
                         refreshGmail();
@@ -966,6 +973,31 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
                   placeholder="e.g. Ananya Shah"
                 />
               </div>
+              <div>
+                <label className="text-xs font-semibold block mb-1">CDSL CAS ID</label>
+                <input
+                  value={formCasId}
+                  onChange={e => setFormCasId(e.target.value.toUpperCase())}
+                  className="w-full px-3.5 py-2.5 rounded-xl border text-sm font-mono"
+                  style={inputStyle}
+                  placeholder="Optional, e.g. AA07970379"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold block mb-1">NPS PRAN</label>
+                <input
+                  value={formPran}
+                  onChange={e => setFormPran(e.target.value.replace(/\D/g, '').slice(0, 12))}
+                  className="w-full px-3.5 py-2.5 rounded-xl border text-sm font-mono"
+                  style={inputStyle}
+                  placeholder="Optional, 12 digits"
+                  inputMode="numeric"
+                />
+              </div>
+              <p className="text-[11px]" style={{ color: 'var(--muted)' }}>
+                {formPran ? `PRAN on this profile: ${formPran}` : 'PRAN is optional. A typed PRAN stays on the profile and is used for Gmail sync.'}
+                {formCasId ? ` CAS ID: ${formCasId}.` : ''}
+              </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold block mb-1">Relation</label>
@@ -1060,30 +1092,6 @@ export const FamilyScreen: React.FC<FamilyScreenProps> = ({ onOpenEmergencySheet
                 />
               </div>
               {idPrompt && <p className="text-xs" style={{ color: 'var(--muted)' }}>{idPrompt}</p>}
-              <div>
-                <label className="text-xs font-semibold block mb-1">CDSL CAS ID</label>
-                <input
-                  value={formCasId}
-                  onChange={e => setFormCasId(e.target.value.toUpperCase())}
-                  className="w-full px-3.5 py-2.5 rounded-xl border text-sm font-mono"
-                  style={inputStyle}
-                  placeholder="Optional, e.g. AA07970379"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-semibold block mb-1">NPS PRAN</label>
-                <input
-                  value={formPran}
-                  onChange={e => setFormPran(e.target.value.replace(/\D/g, '').slice(0, 12))}
-                  className="w-full px-3.5 py-2.5 rounded-xl border text-sm font-mono"
-                  style={inputStyle}
-                  placeholder="Optional"
-                  inputMode="numeric"
-                />
-              </div>
-              <p className="text-[11px]" style={{ color: 'var(--muted)' }}>
-                Neither is required. A typed id imports every matching statement. A hand import fills a blank id, and later sync takes only newer files.
-              </p>
               <div className="flex justify-end gap-2">
                 <button type="button" onClick={() => setIsFormOpen(false)} className="px-4 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--border)' }}>
                   Cancel

@@ -1,8 +1,7 @@
 import { nativeCommand } from './license';
 import { parseCasPdfWithPython, statementPasswordsToTry, CasImportMeta, CasLatestState, CasFileType } from './casPython';
 import { FamilyMember, StatementImportRecord } from '../types';
-import { decideStatementMail, classifyStatementFilename, issuerFromSender, filesForMember, memberHasStatementId, statementMonthKey } from './statementMail';
-import { pansMatch } from './pan';
+import { decideStatementMail, classifyStatementFilename, issuerFromSender, filesForMember, memberHasStatementId, statementMonthKey, assignStatementOwner } from './statementMail';
 
 export interface GmailAccountStatus {
   email: string;
@@ -68,8 +67,8 @@ export async function gmailStatus(): Promise<GmailAccountStatus[]> {
   return row.accounts || [];
 }
 
-export async function connectGmail(): Promise<string> {
-  const row = await nativeCommand<{ email?: string }>('gmail_connect');
+export async function connectGmail(chooseAccount = false): Promise<string> {
+  const row = await nativeCommand<{ email?: string }>('gmail_connect', { chooseAccount });
   return row.email || '';
 }
 
@@ -82,7 +81,7 @@ export async function runGmailSync(opts: {
   casLatest?: CasLatestState;
   importStatementRecords: ImportFn;
   updateFamilyMember: (id: string, updates: Partial<FamilyMember>) => Promise<void>;
-  seen: (messageId: string, attachmentId: string) => Promise<boolean>;
+  seen: (messageId: string, attachmentId: string, filename?: string) => Promise<boolean>;
   markSeen: (messageId: string, attachmentId: string, filename: string, entityId: string) => Promise<void>;
 }): Promise<string> {
   window.dispatchEvent(new CustomEvent('gud-gmail-sync', { detail: true }));
@@ -131,7 +130,7 @@ export async function runGmailSync(opts: {
         const namedSeen = classifyStatementFilename(file.filename);
         const owner = opts.members.find(m => namedSeen?.casId ? (m.casId || '').toUpperCase() === namedSeen.casId : namedSeen?.pran && (m.pran || '').includes(namedSeen.pran));
         const bookMonth = owner ? knownAsOf(owner.id, namedSeen?.issuer || '').slice(0, 7) : '';
-        if (await opts.seen(file.messageId, file.attachmentId) && (!month || !bookMonth || month <= bookMonth)) {
+        if (await opts.seen(file.messageId, file.attachmentId, file.filename) && (!month || !bookMonth || month <= bookMonth)) {
           skipped += 1;
           continue;
         }
@@ -179,7 +178,14 @@ export async function runGmailSync(opts: {
       skipped += 1;
     }
 
-    const downloads = [...keep].sort((a, b) => (statementMonthKey(b.filename) || '').localeCompare(statementMonthKey(a.filename) || ''));
+    const olderKeys = new Set(older.map(file => `${file.messageId}:${file.attachmentId}`));
+    const unassigned = batch.filter(file => {
+      const key = `${file.messageId}:${file.attachmentId}`;
+      if (claimed.has(key) || olderKeys.has(key)) return false;
+      const named = classifyStatementFilename(file.filename);
+      return named?.issuer === 'NPS' || issuerFromSender(file.from) === 'NPS';
+    });
+    const downloads = [...keep, ...unassigned].sort((a, b) => (statementMonthKey(b.filename) || '').localeCompare(statementMonthKey(a.filename) || ''));
     let deferred = false;
     let used = 0;
     for (const file of downloads) {
@@ -201,7 +207,6 @@ export async function runGmailSync(opts: {
       }
       if (decision.action !== 'download') continue;
       const likelyType = named?.issuer || issuerFromSender(file.from) || '';
-      const likelyOwner = decision.ownerId;
       used += 1;
       await yieldToUi();
       try {
@@ -212,75 +217,79 @@ export async function runGmailSync(opts: {
         });
         if (!fetched.bytesB64) throw new Error(fetched.error || 'Empty attachment.');
         const pdf = fileFromBase64(file.filename, fetched.bytesB64);
-        const owners = decision.ownerId
-          ? enabled.filter(m => m.id === decision.ownerId)
-          : enabled;
-        let done = false;
-        let opened = false;
-        for (const member of owners) {
-          let parsed;
+        const hinted = decision.ownerId;
+        const tryOrder = [
+          ...enabled.filter(m => m.id === hinted),
+          ...enabled.filter(m => m.id !== hinted),
+        ];
+        let parsed: Awaited<ReturnType<typeof parseWithPasswords>> | null = null;
+        for (const member of tryOrder) {
           try {
             parsed = await parseWithPasswords(pdf, member);
-            opened = true;
-          } catch {
-            continue;
-          }
-          const panOk = !parsed.investorPan || pansMatch(parsed.investorPan, member.panForStatements || '');
-          if (!decision.ownerId && parsed.investorPan && !panOk) continue;
-          if (!decision.ownerId && !parsed.investorPan) continue;
-          const fileType = (parsed.fileType || likelyType || 'CDSL') as CasFileType;
-          const previous = knownAsOf(member.id, fileType);
-          const incoming = (parsed.periodTo || fileMonth || '').slice(0, 7);
-          const have = previous.slice(0, 7);
-          if (incoming && have && incoming < have) {
-            await opts.markSeen(file.messageId, file.attachmentId, file.filename, member.id);
-            skipped += 1;
-            done = true;
             break;
+          } catch {
+            /* try the next member's password */
           }
-          const meta: CasImportMeta = {
-            fileType,
-            filename: file.filename,
-            periodFrom: parsed.periodFrom,
-            periodTo: parsed.periodTo,
-            investorName: parsed.investorName,
-            investorPan: parsed.investorPan,
-            pdfGrandTotal: parsed.pdfTotals?.grand ?? parsed.summary.totalValuation ?? 0,
-            parsedGrandTotal: parsed.parsedTotals?.holdingsValue ?? parsed.summary.totalValuation ?? 0,
-            complete: parsed.parseComplete === true,
-            closeHoldingIds: opts.casLatest?.byOwner[member.id]?.[fileType]?.holdingIds,
-          };
-          await opts.importStatementRecords(parsed.importRecords, member.id, 'REPLACE_SNAPSHOT', meta);
-          const month = (parsed.periodTo || fileMonth || '').slice(0, 7);
-          const count = parsed.holdings?.length || parsed.importRecords.length;
-          replaced.push(`Replaced ${fileType} book with ${month || 'the newest statement'}, ${count} holdings.`);
-          const patch: Partial<FamilyMember> = {};
-          if (named?.casId && !member.casId) {
-            patch.casId = named.casId;
-            patch.casIdSource = 'import';
-          }
-          if (named?.pran && !member.pran) {
-            patch.pran = named.pran;
-            patch.pranSource = 'import';
-          }
-          if (fileType === 'NPS' && parsed.periodTo) patch.pranSyncAfter = parsed.periodTo;
-          if (fileType !== 'NPS' && parsed.periodTo) patch.casSyncAfter = parsed.periodTo;
-          if (patch.casId || patch.pran || patch.casSyncAfter || patch.pranSyncAfter) await opts.updateFamilyMember(member.id, patch);
-          if (parsed.periodTo) importedAsOf.set(`${member.id}|${fileType}`, parsed.periodTo);
+        }
+        if (!parsed) {
+          await opts.markSeen(file.messageId, file.attachmentId, file.filename, '');
+          skipped += 1;
+          continue;
+        }
+        const fileType = (parsed.fileType || likelyType || 'CDSL') as CasFileType;
+        const investorPran = parsed.investorPran
+          || (fileType === 'NPS' ? parsed.importRecords.find(row => row.folio)?.folio : undefined);
+        const ownerId = assignStatementOwner(opts.members, {
+          fileType,
+          investorPan: parsed.investorPan,
+          investorPran,
+        }, file.filename);
+        const member = enabled.find(m => m.id === ownerId);
+        if (!member) {
+          await opts.markSeen(file.messageId, file.attachmentId, file.filename, '');
+          skipped += 1;
+          continue;
+        }
+        const previous = knownAsOf(member.id, fileType);
+        const incoming = (parsed.periodTo || fileMonth || '').slice(0, 7);
+        const have = previous.slice(0, 7);
+        if (incoming && have && incoming < have) {
           await opts.markSeen(file.messageId, file.attachmentId, file.filename, member.id);
-          imported += 1;
-          done = true;
-          break;
+          skipped += 1;
+          continue;
         }
-        if (!done) {
-          if (opened && !decision.ownerId) {
-            await opts.markSeen(file.messageId, file.attachmentId, file.filename, '');
-            skipped += 1;
-          } else {
-            accountFailed += 1;
-            failed += 1;
-          }
+        const meta: CasImportMeta = {
+          fileType,
+          filename: file.filename,
+          periodFrom: parsed.periodFrom,
+          periodTo: parsed.periodTo,
+          investorName: parsed.investorName,
+          investorPan: parsed.investorPan,
+          pdfGrandTotal: parsed.pdfTotals?.grand ?? parsed.summary.totalValuation ?? 0,
+          parsedGrandTotal: parsed.parsedTotals?.holdingsValue ?? parsed.summary.totalValuation ?? 0,
+          complete: parsed.parseComplete === true,
+          closeHoldingIds: opts.casLatest?.byOwner[member.id]?.[fileType]?.holdingIds,
+        };
+        await opts.importStatementRecords(parsed.importRecords, member.id, 'REPLACE_SNAPSHOT', meta);
+        const month = (parsed.periodTo || fileMonth || '').slice(0, 7);
+        const count = parsed.importRecords.length;
+        replaced.push(`Replaced ${fileType} book with ${month || 'the newest statement'}, ${count} holdings.`);
+        const patch: Partial<FamilyMember> = {};
+        if (named?.casId && !member.casId) {
+          patch.casId = named.casId;
+          patch.casIdSource = 'import';
         }
+        const printedPran = (investorPran || '').replace(/\D/g, '');
+        if (!member.pran && (printedPran.length >= 12 || named?.pran)) {
+          patch.pran = printedPran.length >= 12 ? printedPran : named?.pran;
+          patch.pranSource = 'import';
+        }
+        if (fileType === 'NPS' && parsed.periodTo) patch.pranSyncAfter = parsed.periodTo;
+        if (fileType !== 'NPS' && parsed.periodTo) patch.casSyncAfter = parsed.periodTo;
+        if (patch.casId || patch.pran || patch.casSyncAfter || patch.pranSyncAfter) await opts.updateFamilyMember(member.id, patch);
+        if (parsed.periodTo) importedAsOf.set(`${member.id}|${fileType}`, parsed.periodTo);
+        await opts.markSeen(file.messageId, file.attachmentId, file.filename, member.id);
+        imported += 1;
       } catch {
         accountFailed += 1;
         failed += 1;

@@ -38,7 +38,7 @@ import { applyCatalogPrices, catalogToListed, searchListed, isEodPriceSource } f
 import { findMatchingHolding, holdingIdentityKey, isPlaceholderName, preferSchemeName } from './matchHolding';
 import { StatementImportRecord } from '../types';
 import { buildBooksHealth, buildStatementSteps, buildSinceLastStatement, concentrationOf, daysBetweenIso, freshnessTone, previousFinancialYear, fyEndIso, unknownCostRows, firstToLastPct, investedSeriesFrom } from './homeDashboard';
-import { classifyStatementFilename, decideStatementMail, issuerFromSender, newestNamedStatements, filesForMember } from './statementMail';
+import { classifyStatementFilename, decideStatementMail, issuerFromSender, newestNamedStatements, filesForMember, assignStatementOwner } from './statementMail';
 import {
   usesUnits,
   identifierLabel,
@@ -1262,6 +1262,24 @@ console.log('\n--- H. Encryption ---');
   eq('cdsl match', decideStatementMail({ filename: 'AUG2026_AA07970379_TXN.pdf', from: 'eCAS@cdslstatement.com' }, members).action, 'download');
   eq('other cas skipped', decideStatementMail({ filename: 'AUG2026_BB11111111_TXN.pdf', from: 'eCAS@cdslstatement.com' }, members).action, 'skip');
   eq('nps match', decideStatementMail({ filename: '1120330238_Aug2026.pdf', from: 'nps-statements@mailer.proteantech.in' }, members).action, 'download');
+  const bothOn = [
+    { id: 'primary', gmailSync: true, pran: '110123981321', panForStatements: 'ABCDE1234F' },
+    { id: 'child', gmailSync: true, pran: '120000000001' },
+  ];
+  const shortNps = decideStatementMail({ filename: '1113981321_Aug2026.pdf', from: 'nps-statements@mailer.proteantech.in' }, bothOn);
+  eq('short nps name is opened', shortNps.action, 'download');
+  eq('short nps name has no guessed owner', shortNps.action === 'download' ? shortNps.ownerId : 'x', undefined);
+  eq('printed pran picks primary', assignStatementOwner(bothOn, { fileType: 'NPS', investorPran: '110123981321' }, '1113981321_Aug2026.pdf'), 'primary');
+  eq('child pran does not need a pan', assignStatementOwner(bothOn, { fileType: 'NPS', investorPran: '120000000001' }, '9999999999_Aug2026.pdf'), 'child');
+  eq('unmatched nps is not dumped on one person', assignStatementOwner(
+    [{ id: 'only', gmailSync: true, pran: '110123981321', panForStatements: 'ABCDE1234F' }],
+    { fileType: 'NPS', investorPran: '120000000001' },
+    '9999999999_Aug2026.pdf',
+  ), undefined);
+  const childFiles = filesForMember([
+    { filename: '1113981321_Aug2026.pdf' },
+  ], { id: 'child', gmailSync: true, pran: '120000000001' });
+  eq('child does not claim another pran', childFiles.keep.length, 0);
   eq('cams needs pan later', decideStatementMail({ filename: 'statement.pdf', from: 'donotreply@camsonline.com' }, members).action, 'download');
   const picked = newestNamedStatements([
     { filename: 'JUL2021_AA07970379_TXN.pdf' },

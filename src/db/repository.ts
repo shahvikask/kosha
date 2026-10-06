@@ -532,10 +532,11 @@ export class Repository {
     return rows.map(rowToEntity);
   }
 
-  async gmailFileSeen(messageId: string, attachmentId: string): Promise<boolean> {
+  async gmailFileSeen(messageId: string, attachmentId: string, filename?: string): Promise<boolean> {
     const rows = await this.db.query<{ n: number }>(
-      `SELECT COUNT(*) AS n FROM gmail_seen WHERE message_id = ? AND attachment_id = ?`,
-      [messageId, attachmentId]);
+      `SELECT COUNT(*) AS n FROM gmail_seen
+       WHERE message_id = ? AND (attachment_id = ? OR (filename IS NOT NULL AND filename = ? AND ? != ''))`,
+      [messageId, attachmentId, filename || '', filename || '']);
     return Number(rows[0]?.n ?? 0) > 0;
   }
 

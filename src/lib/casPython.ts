@@ -54,6 +54,7 @@ export interface CasPythonResult {
   filename?: string;
   investorName?: string | null;
   investorPan?: string | null;
+  investorPran?: string | null;
   investorEmail?: string | null;
   periodFrom?: string | null;
   periodTo?: string | null;
@@ -358,6 +359,7 @@ export function pythonResultToCasParseResult(
     filename: data.filename || filename,
     investorName: data.investorName || undefined,
     investorPan: data.investorPan || undefined,
+    investorPran: data.investorPran || undefined,
     investorEmail: data.investorEmail || undefined,
     periodFrom: data.periodFrom || undefined,
     periodTo: periodTo,

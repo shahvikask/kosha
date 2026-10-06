@@ -2,6 +2,7 @@ package `in`.growurdhan.app
 
 import android.app.Activity
 import android.accounts.Account
+import android.accounts.AccountManager
 import android.content.Intent
 import android.net.Uri
 import android.os.Handler
@@ -850,10 +851,25 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
         var enabled: Boolean = false
     }
 
+    @InvokeArg
+    class GmailConnectArgs {
+        @JvmField
+        var chooseAccount: Boolean = false
+    }
+
     @Command
     fun gmail_connect(invoke: Invoke) {
         Diag.enter(activity, "gmail_connect")
-        handler.post { authorizeGmail(invoke, null) }
+        val choose = try {
+            invoke.parseArgs(GmailConnectArgs::class.java).chooseAccount
+        } catch (_: Exception) {
+            false
+        }
+        // A second inbox must show the account list. The first grant must not be reused silently.
+        val forcePicker = choose || gmail.emails().isNotEmpty()
+        handler.post {
+            if (forcePicker) pickGoogleAccount(invoke) else authorizeGmail(invoke, null)
+        }
     }
 
     @Command
@@ -935,6 +951,35 @@ class GrowUrDhanPlugin(private val activity: Activity) : Plugin(activity), Purch
             return
         }
         invoke.reject("Google sign-in returned no account.")
+    }
+
+    private fun pickGoogleAccount(invoke: Invoke) {
+        val intent = AccountManager.newChooseAccountIntent(
+            null,
+            null,
+            arrayOf("com.google"),
+            true,
+            "Choose the Gmail inbox that receives these statements",
+            null,
+            null,
+            null
+        )
+        startActivityForResult(invoke, intent, "gmailAccountPickResult")
+    }
+
+    @ActivityCallback
+    fun gmailAccountPickResult(invoke: Invoke, result: ActivityResult) {
+        if (result.resultCode != Activity.RESULT_OK || result.data == null) {
+            invoke.reject("Google sign-in was cancelled.")
+            return
+        }
+        val email = result.data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME).orEmpty()
+        if (email.isBlank()) {
+            invoke.reject("Choose a Gmail account.")
+            return
+        }
+        Diag.log(activity, "gmail_connect", "picked $email")
+        authorizeGmail(invoke, email)
     }
 
     private fun authorizeGmail(invoke: Invoke, email: String?) {

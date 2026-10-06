@@ -121,7 +121,7 @@ interface KoshaContextType {
   addFamilyMember: (member: Omit<FamilyMember, 'id'> & { pan?: string }) => Promise<FamilyMember>;
   updateFamilyMember: (id: string, updates: Partial<FamilyMember> & { pan?: string }) => Promise<void>;
   deleteFamilyMember: (id: string) => Promise<{ deletedHoldingsCount: number; deletedEventsCount: number }>;
-  gmailFileSeen: (messageId: string, attachmentId: string) => Promise<boolean>;
+  gmailFileSeen: (messageId: string, attachmentId: string, filename?: string) => Promise<boolean>;
   markGmailFileSeen: (messageId: string, attachmentId: string, filename: string, entityId: string) => Promise<void>;
   computeTaxSummary: (financialYear: string) => TaxSummary;
   importStatementRecords: (
@@ -940,6 +940,10 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       color: memberData.color,
       notes: memberData.notes?.trim() || undefined,
       isPrimary: wantsPrimary,
+      casId: memberData.casId?.trim().toUpperCase() || undefined,
+      pran: memberData.pran?.replace(/\D/g, '') || undefined,
+      casIdSource: memberData.casId?.trim() ? 'profile' : undefined,
+      pranSource: memberData.pran?.trim() ? 'profile' : undefined,
     };
     if (repo) {
       await repo.upsertEntity(newMember);
@@ -985,9 +989,9 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setFamilyMembers(prev => prev.map(m => (m.id === id ? updated : m)));
   };
 
-  const gmailFileSeen = async (messageId: string, attachmentId: string): Promise<boolean> => {
+  const gmailFileSeen = async (messageId: string, attachmentId: string, filename?: string): Promise<boolean> => {
     if (!repo) return false;
-    return repo.gmailFileSeen(messageId, attachmentId);
+    return repo.gmailFileSeen(messageId, attachmentId, filename);
   };
 
   const markGmailFileSeen = async (messageId: string, attachmentId: string, filename: string, entityId: string): Promise<void> => {
@@ -1302,7 +1306,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           await repo.upsertAccount({
             id: acctId,
             entityId: effectiveOwnerId,
-            accountType: rec.folio && !rec.dematAccount ? 'MF_FOLIO' : 'DEMAT',
+            accountType: rec.casFileType === 'NPS' ? 'NPS' : (rec.folio && !rec.dematAccount ? 'MF_FOLIO' : 'DEMAT'),
             custodian: rec.dpName || rec.amc || 'CAS',
             identifierMasked: ident,
             dpId: rec.dpId,
@@ -1326,6 +1330,13 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           const avgCostMinor = rec.cumulativeInvested && rec.quantity > 0
             ? String(Math.round((rec.cumulativeInvested / rec.quantity) * 1e4))
             : priceMinor;
+          const unitsScaled = String(BigInt(Math.round(Math.max(0, rec.quantity || 0) * 1e8)));
+          const npsDetails = rec.casFileType === 'NPS' || rec.schemeType === 'NPS'
+            ? {
+                npsTier: /tier\s*(ii|2)\b/i.test(rec.holdingName) ? 'II' as const : 'I' as const,
+                ...(/prot/i.test(rec.dpName || '') ? { npsCra: 'PROT' as const } : {}),
+              }
+            : undefined;
           const newH: Holding = {
             id: holdingId,
             name: rec.holdingName,
@@ -1334,7 +1345,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             category: rec.category,
             subCategory: casHoldingSubCategory(rec.category, rec.holdingName, rec.schemeType),
             ownerId: effectiveOwnerId,
-            quantityScaled: '0',
+            quantityScaled: unitsScaled,
             averageCostPerUnitMinor: avgCostMinor,
             currentPriceMinor: priceMinor,
             lastPriceUpdated: rec.date || new Date().toISOString(),
@@ -1351,7 +1362,7 @@ export const KoshaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             institutionName: rec.dpName,
             accountNumberMasked: rec.folio || rec.dematAccount,
             accountId: acctId,
-            details: casImportDetails({ category: rec.category, casFileType: rec.casFileType }),
+            details: npsDetails || casImportDetails({ category: rec.category, casFileType: rec.casFileType }),
           };
           currentWorkingHoldings = [newH, ...currentWorkingHoldings];
           if (repo) await repo.upsertHolding(newH);

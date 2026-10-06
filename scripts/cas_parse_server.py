@@ -362,6 +362,7 @@ def _from_demat(data: Any, file_type: str) -> dict:
         "casType": "DEMAT",
         "investorName": investor_name,
         "investorPan": investor_pan,
+        "investorPran": _s((d.get("nps") or {}).get("pran")),
         "investorEmail": investor_email,
         "periodFrom": period_from,
         "periodTo": period_to,

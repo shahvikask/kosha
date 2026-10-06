@@ -5,6 +5,8 @@
  * when a member has Gmail sync on, then matched by PAN after parsing.
  */
 
+import { pansMatch } from './pan';
+
 export type StatementIssuer = 'CDSL' | 'NSDL' | 'CAMS' | 'KFINTECH' | 'NPS';
 
 export interface StatementName {
@@ -23,6 +25,8 @@ export interface MailMemberRef {
   pranSource?: 'profile' | 'import';
   casSyncAfter?: string;
   pranSyncAfter?: string;
+  /** Full PAN, used only when the PDF has no matching PRAN. */
+  panForStatements?: string;
 }
 
 export type MailDecision =
@@ -83,14 +87,13 @@ export function decideStatementMail(
   }
 
   if (named?.issuer === 'NPS' || sender === 'NPS') {
-    if (!named?.pran) return { action: 'skip', remember: false, reason: 'NPS file name has no PRAN' };
-    const owner = enabled.find(m => pranMatches(m.pran, named.pran));
+    const owner = named?.pran
+      ? enabled.find(m => pranMatches(m.pran, named.pran))
+      : undefined;
     if (owner) return { action: 'download', ownerId: owner.id };
-    // Protean often puts a short id in the file name. Open it and match the PAN inside.
-    if (enabled.length === 1 && (enabled[0].pran || enabled[0].casId)) return { action: 'download', ownerId: enabled[0].id };
-    const anyRecorded = enabled.some(m => (m.pran || '').trim());
-    if (!anyRecorded) return { action: 'skip', remember: false, reason: 'import one NPS statement by hand first' };
-    return { action: 'skip', remember: false, reason: 'PRAN does not match a member' };
+    // The file name is often a short id, not the 12-digit PRAN. Open the PDF.
+    // A second member must not block that, and one member must not receive everyone's NPS.
+    return { action: 'download' };
   }
 
   if (sender === 'NSDL' || sender === 'CAMS' || sender === 'KFINTECH') {
@@ -172,6 +175,35 @@ export function pranMatches(profile?: string | null, fileId?: string | null): bo
   return a === b || a.endsWith(b) || b.endsWith(a);
 }
 
+/**
+ * Who this opened statement belongs to.
+ * NPS uses the PRAN printed in the PDF, then the file name, then PAN.
+ * A missing PAN does not block a PRAN match. One enabled member does not
+ * inherit a statement that matches nobody.
+ */
+export function assignStatementOwner(
+  members: MailMemberRef[],
+  parsed: { fileType?: string | null; investorPan?: string | null; investorPran?: string | null },
+  filename: string,
+): string | undefined {
+  const enabled = members.filter(m => m.gmailSync);
+  const named = classifyStatementFilename(filename);
+  const nps = parsed.fileType === 'NPS' || named?.issuer === 'NPS';
+  if (nps) {
+    const byInside = enabled.find(m => pranMatches(m.pran, parsed.investorPran));
+    if (byInside) return byInside.id;
+    const byName = enabled.find(m => named?.pran && pranMatches(m.pran, named.pran));
+    if (byName) return byName.id;
+    const byPan = enabled.find(m => pansMatch(parsed.investorPan, m.panForStatements));
+    return byPan?.id;
+  }
+  if (named?.casId) {
+    const byCas = enabled.find(m => (m.casId || '').toUpperCase() === named.casId);
+    if (byCas) return byCas.id;
+  }
+  return enabled.find(m => pansMatch(parsed.investorPan, m.panForStatements))?.id;
+}
+
 /** YYYY-MM from an ISO period, or from a CDSL/NPS file name. */
 export const SYNC_FROM_MONTH = '2026-01';
 
@@ -223,8 +255,8 @@ export function filesForMember<T extends { filename: string }>(
       continue;
     }
     if (named?.pran) {
-      if (member.pran && !pranMatches(member.pran, named.pran)) {
-        // Keep it. Protean file names are often a short id; the PAN inside decides.
+      if (!pranMatches(member.pran, named.pran)) {
+        continue;
       }
       if (month && !isOnOrAfterSyncFloor(month)) {
         older.push(file);

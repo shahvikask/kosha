@@ -55,6 +55,7 @@ export interface CASParseResult {
   filename?: string;
   investorName?: string;
   investorPan?: string;
+  investorPran?: string;
   investorEmail?: string;
   periodFrom?: string;
   periodTo?: string;
