@@ -4,71 +4,57 @@ interface BrandLogoProps {
   className?: string;
   showTagline?: boolean;
   size?: 'sm' | 'md' | 'lg';
+  compact?: boolean;
+  /** Splash stacks the mark, the name, then the tagline. Header stays in a row. */
+  layout?: 'row' | 'stack';
 }
 
+const ICON = {
+  sm: 'w-8 h-8',
+  md: 'w-10 h-10',
+  lg: 'w-14 h-14',
+};
+
+const NAME = {
+  sm: 'text-lg',
+  md: 'text-xl',
+  lg: 'text-3xl',
+};
+
+/** Approved mark: navy tile, gold rupee, teal growth tip. */
+export const BrandMark: React.FC<{ className?: string }> = ({ className = '' }) => (
+  <svg className={className} viewBox="0 0 100 100" aria-hidden="true">
+    <rect x="1.2" y="1.2" width="97.6" height="97.6" rx="22" fill="#07131f" stroke="#f5c14a" strokeWidth="2.4" />
+    <rect x="27" y="31.2" width="46" height="5.4" rx="1.15" fill="#f5c14a" />
+    <rect x="27" y="40.6" width="36" height="5.4" rx="1.15" fill="#f5c14a" />
+    <path d="M36.6 23.2h6.6V56.5h-6.6z" fill="#f5c14a" />
+    <path d="M36.6 54H43.2L62.4 74.6H55.8z" fill="#f5c14a" />
+    <path d="M50.06 67.42L55.8 74.6h6.6l-5.74-7.18z" fill="#2dd4bf" />
+  </svg>
+);
+
+/** One lockup for the header, the unlock screen, and onboarding. */
 export const BrandLogo: React.FC<BrandLogoProps> = ({
   className = '',
   showTagline = true,
   size = 'md',
+  compact = false,
+  layout = 'row',
 }) => {
-  const iconSizes = {
-    sm: 'w-8 h-8 rounded-lg',
-    md: 'w-10 h-10 rounded-xl',
-    lg: 'w-12 h-12 rounded-2xl',
-  };
-
-  const textSizes = {
-    sm: 'text-lg',
-    md: 'text-xl',
-    lg: 'text-2xl',
-  };
-
+  const stack = layout === 'stack';
   return (
-    <div className={`flex items-center gap-3 group cursor-pointer ${className}`}>
-      {/* App Icon Mark: Fused U and Indian Rupee Symbol (₹) */}
-      <div className={`${iconSizes[size]} bg-gradient-to-br from-emerald-500/20 via-slate-900 to-amber-500/30 border border-amber-500/40 flex items-center justify-center shadow-lg group-hover:border-amber-400 group-hover:shadow-amber-500/20 transition-all flex-shrink-0 relative overflow-hidden`}>
-        {/* Subtle background glow */}
-        <div className="absolute inset-0 bg-amber-500/10 blur-sm pointer-events-none" />
-        
-        {/* Custom SVG Fusing U and Rupee Symbol ₹ */}
-        <svg
-          className="w-6 h-6 relative z-10 text-amber-400 filter drop-shadow(0 0 6px rgba(245, 158, 11, 0.5))"
-          viewBox="0 0 24 24"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          {/* U bowl structure */}
-          <path
-            d="M5 4V12C5 15.3137 7.68629 18 11 18C14.3137 18 17 15.3137 17 12V4"
-            stroke="url(#rupeeU वालाGradient)"
-            strokeWidth="2.2"
-            strokeLinecap="round"
-          />
-          {/* Rupee horizontal parallel bars */}
-          <path d="M5 8H14" stroke="#F59E0B" strokeWidth="2" strokeLinecap="round" />
-          <path d="M5 4H14" stroke="#F59E0B" strokeWidth="2" strokeLinecap="round" />
-          {/* Rupee diagonal leg extending down */}
-          <path d="M11 12L18 20" stroke="#F59E0B" strokeWidth="2.4" strokeLinecap="round" />
-          
-          <defs>
-            <linearGradient id="rupeeU वालाGradient" x1="5" y1="4" x2="18" y2="20" gradientUnits="userSpaceOnUse">
-              <stop stopColor="#10B981" />
-              <stop offset="0.5" stopColor="#F59E0B" />
-              <stop offset="1" stopColor="#FBBF24" />
-            </linearGradient>
-          </defs>
-        </svg>
-      </div>
-
-      {/* Brand Title with Prominent Integrated U-Rupee Symbol */}
-      <div>
-        <div className="flex items-center">
-          <span className={`font-bold ${textSizes[size]} tracking-tight font-serif`} style={{ color: 'var(--text)' }}>
-            Grow<span style={{ color: 'var(--accent)' }}>Ur</span><span style={{ color: 'var(--accent-2)' }}>Dhan</span>
-          </span>
+    <div className={`${stack ? 'flex flex-col items-center text-center gap-3' : 'flex items-center gap-2 md:gap-3'} ${className}`}>
+      <BrandMark className={`${ICON[size]} flex-shrink-0`} />
+      <div className={compact ? 'hidden md:block' : undefined}>
+        <div className={`font-bold ${NAME[size]} tracking-tight leading-none`}>
+          <span style={{ color: 'var(--text)' }}>Grow</span>
+          <span style={{ color: 'var(--accent)', borderBottom: '2px solid var(--accent)' }}>Ur</span>
+          <span style={{ color: 'var(--accent-2)' }}>Dhan</span>
         </div>
         {showTagline && (
-          <p className="text-[11px] hidden sm:block" style={{ color: 'var(--muted)' }}>Private Indian Family Wealth & Records</p>
+          <p className={`${stack ? 'mt-2' : 'mt-1'} text-[11px]`} style={{ color: 'var(--muted)' }}>
+            Private Indian Family Wealth & Records
+          </p>
         )}
       </div>
     </div>
