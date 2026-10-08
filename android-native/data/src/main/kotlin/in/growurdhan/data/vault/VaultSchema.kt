@@ -98,6 +98,7 @@ internal object VaultSchema {
           source_sha256 TEXT NOT NULL UNIQUE,
           as_of TEXT NOT NULL,
           is_complete INTEGER NOT NULL CHECK(is_complete = 1),
+          UNIQUE(id, owner_id),
           imported_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
           FOREIGN KEY(owner_id) REFERENCES family_member(id) ON DELETE RESTRICT
         )
@@ -110,7 +111,7 @@ internal object VaultSchema {
           quantity_scaled INTEGER NOT NULL CHECK(quantity_scaled >= 0),
           value_scaled INTEGER NOT NULL,
           PRIMARY KEY(snapshot_id, holding_id),
-          FOREIGN KEY(snapshot_id) REFERENCES snapshot_import(id) ON DELETE RESTRICT,
+          FOREIGN KEY(snapshot_id, owner_id) REFERENCES snapshot_import(id, owner_id) ON DELETE RESTRICT,
           FOREIGN KEY(holding_id, owner_id) REFERENCES holding(id, owner_id) ON DELETE RESTRICT
         )
         """.trimIndent(),
