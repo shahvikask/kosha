@@ -1,5 +1,7 @@
 # GrowUrDhan — M2 Native Encrypted Vault and Database (As-Built)
 
+> **Current verified status (2026-10-08):** M2 foundation CI **PASS** on commit `efcaeaa`, including 7/7 vault and 3/3 Compose instrumentation tests. Earlier failures documented below are historical and fixed. See [07-M2-MILESTONE-COMPLETION.md](07-M2-MILESTONE-COMPLETION.md). Native Google Play release readiness is **not** established.
+
 **Date:** 2026-10-08  
 **Implementation branch:** `GUD-Android-ChatGPT`  
 **Build stage:** Native Android **development infrastructure**; not an authenticated consumer financial application or Play release.  
@@ -83,7 +85,7 @@ The implementation `SqlCipherVaultRepository` is bound in Hilt to `VaultReposito
 - `android-native/app/src/androidTest/**/NativeShellTest.kt`: Compose navigation and explicit creation intent.
 - CI workflow `.github/workflows/native-android.yml` builds the APK and BOTH instrumentation suites on an Android emulator; a CASPARSER Git diff guard prevents accidental changes to the engine or existing invocation files.
 
-**Test evidence:** Record actual run IDs and PASS/FAIL results after the final post-implementation GitHub Actions run. A code review alone is not an execution result.
+**Verified M2 result:** [GitHub Actions native run #37789886674](https://github.com/shahvikask/kosha/actions/runs/37789886674) on implementation commit `efcaeaabae4f8a65c96fad520aad4aa535dba530` passed schema preflight, JVM tests, APK builds, **3/3 Compose UI tests and 7/7 SQLCipher vault instrumentation tests**. The archived JUnit XML records 0 errors, 0 failures, and 0 skipped tests. The full release-blocker assessment and artifact identifiers are in [07-M2-MILESTONE-COMPLETION.md](07-M2-MILESTONE-COMPLETION.md). This validates the M2 foundation on the CI emulator, **not** the commercial app or other Android device/OS combinations.
 
 ## Known exclusions and future milestones
 
