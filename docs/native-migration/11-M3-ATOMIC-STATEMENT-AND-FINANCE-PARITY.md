@@ -2,8 +2,8 @@
 
 **Date:** 2026-10-08  
 **Source branch:** `GUD-Android-ChatGPT`  
-**Status:** Source implementation committed; **new GitHub CI and Android instrumentation results pending**.  
-**Previously verified baseline:** `8eecc195` (documentation-only commit) with prior v2 ledger verification and 46 passing JVM/Android tests. This document does NOT assert that the new additions have passed.
+**Status:** **CI verified** — [Native Android M3 run #37856520668](https://github.com/shahvikask/kosha/actions/runs/37856520668) on implementation commit `863ac5d21649bcee00523be15c0a3de35f6cd1e6` passed 52 JVM and 21 Android tests, zero failures/errors/skips. The full evidence and exclusions are in [12-M3-ATOMIC-APPROVAL-VERIFICATION.md](12-M3-ATOMIC-APPROVAL-VERIFICATION.md).  
+**Current limitation:** Backend reviewed-statement approval and selected calculation parity are tested; native user consent, PDF source verification, full financial parity, and Play production release remain **open**.
 
 ## 1. Purpose and trust boundaries
 
@@ -42,13 +42,13 @@ All these engines are **pure domain calculation code** and currently produce pla
 
 **Important parity limits:** `SavingsInterestEngine` currently covers dates and simple interest/coupons, **not** the full product-specific FD/RD compounding/catch-up automation from `interest.ts`. EMI currently mirrors the reference's gross repayment deduction, not bank-style interest-versus-principal amortization. Tax notices and interest rates must be verified against applicable government sources before commercial tax calculations. `growth.ts`, `returnMetrics.ts`, some `costBasis.ts` subtleties and full taxonomy/tree integration remain open.
 
-## 4. New test coverage (awaiting independent CI)
+## 4. New test coverage (independently verified on CI)
 
 - `NativeStatementApprovalInstrumentedTest.kt`: **6** new Android SQLCipher+Keystore cases—review does not write; approved statement is persisted once; stale post-review financial changes refuse commit; altered input/plan rejects HMAC; cross-owner conflict cannot import; zero-unit observation stays zero; later statements append only the quantity difference and old snapshots cannot rewind the vault.
 - `FinanceParityExtensionsTest.kt`: **19** JUnit5 scenarios—EMI dates/payments/states, interest defaults and dates, exact scaled-integer scheme interest and overflow, small-savings recognition, estimated/disclosed asset splits with precise remainder accounting, absence of fake opening cost, blocked multi-lot repricing, unknown additional units and zero-balance observations.
 - `AtomicBookUseCaseTest.kt`: **2 additional** JVM cases verify preview does not call approval and the explicit commit use case calls the vault exactly once.
 
-These are **added tests, not passing results** until a complete new CI run has been inspected. All existing financial golden tests, v2 encrypted migration tests, backup tests, Compose tests, CASPARSER guards and build artifacts remain required.
+These new cases **passed on CI**, as recorded in the downloaded JUnit XML for run #37856520668 (details and artifact digests in [12-M3-ATOMIC-APPROVAL-VERIFICATION.md](12-M3-ATOMIC-APPROVAL-VERIFICATION.md)). All existing financial golden tests, v2 encrypted migration tests, backup tests, Compose tests, CASPARSER guards and build artifacts remain required.
 
 ## 5. Outstanding commercialization gates
 
@@ -63,4 +63,4 @@ These are **added tests, not passing results** until a complete new CI run has b
 
 Only `GUD-Android-ChatGPT` may be modified. Verify the diff against `GUD-Android-Gmail` for the frozen parser paths, then run the `GrowUrDhan Native Android M3` and existing `Kosha CI` workflows.
 
-After the final commit, give the owner the exact commit SHA and both workflow run IDs. **Do not poll repeatedly**; await the owner's pass/fail confirmation. Document actual JVM, instrumentation and artifact results afterward. Do not mark the new statement approval or parity scope complete until all relevant tests succeed.
+Run #37856520668 and companion Kosha CI #37856520670 both **completed successfully** on implementation commit `863ac5d`. The original Native Android JVM and emulator artifacts were independently inspected: **73/73 passing, no skips or failures**. The next milestone may proceed after a separate scope review; do not infer Play readiness. Continue the agreed SHA/run-number handoff workflow for future commits.
