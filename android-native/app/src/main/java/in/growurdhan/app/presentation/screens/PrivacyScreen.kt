@@ -9,7 +9,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CloudOff
-import androidx.compose.material.icons.outlined.LockOutline
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
@@ -50,7 +50,7 @@ fun PrivacyScreen() {
             title = "Financial storage is a separate milestone",
             detail = "Encrypted vault and backup services will be integrated and tested " +
                 "before any native portfolio data is written.",
-            icon = { Icon(Icons.Outlined.LockOutline, contentDescription = null) },
+            icon = { Icon(Icons.Outlined.Lock, contentDescription = null) },
         )
     }
 }
