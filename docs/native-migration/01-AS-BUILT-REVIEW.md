@@ -4,7 +4,7 @@
 **Repository:** `shahvikask/kosha`  
 **Working branch:** `GUD-Android-ChatGPT`  
 **Baseline commit:** `af96dcc8967ab595e1d9acee78e29e500cb99a9e` (identical to `GUD-Android-Gmail` when review began)  
-**Decision status:** Proposed; no native migration authorized for release.  
+**Decision status:** M1 native foundation implemented in development; no production release authorized. **Owner clarified there have been no Google Play releases.**  
 **Scope:** Source-backed architecture and migration-readiness review, not a claim of exhaustive penetration testing.  
 **Hard constraint:** CASPARSER is immutable. No edits under `src/casparser-main/**`, or to its Python parsing logic. Treat associated Python packaging/invocation scripts as frozen until the protected boundary is explicitly agreed and hashed.
 
@@ -76,7 +76,7 @@ Review each feature's edge cases and legal disclosures during parity sign-off; a
 | A-08 | P1 | `GmailClient.kt`: `forget` does not remove all account cursors; `httpGet` reads full response | Reconnect consistency and memory/DoS risk |
 | A-09 | P1 | `statementMail.ts`: sender detection by substring of untrusted `From` text | Require structured mail identity signals and parsed-owner checks, not filename or raw sender text alone |
 | A-10 | P1 | `GrowUrDhanPlugin.kt`: one customer-visible Google sign-in error contains a developer-specific email | Remove before new Play build; redact diagnostics |
-| A-11 | P1 | `src-tauri/tauri.conf.json`: `versionCode: 2001` vs as-built document `2002` | Inspect actual latest Play artifact; new `versionCode` must be strictly higher than every published build |
+| A-11 | P1 | `src-tauri/tauri.conf.json`: `versionCode: 2001` vs as-built document `2002` | No Play version has been published per owner; establish stable and increasing native release version codes before the first Play upload |
 | A-12 | P1 | `scripts/android_prepare.mjs`: modifies ephemeral generated Gradle/Manifest files | Replace with checked-in Android project and version catalogs; audit targetSdk, signing and installed package compatibility |
 | A-13 | P1 | `.github/workflows/ci.yml`: runs lint/build/core/snapshot, but **not** `npm run test:db` | Restore database migration tests as mandatory release gate |
 | A-14 | P1 | `.github/workflows/android-aab.yml`: release only `aarch64` target; `if-no-files-found: warn` | Validate full supported ABI coverage and require an AAB artifact; do not automatically publish from migration PR |
@@ -101,16 +101,16 @@ Review each feature's edge cases and legal disclosures during parity sign-off; a
 
 ## ADR-001: Native target, staged release
 
-**Decision:** Establish a Kotlin-first Gradle multi-module codebase under `android-native/`, as a separate build target. Preserve the existing hybrid build during migration. Introduce an in-app migration entry point only once read-only legacy extraction and durable native restore are proven. Do not replace the existing production artifact or remove Tauri until all parity and recovery gates pass.
+**Decision:** Establish a Kotlin-first Gradle multi-module codebase under `android-native/`, retaining hybrid source as a behavioral oracle until parity tests pass. Since no version is published on Play, a **fresh incompatible encrypted native vault/schema is authorized**; do not require in-place upgrade for a nonexistent production install base. Offer explicit export/import or confirmed reset for developers who want to keep test data. No silent device-data wipe.
 
-**Rationale:** This yields testable incremental outcomes while protecting existing device vaults, billing entitlements and statement parsing.
+**Rationale:** This yields incremental, testable delivery while preserving financial semantics and CASPARSER, without unnecessary production-legacy upgrade complexity.
 
-**Unresolved decisions:** final encrypted SQLite driver; exact Keystore migration implementation; fallback IndexedDB treatment; published Play versionCode; Google OAuth production status; source-document/price-history preservation scope; native app minSdk/ABI policy; 16 KiB memory page/device compatibility. Resolve these with proof-of-concept and tests before implementation of data migration.
+**Unresolved decisions:** final encrypted SQLite driver and Keystore key lifecycle; optional developer-data conversion scope; Google OAuth production status; price/source document retention; native minSdk/ABI policy; 16 KiB memory-page/device compatibility. Resolve with tested proof-of-concept; there is no published Play versionCode to migrate.
 
 ## Review exit conditions
 
 1. Source inventory and blocker register are committed (this document).
 2. Detailed native module plan, migration state machine and feature parity roadmap are committed.
 3. Removal inventory lists precise legacy paths with objective deletion gates.
-4. First implementation milestone is a separate, safe, reversible Kotlin/Compose scaffold **without existing-vault writes or parser changes**.
+4. First implementation milestone is a separate Kotlin/Compose scaffold **without existing-vault writes or parser changes**; now in progress with Gradle builds and UI tests.
 5. Do not claim device build or native functional verification until tooling runs them.
