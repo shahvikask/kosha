@@ -165,6 +165,13 @@ class MainActivity : ComponentActivity() {
         super.onStop()
         // Android's own credential confirmation activity may temporarily stop us.
         // A cancelled challenge locks; success must come from RESULT_OK only.
-        if (pendingCredential == null) lockSensitiveUi()
+        if (pendingCredential == null) {
+            lockSensitiveUi()
+        } else {
+            // The system credential Activity temporarily obscures this Activity.
+            // Revoke prior authorization even then; only its successful callback
+            // may grant a new session. Cancel/error closes and clears everything.
+            sessionGate.lock()
+        }
     }
 }
