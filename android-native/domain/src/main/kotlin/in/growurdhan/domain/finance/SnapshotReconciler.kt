@@ -65,10 +65,13 @@ data class ReviewedStatement(
     val sourceLines: List<StatementLine>,
     val bookFingerprint: String,
     val plan: StatementReview,
+    /** HMAC over the original review values; valid for this vault process only. */
+    val reviewSeal: String,
 ) {
     init {
         require(snapshotId.isNotBlank() && snapshotId.length <= 128) { "Invalid snapshot identifier." }
         require(Regex("^[a-f0-9]{64}$").matches(bookFingerprint)) { "Invalid vault fingerprint." }
+        require(Regex("^[a-f0-9]{64}$").matches(reviewSeal)) { "Invalid receipt seal." }
         require(sourceLines.isNotEmpty()) { "Cannot approve an empty statement." }
     }
 }

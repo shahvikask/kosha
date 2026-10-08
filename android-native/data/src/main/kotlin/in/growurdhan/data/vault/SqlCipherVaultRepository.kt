@@ -18,6 +18,9 @@ import `in`.growurdhan.domain.finance.toFinancialHolding
 import java.math.BigInteger
 import java.nio.ByteBuffer
 import java.security.MessageDigest
+import java.security.SecureRandom
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 import `in`.growurdhan.domain.vault.VaultRepository
 import java.io.File
 import javax.inject.Inject
@@ -39,6 +42,9 @@ class SqlCipherVaultRepository(
     alias: String = "in.growurdhan.app.vault.wrap.v2",
 ) : VaultRepository {
     private val mutex = Mutex()
+    // Each repository lifetime gets a fresh non-exported in-memory receipt seal key.
+    // Approval across a process restart requires a fresh review.
+    private val reviewMacKey = ByteArray(32).also(SecureRandom()::nextBytes)
     private val databaseFile = File(root, "wealth.db")
     private val readyFile = File(root, "ready")
     private val keys = VaultKeyEnvelope(File(root, "wrapped.key"), alias)
@@ -265,8 +271,10 @@ class SqlCipherVaultRepository(
                 }
                 val plan = planAgainstBook(book, ownerId, sourceSha256, sourceLines)
                 requireFreshStatementDate(db, ownerId, plan.statementDate.toString())
+                val fingerprint = bookFingerprint(db)
                 val receipt = ReviewedStatement(
-                    snapshotId, ownerId, sourceLines, bookFingerprint(db), plan,
+                    snapshotId, ownerId, sourceLines, fingerprint, plan,
+                    sealReview(snapshotId, ownerId, sourceLines, fingerprint, plan),
                 )
                 db.setTransactionSuccessful()
                 receipt
@@ -282,6 +290,14 @@ class SqlCipherVaultRepository(
      * inside the same database transaction as the INSERTs.
      */
     override suspend fun commitReviewedStatement(review: ReviewedStatement): SnapshotResult = mutate { db ->
+        val expectedSeal = sealReview(
+            review.snapshotId, review.ownerId, review.sourceLines,
+            review.bookFingerprint, review.plan,
+        )
+        check(MessageDigest.isEqual(
+            expectedSeal.toByteArray(Charsets.US_ASCII),
+            review.reviewSeal.toByteArray(Charsets.US_ASCII),
+        )) { "Statement review receipt has changed or expired. Review again." }
         val previous = findImportedSnapshot(db, review.plan.sourceSha256)
         if (previous != null) {
             check(previous.first == review.snapshotId && previous.second == review.ownerId.raw) {
@@ -380,6 +396,39 @@ class SqlCipherVaultRepository(
      * The stable table list has no external SQL input. This also sees observations
      * without event writes and changes by another SQLite connection.
      */
+    private fun sealReview(
+        snapshotId: String,
+        ownerId: OwnerId,
+        sourceLines: List<StatementLine>,
+        fingerprint: String,
+        plan: `in`.growurdhan.domain.finance.StatementReview,
+    ): String {
+        val mac = Mac.getInstance("HmacSHA256")
+        mac.init(SecretKeySpec(reviewMacKey, "HmacSHA256"))
+        fun field(value: String) {
+            val bytes = value.toByteArray(Charsets.UTF_8)
+            mac.update(ByteBuffer.allocate(4).putInt(bytes.size).array())
+            mac.update(bytes)
+        }
+        field(snapshotId)
+        field(ownerId.raw)
+        field(fingerprint)
+        field(plan.sourceSha256)
+        field(sourceLines.size.toString())
+        for (line in sourceLines) {
+            field(line.holdingId.raw)
+            field(line.ownerId.raw)
+            field(line.statementDate.toString())
+            field(line.quantityScaled.toString())
+            field(line.unitPrice.raw.toString())
+            field(line.cumulativeInvested?.raw?.toString() ?: "null")
+        }
+        // The user-facing proposals are also bound, so callers cannot replace a
+        // warning/conflict or financial amount after it was displayed for review.
+        field(plan.toString())
+        return mac.doFinal().joinToString("") { "%02x".format(it.toInt() and 0xff) }
+    }
+
     private fun bookFingerprint(db: SQLiteDatabase): String {
         val digest = MessageDigest.getInstance("SHA-256")
         fun addText(value: String?) {
