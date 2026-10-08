@@ -1,4 +1,4 @@
-name: GrowUrDhan Native Android M2
+name: GrowUrDhan Native Android M3
 
 on:
   push:
@@ -51,8 +51,19 @@ jobs:
           SDK_TOOL=$(find "$ANDROID_HOME/cmdline-tools" -path "*/bin/sdkmanager" -type f | sort -V | tail -1)
           test -n "$SDK_TOOL"
           "$SDK_TOOL" --install "platforms;android-36" "build-tools;36.0.0"
-      - name: JVM domain and ViewModel tests
+      - name: M3 financial-domain golden and ViewModel JVM tests
         run: gradle -p android-native :domain:test :app:testDebugUnitTest --stacktrace
+      - name: Upload native JVM test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GrowUrDhan-Native-M3-JVM-Reports
+          path: |
+            android-native/domain/build/test-results/test/**
+            android-native/domain/build/reports/tests/test/**
+            android-native/app/build/test-results/testDebugUnitTest/**
+            android-native/app/build/reports/tests/testDebugUnitTest/**
+          if-no-files-found: ignore
       - name: Compile debug application and Compose instrumentation test APK
         run: gradle -p android-native :app:assembleDebug :app:assembleDebugAndroidTest :data:assembleDebugAndroidTest --stacktrace
       - name: Upload native test artifacts
