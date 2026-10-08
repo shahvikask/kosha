@@ -179,6 +179,15 @@ object SnapshotReconciler {
                         (want.raw.big() * QUANTITY_SCALE_BIG / line.quantityScaled.big()).toCheckedLong()
                     )
                     val activeLots = folded.openLots
+                    if (activeLots.size != 1) {
+                        // One printed total does not justify redistributing basis across
+                        // independently acquired lots or rewriting their purchase dates.
+                        results += ReconciledLine(
+                            line, ReconciliationOutcome.CONFLICT, expected, delta,
+                            emptyList(), "Multiple tax lots require individually verified cost corrections.",
+                        )
+                        continue
+                    }
                     proposed = activeLots.mapIndexed { parcelIndex, lot ->
                         suggestion(FinancialEventKind.CORRECTION,
                             if (parcelIndex == 0) line.quantityScaled else 0,
@@ -197,11 +206,15 @@ object SnapshotReconciler {
                 }
             } else if (own.isEmpty()) {
                 val invested = line.cumulativeInvested
+                // Custodian holdings statements may print CMP but NOT purchase cost.
+                // Using CMP as cost would invent taxable history and falsely show 0% gains.
                 val price = if (invested != null && line.quantityScaled > 0 && invested.raw > 0) {
                     MoneyScaled((invested.raw.big() * QUANTITY_SCALE_BIG / line.quantityScaled.big()).toCheckedLong())
-                } else line.unitPrice
+                } else MoneyScaled(0)
                 outcome = ReconciliationOutcome.NEW_POSITION
-                reason = "No purchase history exists; propose an opening balance, not a new BUY."
+                reason = if (invested != null && invested.raw > 0)
+                    "Reported contribution establishes opening cost; never a new BUY."
+                else "No purchase history or printed cost: opening units have UNKNOWN invested cost."
                 proposed = listOf(suggestion(
                     FinancialEventKind.OPENING_BALANCE, line.quantityScaled, price,
                     invested ?: MoneyScaled(timesQuantity(line.quantityScaled, price.raw)),

@@ -77,6 +77,14 @@ object PortfolioEngine {
                     unknownInvestedCost = knownCost == null,
                 )
             }
+            if (result.quantityScaled > 0 && result.investedCost.raw == 0L &&
+                mine.any { it.kind in setOf(
+                    FinancialEventKind.OPENING_BALANCE, FinancialEventKind.SNAPSHOT_ADJUSTMENT,
+                ) }) {
+                // A holdings-only CAS prints market price without historical buy price.
+                // Keeping zero as "known invested" would invent the entire unrealised gain.
+                result = result.copy(unknownInvestedCost = true)
+            }
             errors += result.errors.map { "${holding.name}: $it" }
             // TS money/positions.ts truncates at the scaled boundary (not HALF_UP).
             val value = MoneyScaled(timesQuantity(result.quantityScaled, holding.unitPrice.raw))

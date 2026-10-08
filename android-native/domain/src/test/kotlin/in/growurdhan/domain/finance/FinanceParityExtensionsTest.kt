@@ -168,6 +168,51 @@ class FinanceParityExtensionsTest {
         }
     }
 
+    @Test fun holdingsOnlyCasDoesNotInventPurchasePriceFromNav() {
+        val holdingId = HoldingId("h-cost-unknown")
+        val h = FinancialHolding(holdingId, owner, "Synthetic fund", "MUTUAL_FUND",
+            cash(123), 0)
+        val line = StatementLine(
+            holdingId, owner, d("2026-10-08"), 100_000_000, cash(123),
+        )
+        val review = SnapshotReconciler.review(
+            listOf(line), listOf(h), emptyList(), owner, "b".repeat(64),
+        )
+        val opening = review.acceptedEvents(setOf(holdingId)).single()
+        assertEquals(FinancialEventKind.OPENING_BALANCE, opening.kind)
+        assertEquals(MoneyScaled(0), opening.unitPrice)
+        assertEquals(MoneyScaled(0), opening.totalAmount)
+        val book = PortfolioEngine.derive(
+            listOf(h), listOf(opening), d("2026-10-08"),
+        )
+        val valued = book.members.single().holdings.single()
+        assertEquals(cash(123), valued.marketValue)
+        assertTrue(valued.position.unknownInvestedCost)
+        assertNull(valued.unrealisedGain)
+    }
+
+    @Test fun repriceAcrossSeparateLotsRequiresIndividualCostEvidence() {
+        val holdingId = HoldingId("two-lots")
+        val h = FinancialHolding(holdingId, owner, "Synthetic fund", "MUTUAL_FUND",
+            cash(50), 0)
+        val events = listOf(
+            FinancialEvent("a", holdingId, owner, FinancialEventKind.BUY,
+                d("2025-01-01"), 100_000_000, cash(20), cash(20)),
+            FinancialEvent("b", holdingId, owner, FinancialEventKind.BUY,
+                d("2026-01-01"), 100_000_000, cash(25), cash(25)),
+        )
+        val line = StatementLine(
+            holdingId, owner, d("2026-10-08"), 200_000_000, cash(50), cash(100),
+        )
+        val review = SnapshotReconciler.review(
+            listOf(line), listOf(h), events, owner, "c".repeat(64),
+        )
+        assertEquals(ReconciliationOutcome.CONFLICT, review.lines.single().outcome)
+        assertThrows(IllegalArgumentException::class.java) {
+            review.acceptedEvents(setOf(holdingId))
+        }
+    }
+
     @Test fun zeroUnitStatementCannotProposeFalseOpeningTrade() {
         val id = HoldingId("h1")
         val zero = StatementLine(id, owner, d("2026-10-08"), 0, cash(100))
