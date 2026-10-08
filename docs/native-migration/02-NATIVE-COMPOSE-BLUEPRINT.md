@@ -1,9 +1,9 @@
 # GrowUrDhan — Kotlin/Jetpack Compose Native Migration Blueprint
 
-**Status:** Implementation blueprint, 2026-10-08. **Not yet implemented.**  
+**Status:** Architecture blueprint, 2026-10-08. **M1 native foundation now under implementation.**  
 **Working branch only:** `GUD-Android-ChatGPT`  
 **Parent review:** [01-AS-BUILT-REVIEW.md](01-AS-BUILT-REVIEW.md)  
-**Constraints:** `in.growurdhan.app`, upgrade compatibility, zero silent data loss, offline-first, financial invariants, CASPARSER black-box preservation.
+**Constraints:** `in.growurdhan.app`, pre-release development-only data, offline-first, financial invariants, CASPARSER black-box preservation. **Owner clarification (2026-10-08): GrowUrDhan has never been published on Google Play. In-place upgrade of production installs is NOT a release requirement; a clean native encrypted schema is authorized.**
 
 ## 1. Outcomes and non-goals
 
@@ -176,7 +176,7 @@ Implement schema v9-compatible DAOs/migrations or explicit v9-to-native schema c
 - `cas_latest` metadata, duplicate keys, indexes, account/member foreign keys and import provenance;
 - monetary and quantity integer scales, sorted transaction history and rounded displays.
 
-### 5.2 State machine for one-time device migration
+### 5.2 Pre-release vault creation and optional developer-data conversion
 
 ```text
 NOT_STARTED
@@ -195,14 +195,14 @@ leave prior vault and old app reading path intact.
 ```
 
 Exact sequence:
-1. Detect legacy native `vault.enc`, existing `GUDENC01` fallback and vault schema **without creating an empty replacement**. Obtain user unlock/consent and sufficient free-space checks.
-2. Read the legacy `EncryptedFile` **with its original Keystore alias/master key** inside an upgrade build signed with the app's **existing production certificate**. Never assume new keys can decrypt it.
+1. For fresh native installs, create an encrypted native vault under the new schema. For developer devices containing legacy `vault.enc` or `GUDENC01`, prompt to **export, convert, or deliberately reset** existing test data; do not silently overwrite the old vault.
+2. If optional legacy conversion is selected, read the legacy `EncryptedFile` with its original Keystore alias/key under a compatible test-signed build, or restore from a locked `.kosha` export. No production signing key exists to preserve from a Play release.
 3. In the trusted app process, deserialize the SQLite WASM image or read through a temporary retained legacy adapter; export **all required tables/metadata**, with documented type/scaling and deterministic JSON/SQL compatibility. No unencrypted staging file on shared storage.
 4. Stage into a new **encrypted** native database with a fresh Keystore-wrapped key; never reuse user login password as the device DB key.
 5. Validate schema version, row counts, IDs, relation mappings, full referential integrity, no missing ledger events, asset/member totals and deterministic portfolio outputs. Cross-check backup export/reimport and representative cost/tax reports.
-6. Atomically install new encrypted database and record migration state in authenticated durable metadata. Existing encrypted vault remains read-only, not deleted.
-7. Launch native UI only on verified success. Expose guided retry/restore and explicit recovery path on failure.
-8. Retain encrypted rollback evidence for an agreed period/cohort. Retire only after real-device upgraded-app validation and user-approved retention policy.
+6. Atomically install the new encrypted database and record migration state in authenticated durable metadata. Retain old developer data during conversion; for explicit fresh-start reset, verify consent before deleting it.
+7. Launch native financial UI only after a fresh encrypted database is initialized or an optional migration validates successfully. Expose guided retry/reset/restore on failure.
+8. Retain encrypted optional-migration rollback evidence until the developer confirms results. For first public Play release there is no mandatory pre-existing install cohort.
 
 Test both modes: native `EncryptedFile` and IndexedDB-encrypted fallback; never assume all installations have one location. Validate KeyStore invalidation/device transfer/reinstall behavior against the supported locked backup restore path.
 
@@ -247,7 +247,7 @@ Before deprecating the v2 exporter, add a format revision that preserves any mis
 | M4 — CAS integration | Immutable Chaquopy packaging + Kotlin adapter + external validator + review UI | Frozen parser hash unchanged; PDF golden contract pass |
 | M5 — Accounts & portfolio | Compose onboarding/auth, dashboard, holdings, records, account/family screens | End-to-end on-device parity; accessibility, offline and process-death tests |
 | M6 — External integrations | Prices, Play Billing, Gmail, backup scheduler and account deletion | OAuth/Billing/privacy validation; restart and failure tests |
-| M7 — Dual upgrade rollout | Existing-install upgrade to native with staged migration/restore | Zero silent loss; rollback, encryption and Play signer verified on devices |
+| M7 — Native pre-release validation | Fresh native install, explicit optional developer-data conversion, backup/restore | Encrypted vault, recovery and Play signing verified on devices |
 | M8 — Legacy cleanup | Remove Tauri/React/Rust/bridge and unused scripts in audited batches | Deletion checklist complete, AAB built, no runtime references, all parity tests green |
 | M9 — Commercial sign-off | Security assessment, Play policy and Data Safety re-evaluation, staged release | Owner approval; no unresolved critical/high issues |
 
@@ -277,10 +277,10 @@ Each milestone must yield reviewable code and actual test evidence. M8 deletion 
 
 1. Confirm whether existing installs must upgrade **in place** without manual backup (recommended **yes**).
 2. Confirm minimum supported Android version and legacy devices; current Tauri config minimum is API 26.
-3. Supply a test **existing installed application** (same signing key) and synthetic/consented backup for realistic migration validation; do not post personal credentials or PAN.
+3. If you want to preserve developer test records, supply a synthetic or consented `.kosha` backup for voluntary import testing; do not post personal credentials or PAN.
 4. Confirm whether Gmail is a release-critical feature or can be gated until OAuth approval/security remediation.
 5. Confirm product/licence SKU catalog against the actual Play Console.
 6. Approve encrypted SQLite driver choice only after M2 proof.
-7. Explicitly authorize production release and legacy deletion only at M7/M8 gates.
+7. Explicitly authorize the first Play production release and deletion of unused legacy code only at M7/M8 gates.
 
 **Next engineering action:** Implement M1 native Gradle/Compose scaffold on `GUD-Android-ChatGPT`, without touching the frozen parser, legacy vault or Play release workflows.
