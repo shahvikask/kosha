@@ -22,4 +22,8 @@ interface VaultRepository {
     suspend fun holdings(): List<Holding>
     suspend fun events(): List<LedgerEvent>
     suspend fun health(): VaultHealth
+    /** A password-encrypted, portable backup; no user data is logged or written unencrypted to disk. */
+    suspend fun exportEncryptedBackup(passphrase: CharArray): ByteArray
+    /** Restores ONLY into a new, empty vault; database transaction rolls back on any error. */
+    suspend fun restoreEncryptedBackup(passphrase: CharArray, ciphertext: ByteArray)
 }
