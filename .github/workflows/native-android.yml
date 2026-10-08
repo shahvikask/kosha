@@ -33,12 +33,18 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+      - name: Locate preinstalled Android SDK
+        run: |
+          echo "ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}" >> "$GITHUB_ENV"
+          test -d "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools"
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
       - name: Install Android SDK API 36
-        run: sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
+        run: |
+          SDK_TOOL=$(find "$ANDROID_HOME/cmdline-tools" -path "*/bin/sdkmanager" -type f | sort -V | tail -1)
+          test -n "$SDK_TOOL"
+          "$SDK_TOOL" --install "platforms;android-36" "build-tools;36.0.0"
       - name: JVM domain and ViewModel tests
         run: gradle -p android-native :domain:test :app:testDebugUnitTest --stacktrace
       - name: Compile debug application and Compose instrumentation test APK
