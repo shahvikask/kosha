@@ -20,6 +20,8 @@ dependencies {
     implementation(project(":domain"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.datastore.preferences)
+    implementation(libs.sqlcipher.android)
+    implementation(libs.androidx.sqlite)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.dagger.hilt.android)
     kapt(libs.dagger.hilt.compiler)
