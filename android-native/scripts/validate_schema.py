@@ -44,8 +44,12 @@ def production_ddl(source: str) -> list[str]:
         flags=re.DOTALL,
     )
     statements = [
-        (raw if raw is not None else json.loads(quoted)).strip()
-        for raw, quoted in literals.findall(body)
+        (
+            match.group(1)
+            if match.group(1) is not None
+            else json.loads(match.group(2))
+        ).strip()
+        for match in literals.finditer(body)
     ]
     if len(statements) != EXPECTED_STATEMENT_COUNT:
         raise AssertionError(
