@@ -77,8 +77,9 @@ object PortfolioEngine {
                     unknownInvestedCost = knownCost == null,
                 )
             }
+            val activeLotIds = result.openLots.map { it.eventId }.toSet()
             if (result.quantityScaled > 0 && mine.any {
-                it.quantityScaled > 0 &&
+                it.id in activeLotIds && it.quantityScaled > 0 &&
                     it.kind in setOf(
                         FinancialEventKind.OPENING_BALANCE,
                         FinancialEventKind.SNAPSHOT_ADJUSTMENT,
