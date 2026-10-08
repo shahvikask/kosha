@@ -1,4 +1,4 @@
-name: GrowUrDhan Native Android M1
+name: GrowUrDhan Native Android M2
 
 on:
   push:
@@ -10,6 +10,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: native-android-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   native-build:
