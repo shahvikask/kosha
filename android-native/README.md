@@ -26,13 +26,13 @@ gradle -p android-native :app:assembleDebug :app:assembleDebugAndroidTest :data:
 gradle -p android-native :data:connectedDebugAndroidTest :app:connectedDebugAndroidTest
 ```
 
-**Last confirmed full M2 pass:** [run #37789886674](https://github.com/shahvikask/kosha/actions/runs/37789886674), commit `efcaeaa`, including 7/7 vault and 3/3 Compose instrumented tests. **Do not treat M3 domain tests as passing until its own newer GitHub run succeeds.**
+**Verified M3 engine baseline:** [run #37796366761](https://github.com/shahvikask/kosha/actions/runs/37796366761), commit `e59bf821`, full GitHub Actions success. **New SQLCipher schema-v2 implementation and backup/migration tests are not yet verified**; await the next run.
 
 ## Financial-domain boundary (M3)
 
-`domain/finance/` is pure and **does not modify stored finances or call CASPARSER**. The richer `FinancialEvent` type mirrors TS transaction metadata; existing M2 `ledger_event` storage lacks some fields (trade unit price, fees, supersession). `CalculateFamilyPortfolio` has a conservative read adapter for legacy M2 supported kinds, refusing unsupported correction lineage rather than inventing cost history.
+`domain/finance/` remains a pure Kotlin financial engine. Native **schema v2** adds `financial_kind`, optional unit price, charges and correction-lineage columns without deleting/recreating v1 ledger rows. `VaultRepository.appendFinancialEvents` writes approved rich events in a single transaction; `VaultRepository.readBook` captures members/holdings/events under one SQL read transaction and powers the portfolio and statement-preview use cases. Portable encrypted backup format 2 retains full event metadata and accepts format-1 development exports.
 
-Until the native ledger schema and backup codec preserve the richer event fields, complete persisted FIFO/corporate-action parity is an **open gate**. The existing `VaultRepository` also exposes separate reads rather than a single atomic financial book snapshot. See [M3 implementation report](../docs/native-migration/08-M3-FINANCIAL-DOMAIN-IMPLEMENTATION.md).
+**Pending verification:** the new v2 schema/migration tests on the GitHub Android emulator. Full native financial UI, remaining TS engine parity and CASPARSER bridge are still separate milestones. See [M3 implementation](../docs/native-migration/08-M3-FINANCIAL-DOMAIN-IMPLEMENTATION.md) and [M3 persistence design](../docs/native-migration/09-M3-LEDGER-PERSISTENCE-AND-ATOMIC-READS.md).
 
 ## Non-negotiable boundaries
 

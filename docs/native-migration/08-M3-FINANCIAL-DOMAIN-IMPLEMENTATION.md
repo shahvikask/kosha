@@ -36,22 +36,22 @@ Key exact expected values:
 - XIRR is null without positive and negative flows, and roughly 10% on a one-year 10% gain.
 - Tiny fractional values truncate at the scaled integer boundary, matching the existing positions implementation.
 
-**Verification status:** Tests are committed but **NOT YET independently confirmed passing**; GitHub workflow must run and the owner will report its completion status.
+**Verified M3 calculation baseline:** [run #37796366761](https://github.com/shahvikask/kosha/actions/runs/37796366761), commit `e59bf821`, **completed / success**, including the M3 golden JVM tests, native vault and Compose instrumentation, APK builds and CASPARSER guard. **The newer schema-v2 persistence increment still requires its own separate CI pass.**
 
 ## 3. Data compatibility and safety boundaries
 
-This M3 phase deliberately does **not** mutate M2 SQLCipher tables, `VaultSchema.VERSION`, native backup formats or CASPARSER.
+M3 now implements **native SQLCipher schema v2**, adding rich ledger metadata without rebuilding the append-only v1 table, together with a transactional batch-writer, **atomic `VaultBook` reads** and portable backup **format 2**. An authenticated format-1 development backup may still be restored into an empty v2 vault. See [09-M3-LEDGER-PERSISTENCE-AND-ATOMIC-READS.md](09-M3-LEDGER-PERSISTENCE-AND-ATOMIC-READS.md) for exact DDL, migration strategy and new tests.
 
-- M3 `FinancialEvent` has optional unit price, fees, and a superseded-event pointer plus bonus/split/adjustment event types.
-- M2 `LedgerEvent` does not persist these extra fields. Its read adapter can derive basic purchases/sales from exact stored totals, but must refuse a correction lacking its original event reference.
-- Full persisted financial behavior requires a separately tested **native schema v2** adding these fields, an atomic financial-book read, updated backup encoding, verified data-migration behavior on unpublished development vaults, and cross-module Android tests.
-- `SnapshotReconciler.review` is a **read-only review plan**. It deliberately does not write a statement automatically. Manual acceptance and an atomic validated repository write are required before this can be used to change actual books.
-- The last verified on-device SQLCipher vault is M2; M3 code is not yet a completed portfolio or statement-import user journey.
+- Existing v1 ledger rows remain intact, with unknown unit prices and correction lineage explicitly unknown. A missing legacy correction ancestor is not guessed.
+- M3 full-information events cover unit prices, charges, bonus/split/statement adjustments and append-only supersession, with owner-integrity and rollback checks.
+- `CalculateFamilyPortfolio` and `PreviewStatementReconciliation` fetch one SQL-transactionally consistent family book; no separate member/holding/event read race.
+- `SnapshotReconciler.review` remains **review-only**. Acceptance of a statement into persisted holdings requires explicit user confirmation and a TOCTOU-safe committed workflow.
+- The new v2 increment must **pass its own CI** before its storage compatibility and encryption tests may be marked verified; the older M3 base run does not test v2.
 
 ## 4. Remaining M3 parity work before milestone closure
 
-1. **Persist the rich event model:** v2 SQLCipher ledger/backup parity, correction chain references and transaction fees, plus safe handling of existing pre-release M2 vaults.
-2. **Use a consistent read transaction:** Avoid calculating family totals from separate DB reads while another writer might change the book.
+1. **Verify rich ledger persistence in the NEW run:** schema-v2 migration, encrypted v1 data survival, new metadata, atomic write/reads and both v1/v2 backup round trips. Implementation and regression tests are committed; actual v2 CI outcome pending.
+2. **Commit a reviewed statement atomically:** verify book fingerprint and user acceptance in the same SQL transaction; current preview cannot safely commit after a stale review.
 3. **Complete legacy financial coverage:** `interest.ts`, `emi.ts`, `growth.ts`, `lookthrough.ts`, `returnMetrics.ts`, `costBasis.ts` and liability edge cases need additional oracles; match the existing application and document intentional safety improvements.
 4. **Ensure exact cross-runtime results:** Run TypeScript and Kotlin against identical input vectors, verify rounding and fiscal-year details before deleting legacy JS.
 5. **Integrate with native UI carefully:** do not expose unchecked warnings as a trustworthy monetary summary; implement owner-verified error states and session gate.
