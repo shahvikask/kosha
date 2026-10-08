@@ -15,8 +15,12 @@ mockk = "1.13.17"
 androidxTest = "1.2.1"
 espresso = "3.6.1"
 javaxInject = "1"
+sqlcipher = "4.19.0"
+androidxSqlite = "2.7.0"
 
 [libraries]
+sqlcipher-android = { module = "net.zetetic:sqlcipher-android", version.ref = "sqlcipher" }
+androidx-sqlite = { module = "androidx.sqlite:sqlite", version.ref = "androidxSqlite" }
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "core" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity" }
 androidx-compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
