@@ -1,7 +1,7 @@
 # GrowUrDhan — Native Kotlin Android
 
 **Branch:** `GUD-Android-ChatGPT`  
-**Status:** M1 Compose foundation and M2 encrypted vault passed GitHub Android CI. **M3 financial-domain implementation is being verified; not ready for Play release.**  
+**Status:** M1/M2 and M3 financial-domain + ledger-v2 **CI VERIFIED**, 31/31 JVM plus 15/15 Android tests on commit `e25fec7`. Full finance parity and Play release remain OPEN.  
 **Application ID:** `in.growurdhan.app` (pre-release development only). No Google Play version has been published.
 
 ## Modules and active implementation
@@ -32,7 +32,7 @@ gradle -p android-native :data:connectedDebugAndroidTest :app:connectedDebugAndr
 
 `domain/finance/` remains a pure Kotlin financial engine. Native **schema v2** adds `financial_kind`, optional unit price, charges and correction-lineage columns without deleting/recreating v1 ledger rows. `VaultRepository.appendFinancialEvents` writes approved rich events in a single transaction; `VaultRepository.readBook` captures members/holdings/events under one SQL read transaction and powers the portfolio and statement-preview use cases. Portable encrypted backup format 2 retains full event metadata and accepts format-1 development exports.
 
-**Pending verification:** the new v2 schema/migration tests on the GitHub Android emulator. Full native financial UI, remaining TS engine parity and CASPARSER bridge are still separate milestones. See [M3 implementation](../docs/native-migration/08-M3-FINANCIAL-DOMAIN-IMPLEMENTATION.md) and [M3 persistence design](../docs/native-migration/09-M3-LEDGER-PERSISTENCE-AND-ATOMIC-READS.md).
+**Verified:** schema-v2 migration, backup compatibility and encrypted ledger cases passed on [native M3 run #37807320946](https://github.com/shahvikask/kosha/actions/runs/37807320946). Full native financial UI, remaining TS engine parity, app authentication and CASPARSER bridge are still separate work. See [M3 implementation](../docs/native-migration/08-M3-FINANCIAL-DOMAIN-IMPLEMENTATION.md) and [M3 persistence design](../docs/native-migration/09-M3-LEDGER-PERSISTENCE-AND-ATOMIC-READS.md).
 
 ## Non-negotiable boundaries
 
@@ -40,3 +40,5 @@ gradle -p android-native :data:connectedDebugAndroidTest :app:connectedDebugAndr
 - The React/Tauri reference application and developer vaults remain intact; no destructive migration or legacy cleanup before validated native parity.
 - The Keystore key protects local storage at rest; it is **not** the user's vault login password. Authentication/session locking and device-loss recovery UI remain release blockers.
 - The current APK is **not** for public Google Play distribution.
+
+See the source-linked [M3 verification report](../docs/native-migration/10-M3-VERIFICATION-RESULTS.md) for exact JUnit counts, API-35 Android test coverage, archive digests and incomplete commercial release gates.

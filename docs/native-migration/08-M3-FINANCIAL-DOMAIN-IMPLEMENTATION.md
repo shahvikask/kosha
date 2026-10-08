@@ -1,8 +1,10 @@
 # GrowUrDhan — M3 Financial Domain Engine: Implementation and Verification Gates
 
+> **Verified M3 baseline (2026-10-08):** [Native Android M3 run #37807320946](https://github.com/shahvikask/kosha/actions/runs/37807320946) on commit `e25fec7080b197fca893a0dd578c325e8cac490d` passed **31/31 JVM tests**, **12/12 data-module Android vault tests**, **3/3 Compose instrumentation tests**, schema v1→v2 preflight, APK compilation/artifact upload and CASPARSER guard. Details and remaining blockers: [10-M3-VERIFICATION-RESULTS.md](10-M3-VERIFICATION-RESULTS.md). Full legacy financial parity and release readiness remain OPEN.
+
 **Date:** 2026-10-08  
 **Working branch:** `GUD-Android-ChatGPT`  
-**Status:** M3 *source implementation in progress*; do not mark complete until the new native CI passes and the persistence/parity gaps below are resolved.  
+**Status:** M3 financial-domain foundation and ledger-v2 increment **independently CI VERIFIED** at `e25fec7`; complete legacy feature parity and release gating still **OPEN**.  
 **Immutable CASPARSER:** No changes to the parser engine, Python invocation or frozen dependencies.
 
 ## 1. Legacy code reviewed and ported as pure Kotlin
@@ -50,12 +52,12 @@ M3 now implements **native SQLCipher schema v2**, adding rich ledger metadata wi
 
 ## 4. Remaining M3 parity work before milestone closure
 
-1. **Verify rich ledger persistence in the NEW run:** schema-v2 migration, encrypted v1 data survival, new metadata, atomic write/reads and both v1/v2 backup round trips. Implementation and regression tests are committed; actual v2 CI outcome pending.
+1. **Rich ledger persistence is VERIFIED on API 35 CI:** schema-v2 migration, encrypted v1 data survival, event fees/supersession, atomic write/read, v1/v2 backups. Extend device coverage and complete a user-reviewed statement acceptance transaction.
 2. **Commit a reviewed statement atomically:** verify book fingerprint and user acceptance in the same SQL transaction; current preview cannot safely commit after a stale review.
 3. **Complete legacy financial coverage:** `interest.ts`, `emi.ts`, `growth.ts`, `lookthrough.ts`, `returnMetrics.ts`, `costBasis.ts` and liability edge cases need additional oracles; match the existing application and document intentional safety improvements.
 4. **Ensure exact cross-runtime results:** Run TypeScript and Kotlin against identical input vectors, verify rounding and fiscal-year details before deleting legacy JS.
 5. **Integrate with native UI carefully:** do not expose unchecked warnings as a trustworthy monetary summary; implement owner-verified error states and session gate.
-6. **Run successful CI:** Kotlin domain tests, existing M2 emulator tests, CASPARSER immutable guard, and unchanged hybrid reference tests.
+6. **Maintain successful CI:** M3 baseline `#37807320946` and hybrid Kosha CI `#37807321066` passed. Future changes require their own fresh verification.
 
 ## 5. Verification workflow handoff
 

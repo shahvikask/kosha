@@ -1,8 +1,10 @@
 # GrowUrDhan — M3 Increment: Rich Ledger Persistence, Atomic Books and Pre-release v1 Upgrade
 
+> **Verified M3 baseline (2026-10-08):** [Native Android M3 run #37807320946](https://github.com/shahvikask/kosha/actions/runs/37807320946) on commit `e25fec7080b197fca893a0dd578c325e8cac490d` passed **31/31 JVM tests**, **12/12 data-module Android vault tests**, **3/3 Compose instrumentation tests**, schema v1→v2 preflight, APK compilation/artifact upload and CASPARSER guard. Details and remaining blockers: [10-M3-VERIFICATION-RESULTS.md](10-M3-VERIFICATION-RESULTS.md). Full legacy financial parity and release readiness remain OPEN.
+
 **Document date:** 2026-10-08  
 **Development branch:** `GUD-Android-ChatGPT`  
-**Status:** Committed implementation; **new CI verification required** after the final M3 increment commit.  
+**Status:** M3 SQLCipher v2 persistence **CI VERIFIED** on commit `e25fec7`, with explicit open parity/release gaps.  
 **Latest independently verified M3 base:** [Run #37796366761](https://github.com/shahvikask/kosha/actions/runs/37796366761), commit `e59bf821a65d622c007b129ef8906ab9c4544129`, **completed / success**, including Kotlin financial golden tests, M2 vault/Compose instrumented tests, APKs and reports. This previous pass **does not cover** the schema-v2 increment described below.
 
 ## 1. What changed
@@ -88,3 +90,7 @@ For the **final new source commit** triggering `GrowUrDhan Native Android M3`, p
 **Additional test fixture hardening:** The v1-upgrade Android test directly opens SQLCipher before calling the vault repository. It now explicitly calls `System.loadLibrary("sqlcipher")` rather than depending on another test to load the library first.
 
 **What did pass:** host SQLite v1-to-v2 migration and ledger-integrity preflight; protected CASPARSER diff check. **Not executed:** Android APK build, native vault instrumentation and Compose UI tests. The JVM-report archive exists but the Kotlin compiler failed before new M3 tests could finish. A new complete workflow run is required to verify the fix.
+
+## Final M3 v2 verification — run #37807320946
+
+The corrected code in commit `e25fec7080b197fca893a0dd578c325e8cac490d` completed [Native Android M3 run #37807320946](https://github.com/shahvikask/kosha/actions/runs/37807320946) **successfully**. The downloaded JUnit XML confirms **31/31 JVM and 15/15 Android instrumented tests**, with 0 failed, 0 errors and 0 skipped. The five rich financial Android persistence cases (encrypted v1 upgrade, rich-kind reopen, rollback/cross-owner, v2 backup roundtrip and v1 backup compatibility) passed; the seven retained vault tests and three Compose tests passed too. The host SQLite schema preflight logged `PASS: 14 v1 DDL + 6 v2 migrations`. Debug APK and test APK artifacts uploaded successfully. CASPARSER source comparison and original Kosha CI also passed. **This replaces the earlier historical failure/awaiting-CI statements above as the current verified outcome**; see [10-M3-VERIFICATION-RESULTS.md](10-M3-VERIFICATION-RESULTS.md) for the exact archived test evidence, artifact checksums and production-release blockers.
