@@ -12,7 +12,7 @@ import javax.inject.Inject
  * v2 financial-book adapter. Pre-release v1 events retain their exact totals but may
  * lack unit price, charges and correction lineage; never manufacture missing evidence.
  */
-internal fun LedgerEvent.toFinancialEvent(): FinancialEvent {
+fun LedgerEvent.toFinancialEvent(): FinancialEvent {
     if (kind == LedgerKind.CORRECTION && supersedesEventId == null) {
         throw IllegalStateException(
             "A pre-v2 correction is missing its supersession reference; cannot prove invested cost."
@@ -28,7 +28,7 @@ internal fun LedgerEvent.toFinancialEvent(): FinancialEvent {
     )
 }
 
-internal fun Holding.toFinancialHolding(): FinancialHolding = FinancialHolding(
+fun Holding.toFinancialHolding(): FinancialHolding = FinancialHolding(
     holdingId = id, ownerId = ownerId, name = name, category = assetCategory,
     unitPrice = currentUnitPrice, storedQuantityScaled = quantity.raw,
 )
@@ -77,4 +77,27 @@ class AppendFinancialEvents @Inject constructor(
         require(events.isNotEmpty()) { "No approved financial events." }
         vault.appendFinancialEvents(events)
     }
+}
+
+/**
+ * The intended user-action path: source review and state-bound confirmation.
+ * Callers must obtain explicit user confirmation between these two use cases.
+ * These operations never parse PDFs and do not bypass vault session policy.
+ */
+class PrepareStatementReview @Inject constructor(
+    private val vault: VaultRepository,
+) {
+    suspend operator fun invoke(
+        snapshotId: String,
+        ownerId: `in`.growurdhan.core.model.OwnerId,
+        sourceSha256: String,
+        lines: List<StatementLine>,
+    ): ReviewedStatement = vault.prepareStatementReview(snapshotId, ownerId, sourceSha256, lines)
+}
+
+class CommitReviewedStatement @Inject constructor(
+    private val vault: VaultRepository,
+) {
+    suspend operator fun invoke(review: ReviewedStatement): `in`.growurdhan.core.model.SnapshotResult =
+        vault.commitReviewedStatement(review)
 }

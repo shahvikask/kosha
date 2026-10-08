@@ -53,6 +53,27 @@ data class StatementReview(
 }
 
 /**
+ * Review receipt bound to the EXACT on-device book and source lines.
+ *
+ * These fields may be modified by callers: commit must therefore re-read/re-hash
+ * the vault, re-run the planner, and compare the full plan inside its SQL
+ * transaction. The receipt alone is not an authentication or consent token.
+ */
+data class ReviewedStatement(
+    val snapshotId: String,
+    val ownerId: OwnerId,
+    val sourceLines: List<StatementLine>,
+    val bookFingerprint: String,
+    val plan: StatementReview,
+) {
+    init {
+        require(snapshotId.isNotBlank() && snapshotId.length <= 128) { "Invalid snapshot identifier." }
+        require(Regex("^[a-f0-9]{64}$").matches(bookFingerprint)) { "Invalid vault fingerprint." }
+        require(sourceLines.isNotEmpty()) { "Cannot approve an empty statement." }
+    }
+}
+
+/**
  * Mirrors src/lib/snapshot.ts: differences only, 1e-6 unit tolerance,
  * no implicit closure for holdings not covered by the statement, and a
  * cost rebase only when a printed contribution differs by over ₹1.
@@ -138,7 +159,12 @@ object SnapshotReconciler {
             val proposed: List<FinancialEvent>
             val outcome: ReconciliationOutcome
             val reason: String
-            if (delta.big().abs() <= BigInteger.valueOf(QTY_TOLERANCE)) {
+            if (expected == 0L && line.quantityScaled == 0L && own.isEmpty()) {
+                // A zero-unit observation never fabricates a zero-quantity opening BUY.
+                outcome = ReconciliationOutcome.MATCH
+                reason = "The statement and empty ledger both show zero units."
+                proposed = emptyList()
+            } else if (delta.big().abs() <= BigInteger.valueOf(QTY_TOLERANCE)) {
                 val want = line.cumulativeInvested
                 val drift = if (want == null) BigInteger.ZERO
                     else (want.raw.big() - folded.investedCost.raw.big()).abs()

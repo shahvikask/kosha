@@ -1,6 +1,8 @@
 package `in`.growurdhan.domain.vault
 
 import `in`.growurdhan.core.model.*
+import `in`.growurdhan.domain.finance.ReviewedStatement
+import `in`.growurdhan.domain.finance.StatementLine
 import `in`.growurdhan.domain.finance.FinancialEvent
 
 /**
@@ -21,6 +23,15 @@ interface VaultRepository {
     suspend fun appendFinancialEvents(events: List<FinancialEvent>)
     /** Refuse an incomplete statement before performing any database writes. */
     suspend fun importSnapshot(snapshot: StatementSnapshot): SnapshotResult
+    /** A locked/read-consistent review receipt. Not an automatic financial import. */
+    suspend fun prepareStatementReview(
+        snapshotId: String,
+        ownerId: OwnerId,
+        sourceSha256: String,
+        lines: List<StatementLine>,
+    ): ReviewedStatement
+    /** Explicit caller action: re-validate review and commit observation/events atomically. */
+    suspend fun commitReviewedStatement(review: ReviewedStatement): SnapshotResult
     suspend fun members(): List<FamilyMember>
     suspend fun holdings(): List<Holding>
     suspend fun events(): List<LedgerEvent>
