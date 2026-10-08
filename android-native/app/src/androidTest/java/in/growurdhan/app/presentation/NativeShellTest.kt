@@ -3,6 +3,9 @@ package `in`.growurdhan.app.presentation
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -74,7 +77,11 @@ class NativeShellTest {
         }
         compose.onNodeWithContentDescription("Privacy").performClick()
         compose.onNodeWithText("Privacy by construction").assertIsDisplayed()
-        compose.onNodeWithText("Preferences on this device").assertIsDisplayed()
+        // Additional privacy copy moved this card below the initial viewport.
+        // Test its actual visible, scrollable state rather than initial placement.
+        compose.onNodeWithText("Preferences on this device")
+            .performScrollTo()
+            .assertIsDisplayed()
     }
     @Test fun emptyStatementDestinationCannotOfferUnverifiedImport() {
         compose.setContent {
@@ -116,8 +123,18 @@ class NativeShellTest {
         compose.onNodeWithContentDescription("Statements").performClick()
         compose.onNodeWithText("Confirm and authenticate approval").assertIsNotEnabled()
         compose.runOnIdle { assertEquals(null, action) }
-        compose.onNodeWithContentDescription("Confirm statement changes").performClick()
-        compose.onNodeWithText("Confirm and authenticate approval").assertIsEnabled().performClick()
+        // The review screen scrolls behind the bottom navigation. Scroll the
+        // real checkbox into view BEFORE clicking so the navigation bar cannot
+        // intercept an off-screen tap. Verify its semantic state changes.
+        compose.onNodeWithContentDescription("Confirm statement changes")
+            .performScrollTo()
+            .assertIsOff()
+            .performClick()
+            .assertIsOn()
+        compose.onNodeWithText("Confirm and authenticate approval")
+            .performScrollTo()
+            .assertIsEnabled()
+            .performClick()
         compose.runOnIdle { assertEquals(StatementReviewIntent.RequestApproval, action) }
     }
 
