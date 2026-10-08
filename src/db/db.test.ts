@@ -1,4 +1,5 @@
 import { NodeSqlDriver } from './nodeDriver';
+import { SCHEMA_VERSION } from './schema';
 import { Repository } from './repository';
 import { migrateFromLocalStorage, LS_KEYS } from './migrate';
 import { isAppendOnlyViolation } from './driver';
@@ -25,7 +26,7 @@ const famSpouse:FamilyMember = {id:'f2',name:'Spouse',relation:'Spouse',color:'#
   const drv = new NodeSqlDriver();
   const repo = new Repository(drv);
   await repo.initialise();
-  eq('schema version', await repo.schemaVersion(), 7);
+  eq('schema version matches physical schema', await repo.schemaVersion(), SCHEMA_VERSION);
   const tables = await drv.query<{name:string}>(
     `SELECT name FROM sqlite_master WHERE type='table' ORDER BY name`);
   eq('tables created', tables.length >= 13, true);
@@ -298,7 +299,7 @@ const famSpouse:FamilyMember = {id:'f2',name:'Spouse',relation:'Spouse',color:'#
   eq('NPS tier stored', nps.details?.npsTier, 'I');
   eq('CRA stored', nps.details?.npsCra, 'PROT');
   await repo7.initialise();
-  eq('v7 migrate is idempotent', await repo7.schemaVersion(), 7);
+  eq('schema initialization is idempotent', await repo7.schemaVersion(), SCHEMA_VERSION);
   await drv7.close();
 
   console.log('\n--- Q. Equity / MF registrar fields persist ---');
