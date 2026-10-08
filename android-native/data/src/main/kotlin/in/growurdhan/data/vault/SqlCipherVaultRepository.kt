@@ -182,7 +182,7 @@ class SqlCipherVaultRepository(
                 FinancialEventKind.SNAPSHOT_ADJUSTMENT, FinancialEventKind.VALUATION_UPDATE,
                 FinancialEventKind.REPAYMENT,
             )) LedgerKind.ADJUSTMENT else LedgerKind.valueOf(event.kind.name)
-            LedgerRow(
+            return LedgerRow(
                 id = event.id,
                 holdingId = event.holdingId,
                 ownerId = event.ownerId,
