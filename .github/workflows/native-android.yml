@@ -1,0 +1,53 @@
+name: GrowUrDhan Native Android M1
+
+on:
+  push:
+    branches: [GUD-Android-ChatGPT]
+    paths:
+      - 'android-native/**'
+      - '.github/workflows/native-android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify immutable CASPARSER engine and packaging inputs
+        run: |
+          git diff --exit-code af96dcc8967ab595e1d9acee78e29e500cb99a9e HEAD -- \
+            src/casparser-main \
+            scripts/cas_android.py \
+            scripts/android_casparser_isin.py \
+            scripts/android_pydantic.py \
+            scripts/cas_parse_server.py \
+            scripts/requirements-cas.txt
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Install Android SDK API 36
+        run: sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
+      - name: JVM domain and ViewModel tests
+        run: gradle -p android-native :domain:test :app:testDebugUnitTest --stacktrace
+      - name: Compile debug application and Compose instrumentation test APK
+        run: gradle -p android-native :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
+      - name: Upload native test artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: GrowUrDhan-Native-M1-APKs
+          path: |
+            android-native/app/build/outputs/apk/debug/*.apk
+            android-native/app/build/outputs/apk/androidTest/debug/*.apk
+          if-no-files-found: error
