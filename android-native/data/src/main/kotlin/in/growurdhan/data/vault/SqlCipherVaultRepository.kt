@@ -147,6 +147,21 @@ class SqlCipherVaultRepository(
             require(event.kind != FinancialEventKind.CORRECTION || event.supersedesEventId != null) {
                 "Corrections require the original event ID."
             }
+            require(event.unitPrice == null || event.unitPrice.raw >= 0) {
+                "Unit price and split denominators cannot be negative."
+            }
+            when (event.kind) {
+                FinancialEventKind.BUY, FinancialEventKind.OPENING_BALANCE,
+                FinancialEventKind.BONUS -> require(event.quantityScaled > 0) {
+                    "A new positive lot requires units."
+                }
+                FinancialEventKind.SPLIT -> require(
+                    event.quantityScaled > 0 && (event.unitPrice?.raw ?: 0) > 0
+                ) { "A stock split needs a positive numerator and denominator." }
+                FinancialEventKind.SELL, FinancialEventKind.SNAPSHOT_ADJUSTMENT ->
+                    require(event.quantityScaled != 0L) { "Quantity adjustment cannot be zero." }
+                else -> Unit // Zero-quantity correction may supersede an obsolete parcel.
+            }
             val legacyCarrier = if (event.kind in setOf(
                 FinancialEventKind.BONUS, FinancialEventKind.SPLIT,
                 FinancialEventKind.SNAPSHOT_ADJUSTMENT, FinancialEventKind.VALUATION_UPDATE,
