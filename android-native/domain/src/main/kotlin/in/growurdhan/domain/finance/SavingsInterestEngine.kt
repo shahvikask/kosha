@@ -1,6 +1,6 @@
-package \`in\`.growurdhan.domain.finance
+package `in`.growurdhan.domain.finance
 
-import \`in\`.growurdhan.core.model.MoneyScaled
+import `in`.growurdhan.core.model.MoneyScaled
 import java.math.BigInteger
 import java.time.LocalDate
 
