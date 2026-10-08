@@ -1,0 +1,12 @@
+.gradle/
+**/build/
+local.properties
+*.iml
+.idea/
+captures/
+*.hprof
+*.keystore
+*.jks
+*.db
+*.db-shm
+*.db-wal
