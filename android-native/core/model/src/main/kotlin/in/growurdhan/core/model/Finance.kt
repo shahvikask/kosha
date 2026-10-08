@@ -87,6 +87,7 @@ data class Holding(
 
 enum class LedgerKind {
     BUY, SELL, DIVIDEND, INTEREST, OPENING_BALANCE, ADJUSTMENT, CORRECTION,
+    BONUS, SPLIT, SNAPSHOT_ADJUSTMENT, VALUATION_UPDATE, REPAYMENT,
 }
 
 data class LedgerEvent(
@@ -98,13 +99,26 @@ data class LedgerEvent(
     val quantityDeltaScaled: Long,
     val amount: MoneyScaled,
     val sourceFingerprint: String?,
+    /** Optional on records written by the pre-release v1 vault. */
+    val unitPrice: MoneyScaled? = null,
+    val charges: MoneyScaled = MoneyScaled(0),
+    val supersedesEventId: String? = null,
 ) {
     init {
         require(id.isNotBlank() && id.length <= 128)
         require(Regex("^\\d{4}-\\d{2}-\\d{2}$").matches(eventDate))
         require(sourceFingerprint == null || sourceFingerprint.length <= 128)
+        require(charges.raw >= 0) { "Charges cannot be negative." }
+        require(supersedesEventId == null || supersedesEventId != id) { "An event cannot supersede itself." }
     }
 }
+
+/** Single atomic SQLite book snapshot; never combine members/events from separate writes. */
+data class VaultBook(
+    val members: List<FamilyMember>,
+    val holdings: List<Holding>,
+    val events: List<LedgerEvent>,
+)
 
 /** An observation, not a BUY or other transaction. */
 data class StatementPosition(

@@ -2,9 +2,9 @@ package `in`.growurdhan.data.vault
 
 import net.zetetic.database.sqlcipher.SQLiteDatabase
 
-/** Fresh v1 native schema. No plaintext Room, no REAL money/quantity columns. */
+/** Native financial schema v2, with transactional in-place upgrade of unpublished v1 vaults. */
 internal object VaultSchema {
-    const val VERSION = 1
+    const val VERSION = 2
 
     fun initializeOrValidate(db: SQLiteDatabase) {
         // SQLCipher returns a result row for secure_delete even when setting it.
@@ -26,10 +26,13 @@ internal object VaultSchema {
             cursor.getInt(0)
         }
         when (current) {
-            0 -> {
+            0, 1 -> {
+                // Both fresh installation and v1->v2 upgrade are a single transaction.
+                // A crash at any statement rolls back the entire schema transition.
                 db.beginTransaction()
                 try {
-                    for (sql in ddl) db.execSQL(sql)
+                    if (current == 0) for (sql in ddl) db.execSQL(sql)
+                    for (sql in migrationToV2) db.execSQL(sql)
                     db.execSQL("PRAGMA user_version = $VERSION")
                     db.setTransactionSuccessful()
                 } finally {
@@ -39,6 +42,13 @@ internal object VaultSchema {
             VERSION -> Unit
             else -> throw VaultUnavailable("Unsupported native vault schema: $current.")
         }
+        // Fail closed if a forged or incomplete version number omits required columns.
+        val columns = db.rawQuery("PRAGMA table_info(ledger_event)", null).use { cursor ->
+            buildSet { while (cursor.moveToNext()) add(cursor.getString(1)) }
+        }
+        check(columns.containsAll(setOf(
+            "financial_kind", "unit_price_scaled", "charges_scaled", "supersedes_event_id",
+        ))) { "Native ledger schema v2 is incomplete." }
         val integrity = db.rawQuery("PRAGMA integrity_check", null).use {
             if (it.moveToFirst()) it.getString(0) else "unavailable"
         }
@@ -46,6 +56,47 @@ internal object VaultSchema {
         val foreignKeys = db.rawQuery("PRAGMA foreign_key_check", null).use { it.count }
         if (foreignKeys != 0) throw VaultUnavailable("Encrypted vault references are inconsistent.")
     }
+
+    /**
+     * Stored legacy kind remains constrained by v1 CHECK. Rich event kind is explicit,
+     * with ADJUSTMENT as the legacy carrier for BONUS/SPLIT/other added event types.
+     * This avoids rebuilding the append-only table and preserves old rows and triggers.
+     * The insert validation trigger prevents inconsistent carriers or forged correction links.
+     */
+    internal val migrationToV2 = listOf(
+        """ALTER TABLE ledger_event ADD COLUMN financial_kind TEXT NOT NULL DEFAULT ''
+           CHECK(financial_kind IN ('', 'BUY','SELL','DIVIDEND','INTEREST',
+               'OPENING_BALANCE','ADJUSTMENT','CORRECTION','BONUS','SPLIT',
+               'SNAPSHOT_ADJUSTMENT','VALUATION_UPDATE','REPAYMENT'))""",
+        "ALTER TABLE ledger_event ADD COLUMN unit_price_scaled INTEGER",
+        "ALTER TABLE ledger_event ADD COLUMN charges_scaled INTEGER NOT NULL DEFAULT 0 CHECK(charges_scaled >= 0)",
+        "ALTER TABLE ledger_event ADD COLUMN supersedes_event_id TEXT",
+        "CREATE UNIQUE INDEX ledger_unique_supersession ON ledger_event(supersedes_event_id) WHERE supersedes_event_id IS NOT NULL",
+        """
+        CREATE TRIGGER validate_rich_ledger_insert BEFORE INSERT ON ledger_event
+        WHEN NEW.financial_kind != '' OR NEW.supersedes_event_id IS NOT NULL
+        BEGIN
+          SELECT CASE WHEN
+            (NEW.financial_kind IN ('BONUS','SPLIT','SNAPSHOT_ADJUSTMENT','VALUATION_UPDATE','REPAYMENT')
+              AND NEW.kind != 'ADJUSTMENT') OR
+            (NEW.financial_kind NOT IN ('BONUS','SPLIT','SNAPSHOT_ADJUSTMENT','VALUATION_UPDATE','REPAYMENT')
+              AND NEW.financial_kind != '' AND NEW.kind != NEW.financial_kind)
+            THEN RAISE(ABORT, 'Financial event kind does not match ledger carrier') END;
+          SELECT CASE WHEN
+            NEW.financial_kind = 'CORRECTION' AND NEW.supersedes_event_id IS NULL
+            THEN RAISE(ABORT, 'A correction must supersede an existing event') END;
+          SELECT CASE WHEN
+            NEW.supersedes_event_id IS NOT NULL AND NEW.financial_kind != 'CORRECTION'
+            THEN RAISE(ABORT, 'Only a correction can supersede an event') END;
+          SELECT CASE WHEN
+            NEW.supersedes_event_id IS NOT NULL AND NOT EXISTS (
+              SELECT 1 FROM ledger_event AS prior
+              WHERE prior.id = NEW.supersedes_event_id AND prior.owner_id = NEW.owner_id
+                AND prior.holding_id = NEW.holding_id
+            ) THEN RAISE(ABORT, 'Missing or cross-owner correction predecessor') END;
+        END
+        """.trimIndent(),
+    )
 
     private val ddl = listOf(
         """
