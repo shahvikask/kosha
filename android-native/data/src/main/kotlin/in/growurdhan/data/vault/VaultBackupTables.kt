@@ -20,6 +20,7 @@ internal object VaultBackupTables {
         "ledger_event" to listOf(
             "id", "owner_id", "holding_id", "kind", "event_date",
             "quantity_delta_scaled", "amount_scaled", "source_fingerprint",
+            "financial_kind", "unit_price_scaled", "charges_scaled", "supersedes_event_id",
         ),
         "snapshot_import" to listOf(
             "id", "owner_id", "source_sha256", "as_of", "is_complete",
@@ -31,12 +32,13 @@ internal object VaultBackupTables {
     )
     private val integers = setOf(
         "is_primary", "quantity_scaled", "price_scaled", "quantity_delta_scaled",
-        "amount_scaled", "is_complete", "value_scaled",
+        "amount_scaled", "is_complete", "value_scaled", "unit_price_scaled", "charges_scaled",
     )
     private const val MAX_ROWS_PER_TABLE = 100_000
+    private val legacyLedgerColumns = columns.getValue("ledger_event").take(8)
 
     fun export(db: SQLiteDatabase): ByteArray {
-        val payload = JSONObject().put("format", 1).put("databaseVersion", VaultSchema.VERSION)
+        val payload = JSONObject().put("format", 2).put("databaseVersion", VaultSchema.VERSION)
         for ((table, names) in columns) {
             val rows = JSONArray()
             db.rawQuery("SELECT ${names.joinToString(",")} FROM $table", null).use { cursor ->
@@ -66,16 +68,23 @@ internal object VaultBackupTables {
     fun restoreIntoEmpty(db: SQLiteDatabase, plain: ByteArray) {
         require(plain.size <= VaultBackupCodec.MAX_PLAINTEXT) { "Backup is oversized." }
         val payload = JSONObject(plain.toString(Charsets.UTF_8))
-        require(payload.getInt("format") == 1 && payload.getInt("databaseVersion") == VaultSchema.VERSION) {
-            "Unsupported native backup schema."
-        }
+        val format = payload.getInt("format")
+        val databaseVersion = payload.getInt("databaseVersion")
+        // Pre-release v1 exports are accepted for voluntary development-data recovery.
+        // A v1 ledger row lacks the four richer fields and receives SQL v2 defaults.
+        require(
+            (format == 2 && databaseVersion == VaultSchema.VERSION) ||
+                (format == 1 && databaseVersion == 1)
+        ) { "Unsupported native backup schema." }
         // Reject any attempt to combine backups or overwrite existing financial books.
         for (table in columns.keys) {
             db.rawQuery("SELECT 1 FROM $table LIMIT 1", null).use {
                 check(!it.moveToFirst()) { "Backup restore requires an empty native vault." }
             }
         }
-        for ((table, names) in columns) {
+        for ((table, availableNames) in columns) {
+            val names = if (format == 1 && table == "ledger_event") legacyLedgerColumns
+                else availableNames
             val rows = payload.getJSONArray(table)
             require(rows.length() <= MAX_ROWS_PER_TABLE) { "Too many backup records." }
             val placeholders = names.joinToString(",") { "?" }
