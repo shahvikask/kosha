@@ -1,43 +1,42 @@
-# GrowUrDhan Native Android — M1
+# GrowUrDhan — Native Kotlin Android
 
-**Status:** Development-only native foundation. **Do not publish or install as an upgrade over an existing vault.** The native build shares the future package identity `in.growurdhan.app` but it has **no finance database or parser integration yet**.
+**Branch:** `GUD-Android-ChatGPT`  
+**Status:** M1 Compose foundation and M2 encrypted vault passed GitHub Android CI. **M3 financial-domain implementation is being verified; not ready for Play release.**  
+**Application ID:** `in.growurdhan.app` (pre-release development only). No Google Play version has been published.
 
-## Implementation
+## Modules and active implementation
 
-- `app`: Compose / Material 3, accessible adaptive navigation, Hilt ViewModel, UDF intents.
-- `core:model`: pure Kotlin immutable appearance data.
-- `domain`: repository interface and use cases.
-- `data`: Hilt-bound DataStore implementation, storing **only appearance preferences**.
-- UI supports device/light/dark themes, Android 12+ dynamic colors, small/wide layouts and accessible navigation.
+- `app`: Kotlin, Compose Material 3, Hilt, accessible adaptive navigation, vault and appearance ViewModels. No completed public-facing financial UI/auth gate yet.
+- `core:model`: scaled money and quantity types, family/holding/ledger identities, SQLite-compatible data contracts.
+- `domain`: pure Kotlin use cases; M3 adds FIFO tax lots, corrections, split/bonus events, snapshot reconciliation planning, member net worth, date-safe tax rules and XIRR with TS-based golden fixtures.
+- `data`: Keystore-wrapped key, SQLCipher Android native vault, transactional statement records, authenticated encrypted backup, DataStore appearance settings.
+- `scripts/validate_schema.py`: host-side SQLite DDL and append-only ledger preflight.
 
 ## Build and test
 
-Requires JDK 17, Android SDK API 36 and Gradle 8.13. GitHub Actions installs the **pinned Gradle version** via `gradle/actions/setup-gradle` so no checked-in Gradle wrapper binary is required for CI at this milestone.
+Requires JDK 17, Android SDK API 36 and Gradle 8.13. CI installs pinned Gradle using `gradle/actions/setup-gradle` and runs both native instrumentation suites on an Android API 35 emulator.
 
-From the repository root:
+From repository root:
 
 ```sh
 gradle -p android-native :domain:test :app:testDebugUnitTest
-gradle -p android-native :app:assembleDebug :app:assembleDebugAndroidTest
+python3 android-native/scripts/validate_schema.py
+gradle -p android-native :app:assembleDebug :app:assembleDebugAndroidTest :data:assembleDebugAndroidTest
+# Requires connected Android emulator/device:
+gradle -p android-native :data:connectedDebugAndroidTest :app:connectedDebugAndroidTest
 ```
 
-With a running Android emulator/device:
+**Last confirmed full M2 pass:** [run #37789886674](https://github.com/shahvikask/kosha/actions/runs/37789886674), commit `efcaeaa`, including 7/7 vault and 3/3 Compose instrumented tests. **Do not treat M3 domain tests as passing until its own newer GitHub run succeeds.**
 
-```sh
-gradle -p android-native :app:connectedDebugAndroidTest
-```
+## Financial-domain boundary (M3)
 
-All sensitive data is **absent** from this initial scaffold, rather than mocked. No customer or synthetic balances are invented.
+`domain/finance/` is pure and **does not modify stored finances or call CASPARSER**. The richer `FinancialEvent` type mirrors TS transaction metadata; existing M2 `ledger_event` storage lacks some fields (trade unit price, fees, supersession). `CalculateFamilyPortfolio` has a conservative read adapter for legacy M2 supported kinds, refusing unsupported correction lineage rather than inventing cost history.
+
+Until the native ledger schema and backup codec preserve the richer event fields, complete persisted FIFO/corporate-action parity is an **open gate**. The existing `VaultRepository` also exposes separate reads rather than a single atomic financial book snapshot. See [M3 implementation report](../docs/native-migration/08-M3-FINANCIAL-DOMAIN-IMPLEMENTATION.md).
 
 ## Non-negotiable boundaries
 
-- CASPARSER under `src/casparser-main/**` and its existing Python invocation scripts are immutable.
-- The old React/Tauri app remains intact. No native code reads or writes `vault.enc` yet.
-- Native encryption and data migration design is tracked in `docs/native-migration/**`.
-- The prior Gradle overlay and native app are separate build targets. No production release workflow points at `android-native/` yet.
-- Version code `3000` and `0.3.0-dev` are **development candidates**, not verified against a Play release. Confirm release monotonicity before publishing.
-- No legacy code removal until migration and feature parity pass the documented gates.
-
-## Next milestone: M2
-
-Design/select the encrypted SQLite provider, establish a native schema and safe import format, build failure-atomic vault writes, and prove recovery under simulated process death. Since no Play version has been published, unsupported customer migrations need not block a deliberate fresh schema; however, do not silently erase a test user’s existing data.
+- CASPARSER under `src/casparser-main/**` and existing Python invocation/dependency scripts are immutable. No edits or parser logic refactors.
+- The React/Tauri reference application and developer vaults remain intact; no destructive migration or legacy cleanup before validated native parity.
+- The Keystore key protects local storage at rest; it is **not** the user's vault login password. Authentication/session locking and device-loss recovery UI remain release blockers.
+- The current APK is **not** for public Google Play distribution.
