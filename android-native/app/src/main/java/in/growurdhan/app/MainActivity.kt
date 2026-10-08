@@ -4,6 +4,8 @@ import android.app.Activity
 import android.app.KeyguardManager
 import android.content.Context
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -16,8 +18,10 @@ import dagger.hilt.android.AndroidEntryPoint
 import `in`.growurdhan.app.presentation.AppViewModel
 import `in`.growurdhan.app.presentation.GrowUrDhanShell
 import `in`.growurdhan.app.presentation.StatementReviewIntent
+import `in`.growurdhan.app.presentation.StatementReviewUiState
 import `in`.growurdhan.app.presentation.StatementReviewViewModel
 import `in`.growurdhan.app.presentation.VaultIntent
+import `in`.growurdhan.app.presentation.VaultUiState
 import `in`.growurdhan.app.presentation.VaultSessionGate
 import `in`.growurdhan.app.presentation.VaultViewModel
 import `in`.growurdhan.app.presentation.theme.GrowUrDhanTheme
@@ -36,6 +40,17 @@ class MainActivity : ComponentActivity() {
     private val reviewViewModel: StatementReviewViewModel by viewModels()
     private enum class CredentialAction { OPEN_VAULT, APPROVE_REVIEW }
     private var pendingCredential: CredentialAction? = null
+    private val timeoutHandler = Handler(Looper.getMainLooper())
+    private val timeoutCheck = object : Runnable {
+        override fun run() {
+            if (pendingCredential == null && vaultViewModel.state.value is VaultUiState.Ready &&
+                !sessionGate.isUnlocked()
+            ) {
+                lockSensitiveUi()
+            }
+            timeoutHandler.postDelayed(this, 5_000L)
+        }
+    }
 
     private val credentialResult = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
@@ -91,6 +106,7 @@ class MainActivity : ComponentActivity() {
     private fun handleReviewIntent(intent: StatementReviewIntent) {
         when (intent) {
             StatementReviewIntent.RequestApproval -> {
+                if (reviewViewModel.state.value !is StatementReviewUiState.Reviewing) return
                 if (!sessionGate.isUnlocked()) {
                     lockSensitiveUi()
                 } else {
@@ -138,7 +154,14 @@ class MainActivity : ComponentActivity() {
         vaultViewModel.onIntent(VaultIntent.Close)
     }
 
+    override fun onStart() {
+        super.onStart()
+        timeoutHandler.removeCallbacks(timeoutCheck)
+        timeoutHandler.postDelayed(timeoutCheck, 5_000L)
+    }
+
     override fun onStop() {
+        timeoutHandler.removeCallbacks(timeoutCheck)
         super.onStop()
         // Android's own credential confirmation activity may temporarily stop us.
         // A cancelled challenge locks; success must come from RESULT_OK only.
