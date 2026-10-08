@@ -98,6 +98,9 @@ internal object VaultSchema {
         """.trimIndent(),
     )
 
+    // Same immutable v1 DDL used by fresh initialization and v1 migration tests.
+    internal val legacyV1Statements: List<String> get() = ddl
+
     private val ddl = listOf(
         """
         CREATE TABLE family_member (
