@@ -81,4 +81,49 @@ class AtomicBookUseCaseTest {
         assertEquals(MoneyScaled(100), event.charges)
         assertEquals("original", event.supersedesEventId)
     }
+
+    @Test fun previewReceiptDoesNotImplicitlyCommitAnyStatement() = runTest {
+        val repo = mockk<VaultRepository>()
+        val source = StatementLine(
+            holding.id, owner, LocalDate.parse("2026-10-08"),
+            100_000_000, MoneyScaled(500_000),
+        )
+        val plan = SnapshotReconciler.review(
+            listOf(source),
+            listOf(FinancialHolding(holding.id, owner, holding.name, holding.assetCategory,
+                holding.currentUnitPrice)),
+            emptyList(), owner, "b".repeat(64),
+        )
+        val receipt = ReviewedStatement(
+            "snap1", owner, listOf(source), "c".repeat(64), plan, "d".repeat(64),
+        )
+        coEvery { repo.prepareStatementReview(any(), any(), any(), any()) } returns receipt
+        val reviewed = PrepareStatementReview(repo)(
+            "snap1", owner, "b".repeat(64), listOf(source),
+        )
+        assertEquals(receipt, reviewed)
+        coVerify(exactly = 1) { repo.prepareStatementReview(any(), any(), any(), any()) }
+        coVerify(exactly = 0) { repo.commitReviewedStatement(any()) }
+    }
+
+    @Test fun confirmedReceiptPassesThroughCommitUseCaseExactlyOnce() = runTest {
+        val repo = mockk<VaultRepository>()
+        val source = StatementLine(
+            holding.id, owner, LocalDate.parse("2026-10-08"),
+            0, MoneyScaled(1_000_000),
+        )
+        val plan = SnapshotReconciler.review(
+            listOf(source),
+            listOf(FinancialHolding(holding.id, owner, holding.name, holding.assetCategory,
+                holding.currentUnitPrice)),
+            emptyList(), owner, "e".repeat(64),
+        )
+        val receipt = ReviewedStatement(
+            "snap2", owner, listOf(source), "a".repeat(64), plan, "b".repeat(64),
+        )
+        coEvery { repo.commitReviewedStatement(receipt) } returns SnapshotResult.IMPORTED
+        assertEquals(SnapshotResult.IMPORTED, CommitReviewedStatement(repo)(receipt))
+        coVerify(exactly = 1) { repo.commitReviewedStatement(receipt) }
+        coVerify(exactly = 0) { repo.appendFinancialEvents(any()) }
+    }
 }
