@@ -77,6 +77,41 @@ class NativeVaultInstrumentedTest {
         assertArrayEquals(checksum, MessageDigest.getInstance("SHA-256").digest(db.readBytes()))
     }
 
+    @Test fun missingDatabaseWithSurvivingKeyCannotBeRecreated() = runBlocking {
+        vault.openOrCreate()
+        vault.createMember(FamilyMember(owner, "Synthetic Self", "Self", true))
+        vault.close()
+        val key = File(folder, "wrapped.key")
+        assertTrue(key.exists())
+        val file = File(folder, "wealth.db")
+        assertTrue(file.delete())
+        assertThrows(VaultUnavailable::class.java) {
+            runBlocking { vault.status() }
+        }
+        assertThrows(VaultUnavailable::class.java) {
+            runBlocking { vault.openOrCreate() }
+        }
+        assertFalse(file.exists())
+        assertTrue(key.exists())
+    }
+
+    @Test fun olderSnapshotIsRejectedWithoutChangingNewerBook() = runBlocking {
+        vault.openOrCreate()
+        vault.createMember(FamilyMember(owner, "Synthetic Self", "Self", true))
+        vault.createHolding(holding)
+        val position = StatementPosition(holding.id, QuantityScaled(100_000_000), MoneyScaled(125_000))
+        val newest = StatementSnapshot(
+            "latest", owner, "b".repeat(64), "2026-10-08", true, listOf(position),
+        )
+        assertEquals(SnapshotResult.IMPORTED, vault.importSnapshot(newest))
+        val older = newest.copy(id = "older", sha256 = "c".repeat(64), asOf = "2026-09-30")
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { vault.importSnapshot(older) }
+        }
+        assertEquals(SnapshotResult.ALREADY_IMPORTED, vault.importSnapshot(newest))
+        assertEquals(0, vault.health().foreignKeyViolations)
+    }
+
     @Test fun crossOwnerSnapshotFailureRollsBackAndHashIsIdempotent() = runBlocking {
         vault.openOrCreate()
         vault.createMember(FamilyMember(owner, "Synthetic Self", "Self", true))
