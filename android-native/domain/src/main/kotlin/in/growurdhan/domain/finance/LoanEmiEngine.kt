@@ -51,8 +51,10 @@ object LoanEmiEngine {
     }
 
     fun resumeDate(next: LocalDate?, asOf: LocalDate): LocalDate {
-        if (next == null || next >= asOf) return next ?: asOf
-        var cursor = next
+        // Resolve the nullable input once, before mutating the date cursor.
+        // Otherwise Kotlin infers LocalDate? and cannot compare or return it.
+        var cursor: LocalDate = next ?: return asOf
+        if (cursor >= asOf) return cursor
         repeat(360) {
             if (cursor >= asOf) return cursor
             cursor = addCalendarMonths(cursor, 1)
