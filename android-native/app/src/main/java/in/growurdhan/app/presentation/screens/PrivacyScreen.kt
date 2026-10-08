@@ -32,8 +32,8 @@ fun PrivacyScreen() {
             fontWeight = FontWeight.SemiBold,
         )
         Text(
-            "The current native foundation contains no financial database, account sign-in, " +
-                "Gmail access or analytics integration.",
+            "Native financial records can be held in an encrypted on-device SQLCipher vault. " +
+                "This development build has no Gmail or analytics integration.",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         PrivacyFact(
@@ -47,9 +47,9 @@ fun PrivacyScreen() {
             icon = { Icon(Icons.Outlined.Storage, contentDescription = null) },
         )
         PrivacyFact(
-            title = "Financial storage is a separate milestone",
-            detail = "Encrypted vault and backup services will be integrated and tested " +
-                "before any native portfolio data is written.",
+            title = "Encrypted vault and device credential",
+            detail = "A configured Android screen lock is required before opening the native vault " +
+                "or approving a reviewed statement. A GrowUrDhan-specific login is not yet implemented.",
             icon = { Icon(Icons.Outlined.Lock, contentDescription = null) },
         )
     }

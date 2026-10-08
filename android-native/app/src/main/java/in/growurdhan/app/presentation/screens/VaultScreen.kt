@@ -56,14 +56,14 @@ fun VaultScreen(
                     }
                     VaultUiState.NotCreated -> {
                         Text("No native vault found", style = MaterialTheme.typography.titleLarge)
-                        Text("Create an empty private encrypted vault for the native development build.")
+                        Text("Creating the private vault first requires confirmation of your Android screen lock.")
                         Button(onClick = { onIntent(VaultIntent.OpenOrCreate) }) {
                             Text("Create encrypted vault")
                         }
                     }
                     VaultUiState.Closed -> {
                         Text("Vault closed", style = MaterialTheme.typography.titleLarge)
-                        Text("The encrypted financial database remains on this device.")
+                        Text("The database remains encrypted on this device. Confirm your device screen lock to reopen.")
                         Button(onClick = { onIntent(VaultIntent.OpenOrCreate) }) {
                             Text("Open encrypted vault")
                         }
@@ -87,11 +87,12 @@ fun VaultScreen(
         }
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Development security status", style = MaterialTheme.typography.titleMedium)
+                Text("Development security boundaries", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "This is the M2 infrastructure test app. It does not yet implement " +
-                        "the user password and biometric app-lock gate, statement imports, or backup file pickers. " +
-                        "Do not use it for live financial records until those features are reviewed.",
+                    "Android device credential confirmation now gates access to this native UI, " +
+                        "but a GrowUrDhan password/biometric login and repository-wide session policy " +
+                        "are not finished. The statement review screen has no connected PDF parser, " +
+                        "and backup file pickers are not ready. Do not use live financial records yet.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }

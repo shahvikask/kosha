@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Settings
@@ -36,6 +37,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import `in`.growurdhan.app.presentation.screens.HomeScreen
+import `in`.growurdhan.app.presentation.screens.StatementReviewScreen
 import `in`.growurdhan.app.presentation.screens.PrivacyScreen
 import `in`.growurdhan.app.presentation.screens.SettingsScreen
 import `in`.growurdhan.app.presentation.screens.VaultScreen
@@ -47,6 +49,7 @@ private enum class MainDestination(
 ) {
     HOME("home", "Home", Icons.Outlined.Home),
     VAULT("vault", "Vault", Icons.Outlined.Lock),
+    REVIEW("review", "Statements", Icons.Outlined.Description),
     PRIVACY("privacy", "Privacy", Icons.Outlined.Shield),
     SETTINGS("settings", "Settings", Icons.Outlined.Settings),
 }
@@ -58,6 +61,8 @@ fun GrowUrDhanShell(
     onIntent: (AppIntent) -> Unit,
     vaultState: VaultUiState = VaultUiState.Loading,
     onVaultIntent: (VaultIntent) -> Unit = {},
+    reviewState: StatementReviewUiState = StatementReviewUiState.Empty,
+    onReviewIntent: (StatementReviewIntent) -> Unit = {},
 ) {
     val controller = rememberNavController()
     val currentBackStackEntry by controller.currentBackStackEntryAsState()
@@ -137,6 +142,9 @@ fun GrowUrDhanShell(
                     }
                     composable(MainDestination.VAULT.route) {
                         VaultScreen(state = vaultState, onIntent = onVaultIntent)
+                    }
+                    composable(MainDestination.REVIEW.route) {
+                        StatementReviewScreen(state = reviewState, onIntent = onReviewIntent)
                     }
                     composable(MainDestination.PRIVACY.route) {
                         PrivacyScreen()

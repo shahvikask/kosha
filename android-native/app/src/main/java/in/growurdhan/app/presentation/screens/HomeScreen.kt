@@ -55,15 +55,16 @@ fun HomeScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Icon(Icons.Outlined.AccountBalanceWallet, contentDescription = null)
                     Text(
-                        "No native portfolio yet",
+                        "Native portfolio screens still in development",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                     )
                 }
                 Text(
-                    "This native foundation intentionally does not open or change your existing " +
-                        "GrowUrDhan vault. Database creation, statement imports and financial " +
-                        "screens arrive after the encrypted storage integration is verified.",
+                    "The native encrypted vault can be created only after a deliberate, " +
+                        "device-authenticated action. It does not migrate or open your existing " +
+                        "React/Tauri financial book. The full portfolio and verified statement " +
+                        "PDF import screens are not yet connected.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
