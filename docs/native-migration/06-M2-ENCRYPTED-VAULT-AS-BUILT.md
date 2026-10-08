@@ -112,3 +112,12 @@ The implementation `SqlCipherVaultRepository` is bound in Hilt to `VaultReposito
 - Source audit identified an expression-bodied `@Test` method, `crossOwnerSnapshotFailureRollsBackAndHashIsIdempotent`, whose final expression is `assertThrows`. This yields a `Throwable` return type in Kotlin; **JUnit 4 requires void-returning test methods**. All expression-bodied `@Test` and `@After` methods have been changed to explicit `Unit` signatures, and the offending block ends in `Unit`.
 - The workflow now archives the Android test XML/HTML reports even after a failure, to expose full exception causes if the next emulator run discovers another issue.
 - This change only repairs tests and CI diagnostics, and has not modified the CASPARSER engine or the existing finance implementation. **Do not declare on-device M2 passing until a full new run succeeds.**
+
+## Native device test failure — run #37785221668 and corrective action
+
+- Emulator boot and all **3/3 Compose UI instrumentation tests passed** on Android API 35.
+- All **7/7 native vault tests failed on the same first-use SQLCipher schema initialization operation**; no evidence yet of an encryption or financial integrity defect beyond failed initialization.
+- Downloaded the `GrowUrDhan-Native-M2-Instrumentation-Reports` artifact and examined the original XML failure stack traces. All failures identify `VaultSchema.initializeOrValidate(VaultSchema.kt:11)`.
+- Root cause: Zetetic SQLCipher Android rejects `db.execSQL("PRAGMA secure_delete = ON")` with `SQLiteException: Queries can be performed using SQLiteDatabase query or rawQuery methods only.` The setter **returns a result row**, which cannot be handled by the `execSQL()` execution path.
+- Corrective action: invoke the setter via `rawQuery()`, consume its row, and require `secure_delete == 1`; verify `foreign_keys == 1` before schema writes. Expand native instrumentation tests to assert both settings explicitly.
+- The Native M2 run after this fix is **not yet verified**. Always obtain its actual workflow status and instrumented test reports before marking the vault operational.

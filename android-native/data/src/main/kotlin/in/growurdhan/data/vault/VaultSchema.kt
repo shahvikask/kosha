@@ -7,8 +7,20 @@ internal object VaultSchema {
     const val VERSION = 1
 
     fun initializeOrValidate(db: SQLiteDatabase) {
+        // SQLCipher returns a result row for secure_delete even when setting it.
+        // execSQL routes to executeForChangedRowCount and rejects result-producing
+        // PRAGMAs on Android. Execute it through a query cursor and check its result.
         db.execSQL("PRAGMA foreign_keys = ON")
-        db.execSQL("PRAGMA secure_delete = ON")
+        db.rawQuery("PRAGMA foreign_keys", null).use { cursor ->
+            check(cursor.moveToFirst() && cursor.getInt(0) == 1) {
+                "SQLite foreign-key enforcement could not be enabled."
+            }
+        }
+        db.rawQuery("PRAGMA secure_delete = ON", null).use { cursor ->
+            check(cursor.moveToFirst() && cursor.getInt(0) == 1) {
+                "SQLite secure deletion could not be enabled."
+            }
+        }
         val current = db.rawQuery("PRAGMA user_version", null).use { cursor ->
             check(cursor.moveToFirst()) { "Missing SQLite user_version." }
             cursor.getInt(0)

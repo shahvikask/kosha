@@ -145,6 +145,16 @@ class NativeVaultInstrumentedTest {
         val db = SQLiteDatabase.openOrCreateDatabase(path, password, null, null, null)
         try {
             VaultSchema.initializeOrValidate(db)
+            // Validate the secure PRAGMA setup that previously failed before
+            // any of the native vault tests could exercise their assertions.
+            db.rawQuery("PRAGMA secure_delete", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(1, cursor.getInt(0))
+            }
+            db.rawQuery("PRAGMA foreign_keys", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(1, cursor.getInt(0))
+            }
             db.execSQL("INSERT INTO family_member VALUES('self','Synthetic','Self',1)")
             db.execSQL("INSERT INTO holding VALUES('h1','self',NULL,'Fund','MUTUAL_FUND',0,125000)")
             db.execSQL(
