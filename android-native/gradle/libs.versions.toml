@@ -15,7 +15,7 @@ mockk = "1.13.17"
 androidxTest = "1.2.1"
 espresso = "3.6.1"
 javaxInject = "1"
-sqlcipher = "4.19.0"
+sqlcipher = "4.17.0"
 androidxSqlite = "2.7.0"
 
 [libraries]
