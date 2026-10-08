@@ -24,15 +24,18 @@ sealed interface VaultIntent {
     data object OpenOrCreate : VaultIntent
     data object Close : VaultIntent
     data object Refresh : VaultIntent
+    data object CredentialUnavailable : VaultIntent
 }
 
 /**
- * M2 development-only vault controls. No portfolio, password or token is exposed
- * to saved UI state. Device-bound storage != an authenticated app session.
+ * Native encrypted-vault state. The Activity obtains Android credential confirmation
+ * before issuing OpenOrCreate; this ViewModel independently checks the short-lived
+ * in-memory session gate. SQLCipher's Keystore key is NOT the login credential.
  */
 @HiltViewModel
 class VaultViewModel @Inject constructor(
     private val repository: VaultRepository,
+    private val session: VaultSessionGate,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow<VaultUiState>(VaultUiState.Loading)
     val state: StateFlow<VaultUiState> = mutableState
@@ -48,15 +51,25 @@ class VaultViewModel @Inject constructor(
                         val info = repository.status()
                         mutableState.value = when {
                             !info.initialized -> VaultUiState.NotCreated
-                            !info.opened -> VaultUiState.Closed
+                            !info.opened || !session.isUnlocked() -> VaultUiState.Closed
                             else -> VaultUiState.Ready(repository.health())
                         }
                     }
+                    VaultIntent.CredentialUnavailable -> {
+                        session.lock()
+                        mutableState.value = VaultUiState.Error(
+                            "Set up a secure device screen lock to access your encrypted vault.",
+                        )
+                    }
                     VaultIntent.OpenOrCreate -> {
+                        check(session.isUnlocked()) {
+                            "Device authentication is required to open the native vault."
+                        }
                         repository.openOrCreate()
                         mutableState.value = VaultUiState.Ready(repository.health())
                     }
                     VaultIntent.Close -> {
+                        session.lock()
                         repository.close()
                         mutableState.value = VaultUiState.Closed
                     }
@@ -65,7 +78,7 @@ class VaultViewModel @Inject constructor(
                 throw cancelled
             } catch (_: Exception) {
                 mutableState.value = VaultUiState.Error(
-                    "The local encrypted vault could not be opened. Existing files were not erased.",
+                    "The encrypted vault could not be opened or verified. Existing files were preserved.",
                 )
             }
         }

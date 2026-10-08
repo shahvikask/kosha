@@ -1,0 +1,12 @@
+# GrowUrDhan — M4 Secure Review UI Slice (As Built)
+
+**Branch:** `GUD-Android-ChatGPT`  
+**Status:** Source implementation under CI validation; no commercial authentication claim.
+
+The app uses Android's `KeyguardManager.createConfirmDeviceCredentialIntent` to require a **configured secure device screen lock** before issuing the native vault's OpenOrCreate intent. On success, a short-lived **in-memory** session grants up to five minutes of foreground access; approving a financial statement requires another credential confirmation (valid for at most 30 seconds at commit). Repeated failed/cancelled credential confirmation locks UI and closes the vault. `FLAG_SECURE` blocks Android screenshots/recents of sensitive pages. `MainActivity.onStop` locks unless stopped temporarily by the OS credential confirmation activity; the latter is a pre-release lifecycle caveat requiring deeper device tests.
+
+The review route renders the actual `ReviewedStatement` plan held only in memory: date, affected positions, quantity deltas, owner conflict markers, warnings and proposed event count. Approval requires deliberate acknowledgement, no conflicts and a fresh device credential, and passes the unchanged receipt to the already verified repository transaction. The local device screen lock is **not** the GrowUrDhan vault password, and the repository is **not yet a globally authenticated authorization boundary**. A compromised in-process caller can still access its public methods. A stronger repository-enforced policy, biometric/credential lifecycle hardening, timeout invalidation, and independent MASVS tests are required before production.
+
+The immutable Python CASPARSER bridge is **not connected** yet. No statement is fabricated or automatically approved; the native UI shows a disabled honest empty state until a separate validated adapter supplies source-bound `StatementLine` values. Its public Review ViewModel accepts only in-memory candidate data, and it does not verify PDF bytes by itself. The native app does not accept arbitrary text or SHA typed by a user as a substitute for an actual verified CAS input.
+
+**Do not mark this increment complete until GitHub Kotlin/Compose test results are confirmed.** Frozen CASPARSER paths and all legacy React/Tauri code remain untouched. API/physical-device coverage, end-user authentication, statement parser provenance, legal tax parity, and signed AAB remain open.
