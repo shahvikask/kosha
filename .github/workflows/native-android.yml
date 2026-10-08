@@ -23,6 +23,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Preflight native SQLite schema and ledger triggers
+        run: python3 android-native/scripts/validate_schema.py
       - name: Verify immutable CASPARSER engine and packaging inputs
         run: |
           git diff --exit-code af96dcc8967ab595e1d9acee78e29e500cb99a9e HEAD -- \

@@ -121,3 +121,12 @@ The implementation `SqlCipherVaultRepository` is bound in Hilt to `VaultReposito
 - Root cause: Zetetic SQLCipher Android rejects `db.execSQL("PRAGMA secure_delete = ON")` with `SQLiteException: Queries can be performed using SQLiteDatabase query or rawQuery methods only.` The setter **returns a result row**, which cannot be handled by the `execSQL()` execution path.
 - Corrective action: invoke the setter via `rawQuery()`, consume its row, and require `secure_delete == 1`; verify `foreign_keys == 1` before schema writes. Expand native instrumentation tests to assert both settings explicitly.
 - The Native M2 run after this fix is **not yet verified**. Always obtain its actual workflow status and instrumented test reports before marking the vault operational.
+
+## CI forensic diagnosis — run #37787467382
+
+- The Android emulator booted and all three Compose UI tests passed. All seven native vault instrumentation tests failed on initial schema creation.
+- The downloaded instrumentation XML identified the shared SQL exception: `near "imported_at": syntax error` in `CREATE TABLE snapshot_import`.
+- Root cause: native schema declared table-level `UNIQUE(id, owner_id)` **before** the later `imported_at` column; SQLite requires table constraints to appear after column definitions.
+- Fix: move the constraint after `imported_at`, leaving unique ownership enforcement unchanged; no published-data migration is required for this unpublished native schema.
+- Added `android-native/scripts/validate_schema.py`: parses production Kotlin SQL literals, compiles all 14 schema statements in an in-memory SQLite instance, checks expected tables and the audit timestamp, verifies ledger UPDATE/DELETE are rejected and checks a snapshot foreign-key roundtrip. The native CI runs it before Gradle and emulator stages.
+- SQLCipher-specific key handling and encryption still require passing device instrumentation. This schema parser preflight does not substitute for those tests.
