@@ -38,8 +38,8 @@ class SqlCipherVaultRepository(
         mutex.withLock {
             val anyFile = databaseFile.exists() || readyFile.exists() || keys.exists()
             val allFiles = databaseFile.exists() && readyFile.exists() && keys.exists()
-            if (anyFile && !allFiles && readyFile.exists()) {
-                throw VaultUnavailable("Vault files are missing. Restore a backup; data was not reset.")
+            if (anyFile && !allFiles) {
+                throw VaultUnavailable("Vault files are incomplete. Restore a backup; data was not reset.")
             }
             VaultStatus(allFiles, database?.isOpen == true, if (allFiles) VaultSchema.VERSION else 0)
         }
