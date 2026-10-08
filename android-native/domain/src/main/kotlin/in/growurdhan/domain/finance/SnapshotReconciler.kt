@@ -157,7 +157,7 @@ object SnapshotReconciler {
                             if (parcelIndex == 0) want else MoneyScaled(0),
                             suffix = parcelIndex,
                             supersedes = lot.eventId,
-                        )
+                        ).copy(date = lot.acquiredOn)
                     }
                     outcome = ReconciliationOutcome.COST_UPDATE
                     reason = "Units agree. Printed contribution changes historical invested cost, not units."

@@ -182,6 +182,81 @@ class FinancialGoldenTest {
         }
     }
 
+    @Test fun truncatedFractionalValuesMatchLegacyScaledIntegerSemantics() {
+        // 0.5 units at a tiny scaled price truncates to 0 (not half-up to 1).
+        val tiny = FinancialHolding(holdingId, owner, "Tiny quantity", "EQUITY",
+            MoneyScaled(1), 50_000_000L)
+        val book = PortfolioEngine.derive(listOf(tiny), emptyList(), date("2026-10-08"))
+        assertEquals(0L, book.familyNetWorth.raw)
+    }
+
+    @Test fun noHoldingsMemberRemainsVisibleWithZeroTotals() {
+        val person = OwnerId("empty")
+        val book = PortfolioEngine.derive(
+            listOf(holding(storedQuantity = 0)), emptyList(), date("2026-10-08"),
+            listOf(owner, person),
+        )
+        assertEquals(2, book.members.size)
+        val empty = book.members.first { it.ownerId == person }
+        assertEquals(0L, empty.netWorth.raw)
+        assertTrue(empty.holdings.isEmpty())
+    }
+
+    @Test fun eventWithDifferentOwnerIsNotCountedUnderFamilyMember() {
+        val mismatched = ev("wrong-owner", FinancialEventKind.BUY,
+            "2026-01-01", 100, 100, ownerId = OwnerId("spouse"))
+        val report = PortfolioEngine.derive(
+            listOf(holding(storedQuantity = 0)), listOf(mismatched), date("2026-10-08"),
+            listOf(owner),
+        )
+        assertEquals(0L, report.familyNetWorth.raw)
+        assertTrue(report.errors.any { it.contains("Ownership conflict") })
+    }
+
+    @Test fun costRebaseIsCorrectionNotSecondBuy() {
+        val opening = ev("original", FinancialEventKind.OPENING_BALANCE,
+            "2026-01-01", 100, 75)
+        val line = StatementLine(holdingId, owner, date("2026-08-31"),
+            100 * QUANTITY_SCALE, rupees(75), rupees(5000))
+        val plan = SnapshotReconciler.review(
+            listOf(line), listOf(holding(storedQuantity = 0)),
+            listOf(opening), owner, "f".repeat(64))
+        assertEquals(ReconciliationOutcome.COST_UPDATE, plan.lines.single().outcome)
+        val approved = plan.acceptedEvents(setOf(holdingId))
+        assertEquals(FinancialEventKind.CORRECTION, approved.single().kind)
+        assertEquals("original", approved.single().supersedesEventId)
+        assertEquals(opening.date, approved.single().date)
+        val folded = LotEngine.fold(holdingId, "EQUITY", listOf(opening) + approved)
+        assertEquals(100 * QUANTITY_SCALE, folded.quantityScaled)
+        assertEquals(5_000, folded.investedCost.rupees().longValueExact())
+    }
+
+    @Test fun conflictingHoldingCannotBeCommittedFromSnapshotReview() {
+        val quoted = StatementLine(holdingId, owner, date("2026-10-08"),
+            100 * QUANTITY_SCALE, rupees(100))
+        val review = SnapshotReconciler.review(
+            listOf(quoted),
+            listOf(holding(ownerId = OwnerId("spouse"))),
+            emptyList(), owner, "1".repeat(64))
+        assertEquals(ReconciliationOutcome.CONFLICT, review.lines.single().outcome)
+        assertThrows(IllegalArgumentException::class.java) {
+            review.acceptedEvents(setOf(holdingId))
+        }
+    }
+
+    @Test fun dateAsOfIgnoresTransactionsThatHappenedLater() {
+        val existing = listOf(
+            ev("opening", FinancialEventKind.BUY, "2025-01-01", 10, 100),
+            ev("future", FinancialEventKind.BUY, "2026-10-20", 15, 200),
+        )
+        val quote = StatementLine(holdingId, owner, date("2026-10-08"),
+            10 * QUANTITY_SCALE, rupees(100))
+        val review = SnapshotReconciler.review(
+            listOf(quote), listOf(holding(storedQuantity = 0)),
+            existing, owner, "2".repeat(64))
+        assertEquals(ReconciliationOutcome.MATCH, review.lines.single().outcome)
+    }
+
     @Test fun xirrReturnsNullOnNoOutflowAndKnownCase() {
         assertNull(ReturnEngine.xirr(listOf(DatedCashFlow(date("2024-01-01"), rupees(100)),
             DatedCashFlow(date("2025-01-01"), rupees(100)))))

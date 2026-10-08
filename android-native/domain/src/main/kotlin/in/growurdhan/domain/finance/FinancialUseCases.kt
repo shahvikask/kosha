@@ -44,8 +44,26 @@ class CalculateFamilyPortfolio @Inject constructor(
     suspend operator fun invoke(asOf: LocalDate): PortfolioReport {
         // M2 exposes separate reads, so concurrent writes can make this snapshot
         // inconsistent; a single-transaction vault book read is the next data gate.
+        val members = vault.members().map { it.id }
         val holdings = vault.holdings().map { it.toFinancialHolding() }
         val events = vault.events().map { it.toFinancialEvent() }
-        return PortfolioEngine.derive(holdings, events, asOf)
+        return PortfolioEngine.derive(holdings, events, asOf, members)
+    }
+}
+
+/** Review-only use case. No financial events are written from unapproved statements. */
+class PreviewStatementReconciliation @Inject constructor(
+    private val vault: VaultRepository,
+) {
+    suspend operator fun invoke(
+        ownerId: `in`.growurdhan.core.model.OwnerId,
+        sha256: String,
+        lines: List<StatementLine>,
+    ): StatementReview {
+        val members = vault.members()
+        require(members.any { it.id == ownerId }) { "Statement owner is not in the family vault." }
+        val holdings = vault.holdings().map { it.toFinancialHolding() }
+        val events = vault.events().map { it.toFinancialEvent() }
+        return SnapshotReconciler.review(lines, holdings, events, ownerId, sha256)
     }
 }
