@@ -53,6 +53,15 @@ jobs:
         run: gradle -p android-native :domain:test :app:testDebugUnitTest --stacktrace
       - name: Compile debug application and Compose instrumentation test APK
         run: gradle -p android-native :app:assembleDebug :app:assembleDebugAndroidTest :data:assembleDebugAndroidTest --stacktrace
+      - name: Upload native test artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: GrowUrDhan-Native-M2-APKs
+          path: |
+            android-native/app/build/outputs/apk/debug/*.apk
+            android-native/app/build/outputs/apk/androidTest/debug/*.apk
+            android-native/data/build/outputs/apk/androidTest/debug/*.apk
+          if-no-files-found: error
       - name: Allow Android emulator KVM acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -69,12 +78,3 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: gradle -p android-native :data:connectedDebugAndroidTest :app:connectedDebugAndroidTest --stacktrace
-      - name: Upload native test artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: GrowUrDhan-Native-M1-APKs
-          path: |
-            android-native/app/build/outputs/apk/debug/*.apk
-            android-native/app/build/outputs/apk/androidTest/debug/*.apk
-            android-native/data/build/outputs/apk/androidTest/debug/*.apk
-          if-no-files-found: error
