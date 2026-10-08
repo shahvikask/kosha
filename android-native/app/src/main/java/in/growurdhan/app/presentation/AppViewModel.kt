@@ -8,6 +8,7 @@ import `in`.growurdhan.core.model.ThemeMode
 import `in`.growurdhan.domain.preferences.ObserveAppearanceSettings
 import `in`.growurdhan.domain.preferences.UpdateAppearanceSettings
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -56,6 +57,8 @@ class AppViewModel @Inject constructor(
             try {
                 action()
                 error.value = null
+            } catch (cancellation: CancellationException) {
+                throw cancellation
             } catch (_: Exception) {
                 // No file paths, tokens, personal identifiers or exception bodies exposed to UI.
                 error.value = "The display preference could not be saved. Please try again."
