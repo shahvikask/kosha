@@ -6,7 +6,7 @@
 
 ## 1. A verifiable cleanup policy — not a blind delete list
 
-Legacy cleanup is required by the product owner, but is **conditional** on the replacement being complete, the last legacy device having a safe upgrade/recovery path, and a reproducible signed native Android release. Delete only in separate, small commits with a before/after reference scan and mandatory build/test verification.
+Legacy cleanup is required, but is **conditional** on functional parity, a documented choice for preserving/resetting development test data, and a reproducible native Android release candidate. No Play Store version exists to upgrade. Delete only in separate, small commits with a before/after reference scan and mandatory build/test verification.
 
 Each cleanup item needs:
 - named new owner/replacement path;
@@ -14,7 +14,7 @@ Each cleanup item needs:
 - data compatibility and account/release side-effect assessment;
 - green unit, instrumentation, migration, rollback, Play Billing and parser contract tests where relevant;
 - removal diff reviewed for accidental parser modification;
-- proof Android App Bundle is installable as a version upgrade;
+- proof Android App Bundle is installable as a **fresh** release and correct application/package ID; optional compatibility install tests if developer test data is converted;
 - rollback strategy when existing devices rely on the old layer.
 
 All deletions occur **on `GUD-Android-ChatGPT` only**. Do not delete from `main`, `GUD-Android` or `GUD-Android-Gmail`.
@@ -60,7 +60,7 @@ All fixtures must be synthetic or consensually anonymized, never real user state
 | Test dataset | Expected assertions |
 | --- | --- |
 | Brand-new empty vault | Correct schema, empty totals, onboarding, trial state |
-| Schema v1 through v9 snapshots | Migration all supported upgrade paths, no dropped columns or hashes |
+| New native schema and optional v9 developer-import fixtures | Fresh encrypted schema integrity; only explicitly supported test-data conversion paths must preserve rows and hashes |
 | Multi-member family (Self/Spouse/Child/HUF) | Same member IDs, ownership, primary-member safeguards |
 | Holdings across categories | Exact scale, price, quantity, valuation, taxonomy, maturity fields |
 | Repeated buy/sell/dividend/interest/split records | Immutable event list, position computation and tax effects |
@@ -78,7 +78,7 @@ All fixtures must be synthetic or consensually anonymized, never real user state
 | Gmail history >20 records and multiple pages | Complete incremental coverage and durable progress |
 | Incorrect password followed by correct PDF credential | Previously failed attachment remains retryable |
 | Lifetime + Gmail upgrade + annual support SKUs | Identical entitlements across app upgrade |
-| Release minify + ABI + Play signer upgrade | Working Chaquopy, Billing and asset loading |
+| Release minify + ABI + first Play signing | Working Chaquopy, Billing, assets and correct first release package |
 
 ## 4. CI jobs to implement on native branch
 
@@ -103,7 +103,7 @@ Each job must have `if-no-files-found: error` for mandatory output; do not hide 
 | CASPARSER immutability | Check SHA-256 manifests of protected files, no diffs | Always |
 | Database schema | Structural comparison, constraints, indices, triggers, migrations | Always |
 | Financial parity | Golden value and event comparator: TS versus Kotlin, exact scaled units | Always |
-| Vault upgrade | Real signed upgrade from legacy Android version (offline, process kill, low storage) | Always |
+| Native vault initialization | Fresh encrypted vault, restart, low storage and crash recovery; optional developer conversion tested separately | Always |
 | Backups | `GUDVLT01`, legacy backup and new export round-trip with synthetic users | Always |
 | Security | Keystore handling, no plaintext persistent DB, auth, privacy and transport | Always |
 | Core UX | Compose journey tests, TalkBack, themes, rotation, large fonts | Always |
@@ -155,6 +155,6 @@ Each job must have `if-no-files-found: error` for mandatory output; do not hide 
 
 ## 9. Proposed implementation sequence
 
-Next: **M1** — create `android-native/` Kotlin/Compose Material3 scaffold, exact dependency versions based on a compatibility check, DI, navigation, offline screen-state pattern, and runnable unit/Compose smoke tests. Leave all legacy source, the vault, CASPARSER and published build configuration untouched. After M1 compile evidence, begin encrypted DB proof and actual old-device migration work in M2.
+Current: **M1** — checked-in Kotlin/Compose Material3 scaffold, pinned toolchain, DI, navigation, local appearance state, unit/Compose smoke tests and native CI. After M1 passes compilation and tests, begin **M2 fresh encrypted native database proof**, with optional opt-in legacy developer-data conversion instead of mandatory unpublished-version upgrades.
 
 Do not skip M2 to obtain a polished UI: financial customer data preservation is the release's highest-risk dependency.
