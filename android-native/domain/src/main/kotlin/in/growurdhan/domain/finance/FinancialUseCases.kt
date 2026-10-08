@@ -9,26 +9,22 @@ import java.time.LocalDate
 import javax.inject.Inject
 
 /**
- * M3 read-only bridge to the M2 repository. Retains stored event totals rather than
- * pretending to know the purchase unit price or transaction charges that M2 did not
- * persist. Later persistence upgrade must add these fields before complete lot parity.
+ * v2 financial-book adapter. Pre-release v1 events retain their exact totals but may
+ * lack unit price, charges and correction lineage; never manufacture missing evidence.
  */
 internal fun LedgerEvent.toFinancialEvent(): FinancialEvent {
-    val financialKind = when (kind) {
-        LedgerKind.BUY -> FinancialEventKind.BUY
-        LedgerKind.SELL -> FinancialEventKind.SELL
-        LedgerKind.OPENING_BALANCE -> FinancialEventKind.OPENING_BALANCE
-        LedgerKind.ADJUSTMENT -> FinancialEventKind.SNAPSHOT_ADJUSTMENT
-        LedgerKind.DIVIDEND -> FinancialEventKind.DIVIDEND
-        LedgerKind.INTEREST -> FinancialEventKind.INTEREST
-        LedgerKind.CORRECTION -> throw IllegalStateException(
-            "Legacy stored correction lacks supersession metadata; cost parity cannot be established."
+    if (kind == LedgerKind.CORRECTION && supersedesEventId == null) {
+        throw IllegalStateException(
+            "A pre-v2 correction is missing its supersession reference; cannot prove invested cost."
         )
     }
+    val financialKind = if (kind == LedgerKind.ADJUSTMENT)
+        FinancialEventKind.SNAPSHOT_ADJUSTMENT else FinancialEventKind.valueOf(kind.name)
     return FinancialEvent(
         id = id, holdingId = holdingId, ownerId = ownerId, kind = financialKind,
         date = LocalDate.parse(eventDate), quantityScaled = quantityDeltaScaled,
-        unitPrice = null, totalAmount = amount,
+        unitPrice = unitPrice, totalAmount = amount,
+        charges = charges, supersedesEventId = supersedesEventId,
     )
 }
 
@@ -42,12 +38,13 @@ class CalculateFamilyPortfolio @Inject constructor(
     private val vault: VaultRepository,
 ) {
     suspend operator fun invoke(asOf: LocalDate): PortfolioReport {
-        // M2 exposes separate reads, so concurrent writes can make this snapshot
-        // inconsistent; a single-transaction vault book read is the next data gate.
-        val members = vault.members().map { it.id }
-        val holdings = vault.holdings().map { it.toFinancialHolding() }
-        val events = vault.events().map { it.toFinancialEvent() }
-        return PortfolioEngine.derive(holdings, events, asOf, members)
+        val book = vault.readBook()
+        return PortfolioEngine.derive(
+            book.holdings.map { it.toFinancialHolding() },
+            book.events.map { it.toFinancialEvent() },
+            asOf,
+            book.members.map { it.id },
+        )
     }
 }
 
@@ -60,10 +57,24 @@ class PreviewStatementReconciliation @Inject constructor(
         sha256: String,
         lines: List<StatementLine>,
     ): StatementReview {
-        val members = vault.members()
-        require(members.any { it.id == ownerId }) { "Statement owner is not in the family vault." }
-        val holdings = vault.holdings().map { it.toFinancialHolding() }
-        val events = vault.events().map { it.toFinancialEvent() }
-        return SnapshotReconciler.review(lines, holdings, events, ownerId, sha256)
+        val book = vault.readBook()
+        require(book.members.any { it.id == ownerId }) { "Statement owner is not in the family vault." }
+        return SnapshotReconciler.review(
+            lines,
+            book.holdings.map { it.toFinancialHolding() },
+            book.events.map { it.toFinancialEvent() },
+            ownerId,
+            sha256,
+        )
+    }
+}
+
+/** User-authorized manual transaction batch, committed as one SQLite transaction. */
+class AppendFinancialEvents @Inject constructor(
+    private val vault: VaultRepository,
+) {
+    suspend operator fun invoke(events: List<FinancialEvent>) {
+        require(events.isNotEmpty()) { "No approved financial events." }
+        vault.appendFinancialEvents(events)
     }
 }
