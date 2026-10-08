@@ -37,13 +37,13 @@ class NativeVaultInstrumentedTest {
         vault = SqlCipherVaultRepository(context, folder, alias)
     }
 
-    @After fun clean() = runBlocking {
+    @After fun clean(): Unit = runBlocking {
         vault.close()
         folder.deleteRecursively()
         KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(alias)
     }
 
-    @Test fun statusDoesNotCreateAndDatabaseIsCiphertext() = runBlocking {
+    @Test fun statusDoesNotCreateAndDatabaseIsCiphertext(): Unit = runBlocking {
         assertFalse(vault.status().initialized)
         assertFalse(folder.exists())
         assertTrue(vault.openOrCreate().initialized)
@@ -64,7 +64,7 @@ class NativeVaultInstrumentedTest {
         assertEquals(0, vault.health().foreignKeyViolations)
     }
 
-    @Test fun missingWrappedKeyFailsClosedWithoutErasingDatabase() = runBlocking {
+    @Test fun missingWrappedKeyFailsClosedWithoutErasingDatabase(): Unit = runBlocking {
         vault.openOrCreate()
         vault.createMember(FamilyMember(owner, "Synthetic Self", "Self", true))
         vault.close()
@@ -77,7 +77,7 @@ class NativeVaultInstrumentedTest {
         assertArrayEquals(checksum, MessageDigest.getInstance("SHA-256").digest(db.readBytes()))
     }
 
-    @Test fun missingDatabaseWithSurvivingKeyCannotBeRecreated() = runBlocking {
+    @Test fun missingDatabaseWithSurvivingKeyCannotBeRecreated(): Unit = runBlocking {
         vault.openOrCreate()
         vault.createMember(FamilyMember(owner, "Synthetic Self", "Self", true))
         vault.close()
@@ -95,7 +95,7 @@ class NativeVaultInstrumentedTest {
         assertTrue(key.exists())
     }
 
-    @Test fun olderSnapshotIsRejectedWithoutChangingNewerBook() = runBlocking {
+    @Test fun olderSnapshotIsRejectedWithoutChangingNewerBook(): Unit = runBlocking {
         vault.openOrCreate()
         vault.createMember(FamilyMember(owner, "Synthetic Self", "Self", true))
         vault.createHolding(holding)
@@ -112,7 +112,7 @@ class NativeVaultInstrumentedTest {
         assertEquals(0, vault.health().foreignKeyViolations)
     }
 
-    @Test fun crossOwnerSnapshotFailureRollsBackAndHashIsIdempotent() = runBlocking {
+    @Test fun crossOwnerSnapshotFailureRollsBackAndHashIsIdempotent(): Unit = runBlocking {
         vault.openOrCreate()
         vault.createMember(FamilyMember(owner, "Synthetic Self", "Self", true))
         vault.createMember(FamilyMember(OwnerId("spouse"), "Synthetic Spouse", "Spouse", false))
@@ -134,6 +134,8 @@ class NativeVaultInstrumentedTest {
         assertThrows(IllegalArgumentException::class.java) {
             runBlocking { vault.importSnapshot(valid.copy(complete = false)) }
         }
+        // JUnit 4 requires test methods to have a void (Kotlin Unit) return type.
+        Unit
     }
 
     @Test fun directSqlCannotUpdateOrDeleteLedger() {
@@ -166,7 +168,7 @@ class NativeVaultInstrumentedTest {
         }
     }
 
-    @Test fun authenticatedBackupRestoresAtomicallyOnlyIntoEmptyVault() = runBlocking {
+    @Test fun authenticatedBackupRestoresAtomicallyOnlyIntoEmptyVault(): Unit = runBlocking {
         vault.openOrCreate()
         vault.createMember(FamilyMember(owner, "Synthetic Self", "Self", true))
         vault.createHolding(holding)

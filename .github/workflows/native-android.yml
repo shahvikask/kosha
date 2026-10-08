@@ -96,3 +96,14 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: gradle -p android-native :data:connectedDebugAndroidTest :app:connectedDebugAndroidTest --stacktrace
+      - name: Upload Android instrumentation results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GrowUrDhan-Native-M2-Instrumentation-Reports
+          path: |
+            android-native/app/build/outputs/androidTest-results/connected/**
+            android-native/data/build/outputs/androidTest-results/connected/**
+            android-native/app/build/reports/androidTests/connected/**
+            android-native/data/build/reports/androidTests/connected/**
+          if-no-files-found: ignore

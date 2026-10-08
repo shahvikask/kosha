@@ -104,3 +104,11 @@ The implementation `SqlCipherVaultRepository` is bound in Hilt to `VaultReposito
 - The previous emulator failure was a **runner disk exhaustion** issue: SDK emulator needed 7,372.80 MB, 7,246.48 MB available, so no device tests ran. Reduced AVD allocation from 4096M to 2048M in workflow; actual new emulator result is pending CI.
 
 **This is not a security attestation or proof of on-device encryption until instrumentation passes on an actual Android emulator/device.**
+
+## CI diagnostics — October 8, run #37781191285
+
+- The free-space cleanup from commit `313eba70` **resolved emulator boot**. Android emulator API 35 started and all **three Compose UI tests passed**.
+- Native vault instrumentation failed at JUnit 4 test-class initialization: `NativeVaultInstrumentedTest > initializationError`, reporting failure to instantiate `AndroidJUnit4ClassRunner`. This indicates an invalid test class or test runner configuration, not a demonstrated vault encryption defect.
+- Source audit identified an expression-bodied `@Test` method, `crossOwnerSnapshotFailureRollsBackAndHashIsIdempotent`, whose final expression is `assertThrows`. This yields a `Throwable` return type in Kotlin; **JUnit 4 requires void-returning test methods**. All expression-bodied `@Test` and `@After` methods have been changed to explicit `Unit` signatures, and the offending block ends in `Unit`.
+- The workflow now archives the Android test XML/HTML reports even after a failure, to expose full exception causes if the next emulator run discovers another issue.
+- This change only repairs tests and CI diagnostics, and has not modified the CASPARSER engine or the existing finance implementation. **Do not declare on-device M2 passing until a full new run succeeds.**
