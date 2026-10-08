@@ -230,6 +230,31 @@ class SqlCipherVaultRepository(
         }
     }
 
+    override suspend fun exportEncryptedBackup(passphrase: CharArray): ByteArray {
+        // A consistent snapshot is captured while the vault mutex excludes writers.
+        val plaintext = inspect { db -> VaultBackupTables.export(db) }
+        try {
+            return VaultBackupCodec.encrypt(plaintext, passphrase)
+        } finally {
+            plaintext.fill(0)
+        }
+    }
+
+    override suspend fun restoreEncryptedBackup(passphrase: CharArray, ciphertext: ByteArray) {
+        // Decrypt and authenticate BEFORE entering the financial transaction.
+        val plaintext = VaultBackupCodec.decrypt(ciphertext, passphrase)
+        try {
+            mutate { db ->
+                VaultBackupTables.restoreIntoEmpty(db, plaintext)
+                db.rawQuery("PRAGMA foreign_key_check", null).use {
+                    check(it.count == 0) { "Backup contains invalid financial references." }
+                }
+            }
+        } finally {
+            plaintext.fill(0)
+        }
+    }
+
     override suspend fun health(): VaultHealth = inspect { db ->
         val integrity = db.rawQuery("PRAGMA cipher_integrity_check", null).use { cursor ->
             if (cursor.moveToFirst()) cursor.getString(0) else "ok"
