@@ -15,14 +15,21 @@ import `in`.growurdhan.app.presentation.theme.GrowUrDhanTheme
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     private val viewModel: AppViewModel by viewModels()
+    private val vaultViewModel: `in`.growurdhan.app.presentation.VaultViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             val state by viewModel.uiState.collectAsStateWithLifecycle()
+            val vaultState by vaultViewModel.state.collectAsStateWithLifecycle()
             GrowUrDhanTheme(state.appearance) {
-                GrowUrDhanShell(state = state, onIntent = viewModel::onIntent)
+                GrowUrDhanShell(
+                    state = state,
+                    onIntent = viewModel::onIntent,
+                    vaultState = vaultState,
+                    onVaultIntent = vaultViewModel::onIntent,
+                )
             }
         }
     }
