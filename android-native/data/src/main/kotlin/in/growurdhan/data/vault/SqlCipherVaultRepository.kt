@@ -10,6 +10,14 @@ import dagger.hilt.components.SingletonComponent
 import `in`.growurdhan.core.model.*
 import `in`.growurdhan.domain.finance.FinancialEvent
 import `in`.growurdhan.domain.finance.FinancialEventKind
+import `in`.growurdhan.domain.finance.ReviewedStatement
+import `in`.growurdhan.domain.finance.StatementLine
+import `in`.growurdhan.domain.finance.SnapshotReconciler
+import `in`.growurdhan.domain.finance.toFinancialEvent
+import `in`.growurdhan.domain.finance.toFinancialHolding
+import java.math.BigInteger
+import java.nio.ByteBuffer
+import java.security.MessageDigest
 import `in`.growurdhan.domain.vault.VaultRepository
 import java.io.File
 import javax.inject.Inject
@@ -139,7 +147,11 @@ class SqlCipherVaultRepository(
     override suspend fun appendFinancialEvents(events: List<FinancialEvent>) {
         require(events.isNotEmpty()) { "No financial events to commit." }
         require(events.map { it.id }.distinct().size == events.size) { "Duplicate financial event IDs." }
-        val mapped = events.map { event ->
+        val mapped = events.map(::mapFinancialEvent)
+        mutate { db -> for (event in mapped) insertLedgerRow(db, event) }
+    }
+
+    private fun mapFinancialEvent(event: FinancialEvent): LedgerRow {
             require(event.unitPrice != null || event.kind in setOf(
                 FinancialEventKind.DIVIDEND, FinancialEventKind.INTEREST,
                 FinancialEventKind.VALUATION_UPDATE, FinancialEventKind.REPAYMENT,
@@ -184,10 +196,7 @@ class SqlCipherVaultRepository(
                 charges = event.charges.raw,
                 supersedes = event.supersedesEventId,
             )
-        }
-        mutate { db -> for (event in mapped) insertLedgerRow(db, event) }
     }
-
     private data class LedgerRow(
         val id: String,
         val holdingId: HoldingId,
@@ -228,6 +237,182 @@ class SqlCipherVaultRepository(
                 event.unitPrice, event.charges, event.supersedes,
             ),
         )
+    }
+
+    /**
+     * Preview a complete source inside ONE SQL read transaction. The digest binds the
+     * receipt to every persisted financial table, not just the visible holdings.
+     * A source already imported may not be proposed again.
+     */
+    override suspend fun prepareStatementReview(
+        snapshotId: String,
+        ownerId: OwnerId,
+        sourceSha256: String,
+        lines: List<StatementLine>,
+    ): ReviewedStatement {
+        require(snapshotId.isNotBlank() && snapshotId.length <= 128)
+        require(lines.isNotEmpty() && lines.size <= 100_000) { "Invalid statement size." }
+        val sourceLines = lines.toList()
+        return inspect { db ->
+            db.beginTransactionNonExclusive()
+            try {
+                require(findImportedSnapshot(db, sourceSha256) == null) {
+                    "This statement source was already recorded."
+                }
+                val book = readBookInsideTransaction(db)
+                require(book.members.any { it.id == ownerId }) {
+                    "Statement owner is not in the family vault."
+                }
+                val plan = planAgainstBook(book, ownerId, sourceSha256, sourceLines)
+                requireFreshStatementDate(db, ownerId, plan.statementDate.toString())
+                val receipt = ReviewedStatement(
+                    snapshotId, ownerId, sourceLines, bookFingerprint(db), plan,
+                )
+                db.setTransactionSuccessful()
+                receipt
+            } finally {
+                db.endTransaction()
+            }
+        }
+    }
+
+    /**
+     * Approval is a caller-triggered action, not part of preview. The receipt is
+     * treated as untrusted: even a modified data class/list cannot bypass recomputation
+     * inside the same database transaction as the INSERTs.
+     */
+    override suspend fun commitReviewedStatement(review: ReviewedStatement): SnapshotResult = mutate { db ->
+        val previous = findImportedSnapshot(db, review.plan.sourceSha256)
+        if (previous != null) {
+            check(previous.first == review.snapshotId && previous.second == review.ownerId.raw) {
+                "Statement source already belongs to a different observation."
+            }
+            return@mutate SnapshotResult.ALREADY_IMPORTED
+        }
+        check(bookFingerprint(db) == review.bookFingerprint) {
+            "The financial book changed after review. Review the statement again."
+        }
+        val book = readBookInsideTransaction(db)
+        require(book.members.any { it.id == review.ownerId }) {
+            "Statement owner is not in the family vault."
+        }
+        val confirmed = planAgainstBook(
+            book, review.ownerId, review.plan.sourceSha256, review.sourceLines,
+        )
+        check(confirmed == review.plan) {
+            "Statement lines or proposed financial changes differ from the reviewed plan."
+        }
+        require(confirmed.lines.none { it.outcome == `in`.growurdhan.domain.finance.ReconciliationOutcome.CONFLICT }) {
+            "Unresolved custodian or owner conflicts cannot be committed."
+        }
+        requireFreshStatementDate(db, review.ownerId, confirmed.statementDate.toString())
+
+        // All event validation happens BEFORE any financial write. Triggers then provide
+        // an independent, all-or-nothing SQL integrity gate for every inserted row.
+        val accepted = confirmed.acceptedEvents(
+            confirmed.lines.map { it.source.holdingId }.toSet(),
+        )
+        val mapped = accepted.map(::mapFinancialEvent)
+        val observed = confirmed.lines.map { it.source }
+        db.execSQL(
+            """INSERT INTO snapshot_import(id,owner_id,source_sha256,as_of,is_complete)
+               VALUES(?,?,?,?,1)""",
+            arrayOf(
+                review.snapshotId, review.ownerId.raw,
+                confirmed.sourceSha256, confirmed.statementDate.toString(),
+            ),
+        )
+        for (line in observed) {
+            val scaledValue = (
+                BigInteger.valueOf(line.quantityScaled) *
+                    BigInteger.valueOf(line.unitPrice.raw) / BigInteger.valueOf(100_000_000L)
+                ).longValueExact()
+            db.execSQL(
+                """INSERT INTO statement_position
+                   (snapshot_id,owner_id,holding_id,quantity_scaled,value_scaled)
+                   VALUES(?,?,?,?,?)""",
+                arrayOf(
+                    review.snapshotId, review.ownerId.raw, line.holdingId.raw,
+                    line.quantityScaled, scaledValue,
+                ),
+            )
+        }
+        for (event in mapped) insertLedgerRow(db, event)
+        SnapshotResult.IMPORTED
+    }
+
+    private fun planAgainstBook(
+        book: VaultBook,
+        ownerId: OwnerId,
+        sourceSha256: String,
+        lines: List<StatementLine>,
+    ) = SnapshotReconciler.review(
+        lines, book.holdings.map { it.toFinancialHolding() },
+        book.events.map { it.toFinancialEvent() }, ownerId, sourceSha256,
+    )
+
+    private fun findImportedSnapshot(db: SQLiteDatabase, sha: String): Pair<String, String>? =
+        db.rawQuery(
+            "SELECT id,owner_id FROM snapshot_import WHERE source_sha256 = ?",
+            arrayOf(sha),
+        ).use { cursor ->
+            if (cursor.moveToFirst()) Pair(cursor.getString(0), cursor.getString(1)) else null
+        }
+
+    private fun requireFreshStatementDate(db: SQLiteDatabase, ownerId: OwnerId, asOf: String) {
+        db.rawQuery(
+            "SELECT MAX(as_of) FROM snapshot_import WHERE owner_id = ?",
+            arrayOf(ownerId.raw),
+        ).use { cursor ->
+            if (cursor.moveToFirst() && !cursor.isNull(0)) {
+                require(asOf >= cursor.getString(0)) {
+                    "An older statement requires an explicit historical review."
+                }
+            }
+        }
+    }
+
+    private fun readBookInsideTransaction(db: SQLiteDatabase): VaultBook =
+        VaultBook(readMembers(db), readHoldings(db), readEvents(db))
+
+    /**
+     * Length-prefixed, typed SHA-256 digest streamed over ALL financial tables.
+     * The stable table list has no external SQL input. This also sees observations
+     * without event writes and changes by another SQLite connection.
+     */
+    private fun bookFingerprint(db: SQLiteDatabase): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        fun addText(value: String?) {
+            if (value == null) {
+                digest.update(ByteBuffer.allocate(4).putInt(-1).array())
+            } else {
+                val bytes = value.toByteArray(Charsets.UTF_8)
+                digest.update(ByteBuffer.allocate(4).putInt(bytes.size).array())
+                digest.update(bytes)
+            }
+        }
+        for (table in listOf(
+            "family_member", "custody_account", "holding", "ledger_event",
+            "snapshot_import", "statement_position", "vault_meta",
+        )) {
+            addText(table)
+            db.rawQuery("SELECT * FROM $table ORDER BY rowid", null).use { cursor ->
+                while (cursor.moveToNext()) {
+                    for (index in 0 until cursor.columnCount) {
+                        val cell = when (cursor.getType(index)) {
+                            android.database.Cursor.FIELD_TYPE_NULL -> null
+                            android.database.Cursor.FIELD_TYPE_INTEGER,
+                            android.database.Cursor.FIELD_TYPE_STRING -> cursor.getString(index)
+                            else -> throw VaultUnavailable("Unsupported financial book cell type.")
+                        }
+                        addText(cell)
+                    }
+                    // Row delimiter ensures different row/column partitions cannot collide.
+                    addText("row-boundary")
+                }
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
     }
 
     override suspend fun importSnapshot(snapshot: StatementSnapshot): SnapshotResult {
@@ -361,11 +546,7 @@ class SqlCipherVaultRepository(
     override suspend fun readBook(): VaultBook = inspect { db ->
         db.beginTransactionNonExclusive()
         try {
-            val book = VaultBook(
-                members = readMembers(db),
-                holdings = readHoldings(db),
-                events = readEvents(db),
-            )
+            val book = readBookInsideTransaction(db)
             db.setTransactionSuccessful()
             book
         } finally {
