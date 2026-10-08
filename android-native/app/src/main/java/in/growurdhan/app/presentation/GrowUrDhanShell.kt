@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -37,6 +38,7 @@ import androidx.navigation.compose.rememberNavController
 import `in`.growurdhan.app.presentation.screens.HomeScreen
 import `in`.growurdhan.app.presentation.screens.PrivacyScreen
 import `in`.growurdhan.app.presentation.screens.SettingsScreen
+import `in`.growurdhan.app.presentation.screens.VaultScreen
 
 private enum class MainDestination(
     val route: String,
@@ -44,6 +46,7 @@ private enum class MainDestination(
     val icon: ImageVector,
 ) {
     HOME("home", "Home", Icons.Outlined.Home),
+    VAULT("vault", "Vault", Icons.Outlined.Lock),
     PRIVACY("privacy", "Privacy", Icons.Outlined.Shield),
     SETTINGS("settings", "Settings", Icons.Outlined.Settings),
 }
@@ -53,6 +56,8 @@ private enum class MainDestination(
 fun GrowUrDhanShell(
     state: AppUiState,
     onIntent: (AppIntent) -> Unit,
+    vaultState: VaultUiState = VaultUiState.Loading,
+    onVaultIntent: (VaultIntent) -> Unit = {},
 ) {
     val controller = rememberNavController()
     val currentBackStackEntry by controller.currentBackStackEntryAsState()
@@ -129,6 +134,9 @@ fun GrowUrDhanShell(
                             onOpenSettings = { navigate(MainDestination.SETTINGS.route) },
                             onOpenPrivacy = { navigate(MainDestination.PRIVACY.route) },
                         )
+                    }
+                    composable(MainDestination.VAULT.route) {
+                        VaultScreen(state = vaultState, onIntent = onVaultIntent)
                     }
                     composable(MainDestination.PRIVACY.route) {
                         PrivacyScreen()
