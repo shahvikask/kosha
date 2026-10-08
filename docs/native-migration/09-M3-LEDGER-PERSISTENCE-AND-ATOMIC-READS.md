@@ -78,3 +78,13 @@ Actual new v2 test results are **not claimed** in this file until the user suppl
 ## 5. CI owner handoff
 
 For the **final new source commit** triggering `GrowUrDhan Native Android M3`, provide the complete commit SHA, native workflow run ID and link. Wait for the owner to report PASS/FAIL rather than consuming session time by repeated workflow polling. If failed, inspect native JVM, Python schema preflight and Android instrumentation reports and iterate on `GUD-Android-ChatGPT` only.
+
+## Build failure follow-up — run #37804044068
+
+**Observed:** Native Android M3 run [#37804044068](https://github.com/shahvikask/kosha/actions/runs/37804044068) at commit `9ff156155edf486268e1b24c42aa1ba77874f2a8` failed in `:data:compileDebugKotlin`; Kotlin compiler error at `SqlCipherVaultRepository.kt:150:48`: `Smart cast to 'MoneyScaled' is impossible, because 'unitPrice' is a public API property declared in different module.`
+
+**Cause:** The check `event.unitPrice == null || event.unitPrice.raw >= 0` accessed the nullable public `:domain` property again after null testing it. Kotlin rejects such a cross-module smart cast. **Fix:** capture the property in a local `val unitPrice`, and use that stable local value for both the check and access.
+
+**Additional test fixture hardening:** The v1-upgrade Android test directly opens SQLCipher before calling the vault repository. It now explicitly calls `System.loadLibrary("sqlcipher")` rather than depending on another test to load the library first.
+
+**What did pass:** host SQLite v1-to-v2 migration and ledger-integrity preflight; protected CASPARSER diff check. **Not executed:** Android APK build, native vault instrumentation and Compose UI tests. The JVM-report archive exists but the Kotlin compiler failed before new M3 tests could finish. A new complete workflow run is required to verify the fix.

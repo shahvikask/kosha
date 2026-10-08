@@ -78,6 +78,9 @@ class NativeFinancialPersistenceInstrumentedTest {
         assertTrue(folder.mkdirs())
         val bytes = VaultKeyEnvelope(File(folder, "wrapped.key"), alias)
             .unwrapOrCreate(allowCreate = true)
+        // This fixture opens SQLCipher directly, without repository.openOrCreate(),
+        // so it must load the native library itself (test ordering is not guaranteed).
+        System.loadLibrary("sqlcipher")
         val db = SQLiteDatabase.openOrCreateDatabase(
             File(folder, "wealth.db"), bytes, null, null, null,
         )

@@ -147,7 +147,10 @@ class SqlCipherVaultRepository(
             require(event.kind != FinancialEventKind.CORRECTION || event.supersedesEventId != null) {
                 "Corrections require the original event ID."
             }
-            require(event.unitPrice == null || event.unitPrice.raw >= 0) {
+            // FinancialEvent lives in :domain, so Kotlin cannot smart-cast an
+            // externally declared public nullable property after a null check.
+            val unitPrice = event.unitPrice
+            require(unitPrice == null || unitPrice.raw >= 0) {
                 "Unit price and split denominators cannot be negative."
             }
             when (event.kind) {
