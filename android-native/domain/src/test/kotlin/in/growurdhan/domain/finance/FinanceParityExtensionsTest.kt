@@ -213,6 +213,30 @@ class FinanceParityExtensionsTest {
         }
     }
 
+    @Test fun snapshotDeltaDoesNotInventAdditionalPurchasedCost() {
+        val id = HoldingId("delta-unknown")
+        val holding = FinancialHolding(id, owner, "Synthetic", "MUTUAL_FUND", cash(100))
+        val bought = FinancialEvent(
+            "actual-purchase", id, owner, FinancialEventKind.BUY,
+            d("2025-01-01"), 100_000_000, cash(80), cash(80),
+        )
+        val statement = StatementLine(
+            id, owner, d("2026-10-08"), 150_000_000, cash(100),
+        )
+        val review = SnapshotReconciler.review(
+            listOf(statement), listOf(holding), listOf(bought), owner, "e".repeat(64),
+        )
+        val delta = review.acceptedEvents(setOf(id)).single()
+        assertEquals(50_000_000L, delta.quantityScaled)
+        assertEquals(MoneyScaled(0), delta.unitPrice)
+        assertEquals(MoneyScaled(0), delta.totalAmount)
+        val position = PortfolioEngine.derive(
+            listOf(holding), listOf(bought, delta), d("2026-10-08"),
+        ).members.single().holdings.single()
+        assertTrue(position.position.unknownInvestedCost)
+        assertNull(position.unrealisedGain)
+    }
+
     @Test fun zeroUnitStatementCannotProposeFalseOpeningTrade() {
         val id = HoldingId("h1")
         val zero = StatementLine(id, owner, d("2026-10-08"), 0, cash(100))

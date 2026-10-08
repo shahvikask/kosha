@@ -158,7 +158,6 @@ object SnapshotReconciler {
             }
             val expected = folded.quantityScaled
             val delta = Math.subtractExact(line.quantityScaled, expected)
-            val total = timesQuantity(delta.big().abs().toCheckedLong(), line.unitPrice.raw)
             val proposed: List<FinancialEvent>
             val outcome: ReconciliationOutcome
             val reason: String
@@ -223,12 +222,14 @@ object SnapshotReconciler {
                 outcome = ReconciliationOutcome.CLOSED
                 reason = "Statement shows zero units; propose a non-taxable statement adjustment."
                 proposed = listOf(suggestion(FinancialEventKind.SNAPSHOT_ADJUSTMENT, Math.negateExact(expected),
-                    line.unitPrice, MoneyScaled(total)))
+                    MoneyScaled(0), MoneyScaled(0)))
             } else {
                 outcome = if (delta > 0) ReconciliationOutcome.ADJUST_UP else ReconciliationOutcome.ADJUST_DOWN
                 reason = "Only the difference in units is proposed, never the full balance as a purchase."
+                // A holdings CAS difference is NOT an actual purchased parcel.
+                // CMP estimates VALUE change only, never purchase price/basis.
                 proposed = listOf(suggestion(FinancialEventKind.SNAPSHOT_ADJUSTMENT, delta,
-                    line.unitPrice, MoneyScaled(total)))
+                    MoneyScaled(0), MoneyScaled(0)))
             }
             if (proposed.isNotEmpty() && outcome != ReconciliationOutcome.COST_UPDATE) {
                 valueChange += MoneyScaled(timesQuantity(delta, line.unitPrice.raw))

@@ -77,10 +77,13 @@ object PortfolioEngine {
                     unknownInvestedCost = knownCost == null,
                 )
             }
-            if (result.quantityScaled > 0 && result.investedCost.raw == 0L &&
-                mine.any { it.kind in setOf(
-                    FinancialEventKind.OPENING_BALANCE, FinancialEventKind.SNAPSHOT_ADJUSTMENT,
-                ) }) {
+            if (result.quantityScaled > 0 && mine.any {
+                it.quantityScaled > 0 &&
+                    it.kind in setOf(
+                        FinancialEventKind.OPENING_BALANCE,
+                        FinancialEventKind.SNAPSHOT_ADJUSTMENT,
+                    ) && (it.unitPrice?.raw ?: 0L) == 0L
+            }) {
                 // A holdings-only CAS prints market price without historical buy price.
                 // Keeping zero as "known invested" would invent the entire unrealised gain.
                 result = result.copy(unknownInvestedCost = true)
