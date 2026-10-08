@@ -66,9 +66,15 @@ internal class VaultKeyEnvelope(
 
     private fun unwrap(): ByteArray = try {
         val encoded = atomic.openRead().use { input ->
-            input.readNBytes(512).also { bytes ->
-                require(bytes.size <= 128) { "Vault key envelope is oversized." }
+            val buffer = ByteArray(129)
+            val output = ByteArrayOutputStream()
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                require(output.size() + read <= 128) { "Vault key envelope is oversized." }
+                output.write(buffer, 0, read)
             }
+            output.toByteArray()
         }
         DataInputStream(ByteArrayInputStream(encoded)).use { input ->
             val header = ByteArray(8)
