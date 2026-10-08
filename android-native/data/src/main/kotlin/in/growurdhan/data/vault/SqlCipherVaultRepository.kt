@@ -8,6 +8,8 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import `in`.growurdhan.core.model.*
+import `in`.growurdhan.domain.finance.FinancialEvent
+import `in`.growurdhan.domain.finance.FinancialEventKind
 import `in`.growurdhan.domain.vault.VaultRepository
 import java.io.File
 import javax.inject.Inject
@@ -124,14 +126,88 @@ class SqlCipherVaultRepository(
         )
     }
 
+    /** Preserve v1 API while appending optional v2 financial metadata when supplied. */
     override suspend fun appendEvent(event: LedgerEvent): Unit = mutate { db ->
+        insertLedgerEvent(db, event)
+    }
+
+    /**
+     * Append all approved rich financial events in ONE SQLite transaction. Correction
+     * predecessors, member ownership and duplicate IDs are additionally checked by
+     * SQLite triggers / unique constraints, even when the call bypasses the UI.
+     */
+    override suspend fun appendFinancialEvents(events: List<FinancialEvent>) {
+        require(events.isNotEmpty()) { "No financial events to commit." }
+        require(events.map { it.id }.distinct().size == events.size) { "Duplicate financial event IDs." }
+        val mapped = events.map { event ->
+            require(event.unitPrice != null || event.kind in setOf(
+                FinancialEventKind.DIVIDEND, FinancialEventKind.INTEREST,
+                FinancialEventKind.VALUATION_UPDATE, FinancialEventKind.REPAYMENT,
+            )) { "Trade, adjustment and split events require an explicit unit price or ratio." }
+            require(event.kind != FinancialEventKind.CORRECTION || event.supersedesEventId != null) {
+                "Corrections require the original event ID."
+            }
+            val legacyCarrier = if (event.kind in setOf(
+                FinancialEventKind.BONUS, FinancialEventKind.SPLIT,
+                FinancialEventKind.SNAPSHOT_ADJUSTMENT, FinancialEventKind.VALUATION_UPDATE,
+                FinancialEventKind.REPAYMENT,
+            )) LedgerKind.ADJUSTMENT else LedgerKind.valueOf(event.kind.name)
+            LedgerRow(
+                id = event.id,
+                holdingId = event.holdingId,
+                ownerId = event.ownerId,
+                carrier = legacyCarrier,
+                kind = event.kind.name,
+                date = event.date.toString(),
+                quantity = event.quantityScaled,
+                amount = event.totalAmount.raw,
+                source = null,
+                unitPrice = event.unitPrice?.raw,
+                charges = event.charges.raw,
+                supersedes = event.supersedesEventId,
+            )
+        }
+        mutate { db -> for (event in mapped) insertLedgerRow(db, event) }
+    }
+
+    private data class LedgerRow(
+        val id: String,
+        val holdingId: HoldingId,
+        val ownerId: OwnerId,
+        val carrier: LedgerKind,
+        val kind: String,
+        val date: String,
+        val quantity: Long,
+        val amount: Long,
+        val source: String?,
+        val unitPrice: Long?,
+        val charges: Long,
+        val supersedes: String?,
+    )
+
+    private fun insertLedgerEvent(db: SQLiteDatabase, event: LedgerEvent) {
+        val carrier = if (event.kind in setOf(
+            LedgerKind.BONUS, LedgerKind.SPLIT, LedgerKind.SNAPSHOT_ADJUSTMENT,
+            LedgerKind.VALUATION_UPDATE, LedgerKind.REPAYMENT,
+        )) LedgerKind.ADJUSTMENT else event.kind
+        insertLedgerRow(db, LedgerRow(
+            event.id, event.holdingId, event.ownerId, carrier,
+            event.kind.name, event.eventDate, event.quantityDeltaScaled,
+            event.amount.raw, event.sourceFingerprint, event.unitPrice?.raw,
+            event.charges.raw, event.supersedesEventId,
+        ))
+    }
+
+    private fun insertLedgerRow(db: SQLiteDatabase, event: LedgerRow) {
         db.execSQL(
             """INSERT INTO ledger_event
-                 (id,owner_id,holding_id,kind,event_date,quantity_delta_scaled,amount_scaled,source_fingerprint)
-               VALUES (?,?,?,?,?,?,?,?)""",
+               (id,owner_id,holding_id,kind,event_date,quantity_delta_scaled,amount_scaled,
+                source_fingerprint,financial_kind,unit_price_scaled,charges_scaled,supersedes_event_id)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
             arrayOf(
-                event.id, event.ownerId.raw, event.holdingId.raw, event.kind.name, event.eventDate,
-                event.quantityDeltaScaled, event.amount.raw, event.sourceFingerprint,
+                event.id, event.ownerId.raw, event.holdingId.raw, event.carrier.name,
+                event.date, event.quantity, event.amount, event.source, event.kind,
+                event.unitPrice, event.charges, event.supersedes,
             ),
         )
     }
@@ -186,8 +262,10 @@ class SqlCipherVaultRepository(
         }
     }
 
-    override suspend fun members(): List<FamilyMember> = inspect { db ->
-        db.rawQuery(
+    override suspend fun members(): List<FamilyMember> = inspect { db -> readMembers(db) }
+
+    private fun readMembers(db: SQLiteDatabase): List<FamilyMember> {
+        return db.rawQuery(
             "SELECT id,display_name,relationship,is_primary FROM family_member ORDER BY is_primary DESC,id",
             null,
         ).use { cursor ->
@@ -202,8 +280,10 @@ class SqlCipherVaultRepository(
         }
     }
 
-    override suspend fun holdings(): List<Holding> = inspect { db ->
-        db.rawQuery(
+    override suspend fun holdings(): List<Holding> = inspect { db -> readHoldings(db) }
+
+    private fun readHoldings(db: SQLiteDatabase): List<Holding> {
+        return db.rawQuery(
             """SELECT id,owner_id,account_id,display_name,asset_category,quantity_scaled,price_scaled
                FROM holding ORDER BY owner_id,id""",
             null,
@@ -224,10 +304,15 @@ class SqlCipherVaultRepository(
         }
     }
 
-    override suspend fun events(): List<LedgerEvent> = inspect { db ->
-        db.rawQuery(
-            """SELECT id,holding_id,owner_id,kind,event_date,quantity_delta_scaled,
-               amount_scaled,source_fingerprint FROM ledger_event ORDER BY event_date,id""",
+    override suspend fun events(): List<LedgerEvent> = inspect { db -> readEvents(db) }
+
+    private fun readEvents(db: SQLiteDatabase): List<LedgerEvent> {
+        return db.rawQuery(
+            """SELECT id,holding_id,owner_id,
+               CASE WHEN financial_kind != '' THEN financial_kind ELSE kind END,
+               event_date,quantity_delta_scaled,amount_scaled,source_fingerprint,
+               unit_price_scaled,charges_scaled,supersedes_event_id
+               FROM ledger_event ORDER BY event_date,id""",
             null,
         ).use { cursor ->
             buildList {
@@ -241,9 +326,32 @@ class SqlCipherVaultRepository(
                         quantityDeltaScaled = cursor.getLong(5),
                         amount = MoneyScaled(cursor.getLong(6)),
                         sourceFingerprint = if (cursor.isNull(7)) null else cursor.getString(7),
+                        unitPrice = if (cursor.isNull(8)) null else MoneyScaled(cursor.getLong(8)),
+                        charges = MoneyScaled(cursor.getLong(9)),
+                        supersedesEventId = if (cursor.isNull(10)) null else cursor.getString(10),
                     )
                 )
             }
+        }
+    }
+
+    /**
+     * One SQL transaction for the entire family book: reads from other connections
+     * cannot interleave between members, holdings and events. The repository Mutex
+     * additionally serializes all writes through this production repository.
+     */
+    override suspend fun readBook(): VaultBook = inspect { db ->
+        db.beginTransactionNonExclusive()
+        try {
+            val book = VaultBook(
+                members = readMembers(db),
+                holdings = readHoldings(db),
+                events = readEvents(db),
+            )
+            db.setTransactionSuccessful()
+            book
+        } finally {
+            db.endTransaction()
         }
     }
 
