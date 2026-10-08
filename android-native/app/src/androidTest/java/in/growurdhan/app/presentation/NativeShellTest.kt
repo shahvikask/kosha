@@ -36,6 +36,26 @@ class NativeShellTest {
     }
 
     @Test
+    fun vaultIsCreatedOnlyAfterExplicitUserAction() {
+        var action: VaultIntent? = null
+        compose.setContent {
+            GrowUrDhanTheme(AppearanceSettings(ThemeMode.LIGHT, dynamicColor = false)) {
+                GrowUrDhanShell(
+                    state = AppUiState(),
+                    onIntent = {},
+                    vaultState = VaultUiState.NotCreated,
+                    onVaultIntent = { action = it },
+                )
+            }
+        }
+        compose.onNodeWithContentDescription("Vault").performClick()
+        compose.onNodeWithText("No native vault found").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(null, action) }
+        compose.onNodeWithText("Create encrypted vault").performClick()
+        compose.runOnIdle { assertEquals(VaultIntent.OpenOrCreate, action) }
+    }
+
+    @Test
     fun privacyDestinationShowsActualStorageStatus() {
         compose.setContent {
             GrowUrDhanTheme(AppearanceSettings(ThemeMode.LIGHT, dynamicColor = false)) {
