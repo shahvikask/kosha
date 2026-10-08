@@ -26,3 +26,5 @@ jobs:
         run: npm test
       - name: Snapshot tests
         run: npm run test:snap
+      - name: Database tests
+        run: npm run test:db
