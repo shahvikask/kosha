@@ -56,6 +56,11 @@ class SqlCipherVaultRepository(
             if (databaseFile.exists() && !keys.exists()) {
                 throw VaultUnavailable("Encrypted database has no key. No new key was generated.")
             }
+            if (!databaseFile.exists() && keys.exists()) {
+                // A surviving key is evidence of a previously initialized or interrupted
+                // vault. Never substitute a new, empty financial database for it.
+                throw VaultUnavailable("Vault database is missing while its key still exists. Restore from backup.")
+            }
             val key = keys.unwrapOrCreate(allowCreate = !databaseFile.exists() && !readyFile.exists())
             var connection: SQLiteDatabase? = null
             try {
@@ -147,6 +152,18 @@ class SqlCipherVaultRepository(
                         "Document hash is already associated with a different member."
                     }
                     return@mutate SnapshotResult.ALREADY_IMPORTED
+                }
+            }
+            // Reject chronological regression before recording the source hash.
+            // This is independent of parser reliability and preserves a newer book.
+            db.rawQuery(
+                "SELECT MAX(as_of) FROM snapshot_import WHERE owner_id = ?",
+                arrayOf(snapshot.ownerId.raw),
+            ).use { cursor ->
+                if (cursor.moveToFirst() && !cursor.isNull(0)) {
+                    require(snapshot.asOf >= cursor.getString(0)) {
+                        "An older statement requires explicit historical review."
+                    }
                 }
             }
             db.execSQL(
