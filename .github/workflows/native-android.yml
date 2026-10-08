@@ -74,7 +74,7 @@ jobs:
           target: google_apis
           arch: x86_64
           ram-size: 2048M
-          disk-size: 4096M
+          disk-size: 2048M
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: gradle -p android-native :data:connectedDebugAndroidTest :app:connectedDebugAndroidTest --stacktrace
