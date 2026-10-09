@@ -138,6 +138,10 @@ internal object VaultSchema {
           ) THEN RAISE(ABORT, 'CAS mapping requires matching registrar account') END;
         END
         """.trimIndent(),
+        """CREATE TRIGGER deny_cas_mapping_update BEFORE UPDATE ON holding_cas_identity
+             BEGIN SELECT RAISE(ABORT, 'CAS identity is immutable'); END""",
+        """CREATE TRIGGER deny_cas_mapping_delete BEFORE DELETE ON holding_cas_identity
+             BEGIN SELECT RAISE(ABORT, 'CAS identity is immutable'); END""",
     )
 
     // Same immutable v1 DDL used by fresh initialization and v1 migration tests.

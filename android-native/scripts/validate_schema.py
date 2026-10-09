@@ -24,7 +24,7 @@ EXPECTED_V2_TABLES = {
 EXPECTED_TABLES = EXPECTED_V2_TABLES | {"holding_cas_identity"}
 V1_STATEMENT_COUNT = 14
 MIGRATION_STATEMENT_COUNT = 6
-V3_MIGRATION_STATEMENT_COUNT = 2
+V3_MIGRATION_STATEMENT_COUNT = 4
 RICH_COLUMNS = {
     "financial_kind", "unit_price_scaled", "charges_scaled", "supersedes_event_id",
 }
@@ -214,6 +214,12 @@ def check_v3(db: sqlite3.Connection) -> None:
     assert_rejected(
         db, "INSERT INTO holding_cas_identity(holding_id,owner_id,account_id,isin,folio) "
             "VALUES('other','spouse','missing','INF000000002','54321')"
+    )
+    assert_rejected(
+        db, "UPDATE holding_cas_identity SET folio='forged' WHERE holding_id='holding'"
+    )
+    assert_rejected(
+        db, "DELETE FROM holding_cas_identity WHERE holding_id='holding'"
     )
     if db.execute("PRAGMA integrity_check").fetchone() != ("ok",):
         raise AssertionError("SQLite v3 integrity check failed")
