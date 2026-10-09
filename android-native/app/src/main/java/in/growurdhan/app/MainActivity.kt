@@ -3,6 +3,7 @@ package `in`.growurdhan.app
 import android.app.Activity
 import android.app.KeyguardManager
 import android.content.Context
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -12,9 +13,14 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.lifecycle.lifecycleScope
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
+import `in`.growurdhan.app.cas.NativeCasPdfReader
+import `in`.growurdhan.core.model.OwnerId
+import `in`.growurdhan.domain.finance.toFinancialHolding
+import `in`.growurdhan.domain.vault.VaultRepository
 import `in`.growurdhan.app.presentation.AppViewModel
 import `in`.growurdhan.app.presentation.GrowUrDhanShell
 import `in`.growurdhan.app.presentation.StatementReviewIntent
@@ -26,6 +32,7 @@ import `in`.growurdhan.app.presentation.VaultSessionGate
 import `in`.growurdhan.app.presentation.VaultViewModel
 import `in`.growurdhan.app.presentation.theme.GrowUrDhanTheme
 import javax.inject.Inject
+import kotlinx.coroutines.launch
 
 /**
  * A secure-device-credential gate for the development UI, not a GrowUrDhan
@@ -35,11 +42,16 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     @Inject lateinit var sessionGate: VaultSessionGate
+    @Inject lateinit var casReader: NativeCasPdfReader
+    @Inject lateinit var repository: VaultRepository
     private val viewModel: AppViewModel by viewModels()
     private val vaultViewModel: VaultViewModel by viewModels()
     private val reviewViewModel: StatementReviewViewModel by viewModels()
-    private enum class CredentialAction { OPEN_VAULT, APPROVE_REVIEW }
+    private enum class CredentialAction { OPEN_VAULT, APPROVE_REVIEW, IMPORT_PDF }
     private var pendingCredential: CredentialAction? = null
+    private var pdfPickerOpen: Boolean = false
+    private var pickedPdfOwner: OwnerId? = null
+    private var pickedPdfUri: Uri? = null
     private val timeoutHandler = Handler(Looper.getMainLooper())
     private val timeoutCheck = object : Runnable {
         override fun run() {
@@ -65,10 +77,63 @@ class MainActivity : ComponentActivity() {
                 CredentialAction.OPEN_VAULT -> vaultViewModel.onIntent(VaultIntent.OpenOrCreate)
                 CredentialAction.APPROVE_REVIEW ->
                     reviewViewModel.onIntent(StatementReviewIntent.CommitAfterCredential)
+                CredentialAction.IMPORT_PDF -> parseSelectedPdfAfterCredential()
             }
         } else {
             // Device credential cancelled, removed, or otherwise not verified.
             lockSensitiveUi()
+        }
+    }
+
+    // SAF document chooser grants read access only to the selected local/cloud URI.
+    // No blanket READ_EXTERNAL_STORAGE or INTERNET permission is requested.
+    private val pdfPicker = registerForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        pdfPickerOpen = false
+        if (uri == null || pickedPdfOwner == null) {
+            lockSensitiveUi()
+        } else {
+            pickedPdfUri = uri
+            // OS picker/background revokes prior session; require device credential
+            // again before even reading the PDF or decrypted financial book.
+            requestCredential(CredentialAction.IMPORT_PDF)
+        }
+    }
+
+    private fun parseSelectedPdfAfterCredential() {
+        val uri = pickedPdfUri
+        val owner = pickedPdfOwner
+        pickedPdfUri = null
+        pickedPdfOwner = null
+        if (uri == null || owner == null || !sessionGate.isUnlocked()) {
+            lockSensitiveUi()
+            return
+        }
+        // Closing the vault while the chooser was foregrounded is intentional.
+        vaultViewModel.onIntent(VaultIntent.OpenOrCreate)
+        lifecycleScope.launch {
+            try {
+                repository.openOrCreate()
+                val book = repository.readBook()
+                check(book.members.any { it.id == owner }) {
+                    "Statement owner does not exist in encrypted book."
+                }
+                val verified = casReader.parseAndValidate(
+                    uri, owner, book.holdings.map { it.toFinancialHolding() },
+                )
+                check(sessionGate.isUnlocked()) { "Vault session expired during PDF parsing." }
+                reviewViewModel.prepareFromValidatedParser(
+                    "cas_${verified.sourceSha256}",
+                    owner,
+                    verified.sourceSha256,
+                    verified.lines,
+                )
+            } catch (_: Exception) {
+                // Source content, Python errors, file path, PAN and password
+                // never cross into UI error messages or diagnostic logs.
+                reviewViewModel.reportParserFailure()
+            }
         }
     }
 
@@ -105,6 +170,20 @@ class MainActivity : ComponentActivity() {
 
     private fun handleReviewIntent(intent: StatementReviewIntent) {
         when (intent) {
+            StatementReviewIntent.LoadOwners -> reviewViewModel.onIntent(intent)
+            is StatementReviewIntent.PickPdf -> {
+                if (!sessionGate.isUnlocked() || vaultViewModel.state.value !is VaultUiState.Ready) {
+                    lockSensitiveUi()
+                } else {
+                    pickedPdfOwner = intent.ownerId
+                    pdfPickerOpen = true
+                    try {
+                        pdfPicker.launch(arrayOf("application/pdf"))
+                    } catch (_: Exception) {
+                        lockSensitiveUi()
+                    }
+                }
+            }
             StatementReviewIntent.RequestApproval -> {
                 if (reviewViewModel.state.value !is StatementReviewUiState.Reviewing) return
                 if (!sessionGate.isUnlocked()) {
@@ -151,6 +230,9 @@ class MainActivity : ComponentActivity() {
     private fun lockSensitiveUi() {
         sessionGate.lock()
         reviewViewModel.clearSensitiveState()
+        pickedPdfOwner = null
+        pickedPdfUri = null
+        pdfPickerOpen = false
         vaultViewModel.onIntent(VaultIntent.Close)
     }
 
@@ -165,13 +247,20 @@ class MainActivity : ComponentActivity() {
         super.onStop()
         // Android's own credential confirmation activity may temporarily stop us.
         // A cancelled challenge locks; success must come from RESULT_OK only.
-        if (pendingCredential == null) {
-            lockSensitiveUi()
-        } else {
-            // The system credential Activity temporarily obscures this Activity.
-            // Revoke prior authorization even then; only its successful callback
-            // may grant a new session. Cancel/error closes and clears everything.
-            sessionGate.lock()
+        when {
+            pdfPickerOpen -> {
+                // The external document chooser isn't an authenticated session.
+                // Close SQLCipher and clear financial receipt state while away.
+                sessionGate.lock()
+                reviewViewModel.clearSensitiveState()
+                vaultViewModel.onIntent(VaultIntent.Close)
+            }
+            pendingCredential == null -> lockSensitiveUi()
+            else -> {
+                // The credential activity revokes the old session, and only its
+                // RESULT_OK callback may start a new one.
+                sessionGate.lock()
+            }
         }
     }
 }
