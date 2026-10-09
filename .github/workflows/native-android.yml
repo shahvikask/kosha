@@ -60,6 +60,7 @@ jobs:
         run: gradle -p android-native :domain:test :app:testDebugUnitTest --stacktrace
       - name: Upload native JVM test reports
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: GrowUrDhan-Native-M3-JVM-Reports
@@ -72,6 +73,7 @@ jobs:
       - name: Compile debug application and Compose instrumentation test APK
         run: gradle -p android-native :app:assembleDebug :app:assembleDebugAndroidTest :data:assembleDebugAndroidTest --stacktrace
       - name: Upload native test artifacts
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: GrowUrDhan-Native-M3-APKs
@@ -174,6 +176,7 @@ jobs:
           script: gradle -p android-native :data:connectedDebugAndroidTest :app:connectedDebugAndroidTest --stacktrace
       - name: Upload Android instrumentation results
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: GrowUrDhan-Native-M3-Instrumentation-Reports
