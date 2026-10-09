@@ -37,6 +37,7 @@ fun FamilyMemberScreen(
     state: FamilyMemberUiState,
     onIntent: (FamilyMemberIntent) -> Unit,
     onContinueToStatements: () -> Unit,
+    onSetUpHoldings: () -> Unit = {},
     onReturnToVault: () -> Unit,
 ) {
     Column(
@@ -98,9 +99,12 @@ fun FamilyMemberScreen(
                     }
                 }
                 Button(
-                    onClick = onContinueToStatements,
+                    onClick = onSetUpHoldings,
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("Continue to Statements") }
+                ) { Text("Add account and holding") }
+                OutlinedButton(onClick = onContinueToStatements) {
+                    Text("Continue to Statements")
+                }
                 OutlinedButton(onClick = { onIntent(FamilyMemberIntent.Refresh) }) {
                     Text("Add another family member")
                 }

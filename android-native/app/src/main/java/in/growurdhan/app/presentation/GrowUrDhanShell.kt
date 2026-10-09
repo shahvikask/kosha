@@ -36,6 +36,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import `in`.growurdhan.app.presentation.screens.CustodyHoldingScreen
 import `in`.growurdhan.app.presentation.screens.FamilyMemberScreen
 import `in`.growurdhan.app.presentation.screens.HomeScreen
 import `in`.growurdhan.app.presentation.screens.StatementReviewScreen
@@ -57,6 +58,8 @@ private enum class MainDestination(
 
 /** Secondary route; intentionally not another bottom-navigation tab. */
 private const val FAMILY_ROUTE = "family"
+/** Secondary secure registrar/holding setup route, not an extra bottom tab. */
+private const val CUSTODY_ROUTE = "custody"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -69,6 +72,8 @@ fun GrowUrDhanShell(
     onReviewIntent: (StatementReviewIntent) -> Unit = {},
     familyState: FamilyMemberUiState = FamilyMemberUiState.Locked,
     onFamilyIntent: (FamilyMemberIntent) -> Unit = {},
+    custodyState: CustodyHoldingUiState = CustodyHoldingUiState.Locked,
+    onCustodyIntent: (CustodyHoldingIntent) -> Unit = {},
 ) {
     val controller = rememberNavController()
     val currentBackStackEntry by controller.currentBackStackEntryAsState()
@@ -151,6 +156,7 @@ fun GrowUrDhanShell(
                             state = vaultState,
                             onIntent = onVaultIntent,
                             onAddFamilyMember = { navigate(FAMILY_ROUTE) },
+                            onManageHoldings = { navigate(CUSTODY_ROUTE) },
                         )
                     }
                     composable(MainDestination.REVIEW.route) {
@@ -158,6 +164,7 @@ fun GrowUrDhanShell(
                             state = reviewState,
                             onIntent = onReviewIntent,
                             onAddFamilyMember = { navigate(FAMILY_ROUTE) },
+                            onSetUpHoldings = { navigate(CUSTODY_ROUTE) },
                         )
                     }
                     composable(FAMILY_ROUTE) {
@@ -173,6 +180,28 @@ fun GrowUrDhanShell(
                             },
                             onContinueToStatements = {
                                 onFamilyIntent(FamilyMemberIntent.Cancel)
+                                onReviewIntent(StatementReviewIntent.LoadOwners)
+                                navigate(MainDestination.REVIEW.route)
+                            },
+                            onSetUpHoldings = {
+                                onFamilyIntent(FamilyMemberIntent.Cancel)
+                                navigate(CUSTODY_ROUTE)
+                            },
+                        )
+                    }
+                    composable(CUSTODY_ROUTE) {
+                        androidx.compose.runtime.LaunchedEffect(Unit) {
+                            onCustodyIntent(CustodyHoldingIntent.Refresh)
+                        }
+                        CustodyHoldingScreen(
+                            state = custodyState,
+                            onIntent = onCustodyIntent,
+                            onBackToVault = {
+                                onCustodyIntent(CustodyHoldingIntent.Cancel)
+                                navigate(MainDestination.VAULT.route)
+                            },
+                            onContinueToStatements = {
+                                onCustodyIntent(CustodyHoldingIntent.Cancel)
                                 onReviewIntent(StatementReviewIntent.LoadOwners)
                                 navigate(MainDestination.REVIEW.route)
                             },

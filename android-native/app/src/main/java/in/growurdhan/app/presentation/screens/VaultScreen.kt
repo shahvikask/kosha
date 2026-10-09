@@ -29,6 +29,7 @@ fun VaultScreen(
     state: VaultUiState,
     onIntent: (VaultIntent) -> Unit,
     onAddFamilyMember: () -> Unit = {},
+    onManageHoldings: () -> Unit = {},
 ) {
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
@@ -80,6 +81,9 @@ fun VaultScreen(
                             )
                         }
                         Text("Holdings: " + state.health.holdingCount)
+                        Button(onClick = onManageHoldings) {
+                            Text("Manage accounts & holdings")
+                        }
                         Text("Ledger events: " + state.health.eventCount)
                         Text("Reference checks: " + if (state.health.foreignKeyViolations == 0) "Passed" else "Needs attention")
                         OutlinedButton(onClick = { onIntent(VaultIntent.Close) }) { Text("Close vault") }
