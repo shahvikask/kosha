@@ -22,7 +22,11 @@ enum class PortableRecoveryMode { EXPORT, RESTORE }
 sealed interface PortableRecoveryUiState {
     data object Empty : PortableRecoveryUiState
     /** Only operation name lives in StateFlow; no password/URI or bytes are retained. */
-    data class EnterPassphrase(val mode: PortableRecoveryMode) : PortableRecoveryUiState
+    data class EnterPassphrase(
+        val mode: PortableRecoveryMode,
+        /** Challenge epoch at document selection; approval must be newer. */
+        val stagedCredentialEpoch: Long = 0L,
+    ) : PortableRecoveryUiState
     data object Working : PortableRecoveryUiState
     data class Completed(val mode: PortableRecoveryMode) : PortableRecoveryUiState
     data class Error(val message: String) : PortableRecoveryUiState
@@ -50,7 +54,9 @@ class PortableRecoveryViewModel @Inject constructor(
     fun offerPickedDocument(mode: PortableRecoveryMode) {
         operation?.cancel()
         ++generation
-        mutableState.value = PortableRecoveryUiState.EnterPassphrase(mode)
+        mutableState.value = PortableRecoveryUiState.EnterPassphrase(
+            mode, session.credentialEpoch(),
+        )
     }
 
     fun failInput() {
@@ -60,9 +66,10 @@ class PortableRecoveryViewModel @Inject constructor(
     }
 
     fun executeAfterCredential(mode: PortableRecoveryMode, uri: Uri, password: CharArray) {
-        if (mutableState.value != PortableRecoveryUiState.EnterPassphrase(mode) ||
-            !session.canCommitFinancialChanges() ||
-            password.size !in 12..1024
+        val selected = mutableState.value as? PortableRecoveryUiState.EnterPassphrase
+        if (selected == null || selected.mode != mode ||
+            session.credentialEpoch() <= selected.stagedCredentialEpoch ||
+            !session.canCommitFinancialChanges() || password.size !in 12..1024
         ) {
             password.fill('\u0000')
             mutableState.value = PortableRecoveryUiState.Error(
