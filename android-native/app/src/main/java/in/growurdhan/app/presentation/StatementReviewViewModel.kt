@@ -19,6 +19,8 @@ import kotlinx.coroutines.launch
 sealed interface StatementReviewUiState {
     data object Empty : StatementReviewUiState
     data class SelectOwner(val members: List<FamilyMember>) : StatementReviewUiState
+    /** Vault is open, but no family owner exists to assign to a CAS statement. */
+    data object MissingFamilyMember : StatementReviewUiState
     data object Working : StatementReviewUiState
     data class Reviewing(val receipt: ReviewedStatement, val warning: String? = null) : StatementReviewUiState
     data class Completed(val result: SnapshotResult) : StatementReviewUiState
@@ -107,9 +109,9 @@ class StatementReviewViewModel @Inject constructor(
             try {
                 val members = vault.members()
                 if (current == generation && session.isUnlocked()) {
-                    mutableState.value = if (members.isEmpty()) StatementReviewUiState.Error(
-                        "Add a family member to the vault before reviewing a statement."
-                    ) else StatementReviewUiState.SelectOwner(members)
+                    mutableState.value = if (members.isEmpty()) {
+                        StatementReviewUiState.MissingFamilyMember
+                    } else StatementReviewUiState.SelectOwner(members)
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled

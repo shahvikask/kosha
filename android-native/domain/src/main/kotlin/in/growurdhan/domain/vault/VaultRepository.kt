@@ -16,6 +16,8 @@ interface VaultRepository {
     suspend fun openOrCreate(): VaultStatus
     suspend fun close()
     suspend fun createMember(member: FamilyMember)
+    /** Onboard a member atomically; the first family member becomes the primary owner. */
+    suspend fun registerFamilyMember(displayName: String, relationship: String): FamilyMember
     suspend fun createAccount(account: CustodyAccount)
     suspend fun createHolding(holding: Holding)
     suspend fun appendEvent(event: LedgerEvent)

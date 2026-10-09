@@ -20,6 +20,8 @@ import java.math.BigInteger
 import java.nio.ByteBuffer
 import java.security.MessageDigest
 import java.security.SecureRandom
+import java.util.UUID
+import `in`.growurdhan.domain.vault.FamilyMemberOnboarding
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 import `in`.growurdhan.domain.vault.VaultRepository
@@ -122,6 +124,34 @@ class SqlCipherVaultRepository(
             arrayOf(member.id.raw, member.displayName, member.relationship, if (member.isPrimary) 1 else 0),
         )
     }
+
+    /**
+     * Transactionally register a family member. The initial owner must be
+     * primary and Self. A UUID keeps the owner key independent of the person's
+     * name and free of PAN, phone number or account identifiers.
+     *
+     * This is protected by DefaultVaultRepository.requireRecentApproval.
+     * The family list is read and the insertion occurs under the SAME mutex
+     * and SQL transaction; a concurrent onboarding cannot race the primary bit.
+     */
+    override suspend fun registerFamilyMember(displayName: String, relationship: String): FamilyMember =
+        mutate { db ->
+            val member = FamilyMemberOnboarding.create(
+                existing = readMembers(db),
+                displayName = displayName,
+                relationship = relationship,
+                id = OwnerId(UUID.randomUUID().toString()),
+            )
+            db.execSQL(
+                """INSERT INTO family_member(id, display_name, relationship, is_primary)
+                   VALUES (?,?,?,?)""",
+                arrayOf(
+                    member.id.raw, member.displayName, member.relationship,
+                    if (member.isPrimary) 1 else 0,
+                ),
+            )
+            member
+        }
 
     override suspend fun createAccount(account: CustodyAccount): Unit = mutate { db ->
         db.execSQL(
@@ -698,6 +728,12 @@ class DefaultVaultRepository @Inject constructor(
     override suspend fun createMember(member: FamilyMember) {
         authorization.requireRecentApproval()
         delegate.createMember(member)
+    }
+    override suspend fun registerFamilyMember(
+        displayName: String, relationship: String,
+    ): FamilyMember {
+        authorization.requireRecentApproval()
+        return delegate.registerFamilyMember(displayName, relationship)
     }
     override suspend fun createAccount(account: CustodyAccount) {
         authorization.requireRecentApproval()
