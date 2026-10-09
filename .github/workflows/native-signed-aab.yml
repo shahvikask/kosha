@@ -71,7 +71,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sdkmanager --install 'platforms;android-36' 'build-tools;36.0.0'
+          SDK_TOOL=$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort -V | tail -1)
+          test -n "$SDK_TOOL"
+          "$SDK_TOOL" --install 'platforms;android-36' 'build-tools;36.0.0'
           gradle -p android-native :app:bundleRelease --stacktrace
           aab='android-native/app/build/outputs/bundle/release/app-release.aab'
           test -s "$aab"

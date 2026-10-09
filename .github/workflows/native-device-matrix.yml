@@ -38,7 +38,9 @@ jobs:
         run: |
           set -euo pipefail
           echo "ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}" >> "$GITHUB_ENV"
-          sdkmanager --install 'platforms;android-36' 'build-tools;36.0.0'
+          SDK_TOOL=$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort -V | tail -1)
+          test -n "$SDK_TOOL"
+          "$SDK_TOOL" --install 'platforms;android-36' 'build-tools;36.0.0'
       - name: Prevent insufficient disk and ensure hardware emulator access
         shell: bash
         run: |
