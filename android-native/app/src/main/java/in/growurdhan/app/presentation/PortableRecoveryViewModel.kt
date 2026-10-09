@@ -43,6 +43,9 @@ class PortableRecoveryViewModel @Inject constructor(
     val state: StateFlow<PortableRecoveryUiState> = mutableState
     private var operation: Job? = null
     private var generation = 0L
+    // Owned explicitly so cancellation before coroutine start can still zero
+    // the password rather than leaving the only reference in a suspended job.
+    private var inFlightPassword: CharArray? = null
 
     fun offerPickedDocument(mode: PortableRecoveryMode) {
         operation?.cancel()
@@ -68,6 +71,8 @@ class PortableRecoveryViewModel @Inject constructor(
             return
         }
         operation?.cancel()
+        inFlightPassword?.fill('\u0000')
+        inFlightPassword = password
         val current = ++generation
         mutableState.value = PortableRecoveryUiState.Working
         operation = viewModelScope.launch {
@@ -120,6 +125,7 @@ class PortableRecoveryViewModel @Inject constructor(
                 }
             } finally {
                 password.fill('\u0000')
+                if (inFlightPassword === password) inFlightPassword = null
             }
         }
     }
@@ -128,6 +134,8 @@ class PortableRecoveryViewModel @Inject constructor(
         ++generation
         operation?.cancel()
         operation = null
+        inFlightPassword?.fill('\u0000')
+        inFlightPassword = null
         mutableState.value = PortableRecoveryUiState.Empty
     }
 
