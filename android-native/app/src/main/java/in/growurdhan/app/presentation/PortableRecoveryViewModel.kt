@@ -142,18 +142,19 @@ object PortableBackupBytes {
     const val MAX_CIPHERTEXT_BYTES = 34 * 1024 * 1024
     private val marker = "GUDNBACK".toByteArray(Charsets.US_ASCII)
 
-    fun read(stream: InputStream): ByteArray {
-        var buffer = ByteArray(16 * 1024)
+    fun read(stream: InputStream, maxBytes: Int = MAX_CIPHERTEXT_BYTES): ByteArray {
+        require(maxBytes in 64..MAX_CIPHERTEXT_BYTES)
+        var buffer = ByteArray(minOf(16 * 1024, maxBytes))
         var count = 0
         var stalled = 0
         try {
             while (true) {
                 if (count == buffer.size) {
-                    if (count >= MAX_CIPHERTEXT_BYTES) {
+                    if (count >= maxBytes) {
                         require(stream.read() == -1) { "Portable backup is too large." }
                         break
                     }
-                    val more = ByteArray(minOf(MAX_CIPHERTEXT_BYTES, buffer.size * 2))
+                    val more = ByteArray(minOf(maxBytes, buffer.size * 2))
                     buffer.copyInto(more, endIndex = count)
                     buffer.fill(0)
                     buffer = more
