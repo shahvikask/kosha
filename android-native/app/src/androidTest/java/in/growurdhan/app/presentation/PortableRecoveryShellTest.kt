@@ -9,6 +9,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import `in`.growurdhan.app.presentation.screens.PortableRecoveryIntent
 import `in`.growurdhan.app.presentation.theme.GrowUrDhanTheme
 import `in`.growurdhan.core.model.AppearanceSettings
 import `in`.growurdhan.core.model.ThemeMode
