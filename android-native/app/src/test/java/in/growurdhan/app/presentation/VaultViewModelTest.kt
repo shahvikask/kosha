@@ -69,6 +69,21 @@ class VaultViewModelTest {
         coVerify(exactly = 1) { repo.close() }
     }
 
+    @Test fun closingDuringRestorePickerDoesNotInventAnInitializedVault() = runTest {
+        val repo = mockk<VaultRepository>()
+        val gate = VaultSessionGate()
+        coEvery { repo.status() } returns VaultStatus(false, false, 0)
+        coEvery { repo.close() } returns Unit
+        val vm = VaultViewModel(repo, gate)
+        advanceUntilIdle()
+        assertEquals(VaultUiState.NotCreated, vm.state.value)
+        vm.onIntent(VaultIntent.Close)
+        advanceUntilIdle()
+        assertEquals(VaultUiState.NotCreated, vm.state.value)
+        coVerify(exactly = 0) { repo.openOrCreate() }
+        coVerify(exactly = 1) { repo.close() }
+    }
+
     @Test fun damagedVaultIsReportedRatherThanSilentlyReset() = runTest {
         val repo = mockk<VaultRepository>()
         coEvery { repo.status() } throws IllegalStateException("missing device key")
