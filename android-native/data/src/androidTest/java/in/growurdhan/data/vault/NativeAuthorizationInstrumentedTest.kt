@@ -37,11 +37,13 @@ class NativeAuthorizationInstrumentedTest {
         try {
             assertThrows(SecurityException::class.java) { runBlocking { repository.openOrCreate() } }
             assertThrows(SecurityException::class.java) { runBlocking { repository.members() } }
+            assertThrows(SecurityException::class.java) { runBlocking { repository.accounts() } }
+            assertThrows(SecurityException::class.java) { runBlocking { repository.casIdentities() } }
             assertThrows(SecurityException::class.java) { runBlocking { repository.holdings() } }
             assertThrows(SecurityException::class.java) { runBlocking { repository.events() } }
             assertThrows(SecurityException::class.java) { runBlocking { repository.readBook() } }
             assertThrows(SecurityException::class.java) { runBlocking { repository.health() } }
-            assertEquals(6, gate.checkedRead)
+            assertEquals(8, gate.checkedRead)
         } finally {
             repository.close()
         }
@@ -62,6 +64,14 @@ class NativeAuthorizationInstrumentedTest {
             }
             assertThrows(SecurityException::class.java) {
                 runBlocking { repository.createAccount(CustodyAccount("acct", owner, "demat", "masked")) }
+            }
+            assertThrows(SecurityException::class.java) {
+                runBlocking { repository.registerCustodyAccount(owner, "CAMS", "Synthetic") }
+            }
+            assertThrows(SecurityException::class.java) {
+                runBlocking {
+                    repository.registerCasHolding(owner, "acct", "Synthetic", "INF000000001", "123")
+                }
             }
             assertThrows(SecurityException::class.java) {
                 runBlocking {
@@ -98,7 +108,7 @@ class NativeAuthorizationInstrumentedTest {
                     repository.restoreEncryptedBackup("test".toCharArray(), byteArrayOf(0x01))
                 }
             }
-            assertEquals(9, gate.checkedWrite)
+            assertEquals(11, gate.checkedWrite)
         } finally {
             repository.close()
         }
