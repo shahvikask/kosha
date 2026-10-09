@@ -42,13 +42,15 @@ An encrypted-backup **repository API** exists. **Consumer SAF backup/export and 
 
 Production `NativeCasPdfReader` now **requires a non-null enrolled identity registry**; name-only fallback continues only for older pure domain reference tests and is not passed from the Android PDF reader. Fuzzy scheme-name matches are never accepted. CAMS/KFINTECH mutual funds are the only newly enrolled categories. Demat/NSDL/CDSL/NPS remain unsupported by the strict registry, even though the frozen parser can produce some such statement types.
 
+The frozen CASPARSER may label a mutual-fund position as `EQUITY` or `FIXED_INCOME` based on portfolio exposure; strict matching deliberately compares the fund's enrolled scheme name and exact ISIN/folio/registrar, **not** those derived asset categories. This behavior has two added pure-Kotlin regression cases.
+
 The parsed report's `investorName` may be missing/unreliable and its `investorPan` is intentionally null. The currently checked owner is a **user-selected family member cross-checked with enrolled securities/folio**; the implementation does **not** independently prove the human named in a PDF is that person, and does not import or store PAN for this purpose. ISIN is syntax-checked and matched exactly, not validated against external depository/registrar services. Scheme names must agree after whitespace/case normalization; legitimate renamed schemes may fail closed. This is **strict holding identity matching**, **not full real-world account-holder verification**.
 
 The validated PDF is reviewed separately: opening units are an observation, not a BUY, unknown historical purchase price stays unknown, and all later ledger deltas require explicit fresh approval. No automatic CAS import.
 
 ## 5. Automated tests added (NOT yet passing evidence)
 
-**New JVM cases** (total **28**): 10 `CustodyHoldingOnboardingTest` cases, 9 `CasIdentityMatchingTest` cases, 6 `CustodyHoldingViewModelTest` cases and 3 new `StatementReviewViewModelTest` cases.
+**New JVM cases** (total **30**): 10 `CustodyHoldingOnboardingTest` cases, 11 `CasIdentityMatchingTest` cases, 6 `CustodyHoldingViewModelTest` cases and 3 new `StatementReviewViewModelTest` cases.
 
 **New Android cases** (total **11**): 7 `NativeCustodyHoldingInstrumentedTest` cases against actual SQLCipher/Keystore on an Android emulator, and 4 `CustodyHoldingShellTest` Compose cases. The existing `NativeAuthorizationInstrumentedTest` also checks four new repository entry points (two fresh-auth writes, two session-guarded reads).
 
