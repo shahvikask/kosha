@@ -41,7 +41,11 @@ internal object VaultBackupTables {
         val payload = JSONObject().put("format", 2).put("databaseVersion", VaultSchema.VERSION)
         for ((table, names) in columns) {
             val rows = JSONArray()
-            db.rawQuery("SELECT ${names.joinToString(",")} FROM $table", null).use { cursor ->
+            // Ledger corrections are insert-time validated against earlier events.
+            // A portable export must preserve physical append order so restore
+            // never encounters a CORRECTION before its predecessor.
+            val order = if (table == "ledger_event") " ORDER BY rowid" else ""
+            db.rawQuery("SELECT ${names.joinToString(",")} FROM $table$order", null).use { cursor ->
                 while (cursor.moveToNext()) {
                     check(rows.length() < MAX_ROWS_PER_TABLE) { "Backup has too many financial records." }
                     val row = JSONArray()
