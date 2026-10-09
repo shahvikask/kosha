@@ -1,7 +1,7 @@
 # GrowUrDhan — Native Kotlin Android
 
 **Branch:** `GUD-Android-ChatGPT`  
-**Status:** M1/M2 and M3 financial domain, SQLCipher ledger-v2, and reviewed statement approval **CI VERIFIED**: 52/52 JVM and 21/21 Android tests on commit `863ac5d`. Full finance parity, native consent UI and Google Play release remain OPEN.  
+**Status:** Native M6 family onboarding **CI VERIFIED** at `3a4dfa0790f`: 102 JVM + 35 Android tests on API 35, with 35 Android tests each on APIs 26/30/36. **M7** encrypted CAS account/holding identity onboarding is implemented and **awaits new CI verification**. Full financial parity and Play release remain OPEN.  
 **Application ID:** `in.growurdhan.app` (pre-release development only). No Google Play version has been published.
 
 ## Modules and active implementation
@@ -26,7 +26,7 @@ gradle -p android-native :app:assembleDebug :app:assembleDebugAndroidTest :data:
 gradle -p android-native :data:connectedDebugAndroidTest :app:connectedDebugAndroidTest
 ```
 
-**Latest verified full native M3 baseline:** [run #37856520668](https://github.com/shahvikask/kosha/actions/runs/37856520668), implementation commit `863ac5d`. 52/52 JVM tests, 18/18 data-module Android tests (including six statement-approval tests), and 3/3 Compose instrumentation tests all passed. The v1-to-v2 SQLCipher migration/backup path remains covered by passing regression tests.
+**Latest independently verified native M6 baseline:** [run #37888065112](https://github.com/shahvikask/kosha/actions/runs/37888065112), [API device matrix #37888065106](https://github.com/shahvikask/kosha/actions/runs/37888065106), implementation commit `3a4dfa0790f`. JVM 102/102; API 35 Android 35/35; APIs 26/30/36 also 35/35 each. See [M6 evidence](../docs/native-migration/16-M6-FAMILY-ONBOARDING-VERIFICATION.md). **M7 test results must be verified independently.**
 
 ## Financial-domain boundary (M3)
 
@@ -78,3 +78,13 @@ The first member becomes primary **Self**; additional members can be Spouse, Par
 Added tests: **6** pure Kotlin family-policy JVM cases, **7** ViewModel/session JVM cases, **4** SQLCipher Android device cases, and **4** Compose navigation/form cases; the existing production-authorization test now covers the new write API. Results remain **unverified until a new workflow finishes**.
 
 **Important boundary:** Adding a member does not create a corresponding custody account or holding. CAS import still requires a supported ARM64 release build and correctly mapped existing holdings. Encrypted portable-backup UI, full registration/onboarding parity and Google Play release approval remain open. See [M6 family onboarding as-built](../docs/native-migration/15-M6-FAMILY-ONBOARDING-AS-BUILT.md).
+
+## M7 custody account, CAS mutual-fund onboarding and identity mapping (CI pending)
+
+The native **Vault → Manage accounts & holdings** flow now lets a previously authenticated family member add a CAMS/KFINTECH **nickname-based registrar account**, followed by an ISIN/folio-enrolled mutual fund. The family and Statements screens also route to setup. All registration is read-only until a separate successful Android device-credential challenge *after staging*. Atomic SQLCipher writes assign unrelated UUID IDs; new holdings have zero units and unknown historical cost, and produce no trades.
+
+**SQLCipher schema v3** adds an owner/account-scoped, immutable `holding_cas_identity` table with composite foreign keys, uniqueness and triggers. The migration from v1/v2 is transactional and retains the original append-only ledger. Portable backup payload format 3 carries this identity mapping while logical formats 1/2 remain restorable without fabricated identities. The production Android PDF path now requires a strict identity registry and matches registrar+ISIN+folio+fund name before preparing a review; name-only mapping is not accepted there.
+
+**New tests added, not yet independently verified:** 28 JVM and 11 Android scenarios, in addition to the retained native financial/SQLCipher/Compose regressions. The static authorization policy now covers 20 guarded repository entry points. See [M7 as-built and open release gates](../docs/native-migration/17-M7-CUSTODY-HOLDING-CAS-MAPPING-AS-BUILT.md) and [physical/recovery/signing acceptance protocol](../docs/native-migration/18-M7-PHYSICAL-RECOVERY-AND-SIGNING-ACCEPTANCE.md).
+
+**Still open:** independent PDF investor ownership verification, NSDL/CDSL/NPS strict mapping, physical ARM64 tests, full backup file-pickers and second-phone recovery, user account authentication beyond device credential, and owner-approved production signed AAB. Existing frozen CASPARSER files, pre-release developer vaults and legacy React/Tauri implementation must remain unchanged.
