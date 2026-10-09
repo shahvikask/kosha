@@ -67,7 +67,7 @@ API 26/30/35/36 **emulator** CI results are useful but do not satisfy these phys
 
 ## 6. Production signing: existing guarded pipeline, owner approval required
 
-The existing [manual Play-upload AAB workflow](../../.github/workflows/native-signed-aab.yml) is configured to require `workflow_dispatch` acknowledgement `BUILD_SIGNED_AAB`, protected GitHub `play-release` environment, pinned certificate SHA-256 and all four upload-signing environment variables. It does **not** publish to Google Play. The app's Gradle configuration fails closed if `GUD_UPLOAD_KEYSTORE_PATH`, `GUD_UPLOAD_KEYSTORE_PASSWORD`, `GUD_UPLOAD_KEY_ALIAS` or `GUD_UPLOAD_KEY_PASSWORD` is absent; the GitHub workflow provides the keystore via protected `GUD_UPLOAD_KEYSTORE_BASE64` and pins `GUD_UPLOAD_CERT_SHA256`. No signing secret is stored in Git or accepted in chat.
+The existing [manual Play-upload AAB workflow](../../.github/workflows/native-signed-aab.yml) is configured to require `workflow_dispatch` acknowledgement `BUILD_SIGNED_AAB`, a second input `approved_commit_sha` naming the exact 40-character owner-approved Git SHA, protected GitHub `play-release` environment, pinned certificate SHA-256, a non-`-dev` versionName, post-build AAB signer verification, and all four upload-signing environment variables. It does **not** publish to Google Play. The app's Gradle configuration fails closed if `GUD_UPLOAD_KEYSTORE_PATH`, `GUD_UPLOAD_KEYSTORE_PASSWORD`, `GUD_UPLOAD_KEY_ALIAS` or `GUD_UPLOAD_KEY_PASSWORD` is absent; the GitHub workflow provides the keystore via protected `GUD_UPLOAD_KEYSTORE_BASE64` and pins `GUD_UPLOAD_CERT_SHA256`. No signing secret is stored in Git or accepted in chat.
 
 **Owner-operated release checklist (all OPEN):**
 
