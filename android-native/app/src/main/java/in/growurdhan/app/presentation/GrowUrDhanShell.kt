@@ -36,6 +36,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import `in`.growurdhan.app.presentation.screens.PortableRecoveryScreen
 import `in`.growurdhan.app.presentation.screens.CustodyHoldingScreen
 import `in`.growurdhan.app.presentation.screens.FamilyMemberScreen
 import `in`.growurdhan.app.presentation.screens.HomeScreen
@@ -60,6 +61,7 @@ private enum class MainDestination(
 private const val FAMILY_ROUTE = "family"
 /** Secondary secure registrar/holding setup route, not an extra bottom tab. */
 private const val CUSTODY_ROUTE = "custody"
+private const val RECOVERY_ROUTE = "recovery"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -74,6 +76,8 @@ fun GrowUrDhanShell(
     onFamilyIntent: (FamilyMemberIntent) -> Unit = {},
     custodyState: CustodyHoldingUiState = CustodyHoldingUiState.Locked,
     onCustodyIntent: (CustodyHoldingIntent) -> Unit = {},
+    recoveryState: PortableRecoveryUiState = PortableRecoveryUiState.Empty,
+    onRecoveryIntent: (PortableRecoveryIntent) -> Unit = {},
 ) {
     val controller = rememberNavController()
     val currentBackStackEntry by controller.currentBackStackEntryAsState()
@@ -157,6 +161,7 @@ fun GrowUrDhanShell(
                             onIntent = onVaultIntent,
                             onAddFamilyMember = { navigate(FAMILY_ROUTE) },
                             onManageHoldings = { navigate(CUSTODY_ROUTE) },
+                            onBackupRecovery = { navigate(RECOVERY_ROUTE) },
                         )
                     }
                     composable(MainDestination.REVIEW.route) {
@@ -204,6 +209,16 @@ fun GrowUrDhanShell(
                                 onCustodyIntent(CustodyHoldingIntent.Cancel)
                                 onReviewIntent(StatementReviewIntent.LoadOwners)
                                 navigate(MainDestination.REVIEW.route)
+                            },
+                        )
+                    }
+                    composable(RECOVERY_ROUTE) {
+                        PortableRecoveryScreen(
+                            state = recoveryState,
+                            onIntent = onRecoveryIntent,
+                            onReturnToVault = {
+                                onRecoveryIntent(PortableRecoveryIntent.Cancel)
+                                navigate(MainDestination.VAULT.route)
                             },
                         )
                     }

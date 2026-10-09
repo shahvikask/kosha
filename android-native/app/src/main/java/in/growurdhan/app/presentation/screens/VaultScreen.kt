@@ -30,6 +30,7 @@ fun VaultScreen(
     onIntent: (VaultIntent) -> Unit,
     onAddFamilyMember: () -> Unit = {},
     onManageHoldings: () -> Unit = {},
+    onBackupRecovery: () -> Unit = {},
 ) {
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
@@ -62,12 +63,18 @@ fun VaultScreen(
                         Button(onClick = { onIntent(VaultIntent.OpenOrCreate) }) {
                             Text("Create encrypted vault")
                         }
+                        OutlinedButton(onClick = onBackupRecovery) {
+                            Text("Recover from encrypted backup")
+                        }
                     }
                     VaultUiState.Closed -> {
                         Text("Vault closed", style = MaterialTheme.typography.titleLarge)
                         Text("The database remains encrypted on this device. Confirm your device screen lock to reopen.")
                         Button(onClick = { onIntent(VaultIntent.OpenOrCreate) }) {
                             Text("Open encrypted vault")
+                        }
+                        OutlinedButton(onClick = onBackupRecovery) {
+                            Text("Backup & recovery")
                         }
                     }
                     is VaultUiState.Ready -> {
@@ -86,6 +93,9 @@ fun VaultScreen(
                         }
                         Text("Ledger events: " + state.health.eventCount)
                         Text("Reference checks: " + if (state.health.foreignKeyViolations == 0) "Passed" else "Needs attention")
+                        OutlinedButton(onClick = onBackupRecovery) {
+                            Text("Backup & recovery")
+                        }
                         OutlinedButton(onClick = { onIntent(VaultIntent.Close) }) { Text("Close vault") }
                     }
                     is VaultUiState.Error -> {
@@ -101,8 +111,8 @@ fun VaultScreen(
                 Text("Development security boundaries", style = MaterialTheme.typography.titleMedium)
                 Text(
                     "Android device confirmation and repository authorization guard native " +
-                        "financial writes, but the GrowUrDhan-specific login, backup file " +
-                        "pickers and full CAS/holding onboarding remain incomplete. " +
+                        "financial writes, but the GrowUrDhan-specific login, full recovery " +
+                        "validation and hardware CAS parser verification remain incomplete. " +
                         "The frozen parser is available only in supported ARM64 release builds. " +
                         "Do not use this development build for live financial records yet.",
                     style = MaterialTheme.typography.bodyMedium,
