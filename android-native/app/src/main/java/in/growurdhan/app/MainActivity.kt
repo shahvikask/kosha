@@ -364,7 +364,8 @@ class MainActivity : ComponentActivity() {
             is PortableRecoveryIntent.ConfirmPassphrase -> {
                 val mode = backupMode
                 if (mode == null || backupUri == null ||
-                    recoveryViewModel.state.value != PortableRecoveryUiState.EnterPassphrase(mode) ||
+                    (recoveryViewModel.state.value as? PortableRecoveryUiState.EnterPassphrase)
+                        ?.mode != mode ||
                     intent.password.length !in 12..1024 ||
                     (mode == PortableRecoveryMode.EXPORT && intent.password != intent.repeated)
                 ) {
