@@ -14,7 +14,6 @@ import `in`.growurdhan.domain.finance.CasParsedReport
 import `in`.growurdhan.domain.finance.CasValidatedPreview
 import `in`.growurdhan.domain.finance.CasValidationException
 import `in`.growurdhan.domain.finance.FinancialHolding
-import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.security.MessageDigest
 import java.time.LocalDate
@@ -87,25 +86,45 @@ abstract class CasRuntimeBindings {
 /** A PDF cap protects against large files and broad in-memory amplification. */
 object CasPdfBytes {
     fun read(stream: InputStream): ByteArray {
-        val output = ByteArrayOutputStream()
-        val block = ByteArray(32 * 1024)
+        var backing = ByteArray(32 * 1024)
+        var size = 0
+        var stalled = 0
         try {
             while (true) {
-                val n = stream.read(block)
-                if (n == -1) break
-                if (n == 0) continue
-                if (output.size() + n > CasImportContract.MAX_PDF_BYTES) {
-                    throw CasValidationException("PDF exceeds the 30 MiB on-device import limit.")
+                if (size == backing.size) {
+                    if (size == CasImportContract.MAX_PDF_BYTES) {
+                        // Detect oversize before growing, without leaving excess PDF bytes.
+                        if (stream.read() != -1) {
+                            throw CasValidationException("PDF exceeds the 30 MiB on-device import limit.")
+                        }
+                        break
+                    }
+                    val replacement = ByteArray(minOf(
+                        CasImportContract.MAX_PDF_BYTES,
+                        Math.multiplyExact(backing.size, 2),
+                    ))
+                    backing.copyInto(replacement, endIndex = size)
+                    backing.fill(0)
+                    backing = replacement
                 }
-                output.write(block, 0, n)
+                val n = stream.read(backing, size, backing.size - size)
+                if (n == -1) break
+                if (n == 0) {
+                    stalled++
+                    if (stalled > 16) {
+                        throw CasValidationException("The selected PDF could not be read.")
+                    }
+                    continue
+                }
+                stalled = 0
+                size += n
             }
-            val pdf = output.toByteArray()
-            if (pdf.size < 8 || !pdf.copyOfRange(0, 5).contentEquals(
-                byteArrayOf(37, 80, 68, 70, 45),
-            )) throw CasValidationException("The selected file is not a PDF document.")
-            return pdf
+            if (size < 8 ||
+                !backing.copyOfRange(0, 5).contentEquals(byteArrayOf(37, 80, 68, 70, 45))
+            ) throw CasValidationException("The selected file is not a PDF document.")
+            return backing.copyOf(size)
         } finally {
-            block.fill(0)
+            backing.fill(0) // no non-wiped duplicate ByteArrayOutputStream buffer
         }
     }
 }
