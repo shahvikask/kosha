@@ -45,6 +45,7 @@ fun StatementReviewScreen(
     state: StatementReviewUiState,
     onIntent: (StatementReviewIntent) -> Unit,
     onAddFamilyMember: () -> Unit = {},
+    onSetUpHoldings: () -> Unit = {},
 ) {
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
@@ -103,13 +104,35 @@ fun StatementReviewScreen(
                     }
                 }
             }
+            StatementReviewUiState.MissingCasMapping -> {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(
+                        Modifier.padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text("Enrol your first CAS holding", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "Create a CAMS or KFINTECH registrar account and enrol a mutual " +
+                                "fund's exact ISIN and folio before choosing its statement. " +
+                                "Unknown CAS rows never map to a holding by name alone.",
+                        )
+                        Button(
+                            onClick = onSetUpHoldings,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("Add account and holding") }
+                        OutlinedButton(onClick = { onIntent(StatementReviewIntent.Cancel) }) {
+                            Text("Cancel")
+                        }
+                    }
+                }
+            }
             is StatementReviewUiState.SelectOwner -> {
                 var selected by remember(state.members) {
                     mutableStateOf<`in`.growurdhan.core.model.OwnerId?>(null)
                 }
                 Text(
-                    "Which family member owns this CAS? Names and identities must match the PDF. " +
-                        "Ambiguous ISIN/folio mappings will be blocked.",
+                    "Only family members with enrolled registrar/ISIN/folio mappings appear. " +
+                        "The statement's identities must agree with the encrypted book.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 var pdfPassword by remember { mutableStateOf("") }
