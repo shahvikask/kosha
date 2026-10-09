@@ -15,6 +15,8 @@ import javax.inject.Singleton
 class VaultSessionGate @Inject constructor() : VaultAuthorization {
     private var nowMillis: () -> Long = { System.nanoTime() / 1_000_000L }
     private var verifiedAtMillis: Long? = null
+    /** Increments only after Android reports a successful credential challenge. */
+    private var credentialRevision: Long = 0L
     private val maxSessionAgeMillis = 5 * 60 * 1000L
     private val maxApprovalAgeMillis = 30 * 1000L
 
@@ -25,8 +27,12 @@ class VaultSessionGate @Inject constructor() : VaultAuthorization {
     }
 
     @Synchronized fun grantDeviceCredential() {
+        credentialRevision = Math.addExact(credentialRevision, 1L)
         verifiedAtMillis = nowMillis()
     }
+
+    /** Form staging records this revision to require a *later* OS challenge. */
+    @Synchronized fun credentialEpoch(): Long = credentialRevision
 
     @Synchronized fun lock() {
         verifiedAtMillis = null

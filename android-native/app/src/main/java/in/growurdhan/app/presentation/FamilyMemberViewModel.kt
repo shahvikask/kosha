@@ -23,7 +23,11 @@ sealed interface FamilyMemberUiState {
         val validationMessage: String? = null,
     ) : FamilyMemberUiState
     /** Volatile pending request; not SavedStateHandle or persistent preferences. */
-    data class AwaitingCredential(val name: String, val relationship: String) : FamilyMemberUiState
+    data class AwaitingCredential(
+        val name: String,
+        val relationship: String,
+        val stagedCredentialEpoch: Long,
+    ) : FamilyMemberUiState
     data object Saving : FamilyMemberUiState
     data class Saved(val member: FamilyMember) : FamilyMemberUiState
     data class Error(val message: String) : FamilyMemberUiState
@@ -104,7 +108,7 @@ class FamilyMemberViewModel @Inject constructor(
                 id = OwnerId(UUID.randomUUID().toString()),
             )
             mutableState.value = FamilyMemberUiState.AwaitingCredential(
-                draft.displayName, draft.relationship,
+                draft.displayName, draft.relationship, session.credentialEpoch(),
             )
         } catch (_: IllegalArgumentException) {
             mutableState.value = ready.copy(
@@ -115,7 +119,11 @@ class FamilyMemberViewModel @Inject constructor(
 
     private fun saveAfterCredential() {
         val pending = mutableState.value as? FamilyMemberUiState.AwaitingCredential ?: return
-        if (!session.canCommitFinancialChanges()) {
+        // A previous unlock is NOT authority to submit a newly staged form.
+        // A later Android device-credential RESULT_OK must advance the epoch.
+        if (!session.canCommitFinancialChanges() ||
+            session.credentialEpoch() <= pending.stagedCredentialEpoch
+        ) {
             clearSensitiveState()
             return
         }
