@@ -58,13 +58,17 @@ def main() -> int:
         "openOrCreate": "requireUnlocked",
         "createMember": "requireRecentApproval",
         "createAccount": "requireRecentApproval",
+        "registerCustodyAccount": "requireRecentApproval",
         "createHolding": "requireRecentApproval",
+        "registerCasHolding": "requireRecentApproval",
         "appendEvent": "requireRecentApproval",
         "appendFinancialEvents": "requireRecentApproval",
         "importSnapshot": "requireRecentApproval",
         "prepareStatementReview": "requireUnlocked",
         "commitReviewedStatement": "requireRecentApproval",
         "members": "requireUnlocked",
+        "accounts": "requireUnlocked",
+        "casIdentities": "requireUnlocked",
         "holdings": "requireUnlocked",
         "events": "requireUnlocked",
         "readBook": "requireUnlocked",
@@ -92,7 +96,7 @@ def main() -> int:
             print("FAIL (native security policy): " + err, file=sys.stderr)
         return 1
     print("PASS: native manifest privacy, screenshot prevention, device credential,")
-    print("       16 repository authorization entry points, signed-release gate,")
+    print("       20 repository authorization entry points, signed-release gate,")
     print("       foreign key/append-only protection and backup exclusions.")
     print("NOTE: Static policy checks are not an independent mobile penetration test.")
     return 0

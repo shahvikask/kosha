@@ -109,7 +109,7 @@ class NativeFinancialPersistenceInstrumentedTest {
         // Emulate a valid M2 vault's already committed ready marker.
         File(folder, "ready").writeText("GUDREADY02")
         val opened = vault.openOrCreate()
-        assertEquals(2, opened.schemaVersion)
+        assertEquals(3, opened.schemaVersion)
         assertEquals("Original M2 Member", vault.members().single().displayName)
         assertEquals("Original M2 Holding", vault.holdings().single().name)
         val migrated = vault.events().single()
@@ -120,7 +120,7 @@ class NativeFinancialPersistenceInstrumentedTest {
         assertEquals(0L, migrated.charges.raw)
         assertEquals(0, vault.health().foreignKeyViolations)
         vault.close()
-        assertEquals(2, vault.openOrCreate().schemaVersion)
+        assertEquals(3, vault.openOrCreate().schemaVersion)
         assertEquals("v1-event", vault.events().single().id)
     }
 
@@ -169,7 +169,7 @@ class NativeFinancialPersistenceInstrumentedTest {
         assertEquals(listOf("first"), vault.readBook().events.map { it.id })
     }
 
-    @Test fun versionTwoBackupRoundTripRestoresExactRichLedger(): Unit = runBlocking {
+    @Test fun versionThreeBackupRoundTripRestoresExactRichLedger(): Unit = runBlocking {
         seed()
         vault.appendFinancialEvents(listOf(
             event("original", FinancialEventKind.BUY, charges = 15),
@@ -193,7 +193,7 @@ class NativeFinancialPersistenceInstrumentedTest {
         }
     }
 
-    @Test fun versionOnePortableBackupImportsToVersionTwoDefaults(): Unit = runBlocking {
+    @Test fun versionOnePortableBackupImportsToVersionThreeDefaults(): Unit = runBlocking {
         seed()
         val old = LedgerEvent(
             "v1", holdingId, owner, LedgerKind.BUY, "2026-01-01",
