@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compile native vault SQL and test both v1->v2 and fresh-v2 paths offline.
+"""Compile native SQL and test v1/v2->v3, fresh installs and rollback offline.
 
 The SQL statements are extracted from VaultSchema.kt itself (no duplicated
 schema). This preflight tests ordinary SQLite constraints and atomic migration.
@@ -17,12 +17,14 @@ SCHEMA_FILE = (
     Path(__file__).resolve().parents[1]
     / "data/src/main/kotlin/in/growurdhan/data/vault/VaultSchema.kt"
 )
-EXPECTED_TABLES = {
+EXPECTED_V2_TABLES = {
     "family_member", "custody_account", "holding", "ledger_event",
     "snapshot_import", "statement_position", "vault_meta",
 }
+EXPECTED_TABLES = EXPECTED_V2_TABLES | {"holding_cas_identity"}
 V1_STATEMENT_COUNT = 14
 MIGRATION_STATEMENT_COUNT = 6
+V3_MIGRATION_STATEMENT_COUNT = 2
 RICH_COLUMNS = {
     "financial_kind", "unit_price_scaled", "charges_scaled", "supersedes_event_id",
 }
@@ -114,8 +116,8 @@ def check_v2(db: sqlite3.Connection) -> None:
             "SELECT name FROM sqlite_master WHERE type = 'table'"
         ) if not name.startswith("sqlite_")
     }
-    if tables != EXPECTED_TABLES:
-        raise AssertionError(f"Unexpected native tables: {tables}")
+    if tables != EXPECTED_V2_TABLES:
+        raise AssertionError(f"Unexpected v2 tables: {tables}")
     columns = {
         row[1] for row in db.execute("PRAGMA table_info('ledger_event')")
     }
@@ -175,11 +177,56 @@ def check_v2(db: sqlite3.Connection) -> None:
         raise AssertionError("Foreign key check failed")
 
 
+def check_v3(db: sqlite3.Connection) -> None:
+    tables = {
+        name for (name,) in db.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        ) if not name.startswith("sqlite_")
+    }
+    if tables != EXPECTED_TABLES:
+        raise AssertionError(f"Unexpected v3 vault tables: {tables}")
+    if db.execute("PRAGMA user_version").fetchone() != (3,):
+        raise AssertionError("Native vault schema version is not 3")
+    if db.execute("PRAGMA foreign_keys").fetchone() != (1,):
+        raise AssertionError("Foreign keys disabled")
+    if db.execute("PRAGMA foreign_key_check").fetchall():
+        raise AssertionError("CAS mapping foreign keys invalid")
+
+    # Enrolment must be exact, scoped and immutable by SQL constraints;
+    # no SQLite BLOB, PAN or user-supplied SQL is used for these tests.
+    db.execute(
+        "INSERT INTO custody_account(id,owner_id,account_type,identifier_masked) "
+        "VALUES('account','self','CAMS','Synthetic account')"
+    )
+    db.execute("UPDATE holding SET account_id='account',asset_category='MUTUAL_FUND' WHERE id='holding'")
+    db.execute(
+        "INSERT INTO holding_cas_identity(holding_id,owner_id,account_id,isin,folio) "
+        "VALUES('holding','self','INF000000001','12345')"
+    )
+    assert_rejected(
+        db, "INSERT INTO holding_cas_identity(holding_id,owner_id,account_id,isin,folio) "
+            "VALUES('other','self','account','INF000000002','54321')"
+    )
+    assert_rejected(
+        db, "INSERT INTO holding_cas_identity(holding_id,owner_id,account_id,isin,folio) "
+            "VALUES('other','spouse','account','INF000000002','54321')"
+    )
+    assert_rejected(
+        db, "INSERT INTO holding_cas_identity(holding_id,owner_id,account_id,isin,folio) "
+            "VALUES('other','spouse','missing','INF000000002','54321')"
+    )
+    if db.execute("PRAGMA integrity_check").fetchone() != ("ok",):
+        raise AssertionError("SQLite v3 integrity check failed")
+
+
 def main() -> None:
     source = SCHEMA_FILE.read_text(encoding="utf-8")
     v1 = statements_from_kotlin(source, "ddl", V1_STATEMENT_COUNT)
     upgrade = statements_from_kotlin(source, "migrationToV2", MIGRATION_STATEMENT_COUNT)
-    if any(not s.startswith(("CREATE ", "ALTER TABLE ")) for s in v1 + upgrade):
+    identity_upgrade = statements_from_kotlin(
+        source, "migrationToV3", V3_MIGRATION_STATEMENT_COUNT
+    )
+    if any(not s.startswith(("CREATE ", "ALTER TABLE ")) for s in v1 + upgrade + identity_upgrade):
         raise AssertionError("Unexpected statement in schema migration.")
     # Old v1 data is not rewritten and the v2 operation is crash-atomic.
     with sqlite3.connect(":memory:") as db:
@@ -197,14 +244,30 @@ def main() -> None:
         db.execute("PRAGMA user_version = 2")
         db.commit()
         check_v2(db)
+        # A failed v2->v3 migration must not strand partial identity tables.
+        db.execute("BEGIN")
+        run_statements(db, identity_upgrade[:1], "interrupted v3 migration")
+        db.rollback()
+        if "holding_cas_identity" in {
+            name for (name,) in db.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }:
+            raise AssertionError("Interrupted v3 migration left a partial table")
+        db.execute("BEGIN")
+        run_statements(db, identity_upgrade, "v2->v3 migration")
+        db.execute("PRAGMA user_version = 3")
+        db.commit()
+        check_v3(db)
 
-    # Fresh installs follow the production current==0 path: v1 DDL + v2 upgrade.
+    # Fresh installs follow the production current==0 path: v1 DDL + v2 + v3.
     with sqlite3.connect(":memory:") as db:
         db.execute("PRAGMA foreign_keys = ON")
         db.execute("BEGIN")
         run_statements(db, v1, "fresh vault DDL")
         run_statements(db, upgrade, "fresh vault v2")
-        db.execute("PRAGMA user_version = 2")
+        run_statements(db, identity_upgrade, "fresh vault v3")
+        db.execute("PRAGMA user_version = 3")
         db.commit()
         prepare_tables = {name for (name,) in db.execute(
             "SELECT name FROM sqlite_master WHERE type='table'"
@@ -214,12 +277,16 @@ def main() -> None:
         if not RICH_COLUMNS.issubset({
             row[1] for row in db.execute("PRAGMA table_info('ledger_event')")
         }):
-            raise AssertionError("Fresh v2 vault missing rich fields.")
+            raise AssertionError("Fresh v3 vault missing rich ledger fields.")
+        if "holding_cas_identity" not in prepare_tables:
+            raise AssertionError("Fresh vault missing CAS mapping.")
+        if db.execute("PRAGMA foreign_key_check").fetchall():
+            raise AssertionError("Fresh vault has broken foreign keys.")
 
     print(
-        f"PASS: {len(v1)} v1 DDL + {len(upgrade)} v2 migrations; "
-        "fresh and upgraded vaults, rollback, immutable ledger, "
-        "rich event kinds, correction ownership and backup-compatible columns."
+        f"PASS: {len(v1)} v1 DDL + {len(upgrade)} v2 + "
+        f"{len(identity_upgrade)} v3 migrations; v1/v2 upgrade, rollback, "
+        "CAS identity ownership, immutable ledger and backup-compatible columns."
     )
 
 
