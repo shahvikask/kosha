@@ -2,6 +2,9 @@ package `in`.growurdhan.domain.finance
 
 import `in`.growurdhan.core.model.MoneyScaled
 import java.math.BigInteger
+import java.math.BigDecimal
+import java.math.RoundingMode
+import kotlin.math.pow
 import java.time.LocalDate
 
 /**
@@ -10,6 +13,23 @@ import java.time.LocalDate
  * Money and quantities remain scaled integers; no floating-point balances.
  */
 enum class SavingsKind { SGB, PPF, EPF, SSY, FD, SCSS, POMIS, NSC, KVP, RD, FRSB, BOND, OTHER }
+/**
+ * These are financial projections, NOT automatically posted ledger events. A
+ * mutable amount entered by the user must be verified before catch-up is shown.
+ */
+enum class SavingsInterestMode { COMPOUND, PAYOUT }
+data class SavingsInterestCredit(
+    val postedOn: LocalDate,
+    val amount: MoneyScaled,
+    val estimated: Boolean,
+)
+data class SavingsInterestReview(
+    val credits: List<SavingsInterestCredit>,
+    /** Present only for products where interest compounds into the holding. */
+    val projectedBalance: MoneyScaled?,
+    val assumption: String,
+)
+
 object SavingsInterestEngine {
     private val publishedBps = mapOf(
         SavingsKind.SGB to 250, SavingsKind.PPF to 710, SavingsKind.EPF to 825,
@@ -101,5 +121,103 @@ object SavingsInterestEngine {
             cursor = LoanEmiEngine.addCalendarMonths(cursor, stepMonths.toLong())
         }
         return dates
+    }
+
+    /**
+     * Matches src/lib/interest.ts compoundQuarterlyMinor for a fixed
+     * principal and a single FY interval: one final rounding, not a
+     * rounded payment every quarter. Rate is still an assumption.
+     */
+    fun quarterlyCompoundAccrual(
+        principal: MoneyScaled, rateBps: Int, months: Int,
+    ): MoneyScaled {
+        require(rateBps in 0..100_000 && months in 0..12)
+        if (principal.raw <= 0 || rateBps == 0 || months == 0) return MoneyScaled(0)
+        val factor = (1.0 + rateBps / 40_000.0).pow(months / 3.0)
+        require(factor.isFinite() && factor > 0.0)
+        val after = BigDecimal.valueOf(principal.raw).multiply(BigDecimal.valueOf(factor))
+            .setScale(0, RoundingMode.HALF_UP)
+            .longValueExact()
+        return MoneyScaled(maxOf(0L, Math.subtractExact(after, principal.raw)))
+    }
+
+    /**
+     * Review catch-up for income-paying and balance-compounding products. It
+     * honors reported maturity and posted dates, but cannot model PPF/SSY
+     * daily balances without the actual contribution transaction history.
+     * If original/accrued balance is a verified manual input, never overwrite.
+     */
+    fun review(
+        kind: SavingsKind,
+        mode: SavingsInterestMode,
+        startingBalance: MoneyScaled,
+        rateBps: Int,
+        acquiredOn: LocalDate,
+        asOf: LocalDate,
+        maturityOn: LocalDate? = null,
+        postedDates: Set<LocalDate> = emptySet(),
+        manuallyVerified: Boolean = false,
+    ): SavingsInterestReview? {
+        require(rateBps in 0..100_000)
+        if (startingBalance.raw <= 0 || rateBps <= 0 || acquiredOn > asOf) return null
+        if (mode == SavingsInterestMode.COMPOUND && manuallyVerified) return null
+        val horizon = if (maturityOn != null && maturityOn < asOf) maturityOn else asOf
+        if (horizon < acquiredOn) return null
+        val dates: List<LocalDate> = when (mode) {
+            SavingsInterestMode.COMPOUND ->
+                fyEndDatesAfter(acquiredOn, horizon)
+            SavingsInterestMode.PAYOUT ->
+                if (kind == SavingsKind.FRSB) {
+                    buildList {
+                        for (year in acquiredOn.year..horizon.year) {
+                            for (month in listOf(1, 7)) {
+                                val day = LocalDate.of(year, month, 1)
+                                if (day > acquiredOn && day <= horizon) add(day)
+                            }
+                        }
+                    }
+                } else {
+                    val interval = when (kind) {
+                        SavingsKind.POMIS -> 1
+                        SavingsKind.SCSS -> 3
+                        SavingsKind.FD -> 3
+                        SavingsKind.SGB, SavingsKind.FRSB, SavingsKind.BOND -> 6
+                        else -> 12
+                    }
+                    payoutDates(acquiredOn, interval, horizon, maturityOn)
+                }
+        }
+        if (dates.isEmpty()) return null
+        var projected = startingBalance.raw
+        val results = mutableListOf<SavingsInterestCredit>()
+        for (date in dates) {
+            val accrual = if (mode == SavingsInterestMode.PAYOUT) {
+                val frequency = when (kind) {
+                    SavingsKind.POMIS -> 12
+                    SavingsKind.SCSS, SavingsKind.FD -> 4
+                    SavingsKind.SGB, SavingsKind.FRSB, SavingsKind.BOND -> 2
+                    else -> 1
+                }
+                coupon(startingBalance, rateBps, frequency)
+            } else {
+                val months = monthsHeldInFy(acquiredOn, date)
+                if (kind == SavingsKind.RD || kind == SavingsKind.FD) {
+                    quarterlyCompoundAccrual(MoneyScaled(projected), rateBps, months)
+                } else annualAccrual(MoneyScaled(projected), rateBps, months)
+            }
+            if (mode == SavingsInterestMode.COMPOUND) {
+                projected = Math.addExact(projected, accrual.raw)
+            }
+            if (accrual.raw > 0 && date !in postedDates) {
+                results += SavingsInterestCredit(date, accrual, estimated = true)
+            }
+        }
+        if (results.isEmpty()) return null
+        return SavingsInterestReview(
+            credits = results,
+            projectedBalance = if (mode == SavingsInterestMode.COMPOUND)
+                MoneyScaled(projected) else null,
+            assumption = "Historical balances and rate changes are not fully known; confirm against the passbook.",
+        )
     }
 }
