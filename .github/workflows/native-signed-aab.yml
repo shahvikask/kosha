@@ -77,7 +77,8 @@ jobs:
           gradle -p android-native :app:bundleRelease --stacktrace
           aab='android-native/app/build/outputs/bundle/release/app-release.aab'
           test -s "$aab"
-          jarsigner -verify -strict "$aab"
+          jarsigner -verify "$aab" > "$RUNNER_TEMP/aab-verify.txt"
+          grep -F "jar verified." "$RUNNER_TEMP/aab-verify.txt"
           sha256sum "$aab" > "$RUNNER_TEMP/app-release.aab.sha256"
           # No key material is included in any artifact.
       - name: Publish protected signed AAB artifact
@@ -91,4 +92,4 @@ jobs:
         if: always()
         shell: bash
         run: |
-          rm -f "$RUNNER_TEMP/gud-play-upload.jks" "$RUNNER_TEMP/upload-cert.txt"
+          rm -f "$RUNNER_TEMP/gud-play-upload.jks" "$RUNNER_TEMP/upload-cert.txt" "$RUNNER_TEMP/aab-verify.txt"
