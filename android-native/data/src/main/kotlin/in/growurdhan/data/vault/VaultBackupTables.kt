@@ -17,6 +17,9 @@ internal object VaultBackupTables {
             "id", "owner_id", "account_id", "display_name", "asset_category",
             "quantity_scaled", "price_scaled",
         ),
+        "holding_cas_identity" to listOf(
+            "holding_id", "owner_id", "account_id", "isin", "folio",
+        ),
         "ledger_event" to listOf(
             "id", "owner_id", "holding_id", "kind", "event_date",
             "quantity_delta_scaled", "amount_scaled", "source_fingerprint",
@@ -38,7 +41,7 @@ internal object VaultBackupTables {
     private val legacyLedgerColumns = columns.getValue("ledger_event").take(8)
 
     fun export(db: SQLiteDatabase): ByteArray {
-        val payload = JSONObject().put("format", 2).put("databaseVersion", VaultSchema.VERSION)
+        val payload = JSONObject().put("format", 3).put("databaseVersion", VaultSchema.VERSION)
         for ((table, names) in columns) {
             val rows = JSONArray()
             // Ledger corrections are insert-time validated against earlier events.
@@ -74,10 +77,11 @@ internal object VaultBackupTables {
         val payload = JSONObject(plain.toString(Charsets.UTF_8))
         val format = payload.getInt("format")
         val databaseVersion = payload.getInt("databaseVersion")
-        // Pre-release v1 exports are accepted for voluntary development-data recovery.
-        // A v1 ledger row lacks the four richer fields and receives SQL v2 defaults.
+        // Portable v1/v2 backups remain restorable into the v3 encrypted schema.
+        // Only format 3 carries registered CAS identity mapping rows.
         require(
-            (format == 2 && databaseVersion == VaultSchema.VERSION) ||
+            (format == 3 && databaseVersion == VaultSchema.VERSION) ||
+                (format == 2 && databaseVersion == 2) ||
                 (format == 1 && databaseVersion == 1)
         ) { "Unsupported native backup schema." }
         // Reject any attempt to combine backups or overwrite existing financial books.
@@ -87,6 +91,8 @@ internal object VaultBackupTables {
             }
         }
         for ((table, availableNames) in columns) {
+            // Old backups predate ISIN/folio mapping. Do not fabricate identities.
+            if (format < 3 && table == "holding_cas_identity") continue
             val names = if (format == 1 && table == "ledger_event") legacyLedgerColumns
                 else availableNames
             val rows = payload.getJSONArray(table)
