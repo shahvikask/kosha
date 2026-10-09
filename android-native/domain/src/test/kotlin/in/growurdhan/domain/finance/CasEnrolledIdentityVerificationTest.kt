@@ -130,15 +130,21 @@ class CasEnrolledIdentityVerificationTest {
         }
     }
 
-    @Test fun identityMatchWithDifferentFundNameOrAssetClassIsRejected() {
+    @Test fun changedSchemeNameAndNonMutualFundEnrolmentAreRejected() {
         assertThrows(CasValidationException::class.java) {
             strict(parsed = report(name = "Other Synthetic Scheme"))
         }
         assertThrows(CasValidationException::class.java) {
-            strict(parsed = report(category = "EQUITY"))
-        }
-        assertThrows(CasValidationException::class.java) {
             strict(holdings = listOf(holding.copy(category = "EQUITY")))
         }
+    }
+
+    @Test fun frozenParserExposureClassificationDoesNotOverrideCasIdentity() {
+        // Frozen CAMS parser labels some MF schemes EQUITY or FIXED_INCOME.
+        // This is look-through exposure, not the category of the enrolled fund.
+        assertEquals(holding.holdingId,
+            strict(parsed = report(category = "EQUITY")).lines.single().holdingId)
+        assertEquals(holding.holdingId,
+            strict(parsed = report(category = "FIXED_INCOME")).lines.single().holdingId)
     }
 }

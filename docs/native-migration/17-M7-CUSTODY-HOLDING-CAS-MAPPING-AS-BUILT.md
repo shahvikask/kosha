@@ -50,7 +50,7 @@ The validated PDF is reviewed separately: opening units are an observation, not 
 
 ## 5. Automated tests added (NOT yet passing evidence)
 
-**New JVM cases** (total **30**): 10 `CustodyHoldingOnboardingTest` cases, 11 `CasIdentityMatchingTest` cases, 6 `CustodyHoldingViewModelTest` cases and 3 new `StatementReviewViewModelTest` cases.
+**New JVM cases** (total **38** including the independent strict-identity suite): 10 `CustodyHoldingOnboardingTest` cases, 11 `CasIdentityMatchingTest` cases, 8 `CasEnrolledIdentityVerificationTest` cases, 6 `CustodyHoldingViewModelTest` cases and 3 new `StatementReviewViewModelTest` cases.
 
 **New Android cases** (total **11**): 7 `NativeCustodyHoldingInstrumentedTest` cases against actual SQLCipher/Keystore on an Android emulator, and 4 `CustodyHoldingShellTest` Compose cases. The existing `NativeAuthorizationInstrumentedTest` also checks four new repository entry points (two fresh-auth writes, two session-guarded reads).
 
