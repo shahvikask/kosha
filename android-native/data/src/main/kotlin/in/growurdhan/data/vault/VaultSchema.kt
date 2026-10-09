@@ -2,9 +2,9 @@ package `in`.growurdhan.data.vault
 
 import net.zetetic.database.sqlcipher.SQLiteDatabase
 
-/** Native financial schema v2, with transactional in-place upgrade of unpublished v1 vaults. */
+/** Native schema v3; upgrades v1/v2 in place without touching append-only events. */
 internal object VaultSchema {
-    const val VERSION = 2
+    const val VERSION = 3
 
     fun initializeOrValidate(db: SQLiteDatabase) {
         // SQLCipher returns a result row for secure_delete even when setting it.
@@ -26,13 +26,13 @@ internal object VaultSchema {
             cursor.getInt(0)
         }
         when (current) {
-            0, 1 -> {
-                // Both fresh installation and v1->v2 upgrade are a single transaction.
-                // A crash at any statement rolls back the entire schema transition.
+            0, 1, 2 -> {
+                // v1/v2 -> v3, and fresh installs, are one rollback-safe transaction.
                 db.beginTransaction()
                 try {
                     if (current == 0) for (sql in ddl) db.execSQL(sql)
-                    for (sql in migrationToV2) db.execSQL(sql)
+                    if (current <= 1) for (sql in migrationToV2) db.execSQL(sql)
+                    for (sql in migrationToV3) db.execSQL(sql)
                     db.execSQL("PRAGMA user_version = $VERSION")
                     db.setTransactionSuccessful()
                 } finally {
@@ -49,6 +49,12 @@ internal object VaultSchema {
         check(columns.containsAll(setOf(
             "financial_kind", "unit_price_scaled", "charges_scaled", "supersedes_event_id",
         ))) { "Native ledger schema v2 is incomplete." }
+        val mappingColumns = db.rawQuery("PRAGMA table_info(holding_cas_identity)", null).use { cursor ->
+            buildSet { while (cursor.moveToNext()) add(cursor.getString(1)) }
+        }
+        check(mappingColumns.containsAll(setOf(
+            "holding_id", "owner_id", "account_id", "isin", "folio",
+        ))) { "Native CAS identity table is missing or incomplete." }
         val integrity = db.rawQuery("PRAGMA integrity_check", null).use {
             if (it.moveToFirst()) it.getString(0) else "unavailable"
         }
@@ -94,6 +100,42 @@ internal object VaultSchema {
               WHERE prior.id = NEW.supersedes_event_id AND prior.owner_id = NEW.owner_id
                 AND prior.holding_id = NEW.holding_id
             ) THEN RAISE(ABORT, 'Missing or cross-owner correction predecessor') END;
+        END
+        """.trimIndent(),
+    )
+
+    /**
+     * The identity link is a separate table so old holding and ledger rows
+     * migrate unchanged. Composite ownership FKs + insert trigger deny
+     * mismatched account/owner/holding bindings.
+     */
+    internal val migrationToV3 = listOf(
+        """
+        CREATE TABLE holding_cas_identity (
+          holding_id TEXT PRIMARY KEY NOT NULL,
+          owner_id TEXT NOT NULL,
+          account_id TEXT NOT NULL,
+          isin TEXT NOT NULL CHECK(length(isin) = 12 AND isin = upper(isin)),
+          folio TEXT NOT NULL CHECK(length(folio) BETWEEN 1 AND 64),
+          UNIQUE(owner_id, isin, folio),
+          FOREIGN KEY(holding_id, owner_id) REFERENCES holding(id, owner_id) ON DELETE RESTRICT,
+          FOREIGN KEY(account_id, owner_id) REFERENCES custody_account(id, owner_id) ON DELETE RESTRICT
+        )
+        """.trimIndent(),
+        """
+        CREATE TRIGGER cas_holding_account_match BEFORE INSERT ON holding_cas_identity
+        BEGIN
+          SELECT CASE WHEN NOT EXISTS (
+            SELECT 1 FROM holding
+            WHERE id=NEW.holding_id AND owner_id=NEW.owner_id
+              AND account_id=NEW.account_id
+              AND asset_category='MUTUAL_FUND'
+          ) THEN RAISE(ABORT, 'CAS mapping requires matching account, owner and mutual fund') END;
+          SELECT CASE WHEN NOT EXISTS (
+            SELECT 1 FROM custody_account
+            WHERE id=NEW.account_id AND owner_id=NEW.owner_id
+              AND account_type IN ('CAMS','KFINTECH')
+          ) THEN RAISE(ABORT, 'CAS mapping requires matching registrar account') END;
         END
         """.trimIndent(),
     )

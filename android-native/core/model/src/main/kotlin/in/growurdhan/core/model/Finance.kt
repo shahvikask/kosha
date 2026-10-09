@@ -114,10 +114,23 @@ data class LedgerEvent(
 }
 
 /** Single atomic SQLite book snapshot; never combine members/events from separate writes. */
+/** Encrypted mapping from an enrolled family holding to an issuer CAS identity. */
+data class CasHoldingIdentity(
+    val holdingId: HoldingId,
+    val ownerId: OwnerId,
+    val accountId: String,
+    val isin: String,
+    val folio: String,
+    val accountType: String,
+)
+
+/** Captured under one SQL read transaction; optional defaults preserve older consumers. */
 data class VaultBook(
     val members: List<FamilyMember>,
     val holdings: List<Holding>,
     val events: List<LedgerEvent>,
+    val accounts: List<CustodyAccount> = emptyList(),
+    val casIdentities: List<CasHoldingIdentity> = emptyList(),
 )
 
 /** An observation, not a BUY or other transaction. */

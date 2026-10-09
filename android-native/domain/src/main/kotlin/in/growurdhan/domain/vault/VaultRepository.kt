@@ -19,7 +19,16 @@ interface VaultRepository {
     /** Onboard a member atomically; the first family member becomes the primary owner. */
     suspend fun registerFamilyMember(displayName: String, relationship: String): FamilyMember
     suspend fun createAccount(account: CustodyAccount)
+    /** Create a labelled registrar account after authenticated user approval. */
+    suspend fun registerCustodyAccount(
+        ownerId: OwnerId, accountType: String, label: String,
+    ): CustodyAccount
     suspend fun createHolding(holding: Holding)
+    /** Atomically add a zero-unit holding and its exact CAS ISIN/folio identity. */
+    suspend fun registerCasHolding(
+        ownerId: OwnerId, accountId: String, displayName: String,
+        isin: String, folio: String,
+    ): Holding
     suspend fun appendEvent(event: LedgerEvent)
     /** Validated rich events are appended as one all-or-nothing financial transaction. */
     suspend fun appendFinancialEvents(events: List<FinancialEvent>)
@@ -35,6 +44,8 @@ interface VaultRepository {
     /** Explicit caller action: re-validate review and commit observation/events atomically. */
     suspend fun commitReviewedStatement(review: ReviewedStatement): SnapshotResult
     suspend fun members(): List<FamilyMember>
+    suspend fun accounts(): List<CustodyAccount>
+    suspend fun casIdentities(): List<CasHoldingIdentity>
     suspend fun holdings(): List<Holding>
     suspend fun events(): List<LedgerEvent>
     /** Consistent members/holdings/ledger captured under ONE SQL read transaction. */
