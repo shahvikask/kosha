@@ -201,7 +201,7 @@ def check_v3(db: sqlite3.Connection) -> None:
     db.execute("UPDATE holding SET account_id='account',asset_category='MUTUAL_FUND' WHERE id='holding'")
     db.execute(
         "INSERT INTO holding_cas_identity(holding_id,owner_id,account_id,isin,folio) "
-        "VALUES('holding','self','INF000000001','12345')"
+        "VALUES('holding','self','account','INF000000001','12345')"
     )
     assert_rejected(
         db, "INSERT INTO holding_cas_identity(holding_id,owner_id,account_id,isin,folio) "
@@ -250,6 +250,9 @@ def main() -> None:
         db.execute("PRAGMA user_version = 2")
         db.commit()
         check_v2(db)
+        # check_v2 performs synthetic ledger INSERTs. SQLite's implicit write
+        # transaction must be committed before the next explicit BEGIN.
+        db.commit()
         # A failed v2->v3 migration must not strand partial identity tables.
         db.execute("BEGIN")
         run_statements(db, identity_upgrade[:1], "interrupted v3 migration")
