@@ -125,7 +125,7 @@ class CasEnrolledIdentityVerificationTest {
             strict(registered = listOf(mapping, second), holdings = listOf(holding, other))
         }
         assertThrows(CasValidationException::class.java) {
-            strict(registered = listOf(mapping, mapping.copy(holdingId = HoldingId("unknown"))),
+            strict(registered = listOf(mapping.copy(holdingId = HoldingId("unknown"))),
                 holdings = listOf(holding))
         }
     }
