@@ -8,6 +8,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import `in`.growurdhan.core.model.OwnerId
+import `in`.growurdhan.core.model.CasHoldingIdentity
 import `in`.growurdhan.domain.finance.CasImportContract
 import `in`.growurdhan.domain.finance.CasParsedHolding
 import `in`.growurdhan.domain.finance.CasParsedReport
@@ -138,6 +139,7 @@ class NativeCasPdfReader @Inject constructor(
         uri: Uri,
         owner: OwnerId,
         holdings: List<FinancialHolding>,
+        enrolledIdentities: List<CasHoldingIdentity>,
         pdfPassword: String = "",
     ): CasValidatedPreview = withContext(Dispatchers.IO) {
         val pdf = context.contentResolver.openInputStream(uri)?.use(CasPdfBytes::read)
@@ -184,7 +186,11 @@ class NativeCasPdfReader @Inject constructor(
                 sourceSha256 = sha,
                 holdings = parsed,
             )
-            CasImportContract.validate(report, owner, holdings, LocalDate.now())
+            // Production always passes the encrypted enrolled identity registry;
+            // legacy name-only matching is forbidden for real PDF imports.
+            CasImportContract.validate(
+                report, owner, holdings, LocalDate.now(), enrolledIdentities,
+            )
         } finally {
             pdf.fill(0)
         }
