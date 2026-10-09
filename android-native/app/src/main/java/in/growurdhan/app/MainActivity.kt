@@ -24,6 +24,10 @@ import `in`.growurdhan.domain.vault.VaultRepository
 import `in`.growurdhan.app.presentation.FamilyMemberIntent
 import `in`.growurdhan.app.presentation.FamilyMemberUiState
 import `in`.growurdhan.app.presentation.FamilyMemberViewModel
+import `in`.growurdhan.app.presentation.PortableRecoveryMode
+import `in`.growurdhan.app.presentation.PortableRecoveryUiState
+import `in`.growurdhan.app.presentation.PortableRecoveryViewModel
+import `in`.growurdhan.app.presentation.screens.PortableRecoveryIntent
 import `in`.growurdhan.app.presentation.CustodyHoldingIntent
 import `in`.growurdhan.app.presentation.CustodyHoldingUiState
 import `in`.growurdhan.app.presentation.CustodyHoldingViewModel
@@ -55,11 +59,16 @@ class MainActivity : ComponentActivity() {
     private val reviewViewModel: StatementReviewViewModel by viewModels()
     private val familyViewModel: FamilyMemberViewModel by viewModels()
     private val custodyViewModel: CustodyHoldingViewModel by viewModels()
+    private val recoveryViewModel: PortableRecoveryViewModel by viewModels()
     private enum class CredentialAction {
-        OPEN_VAULT, APPROVE_REVIEW, IMPORT_PDF, ADD_FAMILY_MEMBER, REGISTER_CUSTODY,
+        OPEN_VAULT, APPROVE_REVIEW, IMPORT_PDF, ADD_FAMILY_MEMBER, REGISTER_CUSTODY, PORTABLE_BACKUP,
     }
     private var pendingCredential: CredentialAction? = null
     private var pdfPickerOpen: Boolean = false
+    private var backupPickerOpen: Boolean = false
+    private var backupMode: PortableRecoveryMode? = null
+    private var backupUri: Uri? = null
+    private var backupPassword: CharArray? = null
     private var pickedPdfOwner: OwnerId? = null
     private var pickedPdfPassword: CharArray? = null
     private var pickedPdfUri: Uri? = null
@@ -93,6 +102,7 @@ class MainActivity : ComponentActivity() {
                     familyViewModel.onIntent(FamilyMemberIntent.SaveAfterCredential)
                 CredentialAction.REGISTER_CUSTODY ->
                     custodyViewModel.onIntent(CustodyHoldingIntent.SaveAfterCredential)
+                CredentialAction.PORTABLE_BACKUP -> recoverAfterCredential()
             }
         } else {
             // Device credential cancelled, removed, or otherwise not verified.
@@ -114,6 +124,48 @@ class MainActivity : ComponentActivity() {
             // again before even reading the PDF or decrypted financial book.
             requestCredential(CredentialAction.IMPORT_PDF)
         }
+    }
+
+    // An external document picker revokes the active vault session. Only the
+    // selected URI and operation kind survive; the backup password is entered
+    // *after* returning to the app and before a new system credential check.
+    private val backupExportPicker = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/octet-stream"),
+    ) { uri ->
+        completeBackupDocumentSelection(uri, PortableRecoveryMode.EXPORT)
+    }
+
+    private val backupRestorePicker = registerForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        completeBackupDocumentSelection(uri, PortableRecoveryMode.RESTORE)
+    }
+
+    private fun completeBackupDocumentSelection(uri: Uri?, mode: PortableRecoveryMode) {
+        backupPickerOpen = false
+        if (uri == null || backupMode != mode) {
+            lockSensitiveUi()
+            return
+        }
+        backupUri = uri
+        recoveryViewModel.offerPickedDocument(mode)
+    }
+
+    private fun recoverAfterCredential() {
+        val selectedMode = backupMode
+        val selectedUri = backupUri
+        val selectedPassword = backupPassword
+        backupMode = null
+        backupUri = null
+        backupPassword = null
+        if (selectedMode == null || selectedUri == null || selectedPassword == null ||
+            !sessionGate.canCommitFinancialChanges()
+        ) {
+            selectedPassword?.fill('\u0000')
+            lockSensitiveUi()
+            return
+        }
+        recoveryViewModel.executeAfterCredential(selectedMode, selectedUri, selectedPassword)
     }
 
     private fun parseSelectedPdfAfterCredential() {
@@ -169,6 +221,7 @@ class MainActivity : ComponentActivity() {
             val reviewState by reviewViewModel.state.collectAsStateWithLifecycle()
             val familyState by familyViewModel.state.collectAsStateWithLifecycle()
             val custodyState by custodyViewModel.state.collectAsStateWithLifecycle()
+            val recoveryState by recoveryViewModel.state.collectAsStateWithLifecycle()
             androidx.compose.runtime.LaunchedEffect(familyState) {
                 if (familyState is FamilyMemberUiState.Saved) {
                     // A successful encrypted write updates the vault's member count.
@@ -177,6 +230,11 @@ class MainActivity : ComponentActivity() {
             }
             androidx.compose.runtime.LaunchedEffect(custodyState) {
                 if (custodyState is CustodyHoldingUiState.Saved) {
+                    vaultViewModel.onIntent(VaultIntent.Refresh)
+                }
+            }
+            androidx.compose.runtime.LaunchedEffect(recoveryState) {
+                if (recoveryState is PortableRecoveryUiState.Completed) {
                     vaultViewModel.onIntent(VaultIntent.Refresh)
                 }
             }
@@ -192,6 +250,8 @@ class MainActivity : ComponentActivity() {
                     onFamilyIntent = ::handleFamilyIntent,
                     custodyState = custodyState,
                     onCustodyIntent = ::handleCustodyIntent,
+                    recoveryState = recoveryState,
+                    onRecoveryIntent = ::handleRecoveryIntent,
                 )
             }
         }
@@ -201,7 +261,10 @@ class MainActivity : ComponentActivity() {
         if (intent == VaultIntent.OpenOrCreate) {
             requestCredential(CredentialAction.OPEN_VAULT)
         } else {
-            if (intent == VaultIntent.Close) reviewViewModel.clearSensitiveState()
+            if (intent == VaultIntent.Close) {
+                reviewViewModel.clearSensitiveState()
+                recoveryViewModel.clearSensitiveState()
+            }
             vaultViewModel.onIntent(intent)
         }
     }
@@ -272,6 +335,56 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun handleRecoveryIntent(intent: PortableRecoveryIntent) {
+        when (intent) {
+            PortableRecoveryIntent.SelectExportDestination -> {
+                if (!sessionGate.isUnlocked() ||
+                    vaultViewModel.state.value !is VaultUiState.Ready
+                ) {
+                    lockSensitiveUi()
+                    return
+                }
+                backupMode = PortableRecoveryMode.EXPORT
+                backupPickerOpen = true
+                try {
+                    backupExportPicker.launch("GrowUrDhan-Backup.gud")
+                } catch (_: Exception) {
+                    lockSensitiveUi()
+                }
+            }
+            PortableRecoveryIntent.SelectRestoreSource -> {
+                backupMode = PortableRecoveryMode.RESTORE
+                backupPickerOpen = true
+                try {
+                    backupRestorePicker.launch(arrayOf("application/octet-stream", "*/*"))
+                } catch (_: Exception) {
+                    lockSensitiveUi()
+                }
+            }
+            is PortableRecoveryIntent.ConfirmPassphrase -> {
+                val mode = backupMode
+                if (mode == null || backupUri == null ||
+                    recoveryViewModel.state.value != PortableRecoveryUiState.EnterPassphrase(mode) ||
+                    intent.password.length !in 12..1024 ||
+                    (mode == PortableRecoveryMode.EXPORT && intent.password != intent.repeated)
+                ) {
+                    recoveryViewModel.failInput()
+                    return
+                }
+                backupPassword?.fill('\u0000')
+                backupPassword = intent.password.toCharArray()
+                requestCredential(CredentialAction.PORTABLE_BACKUP)
+            }
+            PortableRecoveryIntent.Cancel -> {
+                backupPassword?.fill('\u0000')
+                backupPassword = null
+                backupMode = null
+                backupUri = null
+                recoveryViewModel.clearSensitiveState()
+            }
+        }
+    }
+
     private fun requestCredential(action: CredentialAction) {
         if (pendingCredential != null) return
         val manager = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
@@ -290,6 +403,7 @@ class MainActivity : ComponentActivity() {
             CredentialAction.APPROVE_REVIEW -> "Approve financial statement"
             CredentialAction.ADD_FAMILY_MEMBER -> "Add family member"
             CredentialAction.REGISTER_CUSTODY -> "Register financial account or holding"
+            CredentialAction.PORTABLE_BACKUP -> "Protect portable backup and recovery"
         }
         val explanation = when (action) {
             CredentialAction.OPEN_VAULT ->
@@ -302,6 +416,8 @@ class MainActivity : ComponentActivity() {
                 "Confirm your device screen lock before saving a family member."
             CredentialAction.REGISTER_CUSTODY ->
                 "Confirm your screen lock before enrolling this account or CAS holding."
+            CredentialAction.PORTABLE_BACKUP ->
+                "Confirm your device screen lock before exporting or restoring encrypted records."
         }
         val challenge = manager.createConfirmDeviceCredentialIntent(title, explanation)
         if (challenge == null) {
@@ -322,6 +438,12 @@ class MainActivity : ComponentActivity() {
         reviewViewModel.clearSensitiveState()
         familyViewModel.clearSensitiveState()
         custodyViewModel.clearSensitiveState()
+        recoveryViewModel.clearSensitiveState()
+        backupPassword?.fill('\u0000')
+        backupPassword = null
+        backupMode = null
+        backupUri = null
+        backupPickerOpen = false
         pickedPdfOwner = null
         pickedPdfPassword?.fill('\u0000')
         pickedPdfPassword = null
@@ -342,6 +464,15 @@ class MainActivity : ComponentActivity() {
         // Android's own credential confirmation activity may temporarily stop us.
         // A cancelled challenge locks; success must come from RESULT_OK only.
         when {
+            backupPickerOpen -> {
+                // SAF destination/source selection is not a valid financial
+                // session. Password is not collected before the picker.
+                sessionGate.lock()
+                reviewViewModel.clearSensitiveState()
+                familyViewModel.clearSensitiveState()
+                custodyViewModel.clearSensitiveState()
+                vaultViewModel.onIntent(VaultIntent.Close)
+            }
             pdfPickerOpen -> {
                 // The external document chooser isn't an authenticated session.
                 // Close SQLCipher and clear financial receipt state while away.
