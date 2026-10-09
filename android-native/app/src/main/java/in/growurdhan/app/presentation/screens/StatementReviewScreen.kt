@@ -14,6 +14,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -61,11 +62,51 @@ fun StatementReviewScreen(
                     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("No statement ready for review", style = MaterialTheme.typography.titleMedium)
                         Text(
-                            "The native PDF adapter has not been connected yet. " +
-                                "No sample holdings or unverified statement data will be imported.",
+                            "Choose a PDF on your device and explicitly select its family owner. " +
+                                "Only verified on-device CAS output matching an existing holding can proceed.",
                         )
+                        Text(
+                            "The frozen CASPARSER/PDFium engine is packaged only with the ARM64 release variant; " +
+                                "unsupported builds refuse the import.",
+                        )
+                        Button(
+                            onClick = { onIntent(StatementReviewIntent.LoadOwners) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("Select CAS PDF") }
                     }
                 }
+            }
+            is StatementReviewUiState.SelectOwner -> {
+                var selected by remember(state.members) {
+                    mutableStateOf<`in`.growurdhan.core.model.OwnerId?>(null)
+                }
+                Text(
+                    "Which family member owns this CAS? Names and identities must match the PDF. " +
+                        "Ambiguous ISIN/folio mappings will be blocked.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                state.members.forEach { member ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(
+                            selected = selected == member.id,
+                            onClick = { selected = member.id },
+                        )
+                        Text(member.displayName)
+                    }
+                }
+                Button(
+                    enabled = selected != null,
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = {
+                        selected?.let { onIntent(StatementReviewIntent.PickPdf(it)) }
+                    },
+                ) { Text("Choose PDF from device") }
+                OutlinedButton(
+                    onClick = { onIntent(StatementReviewIntent.Cancel) },
+                ) { Text("Cancel") }
             }
             StatementReviewUiState.Working -> {
                 CircularProgressIndicator()
