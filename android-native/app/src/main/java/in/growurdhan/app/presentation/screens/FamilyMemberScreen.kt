@@ -91,7 +91,10 @@ fun FamilyMemberScreen(
                             if (state.member.isPrimary) "Primary owner (Self)"
                             else state.member.relationship,
                         )
-                        Text("The member is now available for statement ownership.")
+                        Text(
+                            "The member is now available for statement ownership. " +
+                                "CAS funds still require existing verified holding mappings.",
+                        )
                     }
                 }
                 Button(

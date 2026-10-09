@@ -68,3 +68,13 @@ The next development slice introduces a guarded Android Storage Access Framework
 Production `DefaultVaultRepository` now rejects financial reads without a volatile device credential session and rejects mutations unless an authorization check is still fresh. The source security preflight checks privacy, backup and signing protections; native CI smoke-builds an R8-minified AAB with a **disposable** CI key. A separate API 26/30/36 emulator matrix and a manual, protected owner-signed release workflow have been added.
 
 **Not yet verified:** these new builds/tests, live ARM64 PDF parse, all issuer/password cases, 16 KiB native library compatibility, Play upload signature, real device matrix and independent OWASP MASVS review. No real user may rely on this build as a Play release. See [M5 release-hardening and security evidence](../docs/native-migration/14-M5-RELEASE-HARDENING-AND-APPSEC-OPEN-GATES.md).
+
+## Family onboarding and CAS owner selection (M6 increment — CI pending)
+
+The native **Vault** screen offers **Add first family member** after device-authenticated opening. The **Statements** route now shows **Add family member** when an unlocked vault contains no owners, leading directly to a family setup screen. On success the member can continue to Statements for fresh owner selection.
+
+The first member becomes primary **Self**; additional members can be Spouse, Parent, Child, Sibling or Other. `VaultRepository.registerFamilyMember` validates display-name uniqueness and supported relationship, assigns a random UUID owner ID (never PAN or account number), checks primary owner invariants and inserts atomically in SQLCipher. No holdings, accounts, statements or ledger events are fabricated or deleted. The production repository requires a recent verified device credential, and the in-memory form requires a **new credential challenge after staging** before saving; a cancelled prompt discards the pending name.
+
+Added tests: **6** pure Kotlin family-policy JVM cases, **7** ViewModel/session JVM cases, **4** SQLCipher Android device cases, and **4** Compose navigation/form cases; the existing production-authorization test now covers the new write API. Results remain **unverified until a new workflow finishes**.
+
+**Important boundary:** Adding a member does not create a corresponding custody account or holding. CAS import still requires a supported ARM64 release build and correctly mapped existing holdings. Encrypted portable-backup UI, full registration/onboarding parity and Google Play release approval remain open. See [M6 family onboarding as-built](../docs/native-migration/15-M6-FAMILY-ONBOARDING-AS-BUILT.md).

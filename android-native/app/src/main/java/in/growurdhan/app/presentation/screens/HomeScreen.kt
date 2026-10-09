@@ -61,10 +61,11 @@ fun HomeScreen(
                     )
                 }
                 Text(
-                    "The native encrypted vault can be created only after a deliberate, " +
-                        "device-authenticated action. It does not migrate or open your existing " +
-                        "React/Tauri financial book. The full portfolio and verified statement " +
-                        "PDF import screens are not yet connected.",
+                    "The native vault opens only after device authentication and does not " +
+                        "migrate your existing React/Tauri book. Set up a primary family member " +
+                        "before importing a CAS PDF. Verified PDF parsing is restricted to supported " +
+                        "ARM64 release builds and requires existing holding mappings. Full portfolio " +
+                        "and onboarding parity remain in development.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
