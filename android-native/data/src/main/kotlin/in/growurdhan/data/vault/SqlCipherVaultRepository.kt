@@ -22,6 +22,7 @@ import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.UUID
 import `in`.growurdhan.domain.vault.FamilyMemberOnboarding
+import `in`.growurdhan.domain.vault.CustodyHoldingOnboarding
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 import `in`.growurdhan.domain.vault.VaultRepository
@@ -161,6 +162,23 @@ class SqlCipherVaultRepository(
         )
     }
 
+    override suspend fun registerCustodyAccount(
+        ownerId: OwnerId, accountType: String, label: String,
+    ): CustodyAccount = mutate { db ->
+        require(readMembers(db).any { it.id == ownerId }) {
+            "Custody account requires an existing family owner."
+        }
+        val account = CustodyHoldingOnboarding.account(
+            ownerId, accountType, label, UUID.randomUUID().toString(), readAccounts(db),
+        )
+        db.execSQL(
+            """INSERT INTO custody_account(id,owner_id,account_type,identifier_masked)
+               VALUES(?,?,?,?)""",
+            arrayOf(account.id, account.ownerId.raw, account.accountType, account.identifierMasked),
+        )
+        account
+    }
+
     override suspend fun createHolding(holding: Holding): Unit = mutate { db ->
         db.execSQL(
             """INSERT INTO holding(id,owner_id,account_id,display_name,asset_category,quantity_scaled,price_scaled)
@@ -170,6 +188,40 @@ class SqlCipherVaultRepository(
                 holding.assetCategory, holding.quantity.raw, holding.currentUnitPrice.raw,
             ),
         )
+    }
+
+    /**
+     * Two rows, one transaction. FKs and the insert trigger independently
+     * enforce that the enrolled ISIN/folio belongs to its owner/account.
+     */
+    override suspend fun registerCasHolding(
+        ownerId: OwnerId, accountId: String, displayName: String,
+        isin: String, folio: String,
+    ): Holding = mutate { db ->
+        require(readMembers(db).any { it.id == ownerId }) {
+            "Holding requires an existing family owner."
+        }
+        val account = readAccounts(db).singleOrNull {
+            it.ownerId == ownerId && it.id == accountId
+        } ?: throw IllegalArgumentException("Registrar account not found for family owner.")
+        val (holding, mapping) = CustodyHoldingOnboarding.holding(
+            ownerId, account, displayName, isin, folio,
+            HoldingId(UUID.randomUUID().toString()), readCasIdentities(db),
+        )
+        db.execSQL(
+            """INSERT INTO holding(id,owner_id,account_id,display_name,asset_category,quantity_scaled,price_scaled)
+               VALUES(?,?,?,?,?,?,?)""",
+            arrayOf(
+                holding.id.raw, ownerId.raw, account.id, holding.name,
+                holding.assetCategory, 0L, 0L,
+            ),
+        )
+        db.execSQL(
+            """INSERT INTO holding_cas_identity(holding_id,owner_id,account_id,isin,folio)
+               VALUES(?,?,?,?,?)""",
+            arrayOf(holding.id.raw, ownerId.raw, account.id, mapping.isin, mapping.folio),
+        )
+        holding
     }
 
     /** Preserve v1 API while appending optional v2 financial metadata when supplied. */
@@ -421,7 +473,10 @@ class SqlCipherVaultRepository(
     }
 
     private fun readBookInsideTransaction(db: SQLiteDatabase): VaultBook =
-        VaultBook(readMembers(db), readHoldings(db), readEvents(db))
+        VaultBook(
+            readMembers(db), readHoldings(db), readEvents(db),
+            readAccounts(db), readCasIdentities(db),
+        )
 
     /**
      * Length-prefixed, typed SHA-256 digest streamed over ALL financial tables.
@@ -474,7 +529,7 @@ class SqlCipherVaultRepository(
         }
         for (table in listOf(
             "family_member", "custody_account", "holding", "ledger_event",
-            "snapshot_import", "statement_position", "vault_meta",
+            "snapshot_import", "statement_position", "vault_meta", "holding_cas_identity",
         )) {
             addText(table)
             db.rawQuery("SELECT * FROM $table ORDER BY rowid", null).use { cursor ->
@@ -563,6 +618,40 @@ class SqlCipherVaultRepository(
             }
         }
     }
+
+    override suspend fun accounts(): List<CustodyAccount> = inspect { db -> readAccounts(db) }
+
+    private fun readAccounts(db: SQLiteDatabase): List<CustodyAccount> =
+        db.rawQuery(
+            "SELECT id,owner_id,account_type,identifier_masked FROM custody_account ORDER BY rowid",
+            null,
+        ).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) add(CustodyAccount(
+                    cursor.getString(0), OwnerId(cursor.getString(1)),
+                    cursor.getString(2), cursor.getString(3),
+                ))
+            }
+        }
+
+    override suspend fun casIdentities(): List<CasHoldingIdentity> =
+        inspect { db -> readCasIdentities(db) }
+
+    private fun readCasIdentities(db: SQLiteDatabase): List<CasHoldingIdentity> =
+        db.rawQuery(
+            """SELECT m.holding_id,m.owner_id,m.account_id,m.isin,m.folio,a.account_type
+               FROM holding_cas_identity AS m JOIN custody_account AS a
+                 ON a.id=m.account_id AND a.owner_id=m.owner_id ORDER BY m.rowid""",
+            null,
+        ).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) add(CasHoldingIdentity(
+                    HoldingId(cursor.getString(0)), OwnerId(cursor.getString(1)),
+                    cursor.getString(2), cursor.getString(3), cursor.getString(4),
+                    cursor.getString(5),
+                ))
+            }
+        }
 
     override suspend fun holdings(): List<Holding> = inspect { db -> readHoldings(db) }
 
@@ -739,9 +828,22 @@ class DefaultVaultRepository @Inject constructor(
         authorization.requireRecentApproval()
         delegate.createAccount(account)
     }
+    override suspend fun registerCustodyAccount(
+        ownerId: OwnerId, accountType: String, label: String,
+    ): CustodyAccount {
+        authorization.requireRecentApproval()
+        return delegate.registerCustodyAccount(ownerId, accountType, label)
+    }
     override suspend fun createHolding(holding: Holding) {
         authorization.requireRecentApproval()
         delegate.createHolding(holding)
+    }
+    override suspend fun registerCasHolding(
+        ownerId: OwnerId, accountId: String, displayName: String,
+        isin: String, folio: String,
+    ): Holding {
+        authorization.requireRecentApproval()
+        return delegate.registerCasHolding(ownerId, accountId, displayName, isin, folio)
     }
     override suspend fun appendEvent(event: LedgerEvent) {
         authorization.requireRecentApproval()
@@ -769,6 +871,14 @@ class DefaultVaultRepository @Inject constructor(
     override suspend fun members(): List<FamilyMember> {
         authorization.requireUnlocked()
         return delegate.members()
+    }
+    override suspend fun accounts(): List<CustodyAccount> {
+        authorization.requireUnlocked()
+        return delegate.accounts()
+    }
+    override suspend fun casIdentities(): List<CasHoldingIdentity> {
+        authorization.requireUnlocked()
+        return delegate.casIdentities()
     }
     override suspend fun holdings(): List<Holding> {
         authorization.requireUnlocked()
