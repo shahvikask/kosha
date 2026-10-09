@@ -490,4 +490,13 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+    override fun onDestroy() {
+        // A credential Activity can destroy/recreate its caller. No backup or
+        // document password survives that process/activity boundary.
+        backupPassword?.fill('\u0000')
+        pickedPdfPassword?.fill('\u0000')
+        backupPassword = null
+        pickedPdfPassword = null
+        super.onDestroy()
+    }
 }
