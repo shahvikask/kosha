@@ -24,6 +24,9 @@ import `in`.growurdhan.domain.vault.VaultRepository
 import `in`.growurdhan.app.presentation.FamilyMemberIntent
 import `in`.growurdhan.app.presentation.FamilyMemberUiState
 import `in`.growurdhan.app.presentation.FamilyMemberViewModel
+import `in`.growurdhan.app.presentation.CustodyHoldingIntent
+import `in`.growurdhan.app.presentation.CustodyHoldingUiState
+import `in`.growurdhan.app.presentation.CustodyHoldingViewModel
 import `in`.growurdhan.app.presentation.AppViewModel
 import `in`.growurdhan.app.presentation.GrowUrDhanShell
 import `in`.growurdhan.app.presentation.StatementReviewIntent
@@ -51,7 +54,10 @@ class MainActivity : ComponentActivity() {
     private val vaultViewModel: VaultViewModel by viewModels()
     private val reviewViewModel: StatementReviewViewModel by viewModels()
     private val familyViewModel: FamilyMemberViewModel by viewModels()
-    private enum class CredentialAction { OPEN_VAULT, APPROVE_REVIEW, IMPORT_PDF, ADD_FAMILY_MEMBER }
+    private val custodyViewModel: CustodyHoldingViewModel by viewModels()
+    private enum class CredentialAction {
+        OPEN_VAULT, APPROVE_REVIEW, IMPORT_PDF, ADD_FAMILY_MEMBER, REGISTER_CUSTODY,
+    }
     private var pendingCredential: CredentialAction? = null
     private var pdfPickerOpen: Boolean = false
     private var pickedPdfOwner: OwnerId? = null
@@ -85,6 +91,8 @@ class MainActivity : ComponentActivity() {
                 CredentialAction.IMPORT_PDF -> parseSelectedPdfAfterCredential()
                 CredentialAction.ADD_FAMILY_MEMBER ->
                     familyViewModel.onIntent(FamilyMemberIntent.SaveAfterCredential)
+                CredentialAction.REGISTER_CUSTODY ->
+                    custodyViewModel.onIntent(CustodyHoldingIntent.SaveAfterCredential)
             }
         } else {
             // Device credential cancelled, removed, or otherwise not verified.
@@ -130,6 +138,7 @@ class MainActivity : ComponentActivity() {
                 }
                 val verified = casReader.parseAndValidate(
                     uri, owner, book.holdings.map { it.toFinancialHolding() },
+                    book.casIdentities,
                     password?.concatToString() ?: "",
                 )
                 check(sessionGate.isUnlocked()) { "Vault session expired during PDF parsing." }
@@ -159,9 +168,15 @@ class MainActivity : ComponentActivity() {
             val vaultState by vaultViewModel.state.collectAsStateWithLifecycle()
             val reviewState by reviewViewModel.state.collectAsStateWithLifecycle()
             val familyState by familyViewModel.state.collectAsStateWithLifecycle()
+            val custodyState by custodyViewModel.state.collectAsStateWithLifecycle()
             androidx.compose.runtime.LaunchedEffect(familyState) {
                 if (familyState is FamilyMemberUiState.Saved) {
                     // A successful encrypted write updates the vault's member count.
+                    vaultViewModel.onIntent(VaultIntent.Refresh)
+                }
+            }
+            androidx.compose.runtime.LaunchedEffect(custodyState) {
+                if (custodyState is CustodyHoldingUiState.Saved) {
                     vaultViewModel.onIntent(VaultIntent.Refresh)
                 }
             }
@@ -175,6 +190,8 @@ class MainActivity : ComponentActivity() {
                     onReviewIntent = ::handleReviewIntent,
                     familyState = familyState,
                     onFamilyIntent = ::handleFamilyIntent,
+                    custodyState = custodyState,
+                    onCustodyIntent = ::handleCustodyIntent,
                 )
             }
         }
@@ -238,6 +255,23 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun handleCustodyIntent(intent: CustodyHoldingIntent) {
+        when (intent) {
+            is CustodyHoldingIntent.StageAccount, is CustodyHoldingIntent.StageHolding -> {
+                if (!sessionGate.isUnlocked() || vaultViewModel.state.value !is VaultUiState.Ready) {
+                    lockSensitiveUi()
+                    return
+                }
+                custodyViewModel.onIntent(intent)
+                if (custodyViewModel.state.value is CustodyHoldingUiState.AwaitingCredential) {
+                    requestCredential(CredentialAction.REGISTER_CUSTODY)
+                }
+            }
+            CustodyHoldingIntent.SaveAfterCredential -> Unit // OS callback only
+            else -> custodyViewModel.onIntent(intent)
+        }
+    }
+
     private fun requestCredential(action: CredentialAction) {
         if (pendingCredential != null) return
         val manager = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
@@ -255,6 +289,7 @@ class MainActivity : ComponentActivity() {
             CredentialAction.IMPORT_PDF -> "Verify identity before reading CAS PDF"
             CredentialAction.APPROVE_REVIEW -> "Approve financial statement"
             CredentialAction.ADD_FAMILY_MEMBER -> "Add family member"
+            CredentialAction.REGISTER_CUSTODY -> "Register financial account or holding"
         }
         val explanation = when (action) {
             CredentialAction.OPEN_VAULT ->
@@ -265,6 +300,8 @@ class MainActivity : ComponentActivity() {
                 "Confirm your device screen lock before committing these financial changes."
             CredentialAction.ADD_FAMILY_MEMBER ->
                 "Confirm your device screen lock before saving a family member."
+            CredentialAction.REGISTER_CUSTODY ->
+                "Confirm your screen lock before enrolling this account or CAS holding."
         }
         val challenge = manager.createConfirmDeviceCredentialIntent(title, explanation)
         if (challenge == null) {
@@ -284,6 +321,7 @@ class MainActivity : ComponentActivity() {
         sessionGate.lock()
         reviewViewModel.clearSensitiveState()
         familyViewModel.clearSensitiveState()
+        custodyViewModel.clearSensitiveState()
         pickedPdfOwner = null
         pickedPdfPassword?.fill('\u0000')
         pickedPdfPassword = null
@@ -310,6 +348,7 @@ class MainActivity : ComponentActivity() {
                 sessionGate.lock()
                 reviewViewModel.clearSensitiveState()
                 familyViewModel.clearSensitiveState()
+                custodyViewModel.clearSensitiveState()
                 vaultViewModel.onIntent(VaultIntent.Close)
             }
             pendingCredential == null -> lockSensitiveUi()
