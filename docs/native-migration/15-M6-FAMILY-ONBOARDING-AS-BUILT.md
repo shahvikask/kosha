@@ -2,8 +2,8 @@
 
 **Date:** 2026-10-08  
 **Branch:** `GUD-Android-ChatGPT`  
-**Status:** Implementation committed; JVM and Android instrumentation **must be independently verified** from upcoming GitHub Actions.  
-**Prior verified baseline:** `076a7c68ee9c45bbb9c9d6f31c66f4570e53fc14`; Native M3 #37875317806, device matrix #37875317880, Kosha CI #37875317825 all successful. This document does not assert the new onboarding tests passed.
+**Status:** **M6 CI VERIFIED** on implementation commit `3a4dfa0790f548b6132b43c5d2cf4897ab8cd9e6`: 102/102 JVM and 35/35 Android API 35 tests passed; 35/35 each on Android API 26, 30 and 36. See [independent archived-artifact report](16-M6-FAMILY-ONBOARDING-VERIFICATION.md).  
+**Prior verified baseline:** `076a7c68ee9c45bbb9c9d6f31c66f4570e53fc14`; Native M3 #37875317806, device matrix #37875317880, Kosha CI #37875317825 all successful. The new 13 JVM + 8 Android onboarding tests passed; full evidence is recorded in the verification report.
 
 ## 1. What this development increment fixes
 
@@ -41,7 +41,7 @@ Cancel, credential failure, background lock, process recreation or logout discar
 | `FamilyOnboardingShellTest` (Compose emulator) | 4 | Statements recovery route, required name before staging, return to owner selection, vault shortcut |
 | Existing `NativeAuthorizationInstrumentedTest` | Extended | New member-registration API requires repository recent-approval gate |
 
-**Total newly added:** 21 test cases (13 JVM and 8 Android). Existing M5 golden, SQLCipher, approval, Compose and CAS contract tests must also pass. Do not treat counts as passing test results before inspecting downloaded archived JUnit reports.
+**Total newly added:** 21 test cases (13 JVM and 8 Android). All existing M5 golden, SQLCipher, statement-approval, Compose and CAS contract tests **passed** at the tested SHA; archived JUnit reports independently verified 102 JVM and 35 Android tests on API 35, plus 35 on each of APIs 26, 30 and 36. See the archived artifacts and digests in [M6 verification](16-M6-FAMILY-ONBOARDING-VERIFICATION.md).
 
 ## 4. Explicitly unfinished
 
