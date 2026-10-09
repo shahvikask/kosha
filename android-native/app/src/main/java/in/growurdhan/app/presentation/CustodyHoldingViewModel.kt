@@ -168,7 +168,7 @@ class CustodyHoldingViewModel @Inject constructor(
                             request.ownerId, request.accountId, request.name,
                             request.isin, request.folio,
                         )
-                        "Mutual fund enrolled with its verified identity fields."
+                        "Fund enrolled for future exact CAS identity matching."
                     }
                 }
                 if (expectedGeneration == generation && session.isUnlocked()) {

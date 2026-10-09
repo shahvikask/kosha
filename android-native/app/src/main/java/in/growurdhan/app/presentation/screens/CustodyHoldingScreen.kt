@@ -188,7 +188,9 @@ fun CustodyHoldingScreen(
                                     onValueChange = { if (it.length <= 200) fundName = it },
                                     label = { Text("Mutual fund scheme name") },
                                     singleLine = true,
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier.fillMaxWidth().semantics {
+                                        contentDescription = "Mutual fund scheme name input"
+                                    },
                                 )
                                 OutlinedTextField(
                                     value = isin,

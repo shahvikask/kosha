@@ -84,7 +84,7 @@ class CustodyHoldingShellTest {
         }
         compose.onNodeWithContentDescription("Vault").performClick()
         compose.onNodeWithText("Manage accounts & holdings").performScrollTo().performClick()
-        compose.onNodeWithText("Mutual fund scheme name")
+        compose.onNodeWithContentDescription("Mutual fund scheme name input")
             .performScrollTo().performTextInput("Synthetic Index")
         compose.onNodeWithContentDescription("CAS ISIN input")
             .performScrollTo().performTextInput("INF000000001")
