@@ -93,6 +93,39 @@ jobs:
             echo "::error::Emulator disk preflight failed: need at least 11 GiB free before downloading the emulator image."
             exit 1
           fi
+      - name: Download Android 35 Google APIs system image with bounded retries
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The emulator action installs this exact package. An upstream mirror
+          # sometimes delivers a corrupt ZIP ("Error on ZipFile unknown archive").
+          # Pre-install and validate it here; the action can reuse the package.
+          SDK_TOOL=$(find "$ANDROID_HOME/cmdline-tools" -path "*/bin/sdkmanager" -type f | sort -V | tail -1)
+          test -n "$SDK_TOOL"
+          package='system-images;android-35;google_apis;x86_64'
+          image_dir="$ANDROID_HOME/system-images/android-35/google_apis/x86_64"
+          for attempt in 1 2 3; do
+            if [[ -s "$image_dir/system.img" && -s "$image_dir/source.properties" ]]; then
+              echo "Verified Android 35 Google APIs x86_64 image is already installed."
+              break
+            fi
+            echo "Installing Android 35 system image (attempt $attempt of 3)."
+            if "$SDK_TOOL" --install "$package" --channel=0 && \
+                [[ -s "$image_dir/system.img" && -s "$image_dir/source.properties" ]]; then
+              echo "Android 35 emulator system image installed and verified."
+              break
+            fi
+            if (( attempt == 3 )); then
+              echo "::error::Android 35 emulator system image failed download/verification after 3 attempts."
+              exit 1
+            fi
+            # Only remove incomplete downloads: never delete an installed image.
+            rm -rf "$ANDROID_HOME/.temp" "$HOME/.android/cache"
+            if [[ ! -s "$image_dir/system.img" ]]; then
+              rm -rf "$image_dir"
+            fi
+            sleep "$((attempt * 10))"
+          done
       - name: Allow Android emulator KVM acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
