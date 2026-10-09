@@ -23,6 +23,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import `in`.growurdhan.app.presentation.FamilyMemberIntent
@@ -123,7 +125,9 @@ fun FamilyMemberScreen(
                             label = { Text("Family member name") },
                             supportingText = { Text("Use a distinct display name, not an account number or PAN.") },
                             singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().semantics {
+                                contentDescription = "Family member name input"
+                            },
                         )
                         if (isFirst) {
                             Text("Relationship: Self (first family member)")
