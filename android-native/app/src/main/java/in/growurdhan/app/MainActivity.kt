@@ -208,18 +208,27 @@ class MainActivity : ComponentActivity() {
         if (pendingCredential != null) return
         val manager = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
         if (!manager.isDeviceSecure) {
+            // Never retain a selected PDF URI or password when credentials
+            // are missing/removed while returning from the document picker.
+            lockSensitiveUi()
             if (action == CredentialAction.OPEN_VAULT) {
                 vaultViewModel.onIntent(VaultIntent.CredentialUnavailable)
-            } else {
-                reviewViewModel.onIntent(StatementReviewIntent.Cancel)
             }
             return
         }
-        val title = if (action == CredentialAction.OPEN_VAULT)
-            "Unlock GrowUrDhan" else "Approve financial statement"
-        val explanation = if (action == CredentialAction.OPEN_VAULT)
-            "Confirm your device screen lock before opening the encrypted vault."
-        else "Confirm your device screen lock before committing these financial changes."
+        val title = when (action) {
+            CredentialAction.OPEN_VAULT -> "Unlock GrowUrDhan"
+            CredentialAction.IMPORT_PDF -> "Verify identity before reading CAS PDF"
+            CredentialAction.APPROVE_REVIEW -> "Approve financial statement"
+        }
+        val explanation = when (action) {
+            CredentialAction.OPEN_VAULT ->
+                "Confirm your device screen lock before opening the encrypted vault."
+            CredentialAction.IMPORT_PDF ->
+                "Confirm your device screen lock before accessing the selected PDF."
+            CredentialAction.APPROVE_REVIEW ->
+                "Confirm your device screen lock before committing these financial changes."
+        }
         val challenge = manager.createConfirmDeviceCredentialIntent(title, explanation)
         if (challenge == null) {
             lockSensitiveUi()
