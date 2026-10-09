@@ -16,7 +16,7 @@ import java.util.Locale
  */
 object CustodyHoldingOnboarding {
     val registrarTypes = listOf("CAMS", "KFINTECH")
-    private val isinPattern = Regex("^[A-Z]{2}[A-Z0-9]{10}$")
+    private val isinPattern = Regex("^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
     private val folioPattern = Regex("^[A-Za-z0-9][A-Za-z0-9/._-]{0,63}$")
     const val MAX_ACCOUNTS_PER_OWNER = 100
     const val MAX_CAS_HOLDINGS_PER_OWNER = 2_000

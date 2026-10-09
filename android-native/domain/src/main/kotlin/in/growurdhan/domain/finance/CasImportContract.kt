@@ -53,7 +53,7 @@ object CasImportContract {
     const val MAX_PARSED_HOLDINGS = 20_000
     private val fileTypes = setOf("CAMS", "KFINTECH", "NSDL", "CDSL", "NPS")
     private val hashPattern = Regex("^[a-f0-9]{64}$")
-    private val isinPattern = Regex("^[A-Z]{2}[A-Z0-9]{10}$")
+    private val isinPattern = Regex("^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
     private val folioPattern = Regex("^[A-Za-z0-9][A-Za-z0-9/._-]{0,63}$")
 
     /** Never translate a parsed PDF into a BUY, nor create an unknown holding. */
