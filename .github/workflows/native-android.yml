@@ -77,6 +77,31 @@ jobs:
             android-native/app/build/outputs/apk/androidTest/debug/*.apk
             android-native/data/build/outputs/apk/androidTest/debug/*.apk
           if-no-files-found: error
+      - name: Smoke-test minified release AAB signing with disposable CI key
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Synthetic CI-only signing material verifies Gradle/R8/bundle wiring.
+          # This test key MUST NOT be used for a Play upload or published.
+          export GUD_UPLOAD_KEYSTORE_PATH="$RUNNER_TEMP/ci-only-release.p12"
+          export GUD_UPLOAD_KEYSTORE_PASSWORD='synthetic-CI-only-2026'
+          export GUD_UPLOAD_KEY_ALIAS='ci-only'
+          export GUD_UPLOAD_KEY_PASSWORD='synthetic-CI-only-2026'
+          umask 077
+          keytool -genkeypair -noprompt \
+            -keystore "$GUD_UPLOAD_KEYSTORE_PATH" \
+            -storepass "$GUD_UPLOAD_KEYSTORE_PASSWORD" \
+            -keypass "$GUD_UPLOAD_KEY_PASSWORD" \
+            -alias "$GUD_UPLOAD_KEY_ALIAS" \
+            -keyalg RSA -keysize 3072 -validity 1 \
+            -dname 'CN=CI TEST ONLY,OU=Never Publish,O=GrowUrDhan'
+          gradle -p android-native :app:bundleRelease --stacktrace
+          bundle='android-native/app/build/outputs/bundle/release/app-release.aab'
+          test -s "$bundle"
+          jarsigner -verify "$bundle" > "$RUNNER_TEMP/release-smoke-verify.log"
+          grep -F 'jar verified.' "$RUNNER_TEMP/release-smoke-verify.log"
+          echo 'PASS: release AAB built, minified and signed with throwaway CI certificate.'
+          rm -f "$GUD_UPLOAD_KEYSTORE_PATH" "$bundle" "$RUNNER_TEMP/release-smoke-verify.log"
       - name: Reclaim disk space for Android emulator
         shell: bash
         run: |
