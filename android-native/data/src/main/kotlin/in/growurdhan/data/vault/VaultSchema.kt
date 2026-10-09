@@ -55,6 +55,20 @@ internal object VaultSchema {
         check(mappingColumns.containsAll(setOf(
             "holding_id", "owner_id", "account_id", "isin", "folio",
         ))) { "Native CAS identity table is missing or incomplete." }
+        // A copied/forged user_version must never bypass immutable ledger or
+        // enrolled-identity authorization triggers.
+        val requiredTriggers = setOf(
+            "deny_ledger_update", "deny_ledger_delete", "validate_rich_ledger_insert",
+            "cas_holding_account_match", "deny_cas_mapping_update", "deny_cas_mapping_delete",
+        )
+        val triggerNames = db.rawQuery(
+            "SELECT name FROM sqlite_master WHERE type='trigger'", null,
+        ).use { cursor ->
+            buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) }
+        }
+        check(triggerNames.containsAll(requiredTriggers)) {
+            "Native vault safety triggers are incomplete."
+        }
         val integrity = db.rawQuery("PRAGMA integrity_check", null).use {
             if (it.moveToFirst()) it.getString(0) else "unavailable"
         }
