@@ -44,6 +44,7 @@ import java.math.BigDecimal
 fun StatementReviewScreen(
     state: StatementReviewUiState,
     onIntent: (StatementReviewIntent) -> Unit,
+    onAddFamilyMember: () -> Unit = {},
 ) {
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
@@ -75,6 +76,30 @@ fun StatementReviewScreen(
                             onClick = { onIntent(StatementReviewIntent.LoadOwners) },
                             modifier = Modifier.fillMaxWidth(),
                         ) { Text("Select CAS PDF") }
+                    }
+                }
+            }
+            StatementReviewUiState.MissingFamilyMember -> {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(
+                        Modifier.padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text(
+                            "Add a family member to continue",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        Text(
+                            "Every CAS must belong to a family member. Your encrypted vault " +
+                                "does not have one yet. Add yourself as its primary owner first.",
+                        )
+                        Button(
+                            onClick = onAddFamilyMember,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("Add family member") }
+                        OutlinedButton(onClick = { onIntent(StatementReviewIntent.Cancel) }) {
+                            Text("Cancel")
+                        }
                     }
                 }
             }

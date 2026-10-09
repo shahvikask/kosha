@@ -28,6 +28,7 @@ import `in`.growurdhan.app.presentation.VaultUiState
 fun VaultScreen(
     state: VaultUiState,
     onIntent: (VaultIntent) -> Unit,
+    onAddFamilyMember: () -> Unit = {},
 ) {
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
@@ -72,6 +73,12 @@ fun VaultScreen(
                         Text("Vault opened", style = MaterialTheme.typography.titleLarge)
                         Text("SQLCipher encryption is enabled.")
                         Text("Members: " + state.health.memberCount)
+                        Button(onClick = onAddFamilyMember) {
+                            Text(
+                                if (state.health.memberCount == 0) "Add first family member"
+                                else "Manage family members",
+                            )
+                        }
                         Text("Holdings: " + state.health.holdingCount)
                         Text("Ledger events: " + state.health.eventCount)
                         Text("Reference checks: " + if (state.health.foreignKeyViolations == 0) "Passed" else "Needs attention")
@@ -89,10 +96,11 @@ fun VaultScreen(
             Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Development security boundaries", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "Android device credential confirmation now gates access to this native UI, " +
-                        "but a GrowUrDhan password/biometric login and repository-wide session policy " +
-                        "are not finished. The statement review screen has no connected PDF parser, " +
-                        "and backup file pickers are not ready. Do not use live financial records yet.",
+                    "Android device confirmation and repository authorization guard native " +
+                        "financial writes, but the GrowUrDhan-specific login, backup file " +
+                        "pickers and full CAS/holding onboarding remain incomplete. " +
+                        "The frozen parser is available only in supported ARM64 release builds. " +
+                        "Do not use this development build for live financial records yet.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }

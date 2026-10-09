@@ -36,6 +36,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import `in`.growurdhan.app.presentation.screens.FamilyMemberScreen
 import `in`.growurdhan.app.presentation.screens.HomeScreen
 import `in`.growurdhan.app.presentation.screens.StatementReviewScreen
 import `in`.growurdhan.app.presentation.screens.PrivacyScreen
@@ -54,6 +55,9 @@ private enum class MainDestination(
     SETTINGS("settings", "Settings", Icons.Outlined.Settings),
 }
 
+/** Secondary route; intentionally not another bottom-navigation tab. */
+private const val FAMILY_ROUTE = "family"
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GrowUrDhanShell(
@@ -63,6 +67,8 @@ fun GrowUrDhanShell(
     onVaultIntent: (VaultIntent) -> Unit = {},
     reviewState: StatementReviewUiState = StatementReviewUiState.Empty,
     onReviewIntent: (StatementReviewIntent) -> Unit = {},
+    familyState: FamilyMemberUiState = FamilyMemberUiState.Locked,
+    onFamilyIntent: (FamilyMemberIntent) -> Unit = {},
 ) {
     val controller = rememberNavController()
     val currentBackStackEntry by controller.currentBackStackEntryAsState()
@@ -141,10 +147,36 @@ fun GrowUrDhanShell(
                         )
                     }
                     composable(MainDestination.VAULT.route) {
-                        VaultScreen(state = vaultState, onIntent = onVaultIntent)
+                        VaultScreen(
+                            state = vaultState,
+                            onIntent = onVaultIntent,
+                            onAddFamilyMember = { navigate(FAMILY_ROUTE) },
+                        )
                     }
                     composable(MainDestination.REVIEW.route) {
-                        StatementReviewScreen(state = reviewState, onIntent = onReviewIntent)
+                        StatementReviewScreen(
+                            state = reviewState,
+                            onIntent = onReviewIntent,
+                            onAddFamilyMember = { navigate(FAMILY_ROUTE) },
+                        )
+                    }
+                    composable(FAMILY_ROUTE) {
+                        androidx.compose.runtime.LaunchedEffect(Unit) {
+                            onFamilyIntent(FamilyMemberIntent.Refresh)
+                        }
+                        FamilyMemberScreen(
+                            state = familyState,
+                            onIntent = onFamilyIntent,
+                            onReturnToVault = {
+                                onFamilyIntent(FamilyMemberIntent.Cancel)
+                                navigate(MainDestination.VAULT.route)
+                            },
+                            onContinueToStatements = {
+                                onFamilyIntent(FamilyMemberIntent.Cancel)
+                                onReviewIntent(StatementReviewIntent.LoadOwners)
+                                navigate(MainDestination.REVIEW.route)
+                            },
+                        )
                     }
                     composable(MainDestination.PRIVACY.route) {
                         PrivacyScreen()
