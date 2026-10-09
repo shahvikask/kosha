@@ -21,6 +21,8 @@ sealed interface StatementReviewUiState {
     data class SelectOwner(val members: List<FamilyMember>) : StatementReviewUiState
     /** Vault is open, but no family owner exists to assign to a CAS statement. */
     data object MissingFamilyMember : StatementReviewUiState
+    /** All family owners need enrolled CAS identity mappings before PDF review. */
+    data object MissingCasMapping : StatementReviewUiState
     data object Working : StatementReviewUiState
     data class Reviewing(val receipt: ReviewedStatement, val warning: String? = null) : StatementReviewUiState
     data class Completed(val result: SnapshotResult) : StatementReviewUiState
@@ -107,11 +109,16 @@ class StatementReviewViewModel @Inject constructor(
         mutableState.value = StatementReviewUiState.Working
         operation = viewModelScope.launch {
             try {
-                val members = vault.members()
+                val book = vault.readBook()
                 if (current == generation && session.isUnlocked()) {
-                    mutableState.value = if (members.isEmpty()) {
-                        StatementReviewUiState.MissingFamilyMember
-                    } else StatementReviewUiState.SelectOwner(members)
+                    val enrolledOwners = book.casIdentities.map { it.ownerId }.toSet()
+                    mutableState.value = when {
+                        book.members.isEmpty() -> StatementReviewUiState.MissingFamilyMember
+                        enrolledOwners.isEmpty() -> StatementReviewUiState.MissingCasMapping
+                        else -> StatementReviewUiState.SelectOwner(
+                            book.members.filter { it.id in enrolledOwners },
+                        )
+                    }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
