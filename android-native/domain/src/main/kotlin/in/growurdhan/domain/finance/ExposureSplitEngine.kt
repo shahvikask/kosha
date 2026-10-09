@@ -64,7 +64,7 @@ object ExposureSplitEngine {
             val amount = (
                 BigInteger.valueOf(value.raw) * BigInteger.valueOf(slice.basisPoints.toLong()) /
                     BigInteger.valueOf(10_000L)
-                ).longValueExact()
+                ).toCheckedLong()
             allocations[slice.exposure] = amount
             assigned = Math.addExact(assigned, amount)
         }

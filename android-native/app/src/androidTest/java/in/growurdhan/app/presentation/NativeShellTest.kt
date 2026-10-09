@@ -131,6 +131,7 @@ class NativeShellTest {
             .assertIsOff()
             .performClick()
             .assertIsOn()
+        compose.waitForIdle()
         compose.onNodeWithText("Confirm and authenticate approval")
             .performScrollTo()
             .assertIsEnabled()

@@ -94,7 +94,7 @@ object SavingsInterestEngine {
         return MoneyScaled((
             BigInteger.valueOf(principal.raw) * BigInteger.valueOf(rateBps.toLong()) *
                 BigInteger.valueOf(months.toLong()) / BigInteger.valueOf(120_000L)
-            ).longValueExact())
+            ).toCheckedLong())
     }
 
     /** TS periodInterest; a payout is not compounded into the investment. */
@@ -104,7 +104,7 @@ object SavingsInterestEngine {
         return MoneyScaled((
             BigInteger.valueOf(principal.raw) * BigInteger.valueOf(rateBps.toLong()) /
                 BigInteger.valueOf(10_000L * payoutsPerYear)
-            ).longValueExact())
+            ).toCheckedLong())
     }
 
     /** TS steppedDates: iterative month clamping with an optional maturity cap. */
@@ -137,7 +137,7 @@ object SavingsInterestEngine {
         require(factor.isFinite() && factor > 0.0)
         val after = BigDecimal.valueOf(principal.raw).multiply(BigDecimal.valueOf(factor))
             .setScale(0, RoundingMode.HALF_UP)
-            .longValueExact()
+            .toBigIntegerExact().toCheckedLong()
         return MoneyScaled(maxOf(0L, Math.subtractExact(after, principal.raw)))
     }
 

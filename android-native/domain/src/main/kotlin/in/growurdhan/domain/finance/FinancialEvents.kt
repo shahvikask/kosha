@@ -11,7 +11,11 @@ internal const val QUANTITY_SCALE = 100_000_000L
 internal val QUANTITY_SCALE_BIG: BigInteger = BigInteger.valueOf(QUANTITY_SCALE)
 
 internal fun Long.big(): BigInteger = BigInteger.valueOf(this)
-internal fun BigInteger.toCheckedLong(): Long = longValueExact()
+/** Android API 26-compatible exact conversion: longValueExact() is not available on old ART. */
+fun BigInteger.toCheckedLong(): Long {
+    if (bitLength() > 63) throw ArithmeticException("Scaled financial value exceeds signed 64-bit range.")
+    return toLong()
+}
 internal fun timesQuantity(units: Long, unitPrice: Long): Long =
     (units.big() * unitPrice.big() / QUANTITY_SCALE_BIG).toCheckedLong()
 

@@ -15,6 +15,7 @@ import `in`.growurdhan.domain.finance.StatementLine
 import `in`.growurdhan.domain.finance.SnapshotReconciler
 import `in`.growurdhan.domain.finance.toFinancialEvent
 import `in`.growurdhan.domain.finance.toFinancialHolding
+import `in`.growurdhan.domain.finance.toCheckedLong
 import java.math.BigInteger
 import java.nio.ByteBuffer
 import java.security.MessageDigest
@@ -343,7 +344,7 @@ class SqlCipherVaultRepository(
             val scaledValue = (
                 BigInteger.valueOf(line.quantityScaled) *
                     BigInteger.valueOf(line.unitPrice.raw) / BigInteger.valueOf(100_000_000L)
-                ).longValueExact()
+                ).toCheckedLong()
             db.execSQL(
                 """INSERT INTO statement_position
                    (snapshot_id,owner_id,holding_id,quantity_scaled,value_scaled)
