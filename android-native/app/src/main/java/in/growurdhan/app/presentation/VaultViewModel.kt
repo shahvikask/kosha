@@ -71,7 +71,11 @@ class VaultViewModel @Inject constructor(
                     VaultIntent.Close -> {
                         session.lock()
                         repository.close()
-                        mutableState.value = VaultUiState.Closed
+                        // The document chooser can revoke a session on a new
+                        // device before any vault exists. Closing it must not
+                        // fabricate a "closed but initialized" status.
+                        mutableState.value = if (repository.status().initialized)
+                            VaultUiState.Closed else VaultUiState.NotCreated
                     }
                 }
             } catch (cancelled: CancellationException) {
