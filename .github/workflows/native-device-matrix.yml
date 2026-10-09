@@ -90,7 +90,6 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: gradle -p android-native :data:connectedDebugAndroidTest :app:connectedDebugAndroidTest --stacktrace
       - name: Upload API-specific JUnit XML
-        continue-on-error: true
         if: always()
         continue-on-error: true
         uses: actions/upload-artifact@v4
