@@ -5,6 +5,16 @@ plugins {
     alias(libs.plugins.kotlin.kapt)
     alias(libs.plugins.hilt)
 }
+// Production signing material is always provided at build time by the owner.
+// Never commit a keystore/password or silently ship a debug-signed release.
+val releaseSigningEnv = listOf(
+    "GUD_UPLOAD_KEYSTORE_PATH",
+    "GUD_UPLOAD_KEYSTORE_PASSWORD",
+    "GUD_UPLOAD_KEY_ALIAS",
+    "GUD_UPLOAD_KEY_PASSWORD",
+)
+val releaseSigningConfigured = releaseSigningEnv.all { !System.getenv(it).isNullOrBlank() }
+
 android {
     namespace = "in.growurdhan.app"
     compileSdk = 36
@@ -17,10 +27,25 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true }
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            create("playUpload") {
+                storeFile = file(System.getenv("GUD_UPLOAD_KEYSTORE_PATH"))
+                storePassword = System.getenv("GUD_UPLOAD_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("GUD_UPLOAD_KEY_ALIAS")
+                keyPassword = System.getenv("GUD_UPLOAD_KEY_PASSWORD")
+                enableV1Signing = false
+                enableV2Signing = true
+            }
+        }
+    }
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            if (releaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("playUpload")
+            }
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
         debug { isMinifyEnabled = false }
@@ -61,4 +86,25 @@ dependencies {
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
+}
+
+tasks.matching { it.name == "bundleRelease" || it.name == "assembleRelease" }
+    .configureEach {
+        doFirst {
+            check(releaseSigningConfigured) {
+                "Release signing credentials are missing; refuse an unsigned/distribution build."
+            }
+        }
+    }
+
+// This evaluation runs before any release output is produced by an invoked task.
+gradle.taskGraph.whenReady {
+    if (allTasks.any { it.path == ":app:bundleRelease" || it.path == ":app:assembleRelease" }) {
+        check(releaseSigningConfigured) {
+            "All four GUD_UPLOAD_* signing environment variables are required for release."
+        }
+        check(file(System.getenv("GUD_UPLOAD_KEYSTORE_PATH")).isFile) {
+            "Upload keystore is missing; no release may be produced."
+        }
+    }
 }
