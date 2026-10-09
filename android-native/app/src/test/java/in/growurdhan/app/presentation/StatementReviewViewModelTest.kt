@@ -1,5 +1,9 @@
 package `in`.growurdhan.app.presentation
 
+import `in`.growurdhan.core.model.CasHoldingIdentity
+import `in`.growurdhan.core.model.FamilyMember
+import `in`.growurdhan.core.model.CustodyAccount
+import `in`.growurdhan.core.model.VaultBook
 import `in`.growurdhan.core.model.HoldingId
 import `in`.growurdhan.core.model.MoneyScaled
 import `in`.growurdhan.core.model.OwnerId
@@ -95,4 +99,47 @@ class StatementReviewViewModelTest {
         assertEquals(StatementReviewUiState.Empty, vm.state.value)
         coVerify(exactly = 0) { repo.commitReviewedStatement(any()) }
     }
+    @Test fun noFamilyOwnerPromptsFamilyEnrollmentWithoutImport() = runTest {
+        val repo = mockk<VaultRepository>()
+        val gate = VaultSessionGate().also { it.grantDeviceCredential() }
+        coEvery { repo.readBook() } returns VaultBook(emptyList(), emptyList(), emptyList())
+        val vm = StatementReviewViewModel(repo, gate)
+        vm.onIntent(StatementReviewIntent.LoadOwners)
+        advanceUntilIdle()
+        assertEquals(StatementReviewUiState.MissingFamilyMember, vm.state.value)
+        coVerify(exactly = 0) { repo.prepareStatementReview(any(), any(), any(), any()) }
+    }
+
+    @Test fun familyWithoutEnrolledHoldingIsSentToCustodySetup() = runTest {
+        val repo = mockk<VaultRepository>()
+        val gate = VaultSessionGate().also { it.grantDeviceCredential() }
+        coEvery { repo.readBook() } returns VaultBook(
+            listOf(FamilyMember(owner, "Synthetic", "Self", true)), emptyList(), emptyList(),
+        )
+        val vm = StatementReviewViewModel(repo, gate)
+        vm.onIntent(StatementReviewIntent.LoadOwners)
+        advanceUntilIdle()
+        assertEquals(StatementReviewUiState.MissingCasMapping, vm.state.value)
+        coVerify(exactly = 0) { repo.prepareStatementReview(any(), any(), any(), any()) }
+    }
+
+    @Test fun onlyOwnersWithEnrolledCasIdentityCanChooseAPdf() = runTest {
+        val repo = mockk<VaultRepository>()
+        val gate = VaultSessionGate().also { it.grantDeviceCredential() }
+        val spouse = OwnerId("spouse")
+        val primary = FamilyMember(owner, "Synthetic Primary", "Self", true)
+        val other = FamilyMember(spouse, "Synthetic Spouse", "Spouse", false)
+        val account = CustodyAccount("a", owner, "CAMS", "Synthetic")
+        val mapped = CasHoldingIdentity(
+            holdingId, owner, account.id, "INF000000001", "123", "CAMS",
+        )
+        coEvery { repo.readBook() } returns VaultBook(
+            listOf(primary, other), emptyList(), emptyList(), listOf(account), listOf(mapped),
+        )
+        val vm = StatementReviewViewModel(repo, gate)
+        vm.onIntent(StatementReviewIntent.LoadOwners)
+        advanceUntilIdle()
+        assertEquals(StatementReviewUiState.SelectOwner(listOf(primary)), vm.state.value)
+    }
+
 }
