@@ -91,13 +91,33 @@ def main() -> int:
            and "gradle.taskGraph.whenReady" in read("android-native/app/build.gradle.kts"),
            "Release signing fail-closed gate is missing.")
 
+    signed_workflow = read(".github/workflows/native-signed-aab.yml")
+    ensure("approved_commit_sha:" in signed_workflow
+           and "APPROVED_COMMIT_SHA" in signed_workflow
+           and "signed_cert=$(keytool -printcert -jarfile" in signed_workflow
+           and "Development versionName must be replaced" in signed_workflow,
+           "Owner-approved SHA, final signer pin, or release version gate is missing.")
+
+    recovery = read(
+        "android-native/app/src/main/java/in/growurdhan/app/presentation/PortableRecoveryViewModel.kt")
+    ensure("MAX_CIPHERTEXT_BYTES" in recovery and "34 * 1024 * 1024" in recovery
+           and "vault.restoreEncryptedBackup(password, encrypted)" in recovery
+           and "session.canCommitFinancialChanges()" in recovery
+           and "inFlightPassword?.fill" in recovery,
+           "Encrypted recovery size, authentication or password wiping gate is missing.")
+    ensure("ActivityResultContracts.CreateDocument" in activity
+           and "backupPickerOpen" in activity
+           and "CredentialAction.PORTABLE_BACKUP" in activity,
+           "Backup must use SAF with a new Android credential challenge.")
+
     if errors:
         for err in errors:
             print("FAIL (native security policy): " + err, file=sys.stderr)
         return 1
     print("PASS: native manifest privacy, screenshot prevention, device credential,")
     print("       20 repository authorization entry points, signed-release gate,")
-    print("       foreign key/append-only protection and backup exclusions.")
+    print("       foreign key/append-only protection, encrypted recovery bounds,")
+    print("       owner-pinned AAB signing and backup exclusions.")
     print("NOTE: Static policy checks are not an independent mobile penetration test.")
     return 0
 
