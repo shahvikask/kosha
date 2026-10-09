@@ -1,6 +1,7 @@
 package `in`.growurdhan.domain.finance
 
 import `in`.growurdhan.core.model.HoldingId
+import `in`.growurdhan.core.model.CasHoldingIdentity
 import `in`.growurdhan.core.model.MoneyScaled
 import `in`.growurdhan.core.model.OwnerId
 import java.math.BigDecimal
@@ -13,9 +14,10 @@ import java.util.Locale
  * cas_android.parse_b64 entry. It never accepts identities, costs or statement
  * fingerprints typed by the user as alternatives to parsed PDF evidence.
  *
- * NOTE: The v2 holding model has no ISIN or folio identity. Therefore only a
- * UNIQUE exact name+category match to an existing holding may be reviewed.
- * Ambiguous/new holdings require an explicit future mapping/enrolment flow.
+ * Production imports MUST supply enrolled CAS identities. The optional legacy
+ * fallback is only for old pure financial parity callers and must never be
+ * used from the phone's PDF reader. No fuzzy name-only mapping is allowed
+ * when the encrypted account/ISIN/folio registry is supplied.
  */
 data class CasParsedHolding(
     val name: String,
@@ -51,6 +53,8 @@ object CasImportContract {
     const val MAX_PARSED_HOLDINGS = 20_000
     private val fileTypes = setOf("CAMS", "KFINTECH", "NSDL", "CDSL", "NPS")
     private val hashPattern = Regex("^[a-f0-9]{64}$")
+    private val isinPattern = Regex("^[A-Z]{2}[A-Z0-9]{10}$")
+    private val folioPattern = Regex("^[A-Za-z0-9][A-Za-z0-9/._-]{0,63}$")
 
     /** Never translate a parsed PDF into a BUY, nor create an unknown holding. */
     fun validate(
@@ -58,6 +62,8 @@ object CasImportContract {
         owner: OwnerId,
         holdings: List<FinancialHolding>,
         today: LocalDate,
+        /** Non-null means fail closed and require exact owner/ISIN/folio/registrar binding. */
+        enrolledIdentities: List<CasHoldingIdentity>? = null,
     ): CasValidatedPreview {
         if (report.engine != "PYTHON_CASPARSER" || report.fileType !in fileTypes ||
             !report.complete || report.warnings.isNotEmpty()
@@ -74,18 +80,48 @@ object CasImportContract {
 
         val existing = holdings.filter { it.ownerId == owner }
             .groupBy { identity(it.name, it.category) }
+        val holdingsById = holdings.associateBy { it.holdingId }
         val lines = mutableListOf<StatementLine>()
         for (entry in report.holdings) {
             if (entry.name.isBlank() || entry.name.length > 300 ||
                 entry.category.isBlank() || entry.category.length > 50
             ) throw CasValidationException("Parser returned invalid holding identity.")
-            val matched = existing[identity(entry.name, entry.category)].orEmpty()
+            val matched = if (enrolledIdentities == null) {
+                // Legacy non-PDF financial golden tests only. Never select this
+                // fallback in the Android PDF-import boundary.
+                existing[identity(entry.name, entry.category)].orEmpty()
+            } else {
+                if (report.fileType !in setOf("CAMS", "KFINTECH")) {
+                    throw CasValidationException("An enrolled CAS registrar is required.")
+                }
+                val isin = entry.isin?.trim()?.uppercase(Locale.ROOT)
+                val folio = entry.folio?.trim()
+                if (isin == null || !isinPattern.matches(isin) ||
+                    folio == null || !folioPattern.matches(folio)
+                ) throw CasValidationException("Parsed CAS row has no trustworthy ISIN/folio.")
+                enrolledIdentities.filter { mapping ->
+                    mapping.ownerId == owner &&
+                        mapping.accountType == report.fileType &&
+                        mapping.isin == isin &&
+                        mapping.folio == folio
+                }.mapNotNull { mapping ->
+                    holdingsById[mapping.holdingId]?.takeIf {
+                        it.ownerId == owner && it.category == "MUTUAL_FUND"
+                    }
+                }
+            }
             if (matched.size != 1) {
-                // Name matching is deliberately conservative until the vault stores
-                // ISIN, account and folio. Never select a holding arbitrarily.
                 throw CasValidationException(
-                    "Statement has new or ambiguous holdings; manual account/ISIN mapping is required."
+                    "CAS holding is not uniquely enrolled for this owner, registrar, ISIN and folio."
                 )
+            }
+            if (enrolledIdentities != null &&
+                identity(matched.single().name, matched.single().category) !=
+                identity(entry.name, entry.category)
+            ) {
+                // Name mismatch can indicate a changed fund scheme or malicious
+                // account crossover. Explicit re-enrolment required, not guessing.
+                throw CasValidationException("CAS fund identity differs from the enrolled holding.")
             }
             val units = parseDecimal(entry.quantityDecimal, 8, "quantity")
             val price = parseDecimal(entry.unitPriceDecimal, 4, "unit price")
