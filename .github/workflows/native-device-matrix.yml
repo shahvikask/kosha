@@ -1,0 +1,100 @@
+name: GrowUrDhan Native API Device Matrix
+
+on:
+  push:
+    branches: [GUD-Android-ChatGPT]
+    paths:
+      - 'android-native/**'
+      - '.github/workflows/native-device-matrix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-api-matrix-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  emulator:
+    name: Android API ${{ matrix.api }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [26, 30, 36]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Install compile SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}" >> "$GITHUB_ENV"
+          sdkmanager --install 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Prevent insufficient disk and ensure hardware emulator access
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo rm -rf /usr/share/dotnet /usr/local/share/powershell /opt/hostedtoolcache/CodeQL
+          available_kib=$(df -Pk "$HOME" | awk 'NR==2 {print $4}')
+          test "$available_kib" -gt "$((11 * 1024 * 1024))"
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | \
+            sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Validate Android system image with bounded retries
+        shell: bash
+        env:
+          TARGET_API: ${{ matrix.api }}
+        run: |
+          set -euo pipefail
+          tool=$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort -V | tail -1)
+          image_dir="$ANDROID_HOME/system-images/android-$TARGET_API/google_apis/x86_64"
+          for try in 1 2 3; do
+            if [[ -s "$image_dir/system.img" && -s "$image_dir/source.properties" ]]; then
+              echo "Verified Android API $TARGET_API Google APIs system image."
+              break
+            fi
+            if "$tool" --install "system-images;android-$TARGET_API;google_apis;x86_64" --channel=0 && \
+                [[ -s "$image_dir/system.img" && -s "$image_dir/source.properties" ]]; then
+              echo "Downloaded and verified Android API $TARGET_API image."
+              break
+            fi
+            if (( try == 3 )); then
+              echo "::error::No verified emulator system image for API $TARGET_API."
+              exit 1
+            fi
+            rm -rf "$ANDROID_HOME/.temp" "$HOME/.android/cache"
+            [[ -s "$image_dir/system.img" ]] || rm -rf "$image_dir"
+            sleep "$((try * 10))"
+          done
+      - name: Execute vault and Compose regression suite at API ${{ matrix.api }}
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          ram-size: 2048M
+          disk-size: 2048M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: gradle -p android-native :data:connectedDebugAndroidTest :app:connectedDebugAndroidTest --stacktrace
+      - name: Upload API-specific JUnit XML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GrowUrDhan-Native-API-${{ matrix.api }}-Reports
+          path: |
+            android-native/app/build/outputs/androidTest-results/connected/**
+            android-native/data/build/outputs/androidTest-results/connected/**
+            android-native/app/build/reports/androidTests/connected/**
+            android-native/data/build/reports/androidTests/connected/**
+          if-no-files-found: ignore
