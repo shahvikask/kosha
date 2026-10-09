@@ -51,6 +51,7 @@ class MainActivity : ComponentActivity() {
     private var pendingCredential: CredentialAction? = null
     private var pdfPickerOpen: Boolean = false
     private var pickedPdfOwner: OwnerId? = null
+    private var pickedPdfPassword: CharArray? = null
     private var pickedPdfUri: Uri? = null
     private val timeoutHandler = Handler(Looper.getMainLooper())
     private val timeoutCheck = object : Runnable {
@@ -104,8 +105,10 @@ class MainActivity : ComponentActivity() {
     private fun parseSelectedPdfAfterCredential() {
         val uri = pickedPdfUri
         val owner = pickedPdfOwner
+        val password = pickedPdfPassword
         pickedPdfUri = null
         pickedPdfOwner = null
+        pickedPdfPassword = null
         if (uri == null || owner == null || !sessionGate.isUnlocked()) {
             lockSensitiveUi()
             return
@@ -121,6 +124,7 @@ class MainActivity : ComponentActivity() {
                 }
                 val verified = casReader.parseAndValidate(
                     uri, owner, book.holdings.map { it.toFinancialHolding() },
+                    password?.concatToString() ?: "",
                 )
                 check(sessionGate.isUnlocked()) { "Vault session expired during PDF parsing." }
                 reviewViewModel.prepareFromValidatedParser(
@@ -133,6 +137,8 @@ class MainActivity : ComponentActivity() {
                 // Source content, Python errors, file path, PAN and password
                 // never cross into UI error messages or diagnostic logs.
                 reviewViewModel.reportParserFailure()
+            } finally {
+                password?.fill('\u0000')
             }
         }
     }
@@ -176,6 +182,7 @@ class MainActivity : ComponentActivity() {
                     lockSensitiveUi()
                 } else {
                     pickedPdfOwner = intent.ownerId
+                    pickedPdfPassword = intent.pdfPassword.toCharArray()
                     pdfPickerOpen = true
                     try {
                         pdfPicker.launch(arrayOf("application/pdf"))
@@ -231,6 +238,8 @@ class MainActivity : ComponentActivity() {
         sessionGate.lock()
         reviewViewModel.clearSensitiveState()
         pickedPdfOwner = null
+        pickedPdfPassword?.fill('\u0000')
+        pickedPdfPassword = null
         pickedPdfUri = null
         pdfPickerOpen = false
         vaultViewModel.onIntent(VaultIntent.Close)

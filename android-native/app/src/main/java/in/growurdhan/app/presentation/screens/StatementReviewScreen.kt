@@ -14,6 +14,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -26,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import `in`.growurdhan.app.presentation.StatementReviewIntent
 import `in`.growurdhan.app.presentation.StatementReviewUiState
@@ -85,6 +87,16 @@ fun StatementReviewScreen(
                         "Ambiguous ISIN/folio mappings will be blocked.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                var pdfPassword by remember { mutableStateOf("") }
+                OutlinedTextField(
+                    value = pdfPassword,
+                    onValueChange = { if (it.length <= 128) pdfPassword = it },
+                    label = { Text("PDF password (only if required)") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text("The PDF password is used only by the on-device parser. It is not saved.")
                 state.members.forEach { member ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -101,7 +113,8 @@ fun StatementReviewScreen(
                     enabled = selected != null,
                     modifier = Modifier.fillMaxWidth(),
                     onClick = {
-                        selected?.let { onIntent(StatementReviewIntent.PickPdf(it)) }
+                        selected?.let { onIntent(StatementReviewIntent.PickPdf(it, pdfPassword)) }
+                        pdfPassword = ""
                     },
                 ) { Text("Choose PDF from device") }
                 OutlinedButton(

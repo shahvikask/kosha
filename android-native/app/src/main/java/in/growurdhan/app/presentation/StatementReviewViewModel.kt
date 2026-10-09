@@ -28,7 +28,7 @@ sealed interface StatementReviewUiState {
 sealed interface StatementReviewIntent {
     /** Needs new device credential. Activity intercepts; never approve directly. */
     data object LoadOwners : StatementReviewIntent
-    data class PickPdf(val ownerId: OwnerId) : StatementReviewIntent
+    data class PickPdf(val ownerId: OwnerId, val pdfPassword: String) : StatementReviewIntent
     data object RequestApproval : StatementReviewIntent
     /** Only Activity's successful system credential callback can request this. */
     data object CommitAfterCredential : StatementReviewIntent

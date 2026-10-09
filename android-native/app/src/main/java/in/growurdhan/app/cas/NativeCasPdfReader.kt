@@ -138,13 +138,14 @@ class NativeCasPdfReader @Inject constructor(
         uri: Uri,
         owner: OwnerId,
         holdings: List<FinancialHolding>,
+        pdfPassword: String = "",
     ): CasValidatedPreview = withContext(Dispatchers.IO) {
         val pdf = context.contentResolver.openInputStream(uri)?.use(CasPdfBytes::read)
             ?: throw CasValidationException("Unable to open the selected PDF.")
         try {
             val sha = MessageDigest.getInstance("SHA-256").digest(pdf)
                 .joinToString("") { "%02x".format(it.toInt() and 255) }
-            val result = parser.parsePdfBase64(Base64.getEncoder().encodeToString(pdf), "")
+            val result = parser.parsePdfBase64(Base64.getEncoder().encodeToString(pdf), pdfPassword)
             if (result.length > 4 * 1024 * 1024)
                 throw CasValidationException("CAS parser returned excessive output.")
             val json = try { JSONObject(result) } catch (_: Exception) {
