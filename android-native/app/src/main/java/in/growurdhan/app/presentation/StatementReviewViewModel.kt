@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import `in`.growurdhan.core.model.OwnerId
+import `in`.growurdhan.core.model.FamilyMember
 import `in`.growurdhan.core.model.SnapshotResult
 import `in`.growurdhan.domain.finance.ReviewedStatement
 import `in`.growurdhan.domain.finance.StatementLine
@@ -17,6 +18,7 @@ import kotlinx.coroutines.launch
 
 sealed interface StatementReviewUiState {
     data object Empty : StatementReviewUiState
+    data class SelectOwner(val members: List<FamilyMember>) : StatementReviewUiState
     data object Working : StatementReviewUiState
     data class Reviewing(val receipt: ReviewedStatement, val warning: String? = null) : StatementReviewUiState
     data class Completed(val result: SnapshotResult) : StatementReviewUiState
@@ -25,6 +27,8 @@ sealed interface StatementReviewUiState {
 
 sealed interface StatementReviewIntent {
     /** Needs new device credential. Activity intercepts; never approve directly. */
+    data object LoadOwners : StatementReviewIntent
+    data class PickPdf(val ownerId: OwnerId) : StatementReviewIntent
     data object RequestApproval : StatementReviewIntent
     /** Only Activity's successful system credential callback can request this. */
     data object CommitAfterCredential : StatementReviewIntent
@@ -82,9 +86,49 @@ class StatementReviewViewModel @Inject constructor(
     fun onIntent(intent: StatementReviewIntent) {
         when (intent) {
             StatementReviewIntent.Cancel -> clearSensitiveState()
+            StatementReviewIntent.LoadOwners -> loadOwners()
+            is StatementReviewIntent.PickPdf -> Unit // Activity owns the Android document chooser.
             StatementReviewIntent.RequestApproval -> Unit // Activity must obtain fresh device credential.
             StatementReviewIntent.CommitAfterCredential -> commitAfterCredential()
         }
+    }
+
+    private fun loadOwners() {
+        if (!session.isUnlocked()) {
+            mutableState.value = StatementReviewUiState.Error(
+                "Unlock the encrypted vault before selecting a PDF."
+            )
+            return
+        }
+        operation?.cancel()
+        val current = ++generation
+        mutableState.value = StatementReviewUiState.Working
+        operation = viewModelScope.launch {
+            try {
+                val members = vault.members()
+                if (current == generation && session.isUnlocked()) {
+                    mutableState.value = if (members.isEmpty()) StatementReviewUiState.Error(
+                        "Add a family member to the vault before reviewing a statement."
+                    ) else StatementReviewUiState.SelectOwner(members)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (current == generation) mutableState.value = StatementReviewUiState.Error(
+                    "Unable to open the family list. Unlock the vault and try again."
+                )
+            }
+        }
+    }
+
+    fun reportParserFailure() {
+        ++generation
+        operation?.cancel()
+        operation = null
+        mutableState.value = StatementReviewUiState.Error(
+            "This PDF could not be verified on-device. Nothing was imported. " +
+                "Try an unencrypted CAS PDF on a supported ARM64 build, or review account mapping."
+        )
     }
 
     private fun commitAfterCredential() {
