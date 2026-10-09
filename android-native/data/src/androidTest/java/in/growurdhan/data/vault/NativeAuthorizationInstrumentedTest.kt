@@ -58,6 +58,9 @@ class NativeAuthorizationInstrumentedTest {
                 runBlocking { repository.createMember(FamilyMember(owner, "Synthetic", "Self", true)) }
             }
             assertThrows(SecurityException::class.java) {
+                runBlocking { repository.registerFamilyMember("Synthetic", "Self") }
+            }
+            assertThrows(SecurityException::class.java) {
                 runBlocking { repository.createAccount(CustodyAccount("acct", owner, "demat", "masked")) }
             }
             assertThrows(SecurityException::class.java) {
@@ -95,7 +98,7 @@ class NativeAuthorizationInstrumentedTest {
                     repository.restoreEncryptedBackup("test".toCharArray(), byteArrayOf(0x01))
                 }
             }
-            assertEquals(8, gate.checkedWrite)
+            assertEquals(9, gate.checkedWrite)
         } finally {
             repository.close()
         }
