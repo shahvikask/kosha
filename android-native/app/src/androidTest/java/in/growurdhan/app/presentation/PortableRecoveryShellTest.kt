@@ -63,7 +63,7 @@ class PortableRecoveryShellTest {
         compose.onNodeWithContentDescription("Vault").performClick()
         compose.onNodeWithText("Recover from encrypted backup").performClick()
         compose.onNodeWithText("Confirm device lock and restore").assertIsNotEnabled()
-        compose.onNodeWithText("Backup password").performTextInput("synthetic12characters")
+        compose.onNodeWithContentDescription("Backup passphrase entry").performTextInput("synthetic12characters")
         compose.onNodeWithText("Confirm device lock and restore").assertIsEnabled().performClick()
         compose.runOnIdle {
             assertEquals(
