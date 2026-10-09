@@ -7,6 +7,10 @@ on:
         description: 'Type BUILD_SIGNED_AAB (not a Play publication)'
         required: true
         type: string
+      approved_commit_sha:
+        description: 'Full 40-character SHA of the owner-approved non-dev release candidate'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -29,6 +33,21 @@ jobs:
       GUD_UPLOAD_CERT_SHA256: ${{ vars.GUD_UPLOAD_CERT_SHA256 }}
     steps:
       - uses: actions/checkout@v4
+      - name: Verify owner-approved commit and non-development version
+        env:
+          APPROVED_COMMIT_SHA: ${{ inputs.approved_commit_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual=$(git rev-parse HEAD)
+          if [[ ! "$APPROVED_COMMIT_SHA" =~ ^[a-f0-9]{40}$ || "$actual" != "$APPROVED_COMMIT_SHA" ]]; then
+            echo "::error::This workflow may only sign the exact owner-approved commit."
+            exit 1
+          fi
+          if grep -Eq 'versionName[[:space:]]*=[[:space:]]*"[^"]*-dev[^"]*"' android-native/app/build.gradle.kts; then
+            echo "::error::Development versionName must be replaced by an approved release version."
+            exit 1
+          fi
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -79,6 +98,15 @@ jobs:
           test -s "$aab"
           jarsigner -verify "$aab" > "$RUNNER_TEMP/aab-verify.txt"
           grep -F "jar verified." "$RUNNER_TEMP/aab-verify.txt"
+          signed_cert=$(keytool -printcert -jarfile "$aab" |
+            awk -F 'SHA256: ' '/SHA256: / {print $2; exit}' |
+            tr -d ':[:space:]' | tr 'a-f' 'A-F')
+          expected_cert=$(printf '%s' "$GUD_UPLOAD_CERT_SHA256" |
+            tr -d ':[:space:]' | tr 'a-f' 'A-F')
+          if [[ -z "$signed_cert" || "$signed_cert" != "$expected_cert" ]]; then
+            echo "::error::AAB signer does not match the approved upload certificate."
+            exit 1
+          fi
           sha256sum "$aab" > "$RUNNER_TEMP/app-release.aab.sha256"
           # No key material is included in any artifact.
       - name: Publish protected signed AAB artifact
