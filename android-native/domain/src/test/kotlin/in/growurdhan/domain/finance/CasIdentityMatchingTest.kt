@@ -81,6 +81,20 @@ class CasIdentityMatchingTest {
         }
     }
 
+    @Test fun frozenCamsAssetCategoryEquityIsNotMistakenForFundIdentity() {
+        // CASPARSER emits category=EQUITY for equity schemes, while the enrolled
+        // holding correctly uses assetCategory=MUTUAL_FUND.
+        val parsed = row().copy(category = "EQUITY")
+        assertEquals(holding.holdingId,
+            resolve(report(rows = listOf(parsed))).lines.single().holdingId)
+    }
+
+    @Test fun frozenCamsDebtCategoryIsAcceptedUnderMappedMutualFund() {
+        val parsed = row().copy(category = "FIXED_INCOME")
+        assertEquals(holding.holdingId,
+            resolve(report(rows = listOf(parsed))).lines.single().holdingId)
+    }
+
     @Test fun changedSchemeNameRequiresManualReEnrollment() {
         assertThrows(CasValidationException::class.java) {
             resolve(report(rows = listOf(row(name = "Different scheme"))))

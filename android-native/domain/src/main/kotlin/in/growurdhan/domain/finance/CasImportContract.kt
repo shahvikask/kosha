@@ -116,12 +116,14 @@ object CasImportContract {
                 )
             }
             if (enrolledIdentities != null &&
-                identity(matched.single().name, matched.single().category) !=
-                identity(entry.name, entry.category)
+                canonicalName(matched.single().name) != canonicalName(entry.name)
             ) {
-                // Name mismatch can indicate a changed fund scheme or malicious
-                // account crossover. Explicit re-enrolment required, not guessing.
-                throw CasValidationException("CAS fund identity differs from the enrolled holding.")
+                // The frozen CAMS/KFINTECH parser classifies a mutual-fund scheme
+                // by look-through asset category (e.g. EQUITY or FIXED_INCOME).
+                // Enrolled financial records always store MUTUAL_FUND, so those
+                // category labels MUST NOT be compared as scheme identity.
+                // An actual scheme-name change still requires explicit review.
+                throw CasValidationException("CAS fund name differs from the enrolled holding.")
             }
             val units = parseDecimal(entry.quantityDecimal, 8, "quantity")
             val price = parseDecimal(entry.unitPriceDecimal, 4, "unit price")
@@ -164,7 +166,9 @@ object CasImportContract {
         }
     }
 
+    private fun canonicalName(name: String): String =
+        name.trim().replace(Regex("\\s+"), " ").lowercase(Locale.ROOT)
+
     private fun identity(name: String, category: String): String =
-        name.trim().replace(Regex("\\s+"), " ")
-            .lowercase(Locale.ROOT) + "\u0000" + category.trim().uppercase(Locale.ROOT)
+        canonicalName(name) + "\u0000" + category.trim().uppercase(Locale.ROOT)
 }
