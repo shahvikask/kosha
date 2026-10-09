@@ -22,6 +22,7 @@ import java.security.SecureRandom
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 import `in`.growurdhan.domain.vault.VaultRepository
+import `in`.growurdhan.domain.vault.VaultAuthorization
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -674,7 +675,86 @@ abstract class VaultBindings {
     abstract fun bindVaultRepository(impl: DefaultVaultRepository): VaultRepository
 }
 
+/**
+ * Production-only policy enforcement; direct SqlCipherVaultRepository remains
+ * available for Android unit/instrumentation fixture construction. Every
+ * production-accessible financial entry point is guarded here.
+ */
 @Singleton
 class DefaultVaultRepository @Inject constructor(
     @ApplicationContext context: Context,
-) : VaultRepository by SqlCipherVaultRepository(context)
+    private val authorization: VaultAuthorization,
+) : VaultRepository {
+    private val delegate = SqlCipherVaultRepository(context)
+
+    override suspend fun status(): VaultStatus = delegate.status()
+    override suspend fun openOrCreate(): VaultStatus {
+        authorization.requireUnlocked()
+        return delegate.openOrCreate()
+    }
+    override suspend fun close() = delegate.close()
+
+    override suspend fun createMember(member: FamilyMember) {
+        authorization.requireRecentApproval()
+        delegate.createMember(member)
+    }
+    override suspend fun createAccount(account: CustodyAccount) {
+        authorization.requireRecentApproval()
+        delegate.createAccount(account)
+    }
+    override suspend fun createHolding(holding: Holding) {
+        authorization.requireRecentApproval()
+        delegate.createHolding(holding)
+    }
+    override suspend fun appendEvent(event: LedgerEvent) {
+        authorization.requireRecentApproval()
+        delegate.appendEvent(event)
+    }
+    override suspend fun appendFinancialEvents(events: List<FinancialEvent>) {
+        authorization.requireRecentApproval()
+        delegate.appendFinancialEvents(events)
+    }
+    override suspend fun importSnapshot(snapshot: StatementSnapshot): SnapshotResult {
+        authorization.requireRecentApproval()
+        return delegate.importSnapshot(snapshot)
+    }
+    override suspend fun prepareStatementReview(
+        snapshotId: String, ownerId: OwnerId, sourceSha256: String,
+        lines: List<StatementLine>,
+    ): ReviewedStatement {
+        authorization.requireUnlocked()
+        return delegate.prepareStatementReview(snapshotId, ownerId, sourceSha256, lines)
+    }
+    override suspend fun commitReviewedStatement(review: ReviewedStatement): SnapshotResult {
+        authorization.requireRecentApproval()
+        return delegate.commitReviewedStatement(review)
+    }
+    override suspend fun members(): List<FamilyMember> {
+        authorization.requireUnlocked()
+        return delegate.members()
+    }
+    override suspend fun holdings(): List<Holding> {
+        authorization.requireUnlocked()
+        return delegate.holdings()
+    }
+    override suspend fun events(): List<LedgerEvent> {
+        authorization.requireUnlocked()
+        return delegate.events()
+    }
+    override suspend fun readBook(): VaultBook {
+        authorization.requireUnlocked()
+        return delegate.readBook()
+    }
+    override suspend fun health(): VaultHealth {
+        authorization.requireUnlocked()
+        return delegate.health()
+    }
+    override suspend fun exportEncryptedBackup(passphrase: CharArray): ByteArray {
+        authorization.requireRecentApproval()
+        return delegate.exportEncryptedBackup(passphrase)
+    }
+    override suspend fun restoreEncryptedBackup(passphrase: CharArray, ciphertext: ByteArray) {
+        authorization.requireRecentApproval()
+        delegate.restoreEncryptedBackup(passphrase, ciphertext)
+    }
+}

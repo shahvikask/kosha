@@ -1,5 +1,6 @@
 package `in`.growurdhan.app.presentation
 
+import `in`.growurdhan.domain.vault.VaultAuthorization
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -11,7 +12,7 @@ import javax.inject.Singleton
  * Final commercial authentication/session design remains a separate security gate.
  */
 @Singleton
-class VaultSessionGate @Inject constructor() {
+class VaultSessionGate @Inject constructor() : VaultAuthorization {
     private var nowMillis: () -> Long = { System.nanoTime() / 1_000_000L }
     private var verifiedAtMillis: Long? = null
     private val maxSessionAgeMillis = 5 * 60 * 1000L
@@ -34,6 +35,16 @@ class VaultSessionGate @Inject constructor() {
     @Synchronized fun isUnlocked(): Boolean = freshWithin(maxSessionAgeMillis)
 
     @Synchronized fun canCommitFinancialChanges(): Boolean = freshWithin(maxApprovalAgeMillis)
+
+    @Synchronized override fun requireUnlocked() {
+        check(isUnlocked()) { "Native vault access requires verified device session." }
+    }
+
+    @Synchronized override fun requireRecentApproval() {
+        check(canCommitFinancialChanges()) {
+            "Financial mutation requires recently confirmed device credential."
+        }
+    }
 
     private fun freshWithin(maxAge: Long): Boolean {
         val verified = verifiedAtMillis ?: return false
