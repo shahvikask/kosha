@@ -1,0 +1,89 @@
+name: Native Play Upload AAB (manual, protected)
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_acknowledgement:
+        description: 'Type BUILD_SIGNED_AAB (not a Play publication)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-play-upload-aab
+  cancel-in-progress: false
+
+jobs:
+  signed-aab:
+    if: inputs.release_acknowledgement == 'BUILD_SIGNED_AAB'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: play-release
+    env:
+      GUD_UPLOAD_KEYSTORE_BASE64: ${{ secrets.GUD_UPLOAD_KEYSTORE_BASE64 }}
+      GUD_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.GUD_UPLOAD_KEYSTORE_PASSWORD }}
+      GUD_UPLOAD_KEY_ALIAS: ${{ secrets.GUD_UPLOAD_KEY_ALIAS }}
+      GUD_UPLOAD_KEY_PASSWORD: ${{ secrets.GUD_UPLOAD_KEY_PASSWORD }}
+      GUD_UPLOAD_CERT_SHA256: ${{ vars.GUD_UPLOAD_CERT_SHA256 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Prepare protected release upload signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          for name in GUD_UPLOAD_KEYSTORE_BASE64 GUD_UPLOAD_KEYSTORE_PASSWORD GUD_UPLOAD_KEY_ALIAS GUD_UPLOAD_KEY_PASSWORD GUD_UPLOAD_CERT_SHA256; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Missing protected release signing configuration: ${name}"
+              exit 1
+            fi
+          done
+          export GUD_UPLOAD_KEYSTORE_PATH="$RUNNER_TEMP/gud-play-upload.jks"
+          echo "GUD_UPLOAD_KEYSTORE_PATH=$GUD_UPLOAD_KEYSTORE_PATH" >> "$GITHUB_ENV"
+          printf '%s' "$GUD_UPLOAD_KEYSTORE_BASE64" | base64 --decode > "$GUD_UPLOAD_KEYSTORE_PATH"
+          test -s "$GUD_UPLOAD_KEYSTORE_PATH"
+          chmod 600 "$GUD_UPLOAD_KEYSTORE_PATH"
+          keytool -list -v -keystore "$GUD_UPLOAD_KEYSTORE_PATH" \
+            -storepass "$GUD_UPLOAD_KEYSTORE_PASSWORD" \
+            -alias "$GUD_UPLOAD_KEY_ALIAS" > "$RUNNER_TEMP/upload-cert.txt"
+          actual=$(awk -F 'SHA256: ' '/SHA256: / {print $2; exit}' "$RUNNER_TEMP/upload-cert.txt" | tr -d ':[:space:]' | tr 'a-f' 'A-F')
+          expected=$(printf '%s' "$GUD_UPLOAD_CERT_SHA256" | tr -d ':[:space:]' | tr 'a-f' 'A-F')
+          if [[ -z "$actual" || "$actual" != "$expected" ]]; then
+            echo "::error::Upload certificate SHA-256 differs from owner-approved certificate."
+            exit 1
+          fi
+          echo "Pinned upload certificate matched."
+      - name: Build signed, minified Android App Bundle
+        env:
+          ANDROID_HOME: /usr/local/lib/android/sdk
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager --install 'platforms;android-36' 'build-tools;36.0.0'
+          gradle -p android-native :app:bundleRelease --stacktrace
+          aab='android-native/app/build/outputs/bundle/release/app-release.aab'
+          test -s "$aab"
+          jarsigner -verify -strict "$aab"
+          sha256sum "$aab" > "$RUNNER_TEMP/app-release.aab.sha256"
+          # No key material is included in any artifact.
+      - name: Publish protected signed AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GrowUrDhan-Native-Play-Upload-Signed-AAB
+          path: android-native/app/build/outputs/bundle/release/app-release.aab
+          retention-days: 5
+          if-no-files-found: error
+      - name: Erase ephemeral signing files
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/gud-play-upload.jks" "$RUNNER_TEMP/upload-cert.txt"
