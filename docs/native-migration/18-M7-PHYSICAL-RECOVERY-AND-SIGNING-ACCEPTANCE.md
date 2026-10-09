@@ -24,6 +24,18 @@ Record evidence for each target **without serial numbers, PAN, folio, account nu
 
 If some class cannot be sourced, explicitly record **NOT TESTED**, not PASS. Emulators may supplement but do not substitute for device and OEM diversity.
 
+## 2a. Reproducible disposable physical-device test runner
+
+The optional [physical-device QA runner](../../android-native/scripts/run_physical_qa.sh) runs the same synthetic SQLCipher/Compose instrumentation tests on **one** authorized, clean real Android handset, with schema/security preflights. It refuses devices where GrowUrDhan is already installed and does not inspect an existing vault or log financial contents.
+
+From the repository root, on the **owner's own development machine**, with Java 17, Gradle 8.13, Android SDK/adb and one disposable unlocked physical handset:
+
+```bash
+GUD_QA_DISPOSABLE_DEVICE=I_CONFIRM bash android-native/scripts/run_physical_qa.sh
+```
+
+Only set this consent flag for a clean **disposable QA device**. The Gradle runner installs debug/test APKs, which is why the refusal is deliberate. The script prints only API, ABI, page size and aggregate synthetic JUnit results; underlying Gradle logs may contain device identifiers, so redact before sharing. No such device run has been performed in this document.
+
 ## 3. Test preconditions and safe collection
 
 1. Use a **disposable QA handset or isolated clean test profile** with no personal vault; record Android API level, architecture, page size, install variant and date only. Check locally with `adb shell getprop ro.build.version.sdk`, `adb shell getprop ro.product.cpu.abi` and `adb shell getconf PAGESIZE`. Do not paste `adb devices -l` output or serials into CI evidence.
