@@ -4,6 +4,9 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.onNode
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -64,8 +67,9 @@ class PortableRecoveryShellTest {
         compose.onNodeWithContentDescription("Vault").performClick()
         compose.onNodeWithText("Recover from encrypted backup").performClick()
         compose.onNodeWithText("Confirm device lock and restore").assertIsNotEnabled()
-        compose.onNodeWithContentDescription("Backup passphrase entry").performTextInput("synthetic12characters")
-        compose.onNodeWithText("Confirm device lock and restore").assertIsEnabled().performClick()
+        compose.onNode(hasSetTextAction()).performTextInput("synthetic12characters")
+        compose.onNodeWithText("Confirm device lock and restore")
+            .performScrollTo().assertIsEnabled().performClick()
         compose.runOnIdle {
             assertEquals(
                 PortableRecoveryIntent.ConfirmPassphrase(
