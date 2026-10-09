@@ -13,4 +13,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "GrowUrDhanNative"
-include(":app", ":core:model", ":domain", ":data")
+include(":app", ":core:model", ":domain", ":data", ":casparser-runtime")

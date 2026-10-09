@@ -45,6 +45,9 @@ jobs:
         run: |
           echo "ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}" >> "$GITHUB_ENV"
           test -d "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'

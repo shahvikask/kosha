@@ -64,6 +64,8 @@ dependencies {
     implementation(project(":core:model"))
     implementation(project(":domain"))
     implementation(project(":data"))
+    // ARM64-only release module; default x86_64 emulator debug remains lightweight.
+    releaseImplementation(project(":casparser-runtime"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
