@@ -42,7 +42,8 @@ class PortableRecoveryShellTest {
         compose.onNodeWithText("Recover from encrypted backup").performClick()
         compose.waitForIdle()
         compose.onNodeWithText("Backup & recovery").assertIsDisplayed()
-        compose.onNodeWithText("Restore encrypted backup").assertIsDisplayed().performClick()
+        compose.onNodeWithText("Restore encrypted backup")
+            .performScrollTo().assertIsDisplayed().performClick()
         compose.waitForIdle()
         compose.runOnIdle {
             assertEquals(null, vaultAction)
