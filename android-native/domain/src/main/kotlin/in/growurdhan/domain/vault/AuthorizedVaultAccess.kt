@@ -3,6 +3,8 @@ package `in`.growurdhan.domain.vault
 import `in`.growurdhan.core.model.VaultStatus
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Defense-in-depth for asynchronous calls that cross the process-local device
@@ -16,7 +18,9 @@ class AuthorizedVaultAccess(
     private val delegate: VaultRepository,
     private val authorization: VaultAuthorization,
 ) {
-    suspend fun openOrCreate(): VaultStatus {
+    private val connectionMutex = Mutex()
+
+    suspend fun openOrCreate(): VaultStatus = connectionMutex.withLock {
         // An unauthenticated call cannot create keys, files, or a connection.
         authorization.requireUnlocked()
         val authorizedRevision = authorization.sessionRevision()
@@ -42,6 +46,9 @@ class AuthorizedVaultAccess(
             throw failure
         }
     }
+
+    /** Explicit lock requests cannot race an in-progress open/cleanup. */
+    suspend fun close() = connectionMutex.withLock { delegate.close() }
 
     /** Never return private rows or review receipts after session expiry. */
     suspend fun <T> read(action: suspend () -> T): T {

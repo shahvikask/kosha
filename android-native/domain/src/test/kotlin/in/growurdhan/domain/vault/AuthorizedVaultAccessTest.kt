@@ -117,6 +117,55 @@ class AuthorizedVaultAccessTest {
         coVerify(exactly = 1) { delegate.close() }
     }
 
+    @Test fun explicitCloseWaitsForAnOpeningToFinish() = runTest {
+        val delegate = mockk<VaultRepository>()
+        val pendingOpen = CompletableDeferred<VaultStatus>()
+        coEvery { delegate.openOrCreate() } coAnswers { pendingOpen.await() }
+        coEvery { delegate.close() } returns Unit
+        val access = AuthorizedVaultAccess(delegate, Gate())
+        val opening = async { access.openOrCreate() }
+        runCurrent()
+        val closing = async { access.close() }
+        runCurrent()
+
+        coVerify(exactly = 0) { delegate.close() }
+        pendingOpen.complete(VaultStatus(true, true, 3))
+        opening.await()
+        closing.await()
+        coVerify(exactly = 1) { delegate.close() }
+    }
+
+    @Test fun failedOpenCleanupFinishesBeforeNewCredentialCanReopen() = runTest {
+        val delegate = mockk<VaultRepository>()
+        val pendingOpen = CompletableDeferred<VaultStatus>()
+        val pendingClose = CompletableDeferred<Unit>()
+        var opens = 0
+        coEvery { delegate.openOrCreate() } coAnswers {
+            opens++
+            if (opens == 1) pendingOpen.await() else VaultStatus(true, true, 3)
+        }
+        coEvery { delegate.close() } coAnswers { pendingClose.await() }
+        val gate = Gate()
+        val access = AuthorizedVaultAccess(delegate, gate)
+        val oldOpen = async {
+            runCatching { access.openOrCreate() }.exceptionOrNull()
+        }
+        runCurrent()
+        gate.unlocked = false
+        pendingOpen.complete(VaultStatus(true, true, 3))
+        runCurrent()
+        gate.confirmAgain()
+        val newOpen = async { access.openOrCreate() }
+        runCurrent()
+
+        assertEquals(1, opens)
+        coVerify(exactly = 1) { delegate.close() }
+        pendingClose.complete(Unit)
+        assertTrue(oldOpen.await() is IllegalStateException)
+        assertEquals(VaultStatus(true, true, 3), newOpen.await())
+        assertEquals(2, opens)
+    }
+
     @Test fun readRevocationDiscardsResultInsteadOfReturningPrivateData() = runTest {
         val delegate = mockk<VaultRepository>()
         val gate = Gate()

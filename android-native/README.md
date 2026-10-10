@@ -153,3 +153,22 @@ queued VaultViewModel close to finish. This avoids a pending picker-background
 cleanup closing the just-reopened encrypted connection. A coroutine regression
 test verifies that document import cannot pass this barrier while close is
 suspended. The remaining physical-device picker lifecycle must still be tested.
+
+## Native transaction authorization gate (October 2026; device verification pending)
+
+The production `DefaultVaultRepository` now propagates its initial device
+credential revision into financial mutations, including statement approvals
+and encrypted backup restoration. The SQLCipher mutation transaction checks
+the same revision and a still-recent credential immediately **before**
+`setTransactionSuccessful()`; expired or replaced authorization aborts the
+transaction, leaving SQLite to roll back. Isolated development repositories
+retain their existing constructor behavior unless explicitly supplied an
+authorization guard. Real SQLCipher instrumentation tests use synthetic
+records to exercise rollback on expiry and credential replacement.
+
+The production vault open/close boundary also uses a shared outer mutex:
+a failure/cancellation cleanup cannot close a newly reopened connection
+because the newer opening must wait for cleanup to complete. Added coroutine
+tests for explicit close waiting and failed-open cleanup ordering.
+
+**Not yet verified** on Android devices or with the full Gradle suite.

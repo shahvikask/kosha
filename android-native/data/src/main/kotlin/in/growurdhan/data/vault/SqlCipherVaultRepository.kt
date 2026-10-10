@@ -35,6 +35,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.coroutineContext
 import net.zetetic.database.sqlcipher.SQLiteDatabase
 
 /**
@@ -42,10 +45,19 @@ import net.zetetic.database.sqlcipher.SQLiteDatabase
  * A fresh native vault is explicitly requested by the user, sealed by Keystore,
  * SQLCipher-encrypted on disk and kept outside Android Backup.
  */
+/**
+ * Propagates the original device-challenge revision across Dispatcher switches.
+ * A newly verified challenge must not authorize an older suspended mutation.
+ */
+private class ApprovedMutationRevision(val value: Long) : AbstractCoroutineContextElement(Key) {
+    companion object Key : CoroutineContext.Key<ApprovedMutationRevision>
+}
+
 class SqlCipherVaultRepository(
     context: Context,
     private val root: File = File(context.noBackupFilesDir, "gud_native_v2"),
     alias: String = "in.growurdhan.app.vault.wrap.v2",
+    private val mutationAuthorization: VaultAuthorization? = null,
 ) : VaultRepository {
     private val mutex = Mutex()
     // Each repository lifetime gets a fresh non-exported in-memory receipt seal key.
@@ -773,16 +785,37 @@ class SqlCipherVaultRepository(
         mutex.withLock { action(database ?: throw VaultUnavailable("Vault is locked or not initialized.")) }
     }
 
-    private suspend fun <T> mutate(action: (SQLiteDatabase) -> T): T = withContext(Dispatchers.IO) {
-        mutex.withLock {
-            val db = database ?: throw VaultUnavailable("Vault is locked or not initialized.")
-            db.beginTransaction()
-            try {
-                val result = action(db)
-                db.setTransactionSuccessful()
-                result
-            } finally {
-                db.endTransaction() // rollback automatically on any exception
+    private suspend fun <T> mutate(action: (SQLiteDatabase) -> T): T {
+        // Capture before suspending for the repository mutex or IO dispatcher.
+        // Direct Android test repositories omit the production authorization.
+        val approvedRevision = mutationAuthorization?.let { gate ->
+            gate.requireRecentApproval()
+            val original = coroutineContext[ApprovedMutationRevision]?.value
+                ?: gate.sessionRevision()
+            check(gate.sessionRevision() == original) {
+                "The verified device credential changed before the financial transaction."
+            }
+            original
+        }
+        return withContext(Dispatchers.IO) {
+            mutex.withLock {
+                val db = database ?: throw VaultUnavailable("Vault is locked or not initialized.")
+                db.beginTransaction()
+                try {
+                    val result = action(db)
+                    // Fail before SQLite marks its transaction successful.
+                    // Any expired/replaced approval aborts and rolls back every row.
+                    mutationAuthorization?.let { gate ->
+                        gate.requireRecentApproval()
+                        check(gate.sessionRevision() == approvedRevision) {
+                            "The verified device credential changed before financial commit."
+                        }
+                    }
+                    db.setTransactionSuccessful()
+                    result
+                } finally {
+                    db.endTransaction() // rollback automatically on any exception
+                }
             }
         }
     }
@@ -806,55 +839,52 @@ class DefaultVaultRepository @Inject constructor(
     @ApplicationContext context: Context,
     private val authorization: VaultAuthorization,
 ) : VaultRepository {
-    private val delegate = SqlCipherVaultRepository(context)
+    private val delegate = SqlCipherVaultRepository(context, mutationAuthorization = authorization)
     private val sessionBound = AuthorizedVaultAccess(delegate, authorization)
+
+    private suspend fun <T> approvedWrite(action: suspend () -> T): T {
+        authorization.requireRecentApproval()
+        val originalRevision = authorization.sessionRevision()
+        return withContext(ApprovedMutationRevision(originalRevision)) { action() }
+    }
 
     override suspend fun status(): VaultStatus = delegate.status()
     override suspend fun openOrCreate(): VaultStatus = sessionBound.openOrCreate()
-    override suspend fun close() = delegate.close()
+    override suspend fun close() = sessionBound.close()
 
     override suspend fun createMember(member: FamilyMember) {
-        authorization.requireRecentApproval()
-        delegate.createMember(member)
+        approvedWrite { delegate.createMember(member) }
     }
     override suspend fun registerFamilyMember(
         displayName: String, relationship: String,
     ): FamilyMember {
-        authorization.requireRecentApproval()
-        return delegate.registerFamilyMember(displayName, relationship)
+        return approvedWrite { delegate.registerFamilyMember(displayName, relationship) }
     }
     override suspend fun createAccount(account: CustodyAccount) {
-        authorization.requireRecentApproval()
-        delegate.createAccount(account)
+        approvedWrite { delegate.createAccount(account) }
     }
     override suspend fun registerCustodyAccount(
         ownerId: OwnerId, accountType: String, label: String,
     ): CustodyAccount {
-        authorization.requireRecentApproval()
-        return delegate.registerCustodyAccount(ownerId, accountType, label)
+        return approvedWrite { delegate.registerCustodyAccount(ownerId, accountType, label) }
     }
     override suspend fun createHolding(holding: Holding) {
-        authorization.requireRecentApproval()
-        delegate.createHolding(holding)
+        approvedWrite { delegate.createHolding(holding) }
     }
     override suspend fun registerCasHolding(
         ownerId: OwnerId, accountId: String, displayName: String,
         isin: String, folio: String,
     ): Holding {
-        authorization.requireRecentApproval()
-        return delegate.registerCasHolding(ownerId, accountId, displayName, isin, folio)
+        return approvedWrite { delegate.registerCasHolding(ownerId, accountId, displayName, isin, folio) }
     }
     override suspend fun appendEvent(event: LedgerEvent) {
-        authorization.requireRecentApproval()
-        delegate.appendEvent(event)
+        approvedWrite { delegate.appendEvent(event) }
     }
     override suspend fun appendFinancialEvents(events: List<FinancialEvent>) {
-        authorization.requireRecentApproval()
-        delegate.appendFinancialEvents(events)
+        approvedWrite { delegate.appendFinancialEvents(events) }
     }
     override suspend fun importSnapshot(snapshot: StatementSnapshot): SnapshotResult {
-        authorization.requireRecentApproval()
-        return delegate.importSnapshot(snapshot)
+        return approvedWrite { delegate.importSnapshot(snapshot) }
     }
     override suspend fun prepareStatementReview(
         snapshotId: String, ownerId: OwnerId, sourceSha256: String,
@@ -865,8 +895,7 @@ class DefaultVaultRepository @Inject constructor(
         }
     }
     override suspend fun commitReviewedStatement(review: ReviewedStatement): SnapshotResult {
-        authorization.requireRecentApproval()
-        return delegate.commitReviewedStatement(review)
+        return approvedWrite { delegate.commitReviewedStatement(review) }
     }
     override suspend fun members(): List<FamilyMember> = sessionBound.read { delegate.members() }
     override suspend fun accounts(): List<CustodyAccount> = sessionBound.read { delegate.accounts() }
@@ -880,7 +909,6 @@ class DefaultVaultRepository @Inject constructor(
         return delegate.exportEncryptedBackup(passphrase)
     }
     override suspend fun restoreEncryptedBackup(passphrase: CharArray, ciphertext: ByteArray) {
-        authorization.requireRecentApproval()
-        delegate.restoreEncryptedBackup(passphrase, ciphertext)
+        approvedWrite { delegate.restoreEncryptedBackup(passphrase, ciphertext) }
     }
 }
