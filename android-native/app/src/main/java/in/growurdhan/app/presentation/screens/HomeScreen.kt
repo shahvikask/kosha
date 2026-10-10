@@ -22,6 +22,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import `in`.growurdhan.app.presentation.HouseholdDashboardUiState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -33,6 +34,7 @@ import androidx.compose.ui.unit.dp
  */
 @Composable
 fun HomeScreen(
+    dashboardState: HouseholdDashboardUiState = HouseholdDashboardUiState.Locked,
     onOpenSettings: () -> Unit,
     onOpenPrivacy: () -> Unit,
     onOpenVault: () -> Unit = {},
