@@ -98,6 +98,36 @@ def repository_binding_errors(binding: str) -> list[str]:
     return errors
 
 
+def vault_health_boundary_errors(viewmodel: str, gate: str) -> list[str]:
+    """Fail closed when vault health is unhealthy or the health query fails."""
+    errors: list[str] = []
+    if viewmodel.count("val health = verifiedHealthOrClose()") != 2:
+        errors.append("Both refresh and opening must use the verified vault-health gate.")
+    start = "private suspend fun verifiedHealthOrClose()"
+    if start not in viewmodel:
+        return errors + ["Mandatory fail-closed vault-health helper is missing."]
+    body = viewmodel.split(start, 1)[1].split("    init {", 1)[0]
+    for requirement, label in (
+        ("val health = repository.health()", "Health query must read encrypted vault status."),
+        ("VaultHealthGate.accepts(health)", "Bad vault integrity must not unlock the UI."),
+        ("session.lock()", "Failed vault health must revoke credentials."),
+        ("withContext(NonCancellable)", "Vault health cleanup must survive cancellation."),
+        ("repository.close()", "Failed vault health must physically close SQLCipher."),
+    ):
+        if requirement not in body:
+            errors.append(label)
+    for requirement in (
+        'health.integrity == "ok"',
+        "health.foreignKeyViolations == 0",
+        "health.memberCount >= 0",
+        "health.holdingCount >= 0",
+        "health.eventCount >= 0",
+    ):
+        if requirement not in gate:
+            errors.append("Vault-health acceptance no longer enforces " + requirement)
+    return errors
+
+
 def main() -> int:
     errors: list[str] = []
     def ensure(test: bool, label: str) -> None:
@@ -144,6 +174,10 @@ def main() -> int:
     ensure("authorization.requireRecentApproval()" in helper and
            "bytes.fill(0)" in helper,
            "Portable encrypted export lacks post-operation approval and buffer wiping.")
+
+    vault_vm = read("android-native/app/src/main/java/in/growurdhan/app/presentation/VaultViewModel.kt")
+    health_gate = read("android-native/domain/src/main/kotlin/in/growurdhan/domain/vault/VaultHealthGate.kt")
+    errors.extend(vault_health_boundary_errors(vault_vm, health_gate))
 
     ensure('db.execSQL("PRAGMA foreign_keys = ON")' in read(
         "android-native/data/src/main/kotlin/in/growurdhan/data/vault/VaultSchema.kt"),
