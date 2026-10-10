@@ -41,6 +41,7 @@ import `in`.growurdhan.app.presentation.VaultUiState
 import `in`.growurdhan.app.presentation.VaultSessionGate
 import `in`.growurdhan.app.presentation.VaultViewModel
 import `in`.growurdhan.app.presentation.HouseholdDashboardViewModel
+import `in`.growurdhan.app.presentation.HouseholdDashboardUiState
 import `in`.growurdhan.app.presentation.theme.GrowUrDhanTheme
 import javax.inject.Inject
 import kotlinx.coroutines.launch
@@ -259,7 +260,12 @@ class MainActivity : ComponentActivity() {
                     state = state,
                     onIntent = viewModel::onIntent,
                     vaultState = vaultState,
-                    dashboardState = dashboardState,
+                    // A late collector emission must never display holdings outside a live vault session.
+                    dashboardState = if (vaultState is VaultUiState.Ready && sessionGate.isUnlocked()) {
+                        dashboardState
+                    } else {
+                        HouseholdDashboardUiState.Locked
+                    },
                     onVaultIntent = ::handleVaultIntent,
                     reviewState = reviewState,
                     onReviewIntent = ::handleReviewIntent,
