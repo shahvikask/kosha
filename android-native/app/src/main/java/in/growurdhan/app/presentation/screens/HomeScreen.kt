@@ -207,6 +207,69 @@ fun HomeScreen(
             }
         }
 
+        if (dashboardState is HouseholdDashboardUiState.Ready &&
+            dashboardState.dashboard.recordedHoldings.isNotEmpty()
+        ) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(22.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text("Recorded holdings", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Values use recorded unit prices, not live quotes. " +
+                            "Identifiers and account numbers are not shown.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    dashboardState.dashboard.recordedHoldings.take(30).forEach { holding ->
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(3.dp),
+                        ) {
+                            Text(holding.name, style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                holding.category.replace('_', ' ') +
+                                    (holding.ownerName?.let { " · " + it } ?: ""),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                (if (holding.isLiability) "Outstanding liability: " else "Recorded value: ") +
+                                    holding.recordedValue.rupees().toPlainString() + " INR",
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            if (!holding.isLiability) {
+                                Text(
+                                    "Units: " + java.math.BigDecimal.valueOf(
+                                        holding.quantityScaled, 8,
+                                    ).stripTrailingZeros().toPlainString(),
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                                Text(
+                                    when {
+                                        holding.unknownHistoricalCost -> "Historical cost unknown; gain unavailable"
+                                        holding.unrealisedGain != null -> "Unrealised gain/loss: " +
+                                            holding.unrealisedGain.rupees().toPlainString() + " INR"
+                                        else -> "Unrealised gain/loss unavailable"
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                    val hidden = dashboardState.dashboard.recordedHoldings.size - 30
+                    if (hidden > 0) {
+                        Text(
+                            "$hidden more holding(s) are included in totals but not shown here.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            }
+        }
+
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedButton(onClick = onOpenStatements, modifier = Modifier.weight(1f)) {
                 Icon(Icons.Outlined.Description, contentDescription = null)

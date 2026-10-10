@@ -198,3 +198,18 @@ behavior. No CASPARSER source or runtime bridge was modified.
 
 Still requires ARM64 hardware tests for real PDF parsing, external document
 pickers and operating-system credential callbacks.
+
+## Native recorded-holdings overview (October 2026; test verification pending)
+
+The household Home screen now lists individual recorded asset/debt positions
+derived from the same single authorized encrypted `readBook()` snapshot as the
+household totals. It shows fund/asset name, registered owner display name,
+recorded quantity, stored-price value, and gain only when historical cost is
+known. Loan/debt positions are clearly liabilities and never presented as
+investment gains or missing purchase cost. Account IDs, folios, holding IDs
+and PAN do not appear in these display rows. The screen caps the rendered
+holding list at 30 while retaining all recorded rows in the total, with a clear
+count of additional positions. No network request or fabricated price is made.
+
+JVM reconciliation/privacy regressions and a Compose holding-display regression
+have been added but require full Gradle/instrumentation verification.

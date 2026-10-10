@@ -22,6 +22,7 @@ data class HouseholdDashboard(
     val integrityWarnings: List<String>,
     val byMember: List<MemberDashboard>,
     val byCategory: List<CategoryDashboard> = emptyList(),
+    val recordedHoldings: List<RecordedHoldingDashboard> = emptyList(),
 ) {
     val isReliable: Boolean get() = integrityWarnings.isEmpty()
 }
@@ -42,6 +43,22 @@ data class MemberDashboard(
 )
 
 /**
+ * One recorded portfolio position. Values come from the same authorized book
+ * snapshot as household totals. No PAN, folio, account ID or holding ID enters UI.
+ * Liabilities never have investment gain/cost semantics.
+ */
+data class RecordedHoldingDashboard(
+    val name: String,
+    val category: String,
+    val ownerName: String?,
+    val quantityScaled: Long,
+    val recordedValue: MoneyScaled,
+    val unrealisedGain: MoneyScaled?,
+    val unknownHistoricalCost: Boolean,
+    val isLiability: Boolean,
+)
+
+/**
  * Pure projection only: no network access, persistence or synthetic values.
  * Unknown cost and book-integrity warnings remain visible to the presentation.
  */
@@ -57,9 +74,30 @@ object HouseholdDashboardProjector {
                 displayName = memberNames[member.ownerId]?.trim()?.takeIf { it.isNotEmpty() },
             )
         }
+        // Loan balances are debt, not investment lots. Do not count them as
+        // holdings needing historical acquisition-cost reconciliation.
         val unknown = report.members.sumOf { member ->
-            member.holdings.count { it.position.unknownInvestedCost }
+            member.holdings.count {
+                it.holding.category != "LIABILITY" && it.position.unknownInvestedCost
+            }
         }
+        val recorded = report.members.flatMap { member ->
+            member.holdings.map { position ->
+                val liability = position.holding.category == "LIABILITY"
+                RecordedHoldingDashboard(
+                    name = position.holding.name,
+                    category = position.holding.category,
+                    ownerName = memberNames[member.ownerId]?.trim()?.takeIf { it.isNotEmpty() },
+                    quantityScaled = position.position.quantityScaled,
+                    recordedValue = position.marketValue,
+                    unrealisedGain = if (liability) null else position.unrealisedGain,
+                    unknownHistoricalCost = !liability && position.position.unknownInvestedCost,
+                    isLiability = liability,
+                )
+            }
+        }.sortedWith(compareBy<RecordedHoldingDashboard>({ it.isLiability }, { it.category },
+            { it.ownerName ?: "" }, { it.name }))
+
         val categories = report.members.flatMap { it.holdings }
             .filter { it.holding.category != "LIABILITY" }
             .groupBy { it.holding.category }
@@ -84,6 +122,7 @@ object HouseholdDashboardProjector {
             integrityWarnings = report.errors.toList(),
             byMember = memberRows,
             byCategory = categories,
+            recordedHoldings = recorded,
         )
     }
 }

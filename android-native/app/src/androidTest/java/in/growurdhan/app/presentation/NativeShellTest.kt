@@ -19,6 +19,7 @@ import `in`.growurdhan.core.model.OwnerId
 import `in`.growurdhan.domain.finance.FinancialHolding
 import `in`.growurdhan.domain.finance.HouseholdDashboard
 import `in`.growurdhan.domain.finance.MemberDashboard
+import `in`.growurdhan.domain.finance.RecordedHoldingDashboard
 import `in`.growurdhan.app.presentation.screens.HomeScreen
 import `in`.growurdhan.domain.finance.ReviewedStatement
 import `in`.growurdhan.domain.finance.SnapshotReconciler
@@ -63,6 +64,43 @@ class NativeShellTest {
         compose.onNodeWithText(
             "Assets: 25.0000 INR; liabilities: 7.5000 INR; net worth: 17.5000 INR; holdings: 2",
         ).performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun recordedHoldingsShowAssetsAndLiabilitiesWithoutPrivateIdentifiers() {
+        val owner = OwnerId("synthetic-owner")
+        val dashboard = HouseholdDashboard(
+            asOf = LocalDate.parse("2026-10-09"),
+            assets = MoneyScaled(240_000),
+            liabilities = MoneyScaled(50_000),
+            netWorth = MoneyScaled(190_000),
+            memberCount = 1,
+            holdingCount = 2,
+            unknownCostHoldings = 1,
+            integrityWarnings = emptyList(),
+            byMember = emptyList(),
+            recordedHoldings = listOf(
+                RecordedHoldingDashboard("Synthetic Index Fund", "MUTUAL_FUND", "Synthetic Member",
+                    100_000_000L, MoneyScaled(240_000), null, true, false),
+                RecordedHoldingDashboard("Synthetic Home Loan", "LIABILITY", "Synthetic Member",
+                    100_000_000L, MoneyScaled(50_000), null, false, true),
+            ),
+        )
+        compose.setContent {
+            GrowUrDhanTheme(AppearanceSettings(ThemeMode.LIGHT, dynamicColor = false)) {
+                HomeScreen(
+                    dashboardState = HouseholdDashboardUiState.Ready(dashboard),
+                    onOpenSettings = {},
+                    onOpenPrivacy = {},
+                )
+            }
+        }
+        compose.onNodeWithText("Synthetic Index Fund").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Historical cost unknown; gain unavailable")
+            .performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Synthetic Home Loan").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Outstanding liability: 5.0000 INR")
+            .performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("synthetic-owner").assertDoesNotExist()
     }
 
     @Test fun lockedDashboardNeverRendersFamilyNames() {

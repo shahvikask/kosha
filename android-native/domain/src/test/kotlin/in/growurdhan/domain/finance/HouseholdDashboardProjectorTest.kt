@@ -66,7 +66,7 @@ class HouseholdDashboardProjectorTest {
         assertEquals(1, dashboard.byCategory.size)
         assertEquals("FIXED_INCOME", dashboard.byCategory.single().category)
         assertEquals(250_000L, dashboard.byCategory.single().value.raw)
-        assertEquals(2, dashboard.unknownCostHoldings)
+        assertEquals(1, dashboard.unknownCostHoldings)
         assertEquals(80_000L, dashboard.byMember.single { it.ownerId == other }.liabilities.raw)
     }
 
@@ -155,6 +155,59 @@ class HouseholdDashboardProjectorTest {
         assertEquals(2, dashboard.byCategory.size)
         assertEquals(2, dashboard.byCategory.sumOf { it.holdingCount })
         assertEquals(3, dashboard.holdingCount)
+    }
+
+    @Test fun recordedHoldingsExposeOnlyValuationFieldsAndNoLiabilityGains() {
+        val equity = FinancialHolding(
+            HoldingId("private-folio-id"), owner, "Synthetic Index Fund", "MUTUAL_FUND",
+            MoneyScaled(230_000), QUANTITY_SCALE,
+        )
+        val debt = FinancialHolding(
+            HoldingId("private-loan-id"), other, "Synthetic Housing Loan", "LIABILITY",
+            MoneyScaled(125_000), QUANTITY_SCALE,
+        )
+        val report = PortfolioEngine.derive(
+            listOf(equity, debt), emptyList(), LocalDate.parse("2026-10-09"),
+            listOf(owner, other),
+        )
+        val dashboard = HouseholdDashboardProjector.from(
+            report, mapOf(owner to "  Primary   Member  ", other to "Relative"),
+        )
+        assertEquals(2, dashboard.recordedHoldings.size)
+        val asset = dashboard.recordedHoldings.first { !it.isLiability }
+        assertEquals("Synthetic Index Fund", asset.name)
+        assertEquals("Primary   Member", asset.ownerName)
+        assertEquals(QUANTITY_SCALE, asset.quantityScaled)
+        assertEquals(230_000L, asset.recordedValue.raw)
+        assertTrue(asset.unknownHistoricalCost)
+        assertEquals(null, asset.unrealisedGain)
+        val loan = dashboard.recordedHoldings.single { it.isLiability }
+        assertEquals(125_000L, loan.recordedValue.raw)
+        assertEquals(null, loan.unrealisedGain)
+        assertFalse(loan.unknownHistoricalCost)
+        assertEquals(1, dashboard.unknownCostHoldings)
+        assertFalse(dashboard.toString().contains("private-folio-id"))
+        assertFalse(dashboard.toString().contains("private-loan-id"))
+    }
+
+    @Test fun recordedRowsReconcileExactlyWithHouseholdAssetsAndDebt() {
+        val holdings = listOf(
+            FinancialHolding(HoldingId("equity"), owner, "Index fund", "MUTUAL_FUND",
+                MoneyScaled(125_000), QUANTITY_SCALE),
+            FinancialHolding(HoldingId("deposit"), other, "Cash deposit", "CASH",
+                MoneyScaled(215_000), QUANTITY_SCALE),
+            FinancialHolding(HoldingId("debt"), owner, "Housing loan", "LIABILITY",
+                MoneyScaled(110_000), QUANTITY_SCALE),
+        )
+        val dashboard = HouseholdDashboardProjector.from(PortfolioEngine.derive(
+            holdings, emptyList(), LocalDate.parse("2026-10-09"), listOf(owner, other),
+        ))
+        assertEquals(dashboard.assets.raw,
+            dashboard.recordedHoldings.filterNot { it.isLiability }.sumOf { it.recordedValue.raw })
+        assertEquals(dashboard.liabilities.raw,
+            dashboard.recordedHoldings.filter { it.isLiability }.sumOf { it.recordedValue.raw })
+        assertEquals(dashboard.holdingCount, dashboard.recordedHoldings.size)
+        assertEquals(2, dashboard.unknownCostHoldings)
     }
 
     @Test fun integrityProblemsAreNotHiddenFromDashboard() {
