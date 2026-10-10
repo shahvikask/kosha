@@ -103,8 +103,7 @@ class PortableRecoveryViewModel @Inject constructor(
                 // close which must complete before this fresh authorized open.
                 awaitVaultCleanup()
                 check(current == generation &&
-                    session.canCommitFinancialChanges() &&
-                    session.credentialEpoch() == authenticatedRevision
+                    session.isCurrentApproval(authenticatedRevision)
                 ) { "Backup authorization expired while waiting for vault cleanup." }
                 withContext(workDispatcher) {
                     val status = vault.status()
@@ -117,8 +116,7 @@ class PortableRecoveryViewModel @Inject constructor(
                             // Encryption/key derivation can outlive the original
                             // approval. Never write to a SAF document afterwards.
                             check(current == generation &&
-                                session.canCommitFinancialChanges() &&
-                                session.credentialEpoch() == authenticatedRevision
+                                session.isCurrentApproval(authenticatedRevision)
                             ) { "Backup export approval expired before writing the document." }
                             context.contentResolver.openOutputStream(uri, "wt")?.use {
                                 it.write(encrypted)
