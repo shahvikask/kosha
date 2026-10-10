@@ -17,7 +17,9 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
 import java.time.LocalDate
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -41,6 +43,44 @@ class StatementReviewViewModelTest {
             emptyList(), owner, sha,
         )
         return ReviewedStatement("snap", owner, listOf(line), "b".repeat(64), plan, "c".repeat(64))
+    }
+
+    @Test fun reauthenticationCannotPublishOldStatementPreview() = runTest {
+        val repo = mockk<VaultRepository>()
+        val pending = CompletableDeferred<ReviewedStatement>()
+        coEvery { repo.prepareStatementReview(any(), any(), any(), any()) } coAnswers {
+            pending.await()
+        }
+        val gate = VaultSessionGate().also { it.grantDeviceCredential() }
+        val vm = StatementReviewViewModel(repo, gate)
+        vm.prepareFromValidatedParser("snap", owner, sha, listOf(line))
+        runCurrent()
+        gate.lock()
+        gate.grantDeviceCredential()
+        pending.complete(receipt())
+        advanceUntilIdle()
+
+        assertEquals(StatementReviewUiState.Empty, vm.state.value)
+        coVerify(exactly = 0) { repo.commitReviewedStatement(any()) }
+    }
+
+    @Test fun newlyAuthenticatedSessionCannotReuseOldFamilyOwnerList() = runTest {
+        val repo = mockk<VaultRepository>()
+        val pending = CompletableDeferred<VaultBook>()
+        coEvery { repo.readBook() } coAnswers { pending.await() }
+        val gate = VaultSessionGate().also { it.grantDeviceCredential() }
+        val vm = StatementReviewViewModel(repo, gate)
+        vm.onIntent(StatementReviewIntent.LoadOwners)
+        runCurrent()
+        gate.lock()
+        gate.grantDeviceCredential()
+        pending.complete(VaultBook(
+            listOf(FamilyMember(owner, "Synthetic private member", "Self", true)),
+            emptyList(), emptyList(),
+        ))
+        advanceUntilIdle()
+
+        assertEquals(StatementReviewUiState.Empty, vm.state.value)
     }
 
     @Test fun unauthenticatedPreviewNeverReadsFromVault() = runTest {

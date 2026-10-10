@@ -6,6 +6,32 @@ import org.junit.Test
 
 /** No device credential or password is created in these deterministic-clock tests. */
 class VaultSessionGateTest {
+    @Test fun oldCredentialChallengeCannotAuthorizeNewSessionResults() {
+        val gate = VaultSessionGate()
+        gate.grantDeviceCredential()
+        val original = gate.credentialEpoch()
+        assertTrue(gate.isCurrentSession(original))
+        assertTrue(gate.isCurrentApproval(original))
+        gate.lock()
+        assertFalse(gate.isCurrentSession(original))
+        gate.grantDeviceCredential()
+        assertTrue(gate.isUnlocked())
+        assertFalse(gate.isCurrentSession(original))
+        assertFalse(gate.isCurrentApproval(original))
+        assertTrue(gate.isCurrentSession(gate.credentialEpoch()))
+    }
+
+    @Test fun oldFinancialApprovalExpiresBeforeGeneralUnlock() {
+        val gate = VaultSessionGate()
+        var now = 10_000L
+        gate.useClockForTest { now }
+        gate.grantDeviceCredential()
+        val revision = gate.credentialEpoch()
+        now += 30_000
+        assertTrue(gate.isCurrentSession(revision))
+        assertFalse(gate.isCurrentApproval(revision))
+    }
+
     @Test fun requiresSuccessfulCredentialAndExpiresAfterFiveMinutes() {
         var now = 1_000L
         val session = VaultSessionGate()

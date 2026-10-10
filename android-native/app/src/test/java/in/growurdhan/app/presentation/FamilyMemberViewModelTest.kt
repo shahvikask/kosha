@@ -6,7 +6,9 @@ import `in`.growurdhan.domain.vault.VaultRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -18,6 +20,46 @@ import org.junit.Test
 class FamilyMemberViewModelTest {
     @get:Rule val dispatcher = MainDispatcherRule()
     private val owner = FamilyMember(OwnerId("primary"), "Synthetic Primary", "Self", true)
+
+    @Test fun oldFamilyReadIsDiscardedAfterCredentialReplacement() = runTest {
+        val repo = mockk<VaultRepository>()
+        val pending = CompletableDeferred<List<FamilyMember>>()
+        coEvery { repo.members() } coAnswers { pending.await() }
+        val gate = VaultSessionGate().also { it.grantDeviceCredential() }
+        val vm = FamilyMemberViewModel(repo, gate)
+        vm.onIntent(FamilyMemberIntent.Refresh)
+        runCurrent()
+
+        gate.lock()
+        gate.grantDeviceCredential()
+        pending.complete(listOf(owner))
+        advanceUntilIdle()
+
+        assertEquals(FamilyMemberUiState.Locked, vm.state.value)
+    }
+
+    @Test fun priorCredentialCannotPublishDelayedFamilySaveSuccess() = runTest {
+        val repo = mockk<VaultRepository>()
+        coEvery { repo.members() } returns emptyList()
+        val pending = CompletableDeferred<FamilyMember>()
+        coEvery { repo.registerFamilyMember(any(), any()) } coAnswers { pending.await() }
+        val gate = VaultSessionGate().also { it.grantDeviceCredential() }
+        val vm = FamilyMemberViewModel(repo, gate)
+        vm.onIntent(FamilyMemberIntent.Refresh)
+        advanceUntilIdle()
+        vm.onIntent(FamilyMemberIntent.Stage("Synthetic Primary", "Self"))
+        gate.grantDeviceCredential()
+        vm.onIntent(FamilyMemberIntent.SaveAfterCredential)
+        runCurrent()
+
+        gate.lock()
+        gate.grantDeviceCredential()
+        pending.complete(owner)
+        advanceUntilIdle()
+
+        assertEquals(FamilyMemberUiState.Locked, vm.state.value)
+        coVerify(exactly = 1) { repo.registerFamilyMember(any(), any()) }
+    }
 
     @Test fun lockedSessionCannotReadOrStageAnyFamilyInformation() = runTest {
         val repo = mockk<VaultRepository>()

@@ -5,7 +5,9 @@ import `in`.growurdhan.domain.vault.VaultRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
@@ -21,6 +23,46 @@ class CustodyHoldingViewModelTest {
     private val account = CustodyAccount("account", owner, "CAMS", "Main synthetic")
     private fun book(accounts: List<CustodyAccount> = emptyList()) =
         VaultBook(listOf(member), emptyList(), emptyList(), accounts)
+
+    @Test fun priorDeviceCredentialCannotPublishDelayedCustodyBook() = runTest {
+        val repo = mockk<VaultRepository>()
+        val pending = CompletableDeferred<VaultBook>()
+        coEvery { repo.readBook() } coAnswers { pending.await() }
+        val gate = VaultSessionGate().also { it.grantDeviceCredential() }
+        val vm = CustodyHoldingViewModel(repo, gate)
+        vm.onIntent(CustodyHoldingIntent.Refresh)
+        runCurrent()
+        gate.lock()
+        gate.grantDeviceCredential()
+        pending.complete(book(listOf(account)))
+        advanceUntilIdle()
+
+        assertEquals(CustodyHoldingUiState.Locked, vm.state.value)
+    }
+
+    @Test fun priorDeviceCredentialCannotPublishDelayedCustodySave() = runTest {
+        val repo = mockk<VaultRepository>()
+        coEvery { repo.readBook() } returns book()
+        val pending = CompletableDeferred<CustodyAccount>()
+        coEvery { repo.registerCustodyAccount(any(), any(), any()) } coAnswers {
+            pending.await()
+        }
+        val gate = VaultSessionGate().also { it.grantDeviceCredential() }
+        val vm = CustodyHoldingViewModel(repo, gate)
+        vm.onIntent(CustodyHoldingIntent.Refresh)
+        advanceUntilIdle()
+        vm.onIntent(CustodyHoldingIntent.StageAccount(owner, "CAMS", "Main"))
+        gate.grantDeviceCredential()
+        vm.onIntent(CustodyHoldingIntent.SaveAfterCredential)
+        runCurrent()
+        gate.lock()
+        gate.grantDeviceCredential()
+        pending.complete(account)
+        advanceUntilIdle()
+
+        assertEquals(CustodyHoldingUiState.Locked, vm.state.value)
+        coVerify(exactly = 1) { repo.registerCustodyAccount(any(), any(), any()) }
+    }
 
     @Test fun lockedRefreshNeverReadsEncryptedBook() = runTest {
         val repo = mockk<VaultRepository>()

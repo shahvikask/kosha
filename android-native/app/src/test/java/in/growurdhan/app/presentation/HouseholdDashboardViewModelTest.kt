@@ -43,6 +43,25 @@ class HouseholdDashboardViewModelTest {
         )
     }
 
+    @Test fun reauthenticationDuringReadCannotExposeOlderHouseholdSnapshot() = runTest {
+        val repo = mockk<VaultRepository>()
+        val pending = CompletableDeferred<VaultBook>()
+        coEvery { repo.readBook() } coAnswers { pending.await() }
+        val gate = VaultSessionGate().also { it.grantDeviceCredential() }
+        val vm = HouseholdDashboardViewModel(repo, gate)
+        vm.refresh()
+        runCurrent()
+        assertEquals(HouseholdDashboardUiState.Loading, vm.state.value)
+
+        gate.lock()
+        gate.grantDeviceCredential()
+        pending.complete(book())
+        advanceUntilIdle()
+
+        assertEquals(HouseholdDashboardUiState.Locked, vm.state.value)
+        coVerify(exactly = 1) { repo.readBook() }
+    }
+
     @Test fun lockedRefreshDoesNotReadTheEncryptedBook() = runTest {
         val repo = mockk<VaultRepository>()
         val vm = HouseholdDashboardViewModel(repo, VaultSessionGate())
