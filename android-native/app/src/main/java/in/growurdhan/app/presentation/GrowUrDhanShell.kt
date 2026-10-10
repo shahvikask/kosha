@@ -71,6 +71,7 @@ fun GrowUrDhanShell(
     onIntent: (AppIntent) -> Unit,
     vaultState: VaultUiState = VaultUiState.Loading,
     dashboardState: HouseholdDashboardUiState = HouseholdDashboardUiState.Locked,
+    onDashboardRefresh: () -> Unit = {},
     onVaultIntent: (VaultIntent) -> Unit = {},
     reviewState: StatementReviewUiState = StatementReviewUiState.Empty,
     onReviewIntent: (StatementReviewIntent) -> Unit = {},
@@ -154,6 +155,7 @@ fun GrowUrDhanShell(
                     composable(MainDestination.HOME.route) {
                         HomeScreen(
                             dashboardState = dashboardState,
+                            onRefreshDashboard = onDashboardRefresh,
                             onOpenSettings = { navigate(MainDestination.SETTINGS.route) },
                             onOpenPrivacy = { navigate(MainDestination.PRIVACY.route) },
                             onOpenVault = { navigate(MainDestination.VAULT.route) },
