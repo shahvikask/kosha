@@ -27,6 +27,7 @@ import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 import `in`.growurdhan.domain.vault.VaultRepository
 import `in`.growurdhan.domain.vault.VaultAuthorization
+import `in`.growurdhan.domain.vault.AuthorizedVaultAccess
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -806,12 +807,10 @@ class DefaultVaultRepository @Inject constructor(
     private val authorization: VaultAuthorization,
 ) : VaultRepository {
     private val delegate = SqlCipherVaultRepository(context)
+    private val sessionBound = AuthorizedVaultAccess(delegate, authorization)
 
     override suspend fun status(): VaultStatus = delegate.status()
-    override suspend fun openOrCreate(): VaultStatus {
-        authorization.requireUnlocked()
-        return delegate.openOrCreate()
-    }
+    override suspend fun openOrCreate(): VaultStatus = sessionBound.openOrCreate()
     override suspend fun close() = delegate.close()
 
     override suspend fun createMember(member: FamilyMember) {
@@ -861,41 +860,21 @@ class DefaultVaultRepository @Inject constructor(
         snapshotId: String, ownerId: OwnerId, sourceSha256: String,
         lines: List<StatementLine>,
     ): ReviewedStatement {
-        authorization.requireUnlocked()
-        return delegate.prepareStatementReview(snapshotId, ownerId, sourceSha256, lines)
+        return sessionBound.read {
+            delegate.prepareStatementReview(snapshotId, ownerId, sourceSha256, lines)
+        }
     }
     override suspend fun commitReviewedStatement(review: ReviewedStatement): SnapshotResult {
         authorization.requireRecentApproval()
         return delegate.commitReviewedStatement(review)
     }
-    override suspend fun members(): List<FamilyMember> {
-        authorization.requireUnlocked()
-        return delegate.members()
-    }
-    override suspend fun accounts(): List<CustodyAccount> {
-        authorization.requireUnlocked()
-        return delegate.accounts()
-    }
-    override suspend fun casIdentities(): List<CasHoldingIdentity> {
-        authorization.requireUnlocked()
-        return delegate.casIdentities()
-    }
-    override suspend fun holdings(): List<Holding> {
-        authorization.requireUnlocked()
-        return delegate.holdings()
-    }
-    override suspend fun events(): List<LedgerEvent> {
-        authorization.requireUnlocked()
-        return delegate.events()
-    }
-    override suspend fun readBook(): VaultBook {
-        authorization.requireUnlocked()
-        return delegate.readBook()
-    }
-    override suspend fun health(): VaultHealth {
-        authorization.requireUnlocked()
-        return delegate.health()
-    }
+    override suspend fun members(): List<FamilyMember> = sessionBound.read { delegate.members() }
+    override suspend fun accounts(): List<CustodyAccount> = sessionBound.read { delegate.accounts() }
+    override suspend fun casIdentities(): List<CasHoldingIdentity> = sessionBound.read { delegate.casIdentities() }
+    override suspend fun holdings(): List<Holding> = sessionBound.read { delegate.holdings() }
+    override suspend fun events(): List<LedgerEvent> = sessionBound.read { delegate.events() }
+    override suspend fun readBook(): VaultBook = sessionBound.read { delegate.readBook() }
+    override suspend fun health(): VaultHealth = sessionBound.read { delegate.health() }
     override suspend fun exportEncryptedBackup(passphrase: CharArray): ByteArray {
         authorization.requireRecentApproval()
         return delegate.exportEncryptedBackup(passphrase)

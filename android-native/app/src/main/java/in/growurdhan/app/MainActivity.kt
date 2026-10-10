@@ -75,6 +75,9 @@ class MainActivity : ComponentActivity() {
     private var pickedPdfOwner: OwnerId? = null
     private var pickedPdfPassword: CharArray? = null
     private var pickedPdfUri: Uri? = null
+    // Invalidate an outstanding PDF parse as soon as the Activity locks/stops.
+    // No parsed statement may be staged after the originating session is gone.
+    private var pdfImportGeneration: Long = 0L
     private val timeoutHandler = Handler(Looper.getMainLooper())
     private val timeoutCheck = object : Runnable {
         override fun run() {
@@ -179,15 +182,24 @@ class MainActivity : ComponentActivity() {
         pickedPdfOwner = null
         pickedPdfPassword = null
         if (uri == null || owner == null || !sessionGate.isUnlocked()) {
+            password?.fill('\u0000')
             lockSensitiveUi()
             return
         }
-        // Closing the vault while the chooser was foregrounded is intentional.
-        vaultViewModel.onIntent(VaultIntent.OpenOrCreate)
+        val importRequest = ++pdfImportGeneration
+        // One authenticated, repository-level open. Do not also dispatch
+        // OpenOrCreate to the ViewModel: two independent opens can race Close.
         lifecycleScope.launch {
             try {
                 repository.openOrCreate()
+                check(importRequest == pdfImportGeneration && sessionGate.isUnlocked()) {
+                    "Vault session expired during PDF import."
+                }
+                vaultViewModel.onIntent(VaultIntent.Refresh)
                 val book = repository.readBook()
+                check(importRequest == pdfImportGeneration && sessionGate.isUnlocked()) {
+                    "Vault session expired before PDF validation."
+                }
                 check(book.members.any { it.id == owner }) {
                     "Statement owner does not exist in encrypted book."
                 }
@@ -196,17 +208,23 @@ class MainActivity : ComponentActivity() {
                     book.casIdentities,
                     password?.concatToString() ?: "",
                 )
-                check(sessionGate.isUnlocked()) { "Vault session expired during PDF parsing." }
+                check(importRequest == pdfImportGeneration && sessionGate.isUnlocked()) {
+                    "Vault session expired during PDF parsing."
+                }
                 reviewViewModel.prepareFromValidatedParser(
                     "cas_${verified.sourceSha256}",
                     owner,
                     verified.sourceSha256,
                     verified.lines,
                 )
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
             } catch (_: Exception) {
-                // Source content, Python errors, file path, PAN and password
-                // never cross into UI error messages or diagnostic logs.
-                reviewViewModel.reportParserFailure()
+                // Never reveal source content, Python errors, PAN or passwords.
+                // A stale/background import must not resurrect the review screen.
+                if (importRequest == pdfImportGeneration && sessionGate.isUnlocked()) {
+                    reviewViewModel.reportParserFailure()
+                }
             } finally {
                 password?.fill('\u0000')
             }
@@ -460,6 +478,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun lockSensitiveUi() {
+        ++pdfImportGeneration
         dashboardViewModel.lock()
         sessionGate.lock()
         reviewViewModel.clearSensitiveState()
@@ -486,6 +505,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        ++pdfImportGeneration
         timeoutHandler.removeCallbacks(timeoutCheck)
         super.onStop()
         // Android's own credential confirmation activity may temporarily stop us.

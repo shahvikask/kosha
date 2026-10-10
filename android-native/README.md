@@ -117,3 +117,27 @@ physical device behavior, complete native product parity, Play release readiness
 Earlier CI evidence in this README applies only to the specific historical commits
 linked above, not these changes. The immutable CASPARSER files and reference
 branches remain untouched.
+
+## Native vault and CAS handoff hardening (October 2026; tests pending)
+
+The production encrypted-vault repository now rechecks authorization **after**
+asynchronous opening and private reads, not merely before them. If opening is
+cancelled or credentials expire before opening completes, best-effort
+non-cancellable SQLCipher connection cleanup runs before the failure returns.
+The caller receives no successfully opened status or financial rows after
+authorization has been revoked at the post-operation check.
+
+The PDF picker now initiates **one** guarded vault opening instead of two
+independent opens in the Activity and VaultViewModel. Successful opening
+refreshes the vault UI, and backgrounding, cancellation, or locking invalidates
+the outstanding import generation. Only the still-authorized, current import
+may stage statement review or display parser failure. The provided PDF password
+is wiped when input validation fails and after import processing.
+
+Synthetic JVM regression tests cover denied opening, successful opening,
+credential expiry mid-open, coroutine cancellation, and authorization expiry
+mid-read. The existing CASPARSER and Python bridge are **unchanged**.
+
+**Verification pending:** Gradle/JUnit/instrumentation runs and real ARM64 PDF
+picker/credential lifecycle tests. There is no assertion that native
+parity, Play signing, or independent MASVS assessment is complete.
