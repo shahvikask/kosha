@@ -86,6 +86,24 @@ class HouseholdDashboardProjectorTest {
         assertEquals(dashboard.assets.raw, dashboard.byCategory.sumOf { it.value.raw })
     }
 
+    @Test fun memberBreakdownReconcilesToHouseholdTotals() {
+        val holdings = listOf(
+            FinancialHolding(HoldingId("member1"), owner, "Savings", "CASH", MoneyScaled(300_000), QUANTITY_SCALE),
+            FinancialHolding(HoldingId("member2"), other, "Deposit", "FIXED_INCOME", MoneyScaled(125_000), QUANTITY_SCALE),
+        )
+        val report = PortfolioEngine.derive(
+            holdings, emptyList(), LocalDate.parse("2026-10-09"), listOf(owner, other),
+        )
+        val dashboard = HouseholdDashboardProjector.from(report)
+        assertEquals(2, dashboard.byMember.size)
+        assertEquals(425_000L, dashboard.netWorth.raw)
+        assertEquals(dashboard.netWorth.raw, dashboard.byMember.sumOf { it.netWorth.raw })
+        assertEquals(dashboard.assets.raw, dashboard.byMember.sumOf { it.assets.raw })
+        assertEquals(dashboard.liabilities.raw, dashboard.byMember.sumOf { it.liabilities.raw })
+        assertEquals(1, dashboard.byMember.single { it.ownerId == owner }.holdings)
+        assertEquals(1, dashboard.byMember.single { it.ownerId == other }.holdings)
+    }
+
     @Test fun integrityProblemsAreNotHiddenFromDashboard() {
         val holding = FinancialHolding(
             HoldingId("h2"), OwnerId("unrecognized"), "Unknown owner", "EQUITY",
