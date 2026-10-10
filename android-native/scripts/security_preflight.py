@@ -30,7 +30,7 @@ def repository_binding_errors(binding: str) -> list[str]:
         return ["Production repository policy binding is missing."]
     production = binding.split("class DefaultVaultRepository", 1)[1]
     headers = list(re.finditer(
-        r"(?m)^    override suspend fun ([A-Za-z][A-Za-z0-9]*)\\(",
+        r"(?m)^    override suspend fun ([A-Za-z][A-Za-z0-9]*)\(",
         production,
     ))
     sections: dict[str, list[str]] = {}
@@ -67,6 +67,10 @@ def repository_binding_errors(binding: str) -> list[str]:
         found = sections.get(name, [])
         if len(found) != 1 or route not in found[0]:
             errors.append(f"Production repository entry point {name} bypasses {route}")
+    if "prepareStatementReview" in sections and (
+        "delegate.prepareStatementReview(" not in sections["prepareStatementReview"][0]
+    ):
+        errors.append("Statement review no longer delegates through session-bound read.")
 
     if "private val delegate = SqlCipherVaultRepository(context, mutationAuthorization = authorization)" not in production:
         errors.append("SQLCipher production delegate has no transaction authorization guard.")
