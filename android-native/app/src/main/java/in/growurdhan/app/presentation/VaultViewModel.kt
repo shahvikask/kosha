@@ -131,7 +131,14 @@ class VaultViewModel @Inject constructor(
                                 return@withLock
                             }
                             if (request == requestGeneration) {
-                                mutableState.value = VaultUiState.Ready(health)
+                                if (!session.isUnlocked()) {
+                                    // Check once more immediately before publishing
+                                    // financial access to the UI.
+                                    repository.close()
+                                    mutableState.value = VaultUiState.Closed
+                                } else {
+                                    mutableState.value = VaultUiState.Ready(health)
+                                }
                             }
                         }
                     }
