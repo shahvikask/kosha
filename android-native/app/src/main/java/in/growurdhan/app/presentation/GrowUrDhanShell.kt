@@ -154,6 +154,8 @@ fun GrowUrDhanShell(
                         HomeScreen(
                             onOpenSettings = { navigate(MainDestination.SETTINGS.route) },
                             onOpenPrivacy = { navigate(MainDestination.PRIVACY.route) },
+                            onOpenVault = { navigate(MainDestination.VAULT.route) },
+                            onOpenStatements = { navigate(MainDestination.REVIEW.route) },
                         )
                     }
                     composable(MainDestination.VAULT.route) {
