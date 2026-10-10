@@ -128,6 +128,29 @@ fun HomeScreen(
         }
 
         if (dashboardState is HouseholdDashboardUiState.Ready &&
+            dashboardState.dashboard.integrityWarnings.isNotEmpty()
+        ) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(22.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("Financial data needs review", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Some records could not be included reliably in your totals. " +
+                            "Review the affected holdings before relying on this overview.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        dashboardState.dashboard.integrityWarnings.size.toString() +
+                            " calculation or ownership warning(s).",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        }
+
+        if (dashboardState is HouseholdDashboardUiState.Ready &&
             dashboardState.dashboard.byMember.isNotEmpty()
         ) {
             Card(modifier = Modifier.fillMaxWidth()) {
@@ -137,14 +160,14 @@ fun HomeScreen(
                 ) {
                     Text("Family breakdown", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "Recorded net worth by member. Member identifiers are not displayed.",
+                        "Recorded net worth by member. Names are shown only while the vault is unlocked.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     dashboardState.dashboard.byMember.forEachIndexed { index, member ->
                         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                             Text(
-                                "Family member " + (index + 1),
+                                member.displayName ?: "Family member " + (index + 1),
                                 style = MaterialTheme.typography.titleSmall,
                             )
                             Text(
