@@ -50,6 +50,27 @@ class AuthorizedVaultAccess(
     /** Explicit lock requests cannot race an in-progress open/cleanup. */
     suspend fun close() = connectionMutex.withLock { delegate.close() }
 
+    /**
+     * Backup export is a sensitive read with a recently verified credential.
+     * If the same approval is not active after encryption, wipe the produced
+     * ciphertext so the caller cannot write it to an external document URI.
+     */
+    suspend fun readRecentlyApprovedBytes(action: suspend () -> ByteArray): ByteArray {
+        authorization.requireRecentApproval()
+        val authorizedRevision = authorization.sessionRevision()
+        val bytes = action()
+        try {
+            authorization.requireRecentApproval()
+            check(authorization.sessionRevision() == authorizedRevision) {
+                "The verified device credential changed during backup export."
+            }
+            return bytes
+        } catch (failure: Throwable) {
+            bytes.fill(0)
+            throw failure
+        }
+    }
+
     /** Never return private rows or review receipts after session expiry. */
     suspend fun <T> read(action: suspend () -> T): T {
         authorization.requireUnlocked()

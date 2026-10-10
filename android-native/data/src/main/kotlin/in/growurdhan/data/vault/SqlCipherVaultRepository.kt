@@ -904,10 +904,8 @@ class DefaultVaultRepository @Inject constructor(
     override suspend fun events(): List<LedgerEvent> = sessionBound.read { delegate.events() }
     override suspend fun readBook(): VaultBook = sessionBound.read { delegate.readBook() }
     override suspend fun health(): VaultHealth = sessionBound.read { delegate.health() }
-    override suspend fun exportEncryptedBackup(passphrase: CharArray): ByteArray {
-        authorization.requireRecentApproval()
-        return delegate.exportEncryptedBackup(passphrase)
-    }
+    override suspend fun exportEncryptedBackup(passphrase: CharArray): ByteArray =
+        sessionBound.readRecentlyApprovedBytes { delegate.exportEncryptedBackup(passphrase) }
     override suspend fun restoreEncryptedBackup(passphrase: CharArray, ciphertext: ByteArray) {
         approvedWrite { delegate.restoreEncryptedBackup(passphrase, ciphertext) }
     }

@@ -46,7 +46,7 @@ class PortableRecoveryViewModel @Inject constructor(
     private val mutableState = MutableStateFlow<PortableRecoveryUiState>(PortableRecoveryUiState.Empty)
     val state: StateFlow<PortableRecoveryUiState> = mutableState
     private var operation: Job? = null
-    private var generation = 0L
+    @Volatile private var generation = 0L
     // Owned explicitly so cancellation before coroutine start can still zero
     // the password rather than leaving the only reference in a suspended job.
     private var inFlightPassword: CharArray? = null
@@ -81,6 +81,7 @@ class PortableRecoveryViewModel @Inject constructor(
         inFlightPassword?.fill('\u0000')
         inFlightPassword = password
         val current = ++generation
+        val authenticatedRevision = session.credentialEpoch()
         mutableState.value = PortableRecoveryUiState.Working
         operation = viewModelScope.launch {
             try {
@@ -92,6 +93,12 @@ class PortableRecoveryViewModel @Inject constructor(
                         vault.openOrCreate()
                         val encrypted = vault.exportEncryptedBackup(password)
                         try {
+                            // Encryption/key derivation can outlive the original
+                            // approval. Never write to a SAF document afterwards.
+                            check(current == generation &&
+                                session.canCommitFinancialChanges() &&
+                                session.credentialEpoch() == authenticatedRevision
+                            ) { "Backup export approval expired before writing the document." }
                             context.contentResolver.openOutputStream(uri, "wt")?.use {
                                 it.write(encrypted)
                                 it.flush()

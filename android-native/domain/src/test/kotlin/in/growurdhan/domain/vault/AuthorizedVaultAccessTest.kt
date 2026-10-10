@@ -182,6 +182,47 @@ class AuthorizedVaultAccessTest {
         }
     }
 
+    @Test fun expiredApprovalAfterEncryptionWipesCiphertext() = runTest {
+        val gate = Gate()
+        val encrypted = byteArrayOf(11, 22, 33, 44)
+        val pending = CompletableDeferred<ByteArray>()
+        val access = AuthorizedVaultAccess(mockk(), gate)
+        val export = async {
+            runCatching { access.readRecentlyApprovedBytes { pending.await() } }.exceptionOrNull()
+        }
+        runCurrent()
+        gate.unlocked = false
+        pending.complete(encrypted)
+
+        assertTrue(export.await() is IllegalStateException)
+        assertTrue(encrypted.all { it == 0.toByte() })
+    }
+
+    @Test fun replacedCredentialAfterEncryptionWipesCiphertext() = runTest {
+        val gate = Gate()
+        val encrypted = byteArrayOf(9, 8, 7)
+        val pending = CompletableDeferred<ByteArray>()
+        val access = AuthorizedVaultAccess(mockk(), gate)
+        val export = async {
+            runCatching { access.readRecentlyApprovedBytes { pending.await() } }.exceptionOrNull()
+        }
+        runCurrent()
+        gate.unlocked = false
+        gate.confirmAgain()
+        pending.complete(encrypted)
+
+        assertTrue(export.await() is IllegalStateException)
+        assertTrue(encrypted.all { it == 0.toByte() })
+    }
+
+    @Test fun currentApprovalCanExportCiphertextWithoutWiping() = runTest {
+        val encrypted = byteArrayOf(1, 2, 3)
+        val result = AuthorizedVaultAccess(mockk(), Gate()).readRecentlyApprovedBytes {
+            encrypted
+        }
+        assertEquals(listOf(1, 2, 3), result.map { it.toInt() })
+    }
+
     @Test fun authorizedReadReturnsResult() = runTest {
         val access = AuthorizedVaultAccess(mockk(), Gate())
         assertEquals("Synthetic permitted value", access.read { "Synthetic permitted value" })

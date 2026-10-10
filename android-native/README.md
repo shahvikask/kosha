@@ -172,3 +172,16 @@ because the newer opening must wait for cleanup to complete. Added coroutine
 tests for explicit close waiting and failed-open cleanup ordering.
 
 **Not yet verified** on Android devices or with the full Gradle suite.
+
+## Backup export authorization across slow encryption (October 2026; verification pending)
+
+Portable backup export now rechecks the same **recent** device credential and
+its challenge revision after the encrypted bytes have been generated. If the
+credential expired or was replaced, the resulting ciphertext buffer is wiped
+and never returned for document export. The Android SAF writer independently
+checks the operation generation and recent credential immediately before
+opening its output stream. Synthetic JVM regression tests cover expiry,
+credential replacement and a successful unchanged approval.
+
+Only encrypted bytes reach SAF; no network upload is introduced. Android
+instrumentation and storage-provider lifecycle verification remain pending.
