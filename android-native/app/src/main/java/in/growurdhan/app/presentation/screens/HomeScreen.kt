@@ -116,6 +116,37 @@ fun HomeScreen(
             }
         }
 
+        if (dashboardState is HouseholdDashboardUiState.Ready &&
+            dashboardState.dashboard.byMember.isNotEmpty()
+        ) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(22.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text("Family breakdown", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Recorded net worth by member. Member identifiers are not displayed.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    dashboardState.dashboard.byMember.forEachIndexed { index, member ->
+                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text(
+                                "Family member " + (index + 1),
+                                style = MaterialTheme.typography.titleSmall,
+                            )
+                            Text(
+                                "Net worth: " + member.netWorth.rupees().toPlainString() +
+                                    " INR; holdings: " + member.holdings,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedButton(onClick = onOpenStatements, modifier = Modifier.weight(1f)) {
                 Icon(Icons.Outlined.Description, contentDescription = null)
