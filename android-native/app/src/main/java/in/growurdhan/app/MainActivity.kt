@@ -280,6 +280,7 @@ class MainActivity : ComponentActivity() {
             requestCredential(CredentialAction.OPEN_VAULT)
         } else {
             if (intent == VaultIntent.Close) {
+                dashboardViewModel.lock()
                 reviewViewModel.clearSensitiveState()
                 recoveryViewModel.clearSensitiveState()
             }
