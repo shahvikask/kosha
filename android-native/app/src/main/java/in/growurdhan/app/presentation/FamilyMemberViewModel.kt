@@ -71,6 +71,7 @@ class FamilyMemberViewModel @Inject constructor(
     private fun refresh() {
         operation?.cancel()
         val current = ++generation
+        val originalRevision = session.credentialEpoch()
         if (!session.isUnlocked()) {
             mutableState.value = FamilyMemberUiState.Locked
             return
@@ -79,8 +80,12 @@ class FamilyMemberViewModel @Inject constructor(
         operation = viewModelScope.launch {
             try {
                 val members = vault.members()
-                if (current == generation && session.isUnlocked()) {
-                    mutableState.value = FamilyMemberUiState.Ready(members)
+                if (current == generation) {
+                    if (session.isCurrentSession(originalRevision)) {
+                        mutableState.value = FamilyMemberUiState.Ready(members)
+                    } else {
+                        clearSensitiveState()
+                    }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -129,12 +134,17 @@ class FamilyMemberViewModel @Inject constructor(
         }
         operation?.cancel()
         val current = ++generation
+        val originalRevision = session.credentialEpoch()
         mutableState.value = FamilyMemberUiState.Saving
         operation = viewModelScope.launch {
             try {
                 val created = vault.registerFamilyMember(pending.name, pending.relationship)
-                if (current == generation && session.isUnlocked()) {
-                    mutableState.value = FamilyMemberUiState.Saved(created)
+                if (current == generation) {
+                    if (session.isCurrentSession(originalRevision)) {
+                        mutableState.value = FamilyMemberUiState.Saved(created)
+                    } else {
+                        clearSensitiveState()
+                    }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled

@@ -53,12 +53,13 @@ class HouseholdDashboardViewModel @Inject constructor(
         }
         operation?.cancel()
         val request = ++generation
+        val originalRevision = session.credentialEpoch()
         mutableState.value = HouseholdDashboardUiState.Loading
         operation = viewModelScope.launch {
             try {
-                check(session.isUnlocked())
+                check(session.isCurrentSession(originalRevision))
                 val book = repository.readBook()
-                check(session.isUnlocked())
+                check(session.isCurrentSession(originalRevision))
                 val report = PortfolioEngine.derive(
                     holdings = book.holdings.map { it.toFinancialHolding() },
                     events = book.events.map { it.toFinancialEvent() },
@@ -67,7 +68,7 @@ class HouseholdDashboardViewModel @Inject constructor(
                     enforceKnownMembers = true,
                 )
                 if (request != generation) return@launch
-                if (!session.isUnlocked()) {
+                if (!session.isCurrentSession(originalRevision)) {
                     lock()
                     return@launch
                 }
@@ -75,7 +76,7 @@ class HouseholdDashboardViewModel @Inject constructor(
                     report, book.members.associate { it.id to it.displayName },
                 )
                 if (request != generation) return@launch
-                if (session.isUnlocked()) {
+                if (session.isCurrentSession(originalRevision)) {
                     mutableState.value = HouseholdDashboardUiState.Ready(dashboard)
                 } else {
                     lock()
@@ -84,8 +85,8 @@ class HouseholdDashboardViewModel @Inject constructor(
                 throw cancelled
             } catch (_: Exception) {
                 if (request != generation) return@launch
-                mutableState.value = if (session.isUnlocked()) HouseholdDashboardUiState.Unavailable
-                    else HouseholdDashboardUiState.Locked
+                mutableState.value = if (session.isCurrentSession(originalRevision))
+                    HouseholdDashboardUiState.Unavailable else HouseholdDashboardUiState.Locked
             }
         }
     }

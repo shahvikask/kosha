@@ -82,6 +82,7 @@ class CustodyHoldingViewModel @Inject constructor(
     private fun refresh() {
         operation?.cancel()
         val expectedGeneration = ++generation
+        val originalRevision = session.credentialEpoch()
         if (!session.isUnlocked()) {
             clearSensitiveState()
             return
@@ -90,8 +91,12 @@ class CustodyHoldingViewModel @Inject constructor(
         operation = viewModelScope.launch {
             try {
                 val book = vault.readBook()
-                if (expectedGeneration == generation && session.isUnlocked()) {
-                    mutableState.value = CustodyHoldingUiState.Ready(book)
+                if (expectedGeneration == generation) {
+                    if (session.isCurrentSession(originalRevision)) {
+                        mutableState.value = CustodyHoldingUiState.Ready(book)
+                    } else {
+                        clearSensitiveState()
+                    }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -155,6 +160,7 @@ class CustodyHoldingViewModel @Inject constructor(
         }
         operation?.cancel()
         val expectedGeneration = ++generation
+        val originalRevision = session.credentialEpoch()
         mutableState.value = CustodyHoldingUiState.Saving
         operation = viewModelScope.launch {
             try {
@@ -171,8 +177,12 @@ class CustodyHoldingViewModel @Inject constructor(
                         "Fund enrolled for future exact CAS identity matching."
                     }
                 }
-                if (expectedGeneration == generation && session.isUnlocked()) {
-                    mutableState.value = CustodyHoldingUiState.Saved(notice)
+                if (expectedGeneration == generation) {
+                    if (session.isCurrentSession(originalRevision)) {
+                        mutableState.value = CustodyHoldingUiState.Saved(notice)
+                    } else {
+                        clearSensitiveState()
+                    }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled

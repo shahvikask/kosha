@@ -34,6 +34,14 @@ class VaultSessionGate @Inject constructor() : VaultAuthorization {
     /** Form staging records this revision to require a *later* OS challenge. */
     @Synchronized fun credentialEpoch(): Long = credentialRevision
 
+    /** An old async response cannot borrow a new Android credential challenge. */
+    @Synchronized fun isCurrentSession(originalRevision: Long): Boolean =
+        credentialRevision == originalRevision && isUnlocked()
+
+    /** Same session and recent approval are needed for a financial write result. */
+    @Synchronized fun isCurrentApproval(originalRevision: Long): Boolean =
+        credentialRevision == originalRevision && canCommitFinancialChanges()
+
     @Synchronized override fun sessionRevision(): Long = credentialRevision
 
     @Synchronized fun lock() {

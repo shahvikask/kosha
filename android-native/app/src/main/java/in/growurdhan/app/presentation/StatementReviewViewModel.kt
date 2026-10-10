@@ -68,14 +68,19 @@ class StatementReviewViewModel @Inject constructor(
         }
         operation?.cancel()
         val current = ++generation
+        val originalRevision = session.credentialEpoch()
         // A copy removes the caller's ability to mutate the list after staging.
         val inputs = lines.toList()
         mutableState.value = StatementReviewUiState.Working
         operation = viewModelScope.launch {
             try {
                 val receipt = vault.prepareStatementReview(snapshotId, ownerId, sourceSha256, inputs)
-                if (current == generation && session.isUnlocked()) {
-                    mutableState.value = StatementReviewUiState.Reviewing(receipt)
+                if (current == generation) {
+                    if (session.isCurrentSession(originalRevision)) {
+                        mutableState.value = StatementReviewUiState.Reviewing(receipt)
+                    } else {
+                        clearSensitiveState()
+                    }
                 }
             } catch (cancel: CancellationException) {
                 throw cancel
@@ -106,11 +111,16 @@ class StatementReviewViewModel @Inject constructor(
         }
         operation?.cancel()
         val current = ++generation
+        val originalRevision = session.credentialEpoch()
         mutableState.value = StatementReviewUiState.Working
         operation = viewModelScope.launch {
             try {
                 val book = vault.readBook()
-                if (current == generation && session.isUnlocked()) {
+                if (current == generation) {
+                    if (!session.isCurrentSession(originalRevision)) {
+                        clearSensitiveState()
+                        return@launch
+                    }
                     val enrolledOwners = book.casIdentities.map { it.ownerId }.toSet()
                     mutableState.value = when {
                         book.members.isEmpty() -> StatementReviewUiState.MissingFamilyMember
@@ -157,12 +167,17 @@ class StatementReviewViewModel @Inject constructor(
         }
         operation?.cancel()
         val current = ++generation
+        val originalRevision = session.credentialEpoch()
         mutableState.value = StatementReviewUiState.Working
         operation = viewModelScope.launch {
             try {
                 val result = vault.commitReviewedStatement(reviewing.receipt)
-                if (current == generation && session.isUnlocked()) {
-                    mutableState.value = StatementReviewUiState.Completed(result)
+                if (current == generation) {
+                    if (session.isCurrentSession(originalRevision)) {
+                        mutableState.value = StatementReviewUiState.Completed(result)
+                    } else {
+                        clearSensitiveState()
+                    }
                 }
             } catch (cancel: CancellationException) {
                 throw cancel
