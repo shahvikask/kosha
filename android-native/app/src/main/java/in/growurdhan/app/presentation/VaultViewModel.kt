@@ -6,9 +6,12 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import `in`.growurdhan.core.model.VaultHealth
 import `in`.growurdhan.core.model.VaultStatus
 import `in`.growurdhan.domain.vault.VaultRepository
+import `in`.growurdhan.domain.vault.VaultHealthGate
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -59,6 +62,33 @@ class VaultViewModel @Inject constructor(
         lastCleanupOperation?.join()
     }
 
+    /**
+     * A successful SQL health query is not sufficient: corruption or broken
+     * owner/holding references must never be published as an unlocked vault.
+     * The same cleanup applies if health throws or the coroutine is cancelled.
+     * Only the connection is closed; encrypted files remain untouched.
+     */
+    private suspend fun verifiedHealthOrClose(): VaultHealth {
+        try {
+            val health = repository.health()
+            check(VaultHealthGate.accepts(health)) {
+                "Encrypted vault integrity or references could not be verified."
+            }
+            return health
+        } catch (failure: Throwable) {
+            // Immediately revoke user-facing access before waiting on SQLCipher.
+            session.lock()
+            withContext(NonCancellable) {
+                try {
+                    repository.close()
+                } catch (closeFailure: Throwable) {
+                    if (closeFailure !== failure) failure.addSuppressed(closeFailure)
+                }
+            }
+            throw failure
+        }
+    }
+
     init { onIntent(VaultIntent.Refresh) }
 
     fun onIntent(intent: VaultIntent) {
@@ -92,7 +122,7 @@ class VaultViewModel @Inject constructor(
                                     VaultUiState.Closed
                                 }
                                 else -> {
-                                    val health = repository.health()
+                                    val health = verifiedHealthOrClose()
                                     if (!session.isUnlocked()) {
                                         repository.close()
                                         VaultUiState.Closed
@@ -135,7 +165,7 @@ class VaultViewModel @Inject constructor(
                                 if (request == requestGeneration) mutableState.value = VaultUiState.Closed
                                 return@withLock
                             }
-                            val health = repository.health()
+                            val health = verifiedHealthOrClose()
                             if (!session.isUnlocked()) {
                                 repository.close()
                                 if (request == requestGeneration) mutableState.value = VaultUiState.Closed
