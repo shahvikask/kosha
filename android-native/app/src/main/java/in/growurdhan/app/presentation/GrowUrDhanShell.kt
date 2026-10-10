@@ -153,9 +153,6 @@ fun GrowUrDhanShell(
                     modifier = Modifier.fillMaxSize().padding(insets),
                 ) {
                     composable(MainDestination.HOME.route) {
-                        LaunchedEffect(vaultState) {
-                            if (vaultState is VaultUiState.Ready) onDashboardRefresh()
-                        }
                         HomeScreen(
                             dashboardState = dashboardState,
                             onOpenSettings = { navigate(MainDestination.SETTINGS.route) },
