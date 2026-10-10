@@ -70,6 +70,8 @@ fun GrowUrDhanShell(
     state: AppUiState,
     onIntent: (AppIntent) -> Unit,
     vaultState: VaultUiState = VaultUiState.Loading,
+    dashboardState: HouseholdDashboardUiState = HouseholdDashboardUiState.Locked,
+    onDashboardRefresh: () -> Unit = {},
     onVaultIntent: (VaultIntent) -> Unit = {},
     reviewState: StatementReviewUiState = StatementReviewUiState.Empty,
     onReviewIntent: (StatementReviewIntent) -> Unit = {},
@@ -151,7 +153,11 @@ fun GrowUrDhanShell(
                     modifier = Modifier.fillMaxSize().padding(insets),
                 ) {
                     composable(MainDestination.HOME.route) {
+                        LaunchedEffect(vaultState) {
+                            if (vaultState is VaultUiState.Ready) onDashboardRefresh()
+                        }
                         HomeScreen(
+                            dashboardState = dashboardState,
                             onOpenSettings = { navigate(MainDestination.SETTINGS.route) },
                             onOpenPrivacy = { navigate(MainDestination.PRIVACY.route) },
                             onOpenVault = { navigate(MainDestination.VAULT.route) },
