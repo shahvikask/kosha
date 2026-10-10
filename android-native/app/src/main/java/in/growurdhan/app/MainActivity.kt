@@ -229,6 +229,12 @@ class MainActivity : ComponentActivity() {
             val familyState by familyViewModel.state.collectAsStateWithLifecycle()
             val custodyState by custodyViewModel.state.collectAsStateWithLifecycle()
             val recoveryState by recoveryViewModel.state.collectAsStateWithLifecycle()
+            androidx.compose.runtime.LaunchedEffect(reviewState) {
+                if (reviewState is StatementReviewUiState.Completed) {
+                    dashboardViewModel.refresh()
+                    vaultViewModel.onIntent(VaultIntent.Refresh)
+                }
+            }
             androidx.compose.runtime.LaunchedEffect(familyState) {
                 if (familyState is FamilyMemberUiState.Saved) {
                     // A successful encrypted write updates the vault's member count.
