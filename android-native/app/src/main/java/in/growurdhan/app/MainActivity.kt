@@ -260,7 +260,6 @@ class MainActivity : ComponentActivity() {
                     onIntent = viewModel::onIntent,
                     vaultState = vaultState,
                     dashboardState = dashboardState,
-                    onDashboardRefresh = dashboardViewModel::refresh,
                     onVaultIntent = ::handleVaultIntent,
                     reviewState = reviewState,
                     onReviewIntent = ::handleReviewIntent,
