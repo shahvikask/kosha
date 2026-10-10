@@ -40,6 +40,7 @@ import `in`.growurdhan.app.presentation.VaultIntent
 import `in`.growurdhan.app.presentation.VaultUiState
 import `in`.growurdhan.app.presentation.VaultSessionGate
 import `in`.growurdhan.app.presentation.VaultViewModel
+import `in`.growurdhan.app.presentation.HouseholdDashboardViewModel
 import `in`.growurdhan.app.presentation.theme.GrowUrDhanTheme
 import javax.inject.Inject
 import kotlinx.coroutines.launch
@@ -56,6 +57,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var repository: VaultRepository
     private val viewModel: AppViewModel by viewModels()
     private val vaultViewModel: VaultViewModel by viewModels()
+    private val dashboardViewModel: HouseholdDashboardViewModel by viewModels()
     private val reviewViewModel: StatementReviewViewModel by viewModels()
     private val familyViewModel: FamilyMemberViewModel by viewModels()
     private val custodyViewModel: CustodyHoldingViewModel by viewModels()
@@ -218,6 +220,11 @@ class MainActivity : ComponentActivity() {
         setContent {
             val state by viewModel.uiState.collectAsStateWithLifecycle()
             val vaultState by vaultViewModel.state.collectAsStateWithLifecycle()
+            val dashboardState by dashboardViewModel.state.collectAsStateWithLifecycle()
+            androidx.compose.runtime.LaunchedEffect(vaultState) {
+                if (vaultState is VaultUiState.Ready) dashboardViewModel.refresh()
+                else dashboardViewModel.lock()
+            }
             val reviewState by reviewViewModel.state.collectAsStateWithLifecycle()
             val familyState by familyViewModel.state.collectAsStateWithLifecycle()
             val custodyState by custodyViewModel.state.collectAsStateWithLifecycle()
@@ -243,6 +250,8 @@ class MainActivity : ComponentActivity() {
                     state = state,
                     onIntent = viewModel::onIntent,
                     vaultState = vaultState,
+                    dashboardState = dashboardState,
+                    onDashboardRefresh = dashboardViewModel::refresh,
                     onVaultIntent = ::handleVaultIntent,
                     reviewState = reviewState,
                     onReviewIntent = ::handleReviewIntent,
@@ -435,6 +444,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun lockSensitiveUi() {
+        dashboardViewModel.lock()
         sessionGate.lock()
         reviewViewModel.clearSensitiveState()
         familyViewModel.clearSensitiveState()
@@ -464,6 +474,7 @@ class MainActivity : ComponentActivity() {
         super.onStop()
         // Android's own credential confirmation activity may temporarily stop us.
         // A cancelled challenge locks; success must come from RESULT_OK only.
+        dashboardViewModel.lock()
         when {
             backupPickerOpen -> {
                 // SAF destination/source selection is not a valid financial
