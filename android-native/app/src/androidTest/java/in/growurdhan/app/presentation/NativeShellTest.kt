@@ -4,6 +4,9 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -193,6 +196,39 @@ class NativeShellTest {
         compose.onNodeWithText("Synthetic Holding 31").assertDoesNotExist()
         compose.onNodeWithText("Show more holdings").performScrollTo().performClick()
         compose.onNodeWithText("Synthetic Holding 31").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun lockingDashboardDiscardsSensitiveSearchBeforeNextUnlock() {
+        val item = RecordedHoldingDashboard(
+            "Synthetic Family Investment", "MUTUAL_FUND", "Primary",
+            100_000_000L, MoneyScaled(120_000), null, true, false,
+        )
+        val dashboard = HouseholdDashboard(
+            asOf = LocalDate.parse("2026-10-09"),
+            assets = MoneyScaled(120_000), liabilities = MoneyScaled(0),
+            netWorth = MoneyScaled(120_000), memberCount = 1, holdingCount = 1,
+            unknownCostHoldings = 1, integrityWarnings = emptyList(),
+            byMember = emptyList(), recordedHoldings = listOf(item),
+        )
+        var display by mutableStateOf<HouseholdDashboardUiState>(
+            HouseholdDashboardUiState.Ready(dashboard),
+        )
+        compose.setContent {
+            GrowUrDhanTheme(AppearanceSettings(ThemeMode.LIGHT, dynamicColor = false)) {
+                HomeScreen(dashboardState = display, onOpenSettings = {}, onOpenPrivacy = {})
+            }
+        }
+        compose.onNodeWithTag("RecordedHoldingsSearch").performScrollTo()
+            .performTextInput("not present")
+        compose.onNodeWithText("Synthetic Family Investment").assertDoesNotExist()
+
+        compose.runOnIdle { display = HouseholdDashboardUiState.Locked }
+        compose.onNodeWithTag("RecordedHoldingsSearch").assertDoesNotExist()
+        compose.onNodeWithText("Synthetic Family Investment").assertDoesNotExist()
+
+        compose.runOnIdle { display = HouseholdDashboardUiState.Ready(dashboard) }
+        compose.onNodeWithText("Synthetic Family Investment")
+            .performScrollTo().assertIsDisplayed()
     }
 
     @Test fun lockedDashboardNeverRendersFamilyNames() {
