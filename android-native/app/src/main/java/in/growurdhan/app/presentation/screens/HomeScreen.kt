@@ -12,8 +12,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.Surface
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -31,21 +35,56 @@ import androidx.compose.ui.unit.dp
 fun HomeScreen(
     onOpenSettings: () -> Unit,
     onOpenPrivacy: () -> Unit,
+    onOpenVault: () -> Unit = {},
+    onOpenStatements: () -> Unit = {},
 ) {
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         Text(
-            text = "Your wealth, on your device.",
+            text = "Family wealth, with clarity.",
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.SemiBold,
         )
         Text(
-            text = "A quieter, clearer way to understand family wealth.",
+            text = "Private by design. Your financial books remain on this device.",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+
+        Surface(
+            color = MaterialTheme.colorScheme.primaryContainer,
+            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(
+                modifier = Modifier.padding(22.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text("Your financial overview", style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer)
+                Text("Open your secure vault to manage family members, accounts and holdings. " +
+                    "Portfolio totals will appear here only after authenticated book integration is complete.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer)
+                Button(onClick = onOpenVault) {
+                    Icon(Icons.Outlined.AccountBalanceWallet, contentDescription = null)
+                    Text("Open vault", modifier = Modifier.padding(start = 8.dp))
+                }
+            }
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedButton(onClick = onOpenStatements, modifier = Modifier.weight(1f)) {
+                Icon(Icons.Outlined.Description, contentDescription = null)
+                Text("Statements", modifier = Modifier.padding(start = 6.dp))
+            }
+            OutlinedButton(onClick = onOpenPrivacy, modifier = Modifier.weight(1f)) {
+                Icon(Icons.Outlined.Shield, contentDescription = null)
+                Text("Privacy", modifier = Modifier.padding(start = 6.dp))
+            }
+        }
 
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(
@@ -55,7 +94,7 @@ fun HomeScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Icon(Icons.Outlined.AccountBalanceWallet, contentDescription = null)
                     Text(
-                        "Native portfolio screens still in development",
+                        "Portfolio insights are being prepared",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                     )
