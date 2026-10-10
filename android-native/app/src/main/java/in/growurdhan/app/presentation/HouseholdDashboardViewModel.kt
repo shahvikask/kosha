@@ -66,11 +66,19 @@ class HouseholdDashboardViewModel @Inject constructor(
                     knownMembers = book.members.map { it.id },
                 )
                 if (request != generation) return@launch
+                if (!session.isUnlocked()) {
+                    lock()
+                    return@launch
+                }
+                val dashboard = HouseholdDashboardProjector.from(
+                    report, book.members.associate { it.id to it.displayName },
+                )
+                if (request != generation) return@launch
                 if (session.isUnlocked()) {
-                    mutableState.value = HouseholdDashboardUiState.Ready(
-                        HouseholdDashboardProjector.from(report, book.members.associate { it.id to it.displayName }),
-                    )
-                } else lock()
+                    mutableState.value = HouseholdDashboardUiState.Ready(dashboard)
+                } else {
+                    lock()
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
