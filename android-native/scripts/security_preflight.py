@@ -63,6 +63,9 @@ def repository_binding_errors(binding: str) -> list[str]:
         "exportEncryptedBackup": "sessionBound.readRecentlyApprovedBytes { delegate.exportEncryptedBackup(",
         "restoreEncryptedBackup": "approvedWrite { delegate.restoreEncryptedBackup(",
     }
+    unclassified = sorted(set(sections) - set(expected))
+    for method in unclassified:
+        errors.append(f"Unclassified production repository method {method}; set an explicit policy.")
     for name, route in expected.items():
         found = sections.get(name, [])
         if len(found) != 1 or route not in found[0]:
