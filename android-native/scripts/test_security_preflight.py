@@ -6,7 +6,7 @@ These are SOURCE checks, not Gradle builds or mobile penetration tests.
 """
 import unittest
 
-from security_preflight import read, repository_binding_errors
+from security_preflight import read, repository_binding_errors, vault_health_boundary_errors
 
 SOURCE = "android-native/data/src/main/kotlin/in/growurdhan/data/vault/SqlCipherVaultRepository.kt"
 
@@ -81,6 +81,33 @@ class RepositoryPolicyRoutingTests(unittest.TestCase):
             any("Unclassified production repository method leakUnapproved" in issue
                 for issue in repository_binding_errors(mutant)),
         )
+
+    def test_corrupt_health_cannot_be_accepted_as_ready(self):
+        model = read(
+            "android-native/app/src/main/java/in/growurdhan/app/presentation/VaultViewModel.kt"
+        )
+        gate = read(
+            "android-native/domain/src/main/kotlin/in/growurdhan/domain/vault/VaultHealthGate.kt"
+        )
+        self.assertEqual([], vault_health_boundary_errors(model, gate))
+        mutant = gate.replace('health.integrity == "ok"', "true", 1)
+        self.assertTrue(vault_health_boundary_errors(model, mutant))
+
+    def test_failed_health_query_must_close_sqlcipher_and_revoke_session(self):
+        model = read(
+            "android-native/app/src/main/java/in/growurdhan/app/presentation/VaultViewModel.kt"
+        )
+        gate = read(
+            "android-native/domain/src/main/kotlin/in/growurdhan/domain/vault/VaultHealthGate.kt"
+        )
+        without_close = model.replace("repository.close()\\n                } catch", "Unit\\n                } catch", 1)
+        self.assertTrue(vault_health_boundary_errors(without_close, gate))
+        without_cleanup = model.replace("withContext(NonCancellable)", "withContext(Dispatchers.IO)", 1)
+        self.assertTrue(vault_health_boundary_errors(without_cleanup, gate))
+        without_ui_route = model.replace(
+            "val health = verifiedHealthOrClose()", "val health = repository.health()", 1,
+        )
+        self.assertTrue(vault_health_boundary_errors(without_ui_route, gate))
 
     def test_missing_repository_method_is_rejected(self):
         mutant = self.production.replace(
