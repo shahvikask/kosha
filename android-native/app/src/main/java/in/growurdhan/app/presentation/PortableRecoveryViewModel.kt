@@ -10,6 +10,7 @@ import `in`.growurdhan.domain.vault.VaultRepository
 import java.io.InputStream
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -47,12 +48,19 @@ class PortableRecoveryViewModel @Inject constructor(
     val state: StateFlow<PortableRecoveryUiState> = mutableState
     private var operation: Job? = null
     @Volatile private var generation = 0L
+    // Test seam only: normal production execution always uses Dispatchers.IO.
+    internal var workDispatcher: CoroutineDispatcher = Dispatchers.IO
     // Owned explicitly so cancellation before coroutine start can still zero
     // the password rather than leaving the only reference in a suspended job.
     private var inFlightPassword: CharArray? = null
 
     fun offerPickedDocument(mode: PortableRecoveryMode) {
         operation?.cancel()
+        operation = null
+        // A superseding picker must wipe the prior password even if the
+        // cancelled coroutine never started and its finally block cannot run.
+        inFlightPassword?.fill('\u0000')
+        inFlightPassword = null
         ++generation
         mutableState.value = PortableRecoveryUiState.EnterPassphrase(
             mode, session.credentialEpoch(),
@@ -97,7 +105,7 @@ class PortableRecoveryViewModel @Inject constructor(
                     session.canCommitFinancialChanges() &&
                     session.credentialEpoch() == authenticatedRevision
                 ) { "Backup authorization expired while waiting for vault cleanup." }
-                withContext(Dispatchers.IO) {
+                withContext(workDispatcher) {
                     val status = vault.status()
                     if (mode == PortableRecoveryMode.EXPORT) {
                         // An export must NEVER create an empty vault implicitly.

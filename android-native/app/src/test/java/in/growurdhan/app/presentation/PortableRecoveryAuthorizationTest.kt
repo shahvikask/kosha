@@ -9,6 +9,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.StandardTestDispatcher
 import org.junit.Rule
 import `in`.growurdhan.domain.vault.VaultRepository
 import io.mockk.coVerify
@@ -41,7 +42,9 @@ class PortableRecoveryAuthorizationTest {
     @Test fun expiredCredentialDuringPickerCleanupNeverOpensBackupVault() = runTest {
         val gate = VaultSessionGate().also { it.grantDeviceCredential() }
         val repo = mockk<VaultRepository>()
-        val vm = PortableRecoveryViewModel(mockk<Context>(), repo, gate)
+        val vm = PortableRecoveryViewModel(mockk<Context>(), repo, gate).also {
+            it.workDispatcher = StandardTestDispatcher(testScheduler)
+        }
         vm.offerPickedDocument(PortableRecoveryMode.RESTORE)
         gate.grantDeviceCredential()
         val waitingCleanup = CompletableDeferred<Unit>()
@@ -67,7 +70,9 @@ class PortableRecoveryAuthorizationTest {
         val gate = VaultSessionGate().also { it.grantDeviceCredential() }
         val repo = mockk<VaultRepository>()
         coEvery { repo.status() } returns VaultStatus(false, false, 0)
-        val vm = PortableRecoveryViewModel(mockk<Context>(), repo, gate)
+        val vm = PortableRecoveryViewModel(mockk<Context>(), repo, gate).also {
+            it.workDispatcher = StandardTestDispatcher(testScheduler)
+        }
         vm.offerPickedDocument(PortableRecoveryMode.EXPORT)
         gate.grantDeviceCredential()
         val waitingCleanup = CompletableDeferred<Unit>()
@@ -85,6 +90,26 @@ class PortableRecoveryAuthorizationTest {
         coVerify(exactly = 0) { repo.openOrCreate() }
         assertTrue(vm.state.value is PortableRecoveryUiState.Error)
         assertTrue(password.all { it == '\u0000' })
+    }
+
+    @Test fun startingNewBackupPickerWipesPasswordEvenBeforeCancelledJobStarts() = runTest {
+        val gate = VaultSessionGate().also { it.grantDeviceCredential() }
+        val repo = mockk<VaultRepository>()
+        val vm = PortableRecoveryViewModel(mockk<Context>(), repo, gate)
+        vm.offerPickedDocument(PortableRecoveryMode.EXPORT)
+        gate.grantDeviceCredential()
+        val password = "synthetic-only-test-password".toCharArray()
+
+        vm.executeAfterCredential(PortableRecoveryMode.EXPORT, mockk<Uri>(), password)
+        // Do NOT advance the scheduler: cancellation precedes coroutine start.
+        assertTrue(vm.state.value is PortableRecoveryUiState.Working)
+        vm.offerPickedDocument(PortableRecoveryMode.RESTORE)
+        assertTrue(password.all { it == '\u0000' })
+        advanceUntilIdle()
+
+        assertTrue(vm.state.value is PortableRecoveryUiState.EnterPassphrase)
+        coVerify(exactly = 0) { repo.status() }
+        coVerify(exactly = 0) { repo.exportEncryptedBackup(any()) }
     }
 
     @Test fun restoreCannotReuseOldCredentialOrAccessVaultWithoutNewChallenge() {
