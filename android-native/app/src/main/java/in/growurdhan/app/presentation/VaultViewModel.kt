@@ -99,10 +99,21 @@ class VaultViewModel @Inject constructor(
                             // this open was waiting for the preceding operation.
                             if (request != requestGeneration || !session.isUnlocked()) return@withLock
                             repository.openOrCreate()
+                            // An expired credential must close the physical connection,
+                            // even when no explicit Close intent has been dispatched.
+                            if (!session.isUnlocked()) {
+                                repository.close()
+                                if (request == requestGeneration) mutableState.value = VaultUiState.Closed
+                                return@withLock
+                            }
                             val health = repository.health()
+                            if (!session.isUnlocked()) {
+                                repository.close()
+                                if (request == requestGeneration) mutableState.value = VaultUiState.Closed
+                                return@withLock
+                            }
                             if (request == requestGeneration) {
-                                mutableState.value = if (session.isUnlocked())
-                                    VaultUiState.Ready(health) else VaultUiState.Closed
+                                mutableState.value = VaultUiState.Ready(health)
                             }
                         }
                     }
