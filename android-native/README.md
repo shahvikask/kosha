@@ -96,3 +96,24 @@ The native **Vault → Manage accounts & holdings** flow now lets a previously a
 Five new Android instrumentation cases verify that synthetic frozen-parser-shaped JSON is bound to the **actual selected PDF byte SHA-256** and uniquely enrolled owner/registrar/ISIN/folio. Five JVM checks cover bounded backup input, one additional vault JVM regression preserves the uninitialized state across SAF handoff, two authorization JVM tests reject credentials older than file selection, and two Compose tests cover recovery navigation and consent (**15 additional checks total**). This is **not** proof that genuine CAS PDFs parse on ARM64 hardware; no live personal statement enters CI.
 
 The protected Play-upload AAB workflow now additionally requires an owner-specified **exact approved 40-character Git commit SHA**, rejects `-dev` version names, and compares the **produced AAB signer** to the pinned upload certificate. Owner signing keys, Play listing, real-phone security tests, cross-phone backup recovery, ARM64/PDFium live acceptance and independent MASVS verification remain **NOT DONE**. See [M8 portable recovery and hardware/signing test plan](../docs/native-migration/16-M8-PORTABLE-RECOVERY-AND-CAS-BRIDGE.md). This increment requires independent CI JUnit/artifact verification before it can be marked tested.
+
+
+## Household dashboard increment (October 2026; verification pending)
+
+The native Home screen derives household net worth, assets, liabilities, member and
+asset-category breakdowns from one authorized encrypted book snapshot. Member names
+come from the same snapshot and are cleared with the financial UI when the session
+locks. No live market-price claim or inferred historical purchase cost is made.
+Unknown historical cost is disclosed separately from financial integrity warnings;
+liabilities are kept separate from asset categories and reduce net worth.
+
+The latest increment adds member-level assets/debt, per-category holding counts,
+and dedicated unknown-cost messaging. Domain regression cases cover debt-only and
+mixed household reconciliation; Compose tests cover unlocked member visibility and
+locked-screen privacy. All tests use synthetic data.
+
+**Not verified:** current-branch Gradle compilation, JVM/Compose test execution,
+physical device behavior, complete native product parity, Play release readiness.
+Earlier CI evidence in this README applies only to the specific historical commits
+linked above, not these changes. The immutable CASPARSER files and reference
+branches remain untouched.
