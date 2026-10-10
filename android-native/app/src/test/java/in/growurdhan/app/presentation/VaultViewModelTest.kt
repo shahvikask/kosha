@@ -193,7 +193,12 @@ class VaultViewModelTest {
     @Test fun refreshDoesNotReadStatusWhileVaultOpenIsInProgress() = runTest {
         val repo = mockk<VaultRepository>()
         val pendingOpen = CompletableDeferred<VaultStatus>()
-        coEvery { repo.status() } returns VaultStatus(true, true, 2)
+        // Initial refresh sees a closed vault; only the later refresh sees it open.
+        var statusReads = 0
+        coEvery { repo.status() } coAnswers {
+            statusReads++
+            VaultStatus(true, statusReads > 1, 2)
+        }
         coEvery { repo.openOrCreate() } coAnswers { pendingOpen.await() }
         coEvery { repo.health() } returns VaultHealth("ok", 0, 0, 0, 0)
         val gate = VaultSessionGate()
