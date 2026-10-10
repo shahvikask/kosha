@@ -38,6 +38,7 @@ data class MemberDashboard(
     val liabilities: MoneyScaled,
     val netWorth: MoneyScaled,
     val holdings: Int,
+    val displayName: String? = null,
 )
 
 /**
@@ -45,7 +46,7 @@ data class MemberDashboard(
  * Unknown cost and book-integrity warnings remain visible to the presentation.
  */
 object HouseholdDashboardProjector {
-    fun from(report: PortfolioReport): HouseholdDashboard {
+    fun from(report: PortfolioReport, memberNames: Map<OwnerId, String> = emptyMap()): HouseholdDashboard {
         val memberRows = report.members.map { member ->
             MemberDashboard(
                 ownerId = member.ownerId,
@@ -53,6 +54,7 @@ object HouseholdDashboardProjector {
                 liabilities = member.liabilities,
                 netWorth = member.netWorth,
                 holdings = member.holdings.size,
+                displayName = memberNames[member.ownerId]?.trim()?.takeIf { it.isNotEmpty() },
             )
         }
         val unknown = report.members.sumOf { member ->
