@@ -67,8 +67,26 @@ class HouseholdDashboardViewModelTest {
         assertEquals(150_000L, ready.dashboard.assets.raw)
         assertEquals(150_000L, ready.dashboard.netWorth.raw)
         assertEquals(1, ready.dashboard.memberCount)
+        assertEquals("Synthetic Member", ready.dashboard.byMember.single().displayName)
         assertEquals(1, ready.dashboard.unknownCostHoldings)
         assertEquals("MUTUAL_FUND", ready.dashboard.byCategory.single().category)
+        coVerify(exactly = 1) { repo.readBook() }
+    }
+
+    @Test fun lockingClearsPreviouslyDisplayedFamilyNamesAndTotals() = runTest {
+        val repo = mockk<VaultRepository>()
+        coEvery { repo.readBook() } returns book()
+        val gate = VaultSessionGate().also { it.grantDeviceCredential() }
+        val vm = HouseholdDashboardViewModel(repo, gate)
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals("Synthetic Member",
+            (vm.state.value as HouseholdDashboardUiState.Ready).dashboard.byMember.single().displayName)
+
+        gate.lock()
+        vm.lock()
+
+        assertEquals(HouseholdDashboardUiState.Locked, vm.state.value)
         coVerify(exactly = 1) { repo.readBook() }
     }
 
