@@ -69,6 +69,15 @@ internal object VaultSchema {
         check(triggerNames.containsAll(requiredTriggers)) {
             "Native vault safety triggers are incomplete."
         }
+        // SQLCipher's PRAGMA cipher_integrity_check verifies each encrypted
+        // page HMAC independently of SQLite's logical integrity_check.
+        // Per the SQLCipher API, zero result rows means success; one or more
+        // rows indicates damaged or unauthenticated pages. Validate on EVERY
+        // connection open, including Activity-driven PDF and backup workflows.
+        val pageErrors = db.rawQuery("PRAGMA cipher_integrity_check", null).use { it.count }
+        if (pageErrors != 0) {
+            throw VaultUnavailable("Encrypted vault page authentication failed.")
+        }
         val integrity = db.rawQuery("PRAGMA integrity_check", null).use {
             if (it.moveToFirst()) it.getString(0) else "unavailable"
         }
