@@ -12,6 +12,7 @@ import `in`.growurdhan.domain.vault.VaultRepository
 import java.time.LocalDate
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -35,9 +36,13 @@ class HouseholdDashboardViewModel @Inject constructor(
     private val mutableState = MutableStateFlow<HouseholdDashboardUiState>(HouseholdDashboardUiState.Locked)
     val state: StateFlow<HouseholdDashboardUiState> = mutableState
     private var generation = 0L
+    private var operation: Job? = null
 
+    /** Revoke financial UI data synchronously, even while an I/O read is suspended. */
     fun lock() {
         generation++
+        operation?.cancel()
+        operation = null
         mutableState.value = HouseholdDashboardUiState.Locked
     }
 
@@ -46,9 +51,10 @@ class HouseholdDashboardViewModel @Inject constructor(
             lock()
             return
         }
+        operation?.cancel()
         val request = ++generation
         mutableState.value = HouseholdDashboardUiState.Loading
-        viewModelScope.launch {
+        operation = viewModelScope.launch {
             try {
                 check(session.isUnlocked())
                 val book = repository.readBook()
