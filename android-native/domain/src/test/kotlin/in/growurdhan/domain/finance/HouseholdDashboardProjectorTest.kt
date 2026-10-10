@@ -118,6 +118,45 @@ class HouseholdDashboardProjectorTest {
         assertEquals(0L, dashboard.netWorth.raw)
     }
 
+    @Test fun debtOnlyHouseholdKeepsNegativeNetWorthAndNoAssetCategories() {
+        val loan = FinancialHolding(
+            HoldingId("loan-only"), owner, "Synthetic liability", "LIABILITY",
+            MoneyScaled(480_000), QUANTITY_SCALE,
+        )
+        val report = PortfolioEngine.derive(
+            listOf(loan), emptyList(), LocalDate.parse("2026-10-09"), listOf(owner),
+        )
+        val dashboard = HouseholdDashboardProjector.from(report)
+        assertEquals(0L, dashboard.assets.raw)
+        assertEquals(480_000L, dashboard.liabilities.raw)
+        assertEquals(-480_000L, dashboard.netWorth.raw)
+        assertTrue(dashboard.byCategory.isEmpty())
+        assertEquals(1, dashboard.holdingCount)
+        assertEquals(-480_000L, dashboard.byMember.single().netWorth.raw)
+    }
+
+    @Test fun memberAndCategoryTotalsReconcileForMixedPortfolio() {
+        val holdings = listOf(
+            FinancialHolding(HoldingId("cash"), owner, "Synthetic cash", "CASH",
+                MoneyScaled(250_000), QUANTITY_SCALE),
+            FinancialHolding(HoldingId("fund"), other, "Synthetic fund", "MUTUAL_FUND",
+                MoneyScaled(175_000), QUANTITY_SCALE),
+            FinancialHolding(HoldingId("loan"), owner, "Synthetic loan", "LIABILITY",
+                MoneyScaled(125_000), QUANTITY_SCALE),
+        )
+        val report = PortfolioEngine.derive(
+            holdings, emptyList(), LocalDate.parse("2026-10-09"), listOf(owner, other),
+        )
+        val dashboard = HouseholdDashboardProjector.from(report)
+        assertEquals(dashboard.assets.raw, dashboard.byCategory.sumOf { it.value.raw })
+        assertEquals(dashboard.assets.raw, dashboard.byMember.sumOf { it.assets.raw })
+        assertEquals(dashboard.liabilities.raw, dashboard.byMember.sumOf { it.liabilities.raw })
+        assertEquals(dashboard.netWorth.raw, dashboard.byMember.sumOf { it.netWorth.raw })
+        assertEquals(2, dashboard.byCategory.size)
+        assertEquals(2, dashboard.byCategory.sumOf { it.holdingCount })
+        assertEquals(3, dashboard.holdingCount)
+    }
+
     @Test fun integrityProblemsAreNotHiddenFromDashboard() {
         val holding = FinancialHolding(
             HoldingId("h2"), OwnerId("unrecognized"), "Unknown owner", "EQUITY",
