@@ -17,6 +17,9 @@ import `in`.growurdhan.core.model.HoldingId
 import `in`.growurdhan.core.model.MoneyScaled
 import `in`.growurdhan.core.model.OwnerId
 import `in`.growurdhan.domain.finance.FinancialHolding
+import `in`.growurdhan.domain.finance.HouseholdDashboard
+import `in`.growurdhan.domain.finance.MemberDashboard
+import `in`.growurdhan.app.presentation.screens.HomeScreen
 import `in`.growurdhan.domain.finance.ReviewedStatement
 import `in`.growurdhan.domain.finance.SnapshotReconciler
 import `in`.growurdhan.domain.finance.StatementLine
@@ -30,6 +33,51 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class NativeShellTest {
     @get:Rule val compose = createComposeRule()
+
+    @Test fun unlockedDashboardShowsRecordedFamilyAndDebtBreakdown() {
+        val owner = OwnerId("synthetic-owner")
+        val dashboard = HouseholdDashboard(
+            asOf = LocalDate.parse("2026-10-09"),
+            assets = MoneyScaled(250_000),
+            liabilities = MoneyScaled(75_000),
+            netWorth = MoneyScaled(175_000),
+            memberCount = 1,
+            holdingCount = 2,
+            unknownCostHoldings = 0,
+            integrityWarnings = emptyList(),
+            byMember = listOf(
+                MemberDashboard(owner, MoneyScaled(250_000), MoneyScaled(75_000),
+                    MoneyScaled(175_000), 2, "Synthetic Member"),
+            ),
+        )
+        compose.setContent {
+            GrowUrDhanTheme(AppearanceSettings(ThemeMode.LIGHT, dynamicColor = false)) {
+                HomeScreen(
+                    dashboardState = HouseholdDashboardUiState.Ready(dashboard),
+                    onOpenSettings = {},
+                    onOpenPrivacy = {},
+                )
+            }
+        }
+        compose.onNodeWithText("Synthetic Member").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(
+            "Assets: 25.0000 INR; liabilities: 7.5000 INR; net worth: 17.5000 INR; holdings: 2",
+        ).performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun lockedDashboardNeverRendersFamilyNames() {
+        compose.setContent {
+            GrowUrDhanTheme(AppearanceSettings(ThemeMode.LIGHT, dynamicColor = false)) {
+                HomeScreen(
+                    dashboardState = HouseholdDashboardUiState.Locked,
+                    onOpenSettings = {},
+                    onOpenPrivacy = {},
+                )
+            }
+        }
+        compose.onNodeWithText("Unlock the vault to view your family wealth.").assertIsDisplayed()
+        compose.onNodeWithText("Synthetic Member").assertDoesNotExist()
+    }
 
     @Test
     fun settingsNavigationAndThemeIntent() {
