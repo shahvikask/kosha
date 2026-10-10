@@ -71,7 +71,6 @@ fun GrowUrDhanShell(
     onIntent: (AppIntent) -> Unit,
     vaultState: VaultUiState = VaultUiState.Loading,
     dashboardState: HouseholdDashboardUiState = HouseholdDashboardUiState.Locked,
-    onDashboardRefresh: () -> Unit = {},
     onVaultIntent: (VaultIntent) -> Unit = {},
     reviewState: StatementReviewUiState = StatementReviewUiState.Empty,
     onReviewIntent: (StatementReviewIntent) -> Unit = {},
