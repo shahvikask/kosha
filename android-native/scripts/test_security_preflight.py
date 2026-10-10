@@ -100,7 +100,7 @@ class RepositoryPolicyRoutingTests(unittest.TestCase):
         gate = read(
             "android-native/domain/src/main/kotlin/in/growurdhan/domain/vault/VaultHealthGate.kt"
         )
-        without_close = model.replace("repository.close()\\n                } catch", "Unit\\n                } catch", 1)
+        without_close = model.replace("repository.close()\n                } catch", "Unit\n                } catch", 1)
         self.assertTrue(vault_health_boundary_errors(without_close, gate))
         without_cleanup = model.replace("withContext(NonCancellable)", "withContext(Dispatchers.IO)", 1)
         self.assertTrue(vault_health_boundary_errors(without_cleanup, gate))
