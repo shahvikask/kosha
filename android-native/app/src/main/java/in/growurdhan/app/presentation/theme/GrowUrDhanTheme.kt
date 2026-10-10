@@ -4,6 +4,9 @@ import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -13,6 +16,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import `in`.growurdhan.core.model.AppearanceSettings
 import `in`.growurdhan.core.model.ThemeMode
+
+private val EnterpriseTypography = Typography(
+    displaySmall = TextStyle(fontSize = 34.sp, lineHeight = 40.sp, fontWeight = FontWeight.Bold),
+    headlineMedium = TextStyle(fontSize = 27.sp, lineHeight = 34.sp, fontWeight = FontWeight.SemiBold),
+    titleLarge = TextStyle(fontSize = 21.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold),
+    titleMedium = TextStyle(fontSize = 17.sp, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold),
+    bodyLarge = TextStyle(fontSize = 16.sp, lineHeight = 24.sp),
+    bodyMedium = TextStyle(fontSize = 14.sp, lineHeight = 21.sp),
+    labelLarge = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium),
+)
 
 private val Dark = darkColorScheme(
     primary = Color(0xFF94E9B7),
@@ -24,6 +37,10 @@ private val Dark = darkColorScheme(
     surface = Color(0xFF141D17),
     onSurface = Color(0xFFE5EEE7),
     surfaceVariant = Color(0xFF2D3E33),
+    secondary = Color(0xFFD8C39A),
+    onSecondary = Color(0xFF35280E),
+    outline = Color(0xFF87998B),
+    error = Color(0xFFFFB4AB),
     onSurfaceVariant = Color(0xFFCDD9D0),
 )
 
@@ -37,6 +54,10 @@ private val Light = lightColorScheme(
     surface = Color.White,
     onSurface = Color(0xFF15261B),
     surfaceVariant = Color(0xFFE1EEE6),
+    secondary = Color(0xFF75602F),
+    onSecondary = Color.White,
+    outline = Color(0xFF718578),
+    error = Color(0xFFB3261E),
     onSurfaceVariant = Color(0xFF3B5343),
 )
 
@@ -58,7 +79,7 @@ fun GrowUrDhanTheme(
 
     MaterialTheme(
         colorScheme = scheme,
-        typography = Typography(),
+        typography = EnterpriseTypography,
         content = content,
     )
 }
