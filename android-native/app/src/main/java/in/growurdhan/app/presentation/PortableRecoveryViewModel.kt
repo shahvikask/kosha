@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import `in`.growurdhan.domain.vault.VaultRepository
+import `in`.growurdhan.domain.vault.VaultHealthGate
 import java.io.InputStream
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
@@ -137,7 +138,7 @@ class PortableRecoveryViewModel @Inject constructor(
                         try {
                             vault.restoreEncryptedBackup(password, encrypted)
                             val health = vault.health()
-                            check(health.foreignKeyViolations == 0 && health.integrity == "ok") {
+                            check(VaultHealthGate.accepts(health)) {
                                 "The recovered book failed integrity checks."
                             }
                         } finally {
@@ -145,17 +146,30 @@ class PortableRecoveryViewModel @Inject constructor(
                         }
                     }
                 }
-                if (current == generation && session.isUnlocked()) {
-                    mutableState.value = PortableRecoveryUiState.Completed(mode)
+                if (current == generation) {
+                    // A second Android credential challenge cannot make an older
+                    // backup transfer look like a success in the new session.
+                    mutableState.value = if (session.isCurrentSession(authenticatedRevision)) {
+                        PortableRecoveryUiState.Completed(mode)
+                    } else {
+                        PortableRecoveryUiState.Empty
+                    }
                 }
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (_: Exception) {
                 if (current == generation) {
-                    // No source pathname, password, PAN or crypto error reaches UI/logs.
-                    mutableState.value = PortableRecoveryUiState.Error(
-                        "Backup operation could not be completed. Existing financial records were not replaced.",
-                    )
+                    // Failure after database commit or after SAF starts writing
+                    // cannot prove rollback. Never promise no records changed.
+                    // Do not carry errors from the previous credential session.
+                    mutableState.value = if (session.isCurrentSession(authenticatedRevision)) {
+                        PortableRecoveryUiState.Error(
+                            "Backup could not be confirmed. Reopen the vault and check " +
+                                "its contents before trying again.",
+                        )
+                    } else {
+                        PortableRecoveryUiState.Empty
+                    }
                 }
             } finally {
                 password.fill('\u0000')
