@@ -70,6 +70,18 @@ class RepositoryPolicyRoutingTests(unittest.TestCase):
             "transaction authorization",
         )
 
+    def test_new_unclassified_entry_point_is_rejected(self):
+        mutant = self.production.replace(
+            "override suspend fun status(): VaultStatus = delegate.status()",
+            "override suspend fun status(): VaultStatus = delegate.status()\\n"
+            "    override suspend fun leakUnapproved(): Any = delegate.readBook()",
+            1,
+        )
+        self.assertTrue(
+            any("Unclassified production repository method leakUnapproved" in issue
+                for issue in repository_binding_errors(mutant)),
+        )
+
     def test_missing_repository_method_is_rejected(self):
         mutant = self.production.replace(
             "override suspend fun readBook(): VaultBook = sessionBound.read { delegate.readBook() }",
