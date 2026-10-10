@@ -104,6 +104,20 @@ class HouseholdDashboardProjectorTest {
         assertEquals(1, dashboard.byMember.single { it.ownerId == other }.holdings)
     }
 
+    @Test fun memberNamesAreMappedOnlyToMatchingOwners() {
+        val report = PortfolioEngine.derive(
+            emptyList(), emptyList(), LocalDate.parse("2026-10-09"),
+            listOf(owner, other),
+        )
+        val dashboard = HouseholdDashboardProjector.from(
+            report, mapOf(owner to "  Primary Member  ", OwnerId("stranger") to "Not enrolled"),
+        )
+        assertEquals("Primary Member", dashboard.byMember.single { it.ownerId == owner }.displayName)
+        assertEquals(null, dashboard.byMember.single { it.ownerId == other }.displayName)
+        assertEquals(2, dashboard.memberCount)
+        assertEquals(0L, dashboard.netWorth.raw)
+    }
+
     @Test fun integrityProblemsAreNotHiddenFromDashboard() {
         val holding = FinancialHolding(
             HoldingId("h2"), OwnerId("unrecognized"), "Unknown owner", "EQUITY",
