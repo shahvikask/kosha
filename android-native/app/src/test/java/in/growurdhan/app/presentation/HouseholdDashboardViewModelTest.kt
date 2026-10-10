@@ -173,6 +173,25 @@ class HouseholdDashboardViewModelTest {
         assertEquals(HouseholdDashboardUiState.Locked, vm.state.value)
     }
 
+    @Test fun refreshAfterLockNeverReadsBookOrRestoresPrivateNames() = runTest {
+        val repo = mockk<VaultRepository>()
+        coEvery { repo.readBook() } returns book()
+        val gate = VaultSessionGate().also { it.grantDeviceCredential() }
+        val vm = HouseholdDashboardViewModel(repo, gate)
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals("Synthetic Member",
+            (vm.state.value as HouseholdDashboardUiState.Ready).dashboard.byMember.single().displayName)
+
+        gate.lock()
+        vm.lock()
+        vm.refresh()
+        advanceUntilIdle()
+
+        assertEquals(HouseholdDashboardUiState.Locked, vm.state.value)
+        coVerify(exactly = 1) { repo.readBook() }
+    }
+
     @Test fun repositoryFailureDoesNotExposePrivateErrorDetails() = runTest {
         val repo = mockk<VaultRepository>()
         coEvery { repo.readBook() } throws IllegalStateException("synthetic private account detail")
