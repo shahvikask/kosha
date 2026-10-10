@@ -277,3 +277,34 @@ The actual Gradle JVM tests, Python preflight on the checked-out repository,
 Android instrumentation, physical-device CAS import and security penetration
 testing remain **not executed here**. These changes do not qualify the app for
 commercial distribution. The frozen CASPARSER code remains unchanged.
+
+## Vault health fail-closed and encrypted-page verification (October 2026)
+
+The native app now rejects a vault whose SQLCipher health check reports any
+non-`ok` integrity result, broken foreign-key references, or impossible negative
+row counts. A failed health query after opening is also treated as an access
+failure. In each case the session is immediately revoked and a best-effort
+non-cancellable connection close runs before the UI receives a generic error.
+No recovery logic deletes, resets or replaces the user's encrypted database.
+
+`VaultSchema.initializeOrValidate()` now additionally runs SQLCipher's
+`PRAGMA cipher_integrity_check` when **every** encrypted connection opens,
+including direct Activity-owned CAS imports and portable backup/recovery opens.
+Per SQLCipher's documented behavior, **zero result rows indicate verified page
+HMACs; any returned error rows reject the connection**. This is independent
+of `PRAGMA integrity_check` and `PRAGMA foreign_key_check`, which remain
+enforced. This check can take longer on larger vaults and is intentionally
+performed before releasing private financial data.
+
+Synthetic domain unit tests cover the health policy, ViewModel regressions
+cover corrupted health, broken references and health-query failures, and a
+real SQLCipher Android instrumentation test mutates an isolated encrypted
+database page to verify that reopening fails without deleting the existing
+ciphertext or Keystore-wrapped key. The Python security preflight and its
+negative-mutation tests now guard these two protections too.
+
+**Verification status:** a locally isolated Kotlin policy compile/smoke check
+passed. Current-branch Gradle compilation, Python preflight execution against
+the full checked-out repository, Android instrumentation, physical ARM64 CAS
+parsing, independent AppSec testing and Play release verification remain
+**pending**. Earlier CI runs in this README document historical commits only.
