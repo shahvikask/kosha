@@ -93,6 +93,26 @@ fun HomeScreen(
         }
 
         if (dashboardState is HouseholdDashboardUiState.Ready &&
+            dashboardState.dashboard.unknownCostHoldings > 0
+        ) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(22.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("Historical purchase cost unavailable", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        dashboardState.dashboard.unknownCostHoldings.toString() +
+                            " holding(s) have no verified historical purchase cost. " +
+                            "Recorded valuations are shown, but unrealised gains " +
+                            "must not be inferred from these balances.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
+        }
+
+        if (dashboardState is HouseholdDashboardUiState.Ready &&
             dashboardState.dashboard.byCategory.isNotEmpty()
         ) {
             Card(modifier = Modifier.fillMaxWidth()) {
@@ -102,7 +122,10 @@ fun HomeScreen(
                 ) {
                     Text("Assets by category", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "Recorded valuations, not live market quotes.",
+                        "Recorded valuations, not live market quotes. " +
+                            "Total assets: " + dashboardState.dashboard.assets.rupees().toPlainString() +
+                            " INR across " + dashboardState.dashboard.byCategory.sumOf { it.holdingCount } +
+                            " asset holdings.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -117,7 +140,8 @@ fun HomeScreen(
                                 modifier = Modifier.weight(1f),
                             )
                             Text(
-                                category.value.rupees().toPlainString() + " INR",
+                                category.value.rupees().toPlainString() + " INR (" +
+                                    category.holdingCount + ")",
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.SemiBold,
                             )
@@ -171,7 +195,9 @@ fun HomeScreen(
                                 style = MaterialTheme.typography.titleSmall,
                             )
                             Text(
-                                "Net worth: " + member.netWorth.rupees().toPlainString() +
+                                "Assets: " + member.assets.rupees().toPlainString() +
+                                    " INR; liabilities: " + member.liabilities.rupees().toPlainString() +
+                                    " INR; net worth: " + member.netWorth.rupees().toPlainString() +
                                     " INR; holdings: " + member.holdings,
                                 style = MaterialTheme.typography.bodyMedium,
                             )
