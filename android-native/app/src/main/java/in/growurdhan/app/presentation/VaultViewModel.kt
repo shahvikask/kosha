@@ -73,8 +73,20 @@ class VaultViewModel @Inject constructor(
                             val info = repository.status()
                             val next = when {
                                 !info.initialized -> VaultUiState.NotCreated
-                                !info.opened || !session.isUnlocked() -> VaultUiState.Closed
-                                else -> VaultUiState.Ready(repository.health())
+                                !info.opened -> VaultUiState.Closed
+                                !session.isUnlocked() -> {
+                                    // A status refresh must not leave an already-open
+                                    // connection behind after authorization expires.
+                                    repository.close()
+                                    VaultUiState.Closed
+                                }
+                                else -> {
+                                    val health = repository.health()
+                                    if (!session.isUnlocked()) {
+                                        repository.close()
+                                        VaultUiState.Closed
+                                    } else VaultUiState.Ready(health)
+                                }
                             }
                             if (request == requestGeneration) {
                                 mutableState.value = if (next is VaultUiState.Ready && !session.isUnlocked())
