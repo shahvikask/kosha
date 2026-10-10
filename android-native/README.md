@@ -141,3 +141,9 @@ mid-read. The existing CASPARSER and Python bridge are **unchanged**.
 **Verification pending:** Gradle/JUnit/instrumentation runs and real ARM64 PDF
 picker/credential lifecycle tests. There is no assertion that native
 parity, Play signing, or independent MASVS assessment is complete.
+
+The repository's session-bound opening and read paths additionally bind results
+to the **same device-challenge revision** that authorized the call. Re-locking
+and authenticating again while an older operation is suspended does not make
+that older operation authorized. Added JVM tests for both mid-operation
+credential replacement and challenge-revision progression.

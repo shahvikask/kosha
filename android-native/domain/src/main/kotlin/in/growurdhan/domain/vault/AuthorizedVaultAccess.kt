@@ -19,11 +19,15 @@ class AuthorizedVaultAccess(
     suspend fun openOrCreate(): VaultStatus {
         // An unauthenticated call cannot create keys, files, or a connection.
         authorization.requireUnlocked()
+        val authorizedRevision = authorization.sessionRevision()
         try {
             val status = delegate.openOrCreate()
             // A credential that was valid before a long-running open may no
             // longer be valid when the connection is ready.
             authorization.requireUnlocked()
+            check(authorization.sessionRevision() == authorizedRevision) {
+                "The verified device session changed during vault opening."
+            }
             return status
         } catch (failure: Throwable) {
             // Cancellation of the caller must not strand an open SQLCipher
@@ -42,8 +46,12 @@ class AuthorizedVaultAccess(
     /** Never return private rows or review receipts after session expiry. */
     suspend fun <T> read(action: suspend () -> T): T {
         authorization.requireUnlocked()
+        val authorizedRevision = authorization.sessionRevision()
         val result = action()
         authorization.requireUnlocked()
+        check(authorization.sessionRevision() == authorizedRevision) {
+            "The verified device session changed during private vault read."
+        }
         return result
     }
 }

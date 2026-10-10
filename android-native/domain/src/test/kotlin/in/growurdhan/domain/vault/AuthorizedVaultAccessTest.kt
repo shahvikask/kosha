@@ -12,7 +12,6 @@ import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.Test
@@ -21,6 +20,12 @@ import org.junit.jupiter.api.Test
 class AuthorizedVaultAccessTest {
     private class Gate : VaultAuthorization {
         var unlocked = true
+        var revision = 1L
+        fun confirmAgain() {
+            unlocked = true
+            revision++
+        }
+        override fun sessionRevision(): Long = revision
         override fun requireUnlocked() {
             check(unlocked) { "Synthetic session expired" }
         }
@@ -65,6 +70,39 @@ class AuthorizedVaultAccessTest {
             assertTrue(failure is IllegalStateException)
         }
         coVerify(exactly = 1) { delegate.close() }
+    }
+
+    @Test fun newlyVerifiedSessionCannotRescueAnOpeningFromPriorSession() = runTest {
+        val delegate = mockk<VaultRepository>()
+        val pending = CompletableDeferred<VaultStatus>()
+        coEvery { delegate.openOrCreate() } coAnswers { pending.await() }
+        coEvery { delegate.close() } returns Unit
+        val gate = Gate()
+        supervisorScope {
+            val opening = async { AuthorizedVaultAccess(delegate, gate).openOrCreate() }
+            runCurrent()
+            gate.unlocked = false
+            gate.confirmAgain() // Valid session now, but not the originating challenge.
+            pending.complete(VaultStatus(true, true, 3))
+            val failure = runCatching { opening.await() }.exceptionOrNull()
+            assertTrue(failure is IllegalStateException)
+        }
+        coVerify(exactly = 1) { delegate.close() }
+    }
+
+    @Test fun newlyVerifiedSessionCannotRevealPriorSessionsPrivateRead() = runTest {
+        val gate = Gate()
+        val pending = CompletableDeferred<String>()
+        supervisorScope {
+            val reading = async {
+                AuthorizedVaultAccess(mockk(), gate).read { pending.await() }
+            }
+            runCurrent()
+            gate.unlocked = false
+            gate.confirmAgain()
+            pending.complete("Synthetic value from older session")
+            assertTrue(runCatching { reading.await() }.exceptionOrNull() is IllegalStateException)
+        }
     }
 
     @Test fun cancelledOpenStillClosesPhysicalConnection() = runTest {

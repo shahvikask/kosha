@@ -34,6 +34,8 @@ class VaultSessionGate @Inject constructor() : VaultAuthorization {
     /** Form staging records this revision to require a *later* OS challenge. */
     @Synchronized fun credentialEpoch(): Long = credentialRevision
 
+    @Synchronized override fun sessionRevision(): Long = credentialRevision
+
     @Synchronized fun lock() {
         verifiedAtMillis = null
     }

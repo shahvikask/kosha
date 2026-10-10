@@ -8,4 +8,14 @@ package `in`.growurdhan.domain.vault
 interface VaultAuthorization {
     fun requireUnlocked()
     fun requireRecentApproval()
+
+    /**
+     * Monotonic revision of a successfully verified device credential.
+     * A long-running operation must not complete using a DIFFERENT unlock
+     * than the one that originally authorized it.
+     *
+     * Legacy isolated test guards may use the default. The production
+     * VaultSessionGate overrides this with its actual challenge revision.
+     */
+    fun sessionRevision(): Long = 0L
 }

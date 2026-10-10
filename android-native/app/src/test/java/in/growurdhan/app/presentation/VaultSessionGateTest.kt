@@ -43,6 +43,19 @@ class VaultSessionGateTest {
         assertFalse(session.canCommitFinancialChanges())
     }
 
+    @Test fun successfulCredentialChallengesAdvanceRepositorySessionRevision() {
+        val gate = VaultSessionGate()
+        val before = gate.sessionRevision()
+        gate.grantDeviceCredential()
+        val first = gate.sessionRevision()
+        assertTrue(first > before)
+        gate.lock()
+        assertFalse(gate.isUnlocked())
+        gate.grantDeviceCredential()
+        assertTrue(gate.sessionRevision() > first)
+        assertTrue(gate.isUnlocked())
+    }
+
     @Test fun reversedMonotonicClockFailsClosed() {
         var now = 2_000L
         val session = VaultSessionGate()
