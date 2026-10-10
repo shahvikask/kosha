@@ -34,8 +34,10 @@ class HouseholdDashboardViewModel @Inject constructor(
 ) : ViewModel() {
     private val mutableState = MutableStateFlow<HouseholdDashboardUiState>(HouseholdDashboardUiState.Locked)
     val state: StateFlow<HouseholdDashboardUiState> = mutableState
+    private var generation = 0L
 
     fun lock() {
+        generation++
         mutableState.value = HouseholdDashboardUiState.Locked
     }
 
@@ -44,6 +46,7 @@ class HouseholdDashboardViewModel @Inject constructor(
             lock()
             return
         }
+        val request = ++generation
         mutableState.value = HouseholdDashboardUiState.Loading
         viewModelScope.launch {
             try {
@@ -56,6 +59,7 @@ class HouseholdDashboardViewModel @Inject constructor(
                     asOf = LocalDate.now(),
                     knownMembers = book.members.map { it.id },
                 )
+                if (request != generation) return@launch
                 if (session.isUnlocked()) {
                     mutableState.value = HouseholdDashboardUiState.Ready(
                         HouseholdDashboardProjector.from(report),
@@ -64,6 +68,7 @@ class HouseholdDashboardViewModel @Inject constructor(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
+                if (request != generation) return@launch
                 mutableState.value = if (session.isUnlocked()) HouseholdDashboardUiState.Unavailable
                     else HouseholdDashboardUiState.Locked
             }
