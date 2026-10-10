@@ -38,6 +38,7 @@ fun HomeScreen(
     onOpenSettings: () -> Unit,
     onOpenPrivacy: () -> Unit,
     onOpenVault: () -> Unit = {},
+    onRefreshDashboard: () -> Unit = {},
     onOpenStatements: () -> Unit = {},
 ) {
     Column(
@@ -74,9 +75,19 @@ fun HomeScreen(
                 },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onPrimaryContainer)
-                Button(onClick = onOpenVault) {
-                    Icon(Icons.Outlined.AccountBalanceWallet, contentDescription = null)
-                    Text("Open vault", modifier = Modifier.padding(start = 8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(onClick = onOpenVault) {
+                        Icon(Icons.Outlined.AccountBalanceWallet, contentDescription = null)
+                        Text("Open vault", modifier = Modifier.padding(start = 8.dp))
+                    }
+                    if (dashboardState is HouseholdDashboardUiState.Ready ||
+                        dashboardState is HouseholdDashboardUiState.Unavailable
+                    ) {
+                        OutlinedButton(onClick = onRefreshDashboard) {
+                            Text(if (dashboardState is HouseholdDashboardUiState.Unavailable)
+                                "Retry overview" else "Refresh totals")
+                        }
+                    }
                 }
             }
         }
