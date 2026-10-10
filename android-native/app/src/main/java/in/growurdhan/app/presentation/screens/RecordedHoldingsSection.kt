@@ -16,6 +16,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import `in`.growurdhan.domain.finance.RecordedHoldingDashboard
 import java.math.BigDecimal
@@ -41,7 +42,7 @@ internal fun RecordedHoldingsSection(holdings: List<RecordedHoldingDashboard>) {
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it.take(80); shown = PAGE_SIZE },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().testTag("RecordedHoldingsSearch"),
                 label = { Text("Search recorded holdings") },
                 singleLine = true,
             )

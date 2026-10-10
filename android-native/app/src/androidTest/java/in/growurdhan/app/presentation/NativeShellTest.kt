@@ -1,6 +1,12 @@
 package `in`.growurdhan.app.presentation
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertDoesNotExist
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsOff
@@ -133,6 +139,60 @@ class NativeShellTest {
         compose.onNodeWithText("Unrealised gain/loss: 4.5000 INR")
             .performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Historical purchase cost unavailable").assertDoesNotExist()
+    }
+
+    @Test fun holdingsSearchFiltersUnmatchedNamesWithoutChangingTotals() {
+        val rows = listOf(
+            RecordedHoldingDashboard("Synthetic Alpha Fund", "MUTUAL_FUND", "Primary",
+                100_000_000L, MoneyScaled(200_000), null, true, false),
+            RecordedHoldingDashboard("Synthetic Home Loan", "LIABILITY", "Primary",
+                100_000_000L, MoneyScaled(100_000), null, false, true),
+        )
+        val dashboard = HouseholdDashboard(
+            asOf = LocalDate.parse("2026-10-09"),
+            assets = MoneyScaled(200_000), liabilities = MoneyScaled(100_000),
+            netWorth = MoneyScaled(100_000), memberCount = 1, holdingCount = 2,
+            unknownCostHoldings = 1, integrityWarnings = emptyList(),
+            byMember = emptyList(), recordedHoldings = rows,
+        )
+        compose.setContent {
+            GrowUrDhanTheme(AppearanceSettings(ThemeMode.LIGHT, dynamicColor = false)) {
+                HomeScreen(
+                    dashboardState = HouseholdDashboardUiState.Ready(dashboard),
+                    onOpenSettings = {}, onOpenPrivacy = {},
+                )
+            }
+        }
+        compose.onNodeWithTag("RecordedHoldingsSearch").performScrollTo()
+            .performTextInput("home loan")
+        compose.onNodeWithText("Synthetic Home Loan").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Synthetic Alpha Fund").assertDoesNotExist()
+        compose.onNodeWithText("Showing 1 of 1 matching holding(s); 2 recorded in total.")
+            .performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun holdingsBeyondFirstThirtyAreAvailableThroughShowMore() {
+        val rows = (1..31).map { i ->
+            RecordedHoldingDashboard("Synthetic Holding ${i.toString().padStart(2, '0')}",
+                "MUTUAL_FUND", null, 100_000_000L, MoneyScaled(10_000),
+                null, true, false)
+        }
+        val dashboard = HouseholdDashboard(
+            asOf = LocalDate.parse("2026-10-09"),
+            assets = MoneyScaled(310_000), liabilities = MoneyScaled(0),
+            netWorth = MoneyScaled(310_000), memberCount = 1, holdingCount = rows.size,
+            unknownCostHoldings = rows.size, integrityWarnings = emptyList(),
+            byMember = emptyList(), recordedHoldings = rows,
+        )
+        compose.setContent {
+            GrowUrDhanTheme(AppearanceSettings(ThemeMode.LIGHT, dynamicColor = false)) {
+                HomeScreen(dashboardState = HouseholdDashboardUiState.Ready(dashboard),
+                    onOpenSettings = {}, onOpenPrivacy = {})
+            }
+        }
+        compose.onNodeWithText("Synthetic Holding 31").assertDoesNotExist()
+        compose.onNodeWithText("Show more holdings").performScrollTo().performClick()
+        compose.onNodeWithText("Synthetic Holding 31").performScrollTo().assertIsDisplayed()
     }
 
     @Test fun lockedDashboardNeverRendersFamilyNames() {
