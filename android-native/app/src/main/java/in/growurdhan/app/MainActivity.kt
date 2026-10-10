@@ -233,16 +233,19 @@ class MainActivity : ComponentActivity() {
                 if (familyState is FamilyMemberUiState.Saved) {
                     // A successful encrypted write updates the vault's member count.
                     vaultViewModel.onIntent(VaultIntent.Refresh)
+                    dashboardViewModel.refresh()
                 }
             }
             androidx.compose.runtime.LaunchedEffect(custodyState) {
                 if (custodyState is CustodyHoldingUiState.Saved) {
                     vaultViewModel.onIntent(VaultIntent.Refresh)
+                    dashboardViewModel.refresh()
                 }
             }
             androidx.compose.runtime.LaunchedEffect(recoveryState) {
                 if (recoveryState is PortableRecoveryUiState.Completed) {
                     vaultViewModel.onIntent(VaultIntent.Refresh)
+                    dashboardViewModel.refresh()
                 }
             }
             GrowUrDhanTheme(state.appearance) {
