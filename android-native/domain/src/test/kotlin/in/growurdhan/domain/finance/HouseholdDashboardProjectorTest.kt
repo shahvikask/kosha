@@ -45,6 +45,28 @@ class HouseholdDashboardProjectorTest {
         assertEquals(null, report.members.single().holdings.single().unrealisedGain)
     }
 
+    @Test fun liabilitiesReduceFamilyNetWorthAndStayAttributedToOwner() {
+        val assets = FinancialHolding(
+            HoldingId("asset"), owner, "Bank balance", "FIXED_INCOME",
+            MoneyScaled(250_000), QUANTITY_SCALE,
+        )
+        val debt = FinancialHolding(
+            HoldingId("debt"), other, "Loan", "LIABILITY",
+            MoneyScaled(80_000), QUANTITY_SCALE,
+        )
+        val report = PortfolioEngine.derive(
+            listOf(assets, debt), emptyList(), LocalDate.parse("2026-10-09"),
+            listOf(owner, other),
+        )
+        val dashboard = HouseholdDashboardProjector.from(report)
+        assertEquals(250_000L, dashboard.assets.raw)
+        assertEquals(80_000L, dashboard.liabilities.raw)
+        assertEquals(170_000L, dashboard.netWorth.raw)
+        assertEquals(2, dashboard.holdingCount)
+        assertEquals(2, dashboard.unknownCostHoldings)
+        assertEquals(80_000L, dashboard.byMember.single { it.ownerId == other }.liabilities.raw)
+    }
+
     @Test fun integrityProblemsAreNotHiddenFromDashboard() {
         val holding = FinancialHolding(
             HoldingId("h2"), OwnerId("unrecognized"), "Unknown owner", "EQUITY",
