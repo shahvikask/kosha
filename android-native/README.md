@@ -185,3 +185,16 @@ credential replacement and a successful unchanged approval.
 
 Only encrypted bytes reach SAF; no network upload is introduced. Android
 instrumentation and storage-provider lifecycle verification remain pending.
+
+## CAS import action and credential binding (October 2026; verification pending)
+
+A selected CAS PDF is now associated with a pure in-memory import ticket containing
+the action generation and original device-challenge revision. Parser results cannot
+be staged if the Activity locks, backgrounds, the user cancels review, starts
+another PDF selection, or locks and reauthenticates during parsing. Cancellation
+also wipes any staged mutable PDF password. Four synthetic JVM tests exercise
+the ticket's cancellation, session-expiry, supersession and reauthentication
+behavior. No CASPARSER source or runtime bridge was modified.
+
+Still requires ARM64 hardware tests for real PDF parsing, external document
+pickers and operating-system credential callbacks.

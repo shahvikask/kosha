@@ -39,6 +39,7 @@ import `in`.growurdhan.app.presentation.StatementReviewViewModel
 import `in`.growurdhan.app.presentation.VaultIntent
 import `in`.growurdhan.app.presentation.VaultUiState
 import `in`.growurdhan.app.presentation.VaultSessionGate
+import `in`.growurdhan.app.presentation.PdfImportGuard
 import `in`.growurdhan.app.presentation.VaultViewModel
 import `in`.growurdhan.app.presentation.HouseholdDashboardViewModel
 import `in`.growurdhan.app.presentation.HouseholdDashboardUiState
@@ -75,9 +76,8 @@ class MainActivity : ComponentActivity() {
     private var pickedPdfOwner: OwnerId? = null
     private var pickedPdfPassword: CharArray? = null
     private var pickedPdfUri: Uri? = null
-    // Invalidate an outstanding PDF parse as soon as the Activity locks/stops.
-    // No parsed statement may be staged after the originating session is gone.
-    private var pdfImportGeneration: Long = 0L
+    // A document parse belongs to one import action AND one OS device challenge.
+    private val pdfImportGuard by lazy { PdfImportGuard(sessionGate) }
     private val timeoutHandler = Handler(Looper.getMainLooper())
     private val timeoutCheck = object : Runnable {
         override fun run() {
@@ -186,22 +186,22 @@ class MainActivity : ComponentActivity() {
             lockSensitiveUi()
             return
         }
-        val importRequest = ++pdfImportGeneration
+        val importRequest = pdfImportGuard.begin()
         // One authenticated, repository-level open. Do not also dispatch
         // OpenOrCreate to the ViewModel: two independent opens can race Close.
         lifecycleScope.launch {
             try {
                 vaultViewModel.awaitPendingCleanup()
-                check(importRequest == pdfImportGeneration && sessionGate.isUnlocked()) {
+                check(pdfImportGuard.isCurrent(importRequest)) {
                     "Vault session expired while waiting for picker cleanup."
                 }
                 repository.openOrCreate()
-                check(importRequest == pdfImportGeneration && sessionGate.isUnlocked()) {
+                check(pdfImportGuard.isCurrent(importRequest)) {
                     "Vault session expired during PDF import."
                 }
                 vaultViewModel.onIntent(VaultIntent.Refresh)
                 val book = repository.readBook()
-                check(importRequest == pdfImportGeneration && sessionGate.isUnlocked()) {
+                check(pdfImportGuard.isCurrent(importRequest)) {
                     "Vault session expired before PDF validation."
                 }
                 check(book.members.any { it.id == owner }) {
@@ -212,7 +212,7 @@ class MainActivity : ComponentActivity() {
                     book.casIdentities,
                     password?.concatToString() ?: "",
                 )
-                check(importRequest == pdfImportGeneration && sessionGate.isUnlocked()) {
+                check(pdfImportGuard.isCurrent(importRequest)) {
                     "Vault session expired during PDF parsing."
                 }
                 reviewViewModel.prepareFromValidatedParser(
@@ -226,7 +226,7 @@ class MainActivity : ComponentActivity() {
             } catch (_: Exception) {
                 // Never reveal source content, Python errors, PAN or passwords.
                 // A stale/background import must not resurrect the review screen.
-                if (importRequest == pdfImportGeneration && sessionGate.isUnlocked()) {
+                if (pdfImportGuard.isCurrent(importRequest)) {
                     reviewViewModel.reportParserFailure()
                 }
             } finally {
@@ -307,6 +307,9 @@ class MainActivity : ComponentActivity() {
         if (intent == VaultIntent.OpenOrCreate) {
             requestCredential(CredentialAction.OPEN_VAULT)
         } else {
+            if (intent == VaultIntent.Close || intent == VaultIntent.CredentialUnavailable) {
+                pdfImportGuard.invalidate()
+            }
             if (intent == VaultIntent.Close) {
                 dashboardViewModel.lock()
                 reviewViewModel.clearSensitiveState()
@@ -323,6 +326,8 @@ class MainActivity : ComponentActivity() {
                 if (!sessionGate.isUnlocked() || vaultViewModel.state.value !is VaultUiState.Ready) {
                     lockSensitiveUi()
                 } else {
+                    pdfImportGuard.invalidate()
+                    pickedPdfPassword?.fill('\u0000')
                     pickedPdfOwner = intent.ownerId
                     pickedPdfPassword = intent.pdfPassword.toCharArray()
                     pdfPickerOpen = true
@@ -341,7 +346,14 @@ class MainActivity : ComponentActivity() {
                     requestCredential(CredentialAction.APPROVE_REVIEW)
                 }
             }
-            StatementReviewIntent.Cancel -> reviewViewModel.clearSensitiveState()
+            StatementReviewIntent.Cancel -> {
+                pdfImportGuard.invalidate()
+                pickedPdfPassword?.fill('\u0000')
+                pickedPdfPassword = null
+                pickedPdfUri = null
+                pickedPdfOwner = null
+                reviewViewModel.clearSensitiveState()
+            }
             StatementReviewIntent.CommitAfterCredential -> Unit // never accept from UI
         }
     }
@@ -482,7 +494,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun lockSensitiveUi() {
-        ++pdfImportGeneration
+        pdfImportGuard.invalidate()
         dashboardViewModel.lock()
         sessionGate.lock()
         reviewViewModel.clearSensitiveState()
@@ -509,7 +521,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
-        ++pdfImportGeneration
+        pdfImportGuard.invalidate()
         timeoutHandler.removeCallbacks(timeoutCheck)
         super.onStop()
         // Android's own credential confirmation activity may temporarily stop us.
