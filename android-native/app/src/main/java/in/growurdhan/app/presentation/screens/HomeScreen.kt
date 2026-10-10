@@ -81,6 +81,41 @@ fun HomeScreen(
             }
         }
 
+        if (dashboardState is HouseholdDashboardUiState.Ready &&
+            dashboardState.dashboard.byCategory.isNotEmpty()
+        ) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(22.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text("Assets by category", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Recorded valuations, not live market quotes.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    dashboardState.dashboard.byCategory.forEach { category ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                category.category.replace('_', ' '),
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text(
+                                category.value.rupees().toPlainString() + " INR",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedButton(onClick = onOpenStatements, modifier = Modifier.weight(1f)) {
                 Icon(Icons.Outlined.Description, contentDescription = null)
