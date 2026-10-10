@@ -228,3 +228,16 @@ The dashboard now projects only safe warning categories rather than carrying
 these private strings into the UI state. Unit tests cover missing ownership and
 the absence of private identifiers in projected warnings. User-entered holding
 names may still contain identifiers; users should choose privacy-safe nicknames.
+
+## Recovery document-picker cleanup barrier (October 2026; tests pending)
+
+The portable backup ViewModel now accepts a suspending vault cleanup barrier from
+the Activity, just as CAS import already does. A queued close caused by the
+document picker must complete before encrypted backup export or restore checks
+vault status or opens SQLCipher. The original recently confirmed device
+challenge and the operation generation are verified again **after** the wait.
+Cancellation, revocation or supersession clears the passphrase in the ViewModel
+without exposing a document URI or decrypted book.
+
+Added synthetic coroutine tests verify that a suspended cleanup blocks SQLCipher
+access and that expired credentials cause failure without opening the database.

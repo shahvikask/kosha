@@ -65,7 +65,12 @@ class PortableRecoveryViewModel @Inject constructor(
         )
     }
 
-    fun executeAfterCredential(mode: PortableRecoveryMode, uri: Uri, password: CharArray) {
+    fun executeAfterCredential(
+        mode: PortableRecoveryMode,
+        uri: Uri,
+        password: CharArray,
+        awaitVaultCleanup: suspend () -> Unit = {},
+    ) {
         val selected = mutableState.value as? PortableRecoveryUiState.EnterPassphrase
         if (selected == null || selected.mode != mode ||
             session.credentialEpoch() <= selected.stagedCredentialEpoch ||
@@ -85,6 +90,13 @@ class PortableRecoveryViewModel @Inject constructor(
         mutableState.value = PortableRecoveryUiState.Working
         operation = viewModelScope.launch {
             try {
+                // SAF and Android's credential Activity may have queued a vault
+                // close which must complete before this fresh authorized open.
+                awaitVaultCleanup()
+                check(current == generation &&
+                    session.canCommitFinancialChanges() &&
+                    session.credentialEpoch() == authenticatedRevision
+                ) { "Backup authorization expired while waiting for vault cleanup." }
                 withContext(Dispatchers.IO) {
                     val status = vault.status()
                     if (mode == PortableRecoveryMode.EXPORT) {

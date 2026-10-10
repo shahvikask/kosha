@@ -171,7 +171,9 @@ class MainActivity : ComponentActivity() {
             lockSensitiveUi()
             return
         }
-        recoveryViewModel.executeAfterCredential(selectedMode, selectedUri, selectedPassword)
+        recoveryViewModel.executeAfterCredential(
+            selectedMode, selectedUri, selectedPassword, vaultViewModel::awaitPendingCleanup,
+        )
     }
 
     private fun parseSelectedPdfAfterCredential() {
