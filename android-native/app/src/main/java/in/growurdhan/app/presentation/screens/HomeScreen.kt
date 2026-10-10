@@ -66,8 +66,12 @@ fun HomeScreen(
             ) {
                 Text("Your financial overview", style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onPrimaryContainer)
-                Text("Open your secure vault to manage family members, accounts and holdings. " +
-                    "Portfolio totals will appear here only after authenticated book integration is complete.",
+                Text(when (dashboardState) {
+                    is HouseholdDashboardUiState.Ready -> "Net worth: " + dashboardState.dashboard.netWorth.rupees().toPlainString() + " INR; assets: " + dashboardState.dashboard.assets.rupees().toPlainString() + " INR; liabilities: " + dashboardState.dashboard.liabilities.rupees().toPlainString() + " INR." + (if (dashboardState.dashboard.unknownCostHoldings > 0) " Historical cost unknown for some holdings." else "") + (if (!dashboardState.dashboard.isReliable) " Financial integrity review required." else "")
+                    HouseholdDashboardUiState.Loading -> "Calculating your household overview."
+                    HouseholdDashboardUiState.Unavailable -> "Overview unavailable. Please retry after unlocking."
+                    HouseholdDashboardUiState.Locked -> "Unlock the vault to view your family wealth."
+                },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onPrimaryContainer)
                 Button(onClick = onOpenVault) {
