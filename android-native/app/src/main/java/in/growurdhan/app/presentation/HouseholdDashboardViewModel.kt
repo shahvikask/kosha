@@ -68,7 +68,7 @@ class HouseholdDashboardViewModel @Inject constructor(
                 if (request != generation) return@launch
                 if (session.isUnlocked()) {
                     mutableState.value = HouseholdDashboardUiState.Ready(
-                        HouseholdDashboardProjector.from(report),
+                        HouseholdDashboardProjector.from(report, book.members.associate { it.id to it.displayName }),
                     )
                 } else lock()
             } catch (cancelled: CancellationException) {
