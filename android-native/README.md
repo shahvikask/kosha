@@ -308,3 +308,40 @@ passed. Current-branch Gradle compilation, Python preflight execution against
 the full checked-out repository, Android instrumentation, physical ARM64 CAS
 parsing, independent AppSec testing and Play release verification remain
 **pending**. Earlier CI runs in this README document historical commits only.
+
+## Native UI authentication-revision boundary (October 2026)
+
+Sensitive in-memory screen results are now tied to the **same** successful
+Android device-credential challenge that initiated their asynchronous work.
+The ephemeral `VaultSessionGate.isCurrentSession(revision)` helper checks both
+session freshness and the original monotonically increasing credential
+revision. The companion `isCurrentApproval(revision)` also requires a
+recent (30-second) financial-approval challenge. Neither helper stores a
+password, biometric template, PAN or persistent login token.
+
+The production vault screen, household dashboard, CAS statement review and
+approval results, family-member onboarding, and custody/holding onboarding
+now discard old results when a different credential challenge supersedes
+their originating one. An old suspended read or save must **not** become
+visible simply because the user has unlocked the app again. Portable backup
+completion and error results similarly cannot surface under a replacement
+challenge. Before opening an external SAF destination, export rechecks the
+original approval and the current operation generation.
+
+Synthetic unit tests exercise mid-read/mid-save reauthentication across
+these ViewModels, approval expiry, and stale backup export/restore responses.
+The Python preflight also requires all six sensitive ViewModel routes to
+retain their original-challenge checks and includes bypass-mutation tests.
+
+**Verification boundaries:** an isolated local Kotlin 1.9 compilation/smoke
+harness with dependency stubs passed credential-revision, expiry, lock,
+reauthentication, and PDF-ticket cases. Read-only GitHub source checks verified
+all expected publication checks. This is **not** the Gradle Kotlin 2.2/Android
+build and does not certify the MockK, Hilt, Compose, SQLCipher or ARM64 runtime.
+The earlier GitHub native build #264 (attempt 2) ended before any runner job
+steps, so that run cannot prove a code/build regression or a passing release.
+Run the full native JVM/instrumentation suites and Android device tests after
+GitHub Actions runner availability is restored.
+
+No CASPARSER code, bundled statement parser, financial ledger or private
+on-phone records were changed by this milestone.
