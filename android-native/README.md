@@ -147,3 +147,9 @@ to the **same device-challenge revision** that authorized the call. Re-locking
 and authenticating again while an older operation is suspended does not make
 that older operation authorized. Added JVM tests for both mid-operation
 credential replacement and challenge-revision progression.
+
+The Activity's authenticated PDF reopen additionally waits for any previously
+queued VaultViewModel close to finish. This avoids a pending picker-background
+cleanup closing the just-reopened encrypted connection. A coroutine regression
+test verifies that document import cannot pass this barrier while close is
+suspended. The remaining physical-device picker lifecycle must still be tested.

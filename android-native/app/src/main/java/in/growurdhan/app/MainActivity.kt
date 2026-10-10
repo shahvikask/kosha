@@ -191,6 +191,10 @@ class MainActivity : ComponentActivity() {
         // OpenOrCreate to the ViewModel: two independent opens can race Close.
         lifecycleScope.launch {
             try {
+                vaultViewModel.awaitPendingCleanup()
+                check(importRequest == pdfImportGeneration && sessionGate.isUnlocked()) {
+                    "Vault session expired while waiting for picker cleanup."
+                }
                 repository.openOrCreate()
                 check(importRequest == pdfImportGeneration && sessionGate.isUnlocked()) {
                     "Vault session expired during PDF import."

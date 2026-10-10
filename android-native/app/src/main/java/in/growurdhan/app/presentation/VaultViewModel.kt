@@ -8,6 +8,7 @@ import `in`.growurdhan.core.model.VaultStatus
 import `in`.growurdhan.domain.vault.VaultRepository
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -47,6 +48,16 @@ class VaultViewModel @Inject constructor(
     // Close must wait for any already-started open; otherwise a late open can
     // leave the encrypted database connected after the user has locked it.
     private val vaultOperationMutex = Mutex()
+    private var lastCleanupOperation: Job? = null
+
+    /**
+     * The document picker may return immediately after the OS credential
+     * challenge, while a previously dispatched Close is still pending.
+     * Wait for that mandatory cleanup before an Activity-owned import opens.
+     */
+    suspend fun awaitPendingCleanup() {
+        lastCleanupOperation?.join()
+    }
 
     init { onIntent(VaultIntent.Refresh) }
 
@@ -57,7 +68,7 @@ class VaultViewModel @Inject constructor(
             session.lock()
             mutableState.value = VaultUiState.Loading
         }
-        viewModelScope.launch {
+        val operation = viewModelScope.launch {
             // Closing is mandatory cleanup even when a later refresh/open supersedes
             // its UI result. Otherwise a queued close could be silently dropped.
             if (request != requestGeneration && intent != VaultIntent.Close &&
@@ -161,6 +172,9 @@ class VaultViewModel @Inject constructor(
                     "The encrypted vault could not be opened or verified. Existing files were preserved.",
                 )
             }
+        }
+        if (intent == VaultIntent.Close || intent == VaultIntent.CredentialUnavailable) {
+            lastCleanupOperation = operation
         }
     }
 }

@@ -7,11 +7,14 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -169,6 +172,28 @@ class VaultViewModelTest {
         assertEquals(false, gate.isUnlocked())
         assertEquals(VaultUiState.Closed, vm.state.value)
         coVerify(exactly = 1) { repo.close() }
+    }
+
+    @Test fun documentImportWaitsUntilPreviouslyDispatchedCloseCompletes() = runTest {
+        val repo = mockk<VaultRepository>()
+        val pendingClose = CompletableDeferred<Unit>()
+        coEvery { repo.status() } returns VaultStatus(true, false, 2)
+        coEvery { repo.close() } coAnswers { pendingClose.await() }
+        val vm = VaultViewModel(repo, VaultSessionGate())
+        advanceUntilIdle()
+
+        vm.onIntent(VaultIntent.Close)
+        runCurrent()
+        val pickerWait = async { vm.awaitPendingCleanup() }
+        runCurrent()
+
+        assertFalse(pickerWait.isCompleted)
+        pendingClose.complete(Unit)
+        advanceUntilIdle()
+
+        assertTrue(pickerWait.isCompleted)
+        coVerify(exactly = 1) { repo.close() }
+        assertEquals(VaultUiState.Closed, vm.state.value)
     }
 
     @Test fun missingDeviceCredentialRevokesSessionAndClosesConnection() = runTest {
