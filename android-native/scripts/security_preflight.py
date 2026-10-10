@@ -98,6 +98,32 @@ def repository_binding_errors(binding: str) -> list[str]:
     return errors
 
 
+def ui_publication_guard_errors(sources: dict[str, str]) -> list[str]:
+    """Ensure sensitive async ViewModel results cannot borrow later unlocks.
+
+    Source policy is a regression tripwire; behavioral JVM tests still exercise
+    suspended reads, writes and credential replacement.
+    """
+    required = {
+        "VaultViewModel.kt": ("originalRevision", 8),
+        "HouseholdDashboardViewModel.kt": ("originalRevision", 5),
+        "StatementReviewViewModel.kt": ("originalRevision", 3),
+        "FamilyMemberViewModel.kt": ("originalRevision", 2),
+        "CustodyHoldingViewModel.kt": ("originalRevision", 2),
+        "PortableRecoveryViewModel.kt": ("authenticatedRevision", 2),
+    }
+    errors = []
+    for file, (revision, count) in required.items():
+        source = sources.get(file, "")
+        if source.count(f"session.isCurrentSession({revision})") < count:
+            errors.append(file + " lost same-device-credential result binding.")
+    gate = sources.get("VaultSessionGate.kt", "")
+    if ("credentialRevision == originalRevision && isUnlocked()" not in gate or
+            "credentialRevision == originalRevision && canCommitFinancialChanges()" not in gate):
+        errors.append("Native credential gate does not bind access to original challenge.")
+    return errors
+
+
 def cipher_page_integrity_errors(schema: str) -> list[str]:
     """SQLCipher page HMAC validation must run when opening any vault."""
     errors: list[str] = []
@@ -188,6 +214,17 @@ def main() -> int:
     vault_vm = read("android-native/app/src/main/java/in/growurdhan/app/presentation/VaultViewModel.kt")
     health_gate = read("android-native/domain/src/main/kotlin/in/growurdhan/domain/vault/VaultHealthGate.kt")
     errors.extend(vault_health_boundary_errors(vault_vm, health_gate))
+
+    presentation = "android-native/app/src/main/java/in/growurdhan/app/presentation/"
+    ui_files = (
+        "VaultSessionGate.kt", "VaultViewModel.kt",
+        "HouseholdDashboardViewModel.kt", "StatementReviewViewModel.kt",
+        "FamilyMemberViewModel.kt", "CustodyHoldingViewModel.kt",
+        "PortableRecoveryViewModel.kt",
+    )
+    errors.extend(ui_publication_guard_errors({
+        name: read(presentation + name) for name in ui_files
+    }))
 
     ensure('db.execSQL("PRAGMA foreign_keys = ON")' in read(
         "android-native/data/src/main/kotlin/in/growurdhan/data/vault/VaultSchema.kt"),

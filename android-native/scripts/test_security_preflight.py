@@ -7,7 +7,8 @@ These are SOURCE checks, not Gradle builds or mobile penetration tests.
 import unittest
 
 from security_preflight import (
-    read, repository_binding_errors, vault_health_boundary_errors, cipher_page_integrity_errors,
+    read, repository_binding_errors, vault_health_boundary_errors,
+    cipher_page_integrity_errors, ui_publication_guard_errors,
 )
 
 SOURCE = "android-native/data/src/main/kotlin/in/growurdhan/data/vault/SqlCipherVaultRepository.kt"
@@ -123,6 +124,34 @@ class RepositoryPolicyRoutingTests(unittest.TestCase):
         self.assertTrue(cipher_page_integrity_errors(without_hmac))
         ignored_errors = schema.replace("if (pageErrors != 0)", "if (false)", 1)
         self.assertTrue(cipher_page_integrity_errors(ignored_errors))
+
+    def test_async_financial_views_reject_old_device_credential_results(self):
+        root = "android-native/app/src/main/java/in/growurdhan/app/presentation/"
+        names = (
+            "VaultSessionGate.kt", "VaultViewModel.kt",
+            "HouseholdDashboardViewModel.kt", "StatementReviewViewModel.kt",
+            "FamilyMemberViewModel.kt", "CustodyHoldingViewModel.kt",
+            "PortableRecoveryViewModel.kt",
+        )
+        sources = {name: read(root + name) for name in names}
+        self.assertEqual([], ui_publication_guard_errors(sources))
+        for name in names[1:]:
+            token = ("authenticatedRevision" if name == "PortableRecoveryViewModel.kt"
+                     else "originalRevision")
+            mutant = sources.copy()
+            mutant[name] = mutant[name].replace(
+                f"session.isCurrentSession({token})", "session.isUnlocked()", 1,
+            )
+            self.assertTrue(
+                any(name in problem for problem in ui_publication_guard_errors(mutant)),
+                "A removed device-credential binding must fail for " + name,
+            )
+        mutant = sources.copy()
+        mutant["VaultSessionGate.kt"] = mutant["VaultSessionGate.kt"].replace(
+            "credentialRevision == originalRevision && isUnlocked()",
+            "isUnlocked()", 1,
+        )
+        self.assertTrue(ui_publication_guard_errors(mutant))
 
     def test_missing_repository_method_is_rejected(self):
         mutant = self.production.replace(
