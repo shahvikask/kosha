@@ -40,10 +40,10 @@ class VaultViewModel @Inject constructor(
     private val mutableState = MutableStateFlow<VaultUiState>(VaultUiState.Loading)
     val state: StateFlow<VaultUiState> = mutableState
 
-    init { onIntent(VaultIntent.Refresh) }
-
     /** Invalidates delayed results without interrupting a vault database transaction. */
     private var requestGeneration: Long = 0L
+
+    init { onIntent(VaultIntent.Refresh) }
 
     fun onIntent(intent: VaultIntent) {
         val request = ++requestGeneration
