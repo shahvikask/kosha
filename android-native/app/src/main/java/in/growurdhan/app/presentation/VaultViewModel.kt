@@ -66,15 +66,20 @@ class VaultViewModel @Inject constructor(
             try {
                 when (intent) {
                     VaultIntent.Refresh -> {
-                        val info = repository.status()
-                        val next = when {
-                            !info.initialized -> VaultUiState.NotCreated
-                            !info.opened || !session.isUnlocked() -> VaultUiState.Closed
-                            else -> VaultUiState.Ready(repository.health())
-                        }
-                        if (request == requestGeneration) {
-                            mutableState.value = if (next is VaultUiState.Ready && !session.isUnlocked())
-                                VaultUiState.Closed else next
+                        vaultOperationMutex.withLock {
+                            // Never inspect SQLCipher status/health while another
+                            // coroutine is opening or closing the connection.
+                            if (request != requestGeneration) return@withLock
+                            val info = repository.status()
+                            val next = when {
+                                !info.initialized -> VaultUiState.NotCreated
+                                !info.opened || !session.isUnlocked() -> VaultUiState.Closed
+                                else -> VaultUiState.Ready(repository.health())
+                            }
+                            if (request == requestGeneration) {
+                                mutableState.value = if (next is VaultUiState.Ready && !session.isUnlocked())
+                                    VaultUiState.Closed else next
+                            }
                         }
                     }
                     VaultIntent.CredentialUnavailable -> {
