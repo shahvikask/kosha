@@ -1,12 +1,12 @@
 # GrowUrDhan — Native Kotlin Android
 
 **Branch:** `GUD-Android-ChatGPT`  
-**Status:** Native M6 family onboarding **CI VERIFIED** at `3a4dfa0790f`: 102 JVM + 35 Android tests on API 35, with 35 Android tests each on APIs 26/30/36. **M7** encrypted CAS account/holding identity onboarding is implemented and **awaits new CI verification**. Full financial parity and Play release remain OPEN.  
+**Status:** Active native development. The latest `GUD-Android-ChatGPT` changes are **not yet Gradle- or device-verified**. Historical M6 baseline `3a4dfa0790f` passed 102 JVM tests and 35 Android tests on API 35 (also 35 on each of APIs 26/30/36); those results **do not verify this branch**. Full legacy parity, physical-device acceptance, independent AppSec review and Play release remain OPEN.  
 **Application ID:** `in.growurdhan.app` (pre-release development only). No Google Play version has been published.
 
 ## Modules and active implementation
 
-- `app`: Kotlin, Compose Material 3, Hilt, accessible adaptive navigation, vault and appearance ViewModels. No completed public-facing financial UI/auth gate yet.
+- `app`: Kotlin, Compose Material 3 and Hilt, with device-credential-gated vault access, native household dashboard, family/custody onboarding, reviewed CAS PDF selection, portable backup/recovery and accessibility-aware navigation. Full financial UI parity and commercial authentication remain incomplete.
 - `core:model`: scaled money and quantity types, family/holding/ledger identities, SQLite-compatible data contracts.
 - `domain`: pure Kotlin use cases; M3 adds FIFO tax lots, corrections, split/bonus events, snapshot reconciliation planning, member net worth, date-safe tax rules and XIRR with TS-based golden fixtures.
 - `data`: Keystore-wrapped key, SQLCipher Android native vault, transactional statement records, authenticated encrypted backup, DataStore appearance settings.
