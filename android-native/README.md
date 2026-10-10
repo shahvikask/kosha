@@ -21,6 +21,8 @@ From repository root:
 ```sh
 gradle -p android-native :domain:test :app:testDebugUnitTest
 python3 android-native/scripts/validate_schema.py
+python3 -m unittest discover -s android-native/scripts -p 'test_security_preflight.py' -v
+python3 android-native/scripts/security_preflight.py
 gradle -p android-native :app:assembleDebug :app:assembleDebugAndroidTest :data:assembleDebugAndroidTest
 # Requires connected Android emulator/device:
 gradle -p android-native :data:connectedDebugAndroidTest :app:connectedDebugAndroidTest
@@ -246,3 +248,32 @@ The recorded-holdings coverage also tests a positive verified-acquisition-cost
 case: one unit with a known purchase price exposes its exact scaled-integer
 unrealised gain; it does not trigger the unknown-cost warning. Companion
 Compose coverage checks that value reaches the unlocked UI.
+
+## Native search, privacy and release-preflight milestone (October 2026)
+
+* The Home screen's already-authorized recorded holdings can now be searched
+  locally by visible holding name, category or family member. Queries are
+  limited to 80 characters and exist only in the unlocked Compose state.
+* Holdings are displayed progressively in sets of 30. The remaining rows are
+  reachable with "Show more holdings" rather than silently hidden. All records
+  continue to be included in portfolio totals; search does not change finance
+  calculations or trigger network/database fetches.
+* Replacing an in-flight portable backup document selection now immediately
+  zeroes the previous password, even if the cancelled job never started.
+  Recovery coroutine tests use a controlled IO dispatcher to avoid timing races.
+* The Python source security preflight was updated to inspect the actual
+  authorized production routes: 23 repository methods, session-bound reads and
+  openings, guarded writes, and SQLite's authorization recheck before commit.
+  An eight-test regression suite includes deliberate source bypass mutations,
+  and the native build workflow invokes it before the main policy preflight.
+* Added JVM holdings-search tests and Android Compose tests for searching,
+  paging and erasing search state on lock; the formerly missing Compose
+  `assertDoesNotExist` test import has been corrected.
+
+**Verification evidence, not a release claim:** a standalone Kotlin search
+logic compilation and synthetic smoke test passed, and a read-only check of the
+GitHub branch verified 23 production method routes plus commit-check ordering.
+The actual Gradle JVM tests, Python preflight on the checked-out repository,
+Android instrumentation, physical-device CAS import and security penetration
+testing remain **not executed here**. These changes do not qualify the app for
+commercial distribution. The frozen CASPARSER code remains unchanged.
