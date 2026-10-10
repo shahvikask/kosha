@@ -103,9 +103,7 @@ class VaultViewModelTest {
         vm.onIntent(VaultIntent.Close)
         // Revocation is synchronous, not dependent on coroutine scheduling.
         assertEquals(false, gate.isUnlocked())
-        advanceUntilIdle()
-        assertEquals(VaultUiState.Closed, vm.state.value)
-
+        // The close must wait for the in-flight open, then close its connection.
         pendingOpen.complete(VaultStatus(true, true, 2))
         advanceUntilIdle()
         assertEquals(VaultUiState.Closed, vm.state.value)
