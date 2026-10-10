@@ -6,8 +6,10 @@ import `in`.growurdhan.domain.vault.VaultRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -82,6 +84,52 @@ class VaultViewModelTest {
         assertEquals(VaultUiState.NotCreated, vm.state.value)
         coVerify(exactly = 0) { repo.openOrCreate() }
         coVerify(exactly = 1) { repo.close() }
+    }
+
+    @Test fun closingWhileOpenIsSuspendedCannotRestoreReadyState() = runTest {
+        val repo = mockk<VaultRepository>()
+        val pendingOpen = CompletableDeferred<VaultStatus>()
+        coEvery { repo.status() } returns VaultStatus(true, false, 2)
+        coEvery { repo.openOrCreate() } coAnswers { pendingOpen.await() }
+        coEvery { repo.health() } returns VaultHealth("ok", 0, 0, 0, 0)
+        coEvery { repo.close() } returns Unit
+        val gate = VaultSessionGate()
+        val vm = VaultViewModel(repo, gate)
+        advanceUntilIdle()
+        gate.grantDeviceCredential()
+
+        vm.onIntent(VaultIntent.OpenOrCreate)
+        runCurrent()
+        vm.onIntent(VaultIntent.Close)
+        // Revocation is synchronous, not dependent on coroutine scheduling.
+        assertEquals(false, gate.isUnlocked())
+        advanceUntilIdle()
+        assertEquals(VaultUiState.Closed, vm.state.value)
+
+        pendingOpen.complete(VaultStatus(true, true, 2))
+        advanceUntilIdle()
+        assertEquals(VaultUiState.Closed, vm.state.value)
+        coVerify(exactly = 1) { repo.close() }
+    }
+
+    @Test fun expiringSessionWhileHealthIsSuspendedCannotShowReady() = runTest {
+        val repo = mockk<VaultRepository>()
+        val pendingHealth = CompletableDeferred<VaultHealth>()
+        coEvery { repo.status() } returns VaultStatus(true, false, 2)
+        coEvery { repo.openOrCreate() } returns VaultStatus(true, true, 2)
+        coEvery { repo.health() } coAnswers { pendingHealth.await() }
+        val gate = VaultSessionGate()
+        val vm = VaultViewModel(repo, gate)
+        advanceUntilIdle()
+        gate.grantDeviceCredential()
+
+        vm.onIntent(VaultIntent.OpenOrCreate)
+        runCurrent()
+        gate.lock()
+        pendingHealth.complete(VaultHealth("ok", 0, 0, 0, 0))
+        advanceUntilIdle()
+
+        assertEquals(VaultUiState.Closed, vm.state.value)
     }
 
     @Test fun damagedVaultIsReportedRatherThanSilentlyReset() = runTest {
