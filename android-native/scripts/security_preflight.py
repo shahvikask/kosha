@@ -98,6 +98,16 @@ def repository_binding_errors(binding: str) -> list[str]:
     return errors
 
 
+def cipher_page_integrity_errors(schema: str) -> list[str]:
+    """SQLCipher page HMAC validation must run when opening any vault."""
+    errors: list[str] = []
+    if 'db.rawQuery("PRAGMA cipher_integrity_check"' not in schema:
+        errors.append("Vault open must execute SQLCipher page HMAC verification.")
+    if "if (pageErrors != 0)" not in schema:
+        errors.append("Any SQLCipher page-integrity error must fail closed.")
+    return errors
+
+
 def vault_health_boundary_errors(viewmodel: str, gate: str) -> list[str]:
     """Fail closed when vault health is unhealthy or the health query fails."""
     errors: list[str] = []
@@ -185,6 +195,9 @@ def main() -> int:
     ensure("deny_ledger_update" in read(
         "android-native/data/src/main/kotlin/in/growurdhan/data/vault/VaultSchema.kt"),
         "Immutable financial ledger trigger is missing.")
+    errors.extend(cipher_page_integrity_errors(read(
+        "android-native/data/src/main/kotlin/in/growurdhan/data/vault/VaultSchema.kt"
+    )))
     ensure("GUD_UPLOAD_KEYSTORE_PATH" in read("android-native/app/build.gradle.kts")
            and "gradle.taskGraph.whenReady" in read("android-native/app/build.gradle.kts"),
            "Release signing fail-closed gate is missing.")
