@@ -73,7 +73,7 @@ class RepositoryPolicyRoutingTests(unittest.TestCase):
     def test_new_unclassified_entry_point_is_rejected(self):
         mutant = self.production.replace(
             "override suspend fun status(): VaultStatus = delegate.status()",
-            "override suspend fun status(): VaultStatus = delegate.status()\\n"
+            "override suspend fun status(): VaultStatus = delegate.status()\n"
             "    override suspend fun leakUnapproved(): Any = delegate.readBook()",
             1,
         )
