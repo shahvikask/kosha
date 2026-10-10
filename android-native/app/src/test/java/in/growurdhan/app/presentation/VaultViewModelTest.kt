@@ -130,6 +130,42 @@ class VaultViewModelTest {
         assertEquals(VaultUiState.Closed, vm.state.value)
     }
 
+    @Test fun queuedCloseIsNotSkippedBySubsequentRefresh() = runTest {
+        val repo = mockk<VaultRepository>()
+        coEvery { repo.status() } returns VaultStatus(true, false, 2)
+        coEvery { repo.close() } returns Unit
+        val gate = VaultSessionGate().also { it.grantDeviceCredential() }
+        val vm = VaultViewModel(repo, gate)
+        advanceUntilIdle()
+
+        vm.onIntent(VaultIntent.Close)
+        vm.onIntent(VaultIntent.Refresh)
+        advanceUntilIdle()
+
+        assertEquals(false, gate.isUnlocked())
+        assertEquals(VaultUiState.Closed, vm.state.value)
+        coVerify(exactly = 1) { repo.close() }
+    }
+
+    @Test fun missingDeviceCredentialRevokesSessionAndClosesConnection() = runTest {
+        val repo = mockk<VaultRepository>()
+        coEvery { repo.status() } returns VaultStatus(true, false, 2)
+        coEvery { repo.close() } returns Unit
+        val gate = VaultSessionGate().also { it.grantDeviceCredential() }
+        val vm = VaultViewModel(repo, gate)
+        advanceUntilIdle()
+
+        vm.onIntent(VaultIntent.CredentialUnavailable)
+        assertEquals(false, gate.isUnlocked())
+        advanceUntilIdle()
+
+        assertEquals(
+            VaultUiState.Error("Set up a secure device screen lock to access your encrypted vault."),
+            vm.state.value,
+        )
+        coVerify(exactly = 1) { repo.close() }
+    }
+
     @Test fun damagedVaultIsReportedRatherThanSilentlyReset() = runTest {
         val repo = mockk<VaultRepository>()
         coEvery { repo.status() } throws IllegalStateException("missing device key")
