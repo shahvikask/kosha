@@ -116,6 +116,7 @@ class VaultViewModelTest {
         coEvery { repo.status() } returns VaultStatus(true, false, 2)
         coEvery { repo.openOrCreate() } returns VaultStatus(true, true, 2)
         coEvery { repo.health() } coAnswers { pendingHealth.await() }
+        coEvery { repo.close() } returns Unit
         val gate = VaultSessionGate()
         val vm = VaultViewModel(repo, gate)
         advanceUntilIdle()
@@ -128,6 +129,29 @@ class VaultViewModelTest {
         advanceUntilIdle()
 
         assertEquals(VaultUiState.Closed, vm.state.value)
+        coVerify(exactly = 1) { repo.close() }
+    }
+
+    @Test fun sessionExpiryDuringOpenClosesDatabaseWithoutSeparateCloseIntent() = runTest {
+        val repo = mockk<VaultRepository>()
+        val pendingOpen = CompletableDeferred<VaultStatus>()
+        coEvery { repo.status() } returns VaultStatus(true, false, 2)
+        coEvery { repo.openOrCreate() } coAnswers { pendingOpen.await() }
+        coEvery { repo.close() } returns Unit
+        val gate = VaultSessionGate()
+        val vm = VaultViewModel(repo, gate)
+        advanceUntilIdle()
+        gate.grantDeviceCredential()
+
+        vm.onIntent(VaultIntent.OpenOrCreate)
+        runCurrent()
+        gate.lock()
+        pendingOpen.complete(VaultStatus(true, true, 2))
+        advanceUntilIdle()
+
+        assertEquals(VaultUiState.Closed, vm.state.value)
+        coVerify(exactly = 1) { repo.close() }
+        coVerify(exactly = 0) { repo.health() }
     }
 
     @Test fun queuedCloseIsNotSkippedBySubsequentRefresh() = runTest {
