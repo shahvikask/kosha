@@ -19,6 +19,78 @@ ANDROID_NS = "{http://schemas.android.com/apk/res/android}"
 def read(relative: str) -> str:
     return (ROOT / relative).read_text(encoding="utf-8")
 
+def repository_binding_errors(binding: str) -> list[str]:
+    """Verify every production entry point follows its policy-bearing wrapper.
+
+    Static source checks are deliberately structural heuristics and complement,
+    rather than replace, Kotlin tests and Android penetration testing.
+    """
+    errors: list[str] = []
+    if "class DefaultVaultRepository" not in binding:
+        return ["Production repository policy binding is missing."]
+    production = binding.split("class DefaultVaultRepository", 1)[1]
+    headers = list(re.finditer(
+        r"(?m)^    override suspend fun ([A-Za-z][A-Za-z0-9]*)\\(",
+        production,
+    ))
+    sections: dict[str, list[str]] = {}
+    for i, match in enumerate(headers):
+        tail = headers[i + 1].start() if i + 1 < len(headers) else len(production)
+        sections.setdefault(match.group(1), []).append(production[match.start():tail])
+
+    expected = {
+        "status": "delegate.status()",
+        "openOrCreate": "sessionBound.openOrCreate()",
+        "close": "sessionBound.close()",
+        "createMember": "approvedWrite { delegate.createMember(",
+        "registerFamilyMember": "approvedWrite { delegate.registerFamilyMember(",
+        "createAccount": "approvedWrite { delegate.createAccount(",
+        "registerCustodyAccount": "approvedWrite { delegate.registerCustodyAccount(",
+        "createHolding": "approvedWrite { delegate.createHolding(",
+        "registerCasHolding": "approvedWrite { delegate.registerCasHolding(",
+        "appendEvent": "approvedWrite { delegate.appendEvent(",
+        "appendFinancialEvents": "approvedWrite { delegate.appendFinancialEvents(",
+        "importSnapshot": "approvedWrite { delegate.importSnapshot(",
+        "prepareStatementReview": "sessionBound.read {",
+        "commitReviewedStatement": "approvedWrite { delegate.commitReviewedStatement(",
+        "members": "sessionBound.read { delegate.members() }",
+        "accounts": "sessionBound.read { delegate.accounts() }",
+        "casIdentities": "sessionBound.read { delegate.casIdentities() }",
+        "holdings": "sessionBound.read { delegate.holdings() }",
+        "events": "sessionBound.read { delegate.events() }",
+        "readBook": "sessionBound.read { delegate.readBook() }",
+        "health": "sessionBound.read { delegate.health() }",
+        "exportEncryptedBackup": "sessionBound.readRecentlyApprovedBytes { delegate.exportEncryptedBackup(",
+        "restoreEncryptedBackup": "approvedWrite { delegate.restoreEncryptedBackup(",
+    }
+    for name, route in expected.items():
+        found = sections.get(name, [])
+        if len(found) != 1 or route not in found[0]:
+            errors.append(f"Production repository entry point {name} bypasses {route}")
+
+    if "private val delegate = SqlCipherVaultRepository(context, mutationAuthorization = authorization)" not in production:
+        errors.append("SQLCipher production delegate has no transaction authorization guard.")
+    if "authorization.requireRecentApproval()" not in production or (
+        "withContext(ApprovedMutationRevision(originalRevision))" not in production
+    ):
+        errors.append("The originally approved credential revision is not carried into writes.")
+
+    # Verify the transaction itself rechecks approval BEFORE recording success.
+    try:
+        body = binding.split("private suspend fun <T> mutate(", 1)[1].split(
+            "/** This binding is the only production", 1
+        )[0]
+    except IndexError:
+        return errors + ["SQLCipher financial mutation transaction is missing."]
+    action_at = body.find("val result = action(db)")
+    approval_at = body.find("gate.requireRecentApproval()", action_at)
+    revision_at = body.find("gate.sessionRevision() == approvedRevision", action_at)
+    commit_at = body.find("db.setTransactionSuccessful()", action_at)
+    if not (0 <= action_at < approval_at < commit_at and action_at < revision_at < commit_at):
+        errors.append("SQLCipher transaction must recheck approval and revision before commit.")
+    return errors
+
+
 def main() -> int:
     errors: list[str] = []
     def ensure(test: bool, label: str) -> None:
@@ -52,34 +124,19 @@ def main() -> int:
     binding = read("android-native/data/src/main/kotlin/in/growurdhan/data/vault/SqlCipherVaultRepository.kt")
     ensure("private val authorization: VaultAuthorization" in binding,
            "Production repository must inject deny-by-default VaultAuthorization.")
-    guards = re.search(r"class DefaultVaultRepository\b[\s\S]*$", binding)
-    guard = guards.group() if guards else ""
-    for name, check in {
-        "openOrCreate": "requireUnlocked",
-        "createMember": "requireRecentApproval",
-        "createAccount": "requireRecentApproval",
-        "registerCustodyAccount": "requireRecentApproval",
-        "createHolding": "requireRecentApproval",
-        "registerCasHolding": "requireRecentApproval",
-        "appendEvent": "requireRecentApproval",
-        "appendFinancialEvents": "requireRecentApproval",
-        "importSnapshot": "requireRecentApproval",
-        "prepareStatementReview": "requireUnlocked",
-        "commitReviewedStatement": "requireRecentApproval",
-        "members": "requireUnlocked",
-        "accounts": "requireUnlocked",
-        "casIdentities": "requireUnlocked",
-        "holdings": "requireUnlocked",
-        "events": "requireUnlocked",
-        "readBook": "requireUnlocked",
-        "health": "requireUnlocked",
-        "exportEncryptedBackup": "requireRecentApproval",
-        "restoreEncryptedBackup": "requireRecentApproval",
-    }.items():
-        p = r"override suspend fun " + name + r"\b[\s\S]*?\{([\s\S]*?)\}"
-        match = re.search(p, guard)
-        ensure(match is not None and "authorization." + check + "()" in match.group(1),
-               f"Repository entry point {name} lacks the {check} policy.")
+    # Current architecture uses shared guard helpers, not repeated inline
+    # authorization in every wrapper. Scan full method sections: matching only
+    # to the first closing brace would miss expression bodies and nested lambdas.
+    errors.extend(repository_binding_errors(binding))
+    helper = read("android-native/domain/src/main/kotlin/in/growurdhan/domain/vault/AuthorizedVaultAccess.kt")
+    ensure("connectionMutex.withLock" in helper and "withContext(NonCancellable)" in helper,
+           "Vault open/close or cancellation cleanup serialization is missing.")
+    ensure("authorization.requireUnlocked()" in helper and
+           "authorization.sessionRevision() == authorizedRevision" in helper,
+           "Private read or vault opening no longer binds to the original credential.")
+    ensure("authorization.requireRecentApproval()" in helper and
+           "bytes.fill(0)" in helper,
+           "Portable encrypted export lacks post-operation approval and buffer wiping.")
 
     ensure('db.execSQL("PRAGMA foreign_keys = ON")' in read(
         "android-native/data/src/main/kotlin/in/growurdhan/data/vault/VaultSchema.kt"),
@@ -115,7 +172,7 @@ def main() -> int:
             print("FAIL (native security policy): " + err, file=sys.stderr)
         return 1
     print("PASS: native manifest privacy, screenshot prevention, device credential,")
-    print("       20 repository authorization entry points, signed-release gate,")
+    print("       production repository authorization routes and transaction-time checks,")
     print("       foreign key/append-only protection, encrypted recovery bounds,")
     print("       owner-pinned AAB signing and backup exclusions.")
     print("NOTE: Static policy checks are not an independent mobile penetration test.")
