@@ -25,6 +25,8 @@ jobs:
           fetch-depth: 0
       - name: Preflight native SQLite v1-to-v2 migration and ledger guards
         run: python3 android-native/scripts/validate_schema.py
+      - name: Verify native security preflight rejects repository bypasses
+        run: python3 -m unittest discover -s android-native/scripts -p 'test_security_preflight.py' -v
       - name: Native source security policy and repository authorization gate
         run: python3 android-native/scripts/security_preflight.py
       - name: Verify immutable CASPARSER engine and packaging inputs
