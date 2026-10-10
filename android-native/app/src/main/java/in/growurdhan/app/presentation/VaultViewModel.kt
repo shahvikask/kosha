@@ -89,8 +89,14 @@ class VaultViewModel @Inject constructor(
                                 }
                             }
                             if (request == requestGeneration) {
-                                mutableState.value = if (next is VaultUiState.Ready && !session.isUnlocked())
-                                    VaultUiState.Closed else next
+                                if (next is VaultUiState.Ready && !session.isUnlocked()) {
+                                    // Authorization may expire between computing the
+                                    // result and publishing it. Close before returning.
+                                    repository.close()
+                                    mutableState.value = VaultUiState.Closed
+                                } else {
+                                    mutableState.value = next
+                                }
                             }
                         }
                     }
