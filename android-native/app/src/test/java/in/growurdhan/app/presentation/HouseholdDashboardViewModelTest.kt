@@ -90,6 +90,23 @@ class HouseholdDashboardViewModelTest {
         coVerify(exactly = 1) { repo.readBook() }
     }
 
+    @Test fun missingFamilyRegistryNeverCreatesSyntheticDashboardOwners() = runTest {
+        val repo = mockk<VaultRepository>()
+        coEvery { repo.readBook() } returns book().copy(members = emptyList())
+        val gate = VaultSessionGate().also { it.grantDeviceCredential() }
+        val vm = HouseholdDashboardViewModel(repo, gate)
+
+        vm.refresh()
+        advanceUntilIdle()
+
+        val summary = (vm.state.value as HouseholdDashboardUiState.Ready).dashboard
+        assertEquals(0, summary.memberCount)
+        assertEquals(0, summary.holdingCount)
+        assertEquals(0L, summary.netWorth.raw)
+        assertTrue(summary.recordedHoldings.isEmpty())
+        assertTrue(summary.integrityWarnings.isNotEmpty())
+    }
+
     @Test fun lockCancelsSuspendedReadAndPreventsStaleFinancialState() = runTest {
         val repo = mockk<VaultRepository>()
         val delayed = CompletableDeferred<VaultBook>()

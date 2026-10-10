@@ -210,6 +210,53 @@ class HouseholdDashboardProjectorTest {
         assertEquals(2, dashboard.unknownCostHoldings)
     }
 
+    @Test fun strictOwnerModeNeverInventsMemberFromAnOrphanHolding() {
+        val orphan = FinancialHolding(
+            HoldingId("secret-orphan-id"), OwnerId("unregistered"),
+            "Synthetic unregistered holding", "EQUITY",
+            MoneyScaled(999_000), QUANTITY_SCALE,
+        )
+        val report = PortfolioEngine.derive(
+            listOf(orphan), emptyList(), LocalDate.parse("2026-10-09"),
+            knownMembers = emptyList(), enforceKnownMembers = true,
+        )
+        val dashboard = HouseholdDashboardProjector.from(report)
+        assertEquals(0, dashboard.memberCount)
+        assertEquals(0, dashboard.holdingCount)
+        assertEquals(0L, dashboard.assets.raw)
+        assertEquals(0L, dashboard.netWorth.raw)
+        assertTrue(dashboard.recordedHoldings.isEmpty())
+        assertFalse(dashboard.isReliable)
+        assertTrue(dashboard.integrityWarnings.any { it.contains("Unknown family member") })
+        assertFalse(dashboard.toString().contains("secret-orphan-id"))
+    }
+
+    @Test fun publicIntegrityWarningsNeverIncludePrivateEventOrHoldingIdentifiers() {
+        val holding = FinancialHolding(
+            HoldingId("sensitive-id"), owner, "Sensitive Sample Holding", "MUTUAL_FUND",
+            MoneyScaled(50_000), 0L,
+        )
+        val orphanEvent = FinancialEvent(
+            id = "sensitive-transaction-id",
+            holdingId = HoldingId("missing-holding"),
+            ownerId = owner,
+            kind = FinancialEventKind.BUY,
+            date = LocalDate.parse("2026-10-08"),
+            quantityScaled = QUANTITY_SCALE,
+            unitPrice = MoneyScaled(50_000),
+        )
+        val report = PortfolioEngine.derive(
+            listOf(holding), listOf(orphanEvent), LocalDate.parse("2026-10-09"),
+            knownMembers = listOf(owner), enforceKnownMembers = true,
+        )
+        val dashboard = HouseholdDashboardProjector.from(report)
+        assertFalse(dashboard.isReliable)
+        assertTrue(dashboard.integrityWarnings.any { it.contains("no registered holding") })
+        assertFalse(dashboard.integrityWarnings.joinToString().contains("sensitive-transaction-id"))
+        assertFalse(dashboard.integrityWarnings.joinToString().contains("sensitive-id"))
+        assertFalse(dashboard.integrityWarnings.joinToString().contains("Sensitive Sample Holding"))
+    }
+
     @Test fun integrityProblemsAreNotHiddenFromDashboard() {
         val holding = FinancialHolding(
             HoldingId("h2"), OwnerId("unrecognized"), "Unknown owner", "EQUITY",

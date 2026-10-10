@@ -44,7 +44,8 @@ data class MemberDashboard(
 
 /**
  * One recorded portfolio position. Values come from the same authorized book
- * snapshot as household totals. No PAN, folio, account ID or holding ID enters UI.
+ * snapshot as household totals. Structured account/folio/holding identifiers are
+ * excluded; user-entered display names still need privacy-conscious naming.
  * Liabilities never have investment gain/cost semantics.
  */
 data class RecordedHoldingDashboard(
@@ -119,7 +120,19 @@ object HouseholdDashboardProjector {
             memberCount = report.members.size,
             holdingCount = memberRows.sumOf { it.holdings },
             unknownCostHoldings = unknown,
-            integrityWarnings = report.errors.toList(),
+            // Calculation errors may contain private fund names, event IDs or
+            // holding IDs. The public UI only needs their broad classification.
+            integrityWarnings = report.errors.map { error ->
+                when {
+                    error.startsWith("Unknown family member owns holding") ->
+                        "Unknown family member owns a holding; excluded from totals."
+                    error.startsWith("Orphan financial event") ->
+                        "A financial event has no registered holding."
+                    error.startsWith("Ownership conflict for event") ->
+                        "A financial event conflicts with its registered owner."
+                    else -> "A recorded financial position could not be reconciled."
+                }
+            },
             byMember = memberRows,
             byCategory = categories,
             recordedHoldings = recorded,

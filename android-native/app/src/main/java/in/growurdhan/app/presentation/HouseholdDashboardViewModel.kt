@@ -64,6 +64,7 @@ class HouseholdDashboardViewModel @Inject constructor(
                     events = book.events.map { it.toFinancialEvent() },
                     asOf = LocalDate.now(),
                     knownMembers = book.members.map { it.id },
+                    enforceKnownMembers = true,
                 )
                 if (request != generation) return@launch
                 if (!session.isUnlocked()) {

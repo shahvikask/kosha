@@ -36,17 +36,20 @@ object PortfolioEngine {
         events: List<FinancialEvent>,
         asOf: LocalDate,
         knownMembers: List<OwnerId> = emptyList(),
+        /** Production books must NEVER invent an owner from orphan holdings. */
+        enforceKnownMembers: Boolean = false,
     ): PortfolioReport {
         require(holdings.map { it.holdingId }.distinct().size == holdings.size) {
             "Duplicate holding identifiers."
         }
         require(knownMembers.distinct().size == knownMembers.size) { "Duplicate family member identifiers." }
         val known = knownMembers.toSet()
-        val eligibleHoldings = if (knownMembers.isEmpty()) holdings else holdings.filter { it.ownerId in known }
+        val eligibleHoldings = if (!enforceKnownMembers && knownMembers.isEmpty()) holdings
+            else holdings.filter { it.ownerId in known }
         val byHolding = eligibleHoldings.associateBy { it.holdingId }
         val allEvents = events.filter { it.date <= asOf }
         val errors = mutableListOf<String>()
-        if (knownMembers.isNotEmpty()) {
+        if (enforceKnownMembers || knownMembers.isNotEmpty()) {
             errors += holdings.filter { it.ownerId !in known }.map {
                 "Unknown family member owns holding ${it.holdingId.raw}; excluded from totals."
             }

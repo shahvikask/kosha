@@ -218,7 +218,8 @@ fun HomeScreen(
                     Text("Recorded holdings", style = MaterialTheme.typography.titleMedium)
                     Text(
                         "Values use recorded unit prices, not live quotes. " +
-                            "Identifiers and account numbers are not shown.",
+                            "Account IDs and folio fields are not shown. " +
+                            "Use nicknames without personal identifiers.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

@@ -213,3 +213,18 @@ count of additional positions. No network request or fabricated price is made.
 
 JVM reconciliation/privacy regressions and a Compose holding-display regression
 have been added but require full Gradle/instrumentation verification.
+
+## Strict native household ownership and safe warnings (October 2026)
+
+The native financial dashboard uses explicit enrolled-member ownership.
+If the encrypted book contains holdings without any registered family member,
+the portfolio screen excludes the orphan positions, leaves member/asset counts
+at zero and presents an integrity warning. The general-purpose financial engine
+retains its legacy inferred-owner behavior for explicitly nonproduction use
+cases that omit `enforceKnownMembers`.
+
+Raw internal ledger integrity errors can contain holding names and event IDs.
+The dashboard now projects only safe warning categories rather than carrying
+these private strings into the UI state. Unit tests cover missing ownership and
+the absence of private identifiers in projected warnings. User-entered holding
+names may still contain identifiers; users should choose privacy-safe nicknames.
