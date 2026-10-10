@@ -235,6 +235,38 @@ class VaultViewModelTest {
         assertEquals(VaultUiState.Closed, vm.state.value)
     }
 
+    @Test fun refreshClosesAlreadyOpenVaultWhenSessionExpired() = runTest {
+        val repo = mockk<VaultRepository>()
+        coEvery { repo.status() } returns VaultStatus(true, true, 2)
+        coEvery { repo.close() } returns Unit
+        val gate = VaultSessionGate()
+        val vm = VaultViewModel(repo, gate)
+
+        advanceUntilIdle()
+
+        assertEquals(VaultUiState.Closed, vm.state.value)
+        coVerify(exactly = 1) { repo.close() }
+        coVerify(exactly = 0) { repo.health() }
+    }
+
+    @Test fun sessionExpiryDuringRefreshHealthClosesVault() = runTest {
+        val repo = mockk<VaultRepository>()
+        val pendingHealth = CompletableDeferred<VaultHealth>()
+        coEvery { repo.status() } returns VaultStatus(true, true, 2)
+        coEvery { repo.health() } coAnswers { pendingHealth.await() }
+        coEvery { repo.close() } returns Unit
+        val gate = VaultSessionGate().also { it.grantDeviceCredential() }
+        val vm = VaultViewModel(repo, gate)
+        runCurrent()
+
+        gate.lock()
+        pendingHealth.complete(VaultHealth("ok", 0, 0, 0, 0))
+        advanceUntilIdle()
+
+        assertEquals(VaultUiState.Closed, vm.state.value)
+        coVerify(exactly = 1) { repo.close() }
+    }
+
     @Test fun damagedVaultIsReportedRatherThanSilentlyReset() = runTest {
         val repo = mockk<VaultRepository>()
         coEvery { repo.status() } throws IllegalStateException("missing device key")
