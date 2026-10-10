@@ -70,6 +70,22 @@ class HouseholdDashboardProjectorTest {
         assertEquals(80_000L, dashboard.byMember.single { it.ownerId == other }.liabilities.raw)
     }
 
+    @Test fun categoryBreakdownAggregatesAcrossFamilyAndSortsDeterministically() {
+        val holdings = listOf(
+            FinancialHolding(HoldingId("gold"), owner, "Gold", "GOLD", MoneyScaled(50_000), QUANTITY_SCALE),
+            FinancialHolding(HoldingId("mf1"), owner, "Fund A", "MUTUAL_FUND", MoneyScaled(120_000), QUANTITY_SCALE),
+            FinancialHolding(HoldingId("mf2"), other, "Fund B", "MUTUAL_FUND", MoneyScaled(80_000), QUANTITY_SCALE),
+        )
+        val report = PortfolioEngine.derive(
+            holdings, emptyList(), LocalDate.parse("2026-10-09"), listOf(owner, other),
+        )
+        val dashboard = HouseholdDashboardProjector.from(report)
+        assertEquals(listOf("GOLD", "MUTUAL_FUND"), dashboard.byCategory.map { it.category })
+        assertEquals(listOf(50_000L, 200_000L), dashboard.byCategory.map { it.value.raw })
+        assertEquals(listOf(1, 2), dashboard.byCategory.map { it.holdingCount })
+        assertEquals(dashboard.assets.raw, dashboard.byCategory.sumOf { it.value.raw })
+    }
+
     @Test fun integrityProblemsAreNotHiddenFromDashboard() {
         val holding = FinancialHolding(
             HoldingId("h2"), OwnerId("unrecognized"), "Unknown owner", "EQUITY",
