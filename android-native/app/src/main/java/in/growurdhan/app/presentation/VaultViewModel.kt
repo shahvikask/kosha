@@ -42,22 +42,35 @@ class VaultViewModel @Inject constructor(
 
     init { onIntent(VaultIntent.Refresh) }
 
+    /** Invalidates delayed results without interrupting a vault database transaction. */
+    private var requestGeneration: Long = 0L
+
     fun onIntent(intent: VaultIntent) {
+        val request = ++requestGeneration
+        // Revoke authorization immediately, rather than waiting for a coroutine to run.
+        if (intent == VaultIntent.Close || intent == VaultIntent.CredentialUnavailable) {
+            session.lock()
+            mutableState.value = VaultUiState.Loading
+        }
         viewModelScope.launch {
+            if (request != requestGeneration) return@launch
             mutableState.value = VaultUiState.Loading
             try {
                 when (intent) {
                     VaultIntent.Refresh -> {
                         val info = repository.status()
-                        mutableState.value = when {
+                        val next = when {
                             !info.initialized -> VaultUiState.NotCreated
                             !info.opened || !session.isUnlocked() -> VaultUiState.Closed
                             else -> VaultUiState.Ready(repository.health())
                         }
+                        if (request == requestGeneration) {
+                            mutableState.value = if (next is VaultUiState.Ready && !session.isUnlocked())
+                                VaultUiState.Closed else next
+                        }
                     }
                     VaultIntent.CredentialUnavailable -> {
-                        session.lock()
-                        mutableState.value = VaultUiState.Error(
+                        if (request == requestGeneration) mutableState.value = VaultUiState.Error(
                             "Set up a secure device screen lock to access your encrypted vault.",
                         )
                     }
@@ -66,22 +79,28 @@ class VaultViewModel @Inject constructor(
                             "Device authentication is required to open the native vault."
                         }
                         repository.openOrCreate()
-                        mutableState.value = VaultUiState.Ready(repository.health())
+                        val health = repository.health()
+                        if (request == requestGeneration) {
+                            mutableState.value = if (session.isUnlocked())
+                                VaultUiState.Ready(health) else VaultUiState.Closed
+                        }
                     }
                     VaultIntent.Close -> {
-                        session.lock()
                         repository.close()
                         // The document chooser can revoke a session on a new
                         // device before any vault exists. Closing it must not
                         // fabricate a "closed but initialized" status.
-                        mutableState.value = if (repository.status().initialized)
-                            VaultUiState.Closed else VaultUiState.NotCreated
+                        val initialized = repository.status().initialized
+                        if (request == requestGeneration) {
+                            mutableState.value = if (initialized)
+                                VaultUiState.Closed else VaultUiState.NotCreated
+                        }
                     }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                mutableState.value = VaultUiState.Error(
+                if (request == requestGeneration) mutableState.value = VaultUiState.Error(
                     "The encrypted vault could not be opened or verified. Existing files were preserved.",
                 )
             }
