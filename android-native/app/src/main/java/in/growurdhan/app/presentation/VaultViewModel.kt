@@ -58,8 +58,11 @@ class VaultViewModel @Inject constructor(
             mutableState.value = VaultUiState.Loading
         }
         viewModelScope.launch {
-            if (request != requestGeneration) return@launch
-            mutableState.value = VaultUiState.Loading
+            // Closing is mandatory cleanup even when a later refresh/open supersedes
+            // its UI result. Otherwise a queued close could be silently dropped.
+            if (request != requestGeneration && intent != VaultIntent.Close &&
+                intent != VaultIntent.CredentialUnavailable) return@launch
+            if (request == requestGeneration) mutableState.value = VaultUiState.Loading
             try {
                 when (intent) {
                     VaultIntent.Refresh -> {
@@ -75,6 +78,9 @@ class VaultViewModel @Inject constructor(
                         }
                     }
                     VaultIntent.CredentialUnavailable -> {
+                        // Missing/revoked device security must also close any prior
+                        // SQLCipher connection, not just replace the screen message.
+                        vaultOperationMutex.withLock { repository.close() }
                         if (request == requestGeneration) mutableState.value = VaultUiState.Error(
                             "Set up a secure device screen lock to access your encrypted vault.",
                         )
