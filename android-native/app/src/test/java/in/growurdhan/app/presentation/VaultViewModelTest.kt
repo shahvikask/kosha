@@ -297,6 +297,65 @@ class VaultViewModelTest {
         coVerify(exactly = 1) { repo.close() }
     }
 
+    @Test fun corruptIntegrityResultIsNotPublishedOrLeftOpenOnRefresh() = runTest {
+        val repo = mockk<VaultRepository>()
+        coEvery { repo.status() } returns VaultStatus(true, true, 3)
+        coEvery { repo.health() } returns VaultHealth("corrupt", 0, 1, 1, 1)
+        coEvery { repo.close() } returns Unit
+        val gate = VaultSessionGate().also { it.grantDeviceCredential() }
+
+        val vm = VaultViewModel(repo, gate)
+        advanceUntilIdle()
+
+        assertEquals(VaultUiState.Error(
+            "The encrypted vault could not be opened or verified. Existing files were preserved.",
+        ), vm.state.value)
+        assertFalse(gate.isUnlocked())
+        coVerify(exactly = 1) { repo.close() }
+        coVerify(exactly = 0) { repo.openOrCreate() }
+    }
+
+    @Test fun brokenFinancialReferencesCloseVaultAfterOpening() = runTest {
+        val repo = mockk<VaultRepository>()
+        coEvery { repo.status() } returns VaultStatus(true, false, 3)
+        coEvery { repo.openOrCreate() } returns VaultStatus(true, true, 3)
+        coEvery { repo.health() } returns VaultHealth("ok", 2, 1, 1, 1)
+        coEvery { repo.close() } returns Unit
+        val gate = VaultSessionGate()
+        val vm = VaultViewModel(repo, gate)
+        advanceUntilIdle()
+
+        gate.grantDeviceCredential()
+        vm.onIntent(VaultIntent.OpenOrCreate)
+        advanceUntilIdle()
+
+        assertTrue(vm.state.value is VaultUiState.Error)
+        assertFalse(gate.isUnlocked())
+        coVerify(exactly = 1) { repo.close() }
+    }
+
+    @Test fun failedHealthQueryAfterOpeningClosesVaultWithoutExposingErrorText() = runTest {
+        val repo = mockk<VaultRepository>()
+        coEvery { repo.status() } returns VaultStatus(true, false, 3)
+        coEvery { repo.openOrCreate() } returns VaultStatus(true, true, 3)
+        coEvery { repo.health() } throws IllegalStateException(
+            "synthetic private key and financial row details",
+        )
+        coEvery { repo.close() } returns Unit
+        val gate = VaultSessionGate()
+        val vm = VaultViewModel(repo, gate)
+        advanceUntilIdle()
+
+        gate.grantDeviceCredential()
+        vm.onIntent(VaultIntent.OpenOrCreate)
+        advanceUntilIdle()
+
+        val state = vm.state.value as VaultUiState.Error
+        assertFalse(state.message.contains("synthetic private key"))
+        assertFalse(gate.isUnlocked())
+        coVerify(exactly = 1) { repo.close() }
+    }
+
     @Test fun damagedVaultIsReportedRatherThanSilentlyReset() = runTest {
         val repo = mockk<VaultRepository>()
         coEvery { repo.status() } throws IllegalStateException("missing device key")
