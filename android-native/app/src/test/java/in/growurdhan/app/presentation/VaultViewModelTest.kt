@@ -196,6 +196,49 @@ class VaultViewModelTest {
         assertEquals(VaultUiState.Closed, vm.state.value)
     }
 
+    @Test fun newCredentialCannotPublishOldVaultOpenHealthResult() = runTest {
+        val repo = mockk<VaultRepository>()
+        val pendingHealth = CompletableDeferred<VaultHealth>()
+        coEvery { repo.status() } returns VaultStatus(true, false, 3)
+        coEvery { repo.openOrCreate() } returns VaultStatus(true, true, 3)
+        coEvery { repo.health() } coAnswers { pendingHealth.await() }
+        coEvery { repo.close() } returns Unit
+        val gate = VaultSessionGate()
+        val vm = VaultViewModel(repo, gate)
+        advanceUntilIdle()
+
+        gate.grantDeviceCredential()
+        vm.onIntent(VaultIntent.OpenOrCreate)
+        runCurrent()
+        gate.lock()
+        gate.grantDeviceCredential()
+        pendingHealth.complete(VaultHealth("ok", 0, 1, 1, 0))
+        advanceUntilIdle()
+
+        assertEquals(VaultUiState.Closed, vm.state.value)
+        assertTrue(gate.isUnlocked())
+        coVerify(exactly = 1) { repo.close() }
+    }
+
+    @Test fun newCredentialCannotPublishOldRefreshHealthResult() = runTest {
+        val repo = mockk<VaultRepository>()
+        val pendingHealth = CompletableDeferred<VaultHealth>()
+        coEvery { repo.status() } returns VaultStatus(true, true, 3)
+        coEvery { repo.health() } coAnswers { pendingHealth.await() }
+        coEvery { repo.close() } returns Unit
+        val gate = VaultSessionGate().also { it.grantDeviceCredential() }
+        val vm = VaultViewModel(repo, gate)
+        runCurrent()
+        gate.lock()
+        gate.grantDeviceCredential()
+        pendingHealth.complete(VaultHealth("ok", 0, 1, 1, 0))
+        advanceUntilIdle()
+
+        assertEquals(VaultUiState.Closed, vm.state.value)
+        assertTrue(gate.isUnlocked())
+        coVerify(exactly = 1) { repo.close() }
+    }
+
     @Test fun missingDeviceCredentialRevokesSessionAndClosesConnection() = runTest {
         val repo = mockk<VaultRepository>()
         coEvery { repo.status() } returns VaultStatus(true, false, 2)
