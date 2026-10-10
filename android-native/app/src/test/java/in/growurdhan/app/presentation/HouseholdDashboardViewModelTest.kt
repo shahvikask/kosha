@@ -117,6 +117,44 @@ class HouseholdDashboardViewModelTest {
         coVerify(exactly = 2) { repo.readBook() }
     }
 
+    @Test fun retryAfterTemporaryReadFailureRecoversWithoutReopeningVault() = runTest {
+        val repo = mockk<VaultRepository>()
+        var attempts = 0
+        coEvery { repo.readBook() } coAnswers {
+            attempts++
+            if (attempts == 1) error("temporary synthetic database error")
+            book(310_000L)
+        }
+        val gate = VaultSessionGate().also { it.grantDeviceCredential() }
+        val vm = HouseholdDashboardViewModel(repo, gate)
+
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(HouseholdDashboardUiState.Unavailable, vm.state.value)
+
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(310_000L,
+            (vm.state.value as HouseholdDashboardUiState.Ready).dashboard.netWorth.raw)
+        coVerify(exactly = 2) { repo.readBook() }
+    }
+
+    @Test fun sessionRevokedDuringSuspendedReadFailsClosedWithoutExplicitUiLock() = runTest {
+        val repo = mockk<VaultRepository>()
+        val delayed = CompletableDeferred<VaultBook>()
+        coEvery { repo.readBook() } coAnswers { delayed.await() }
+        val gate = VaultSessionGate().also { it.grantDeviceCredential() }
+        val vm = HouseholdDashboardViewModel(repo, gate)
+
+        vm.refresh()
+        runCurrent()
+        gate.lock()
+        delayed.complete(book())
+        advanceUntilIdle()
+
+        assertEquals(HouseholdDashboardUiState.Locked, vm.state.value)
+    }
+
     @Test fun repositoryFailureDoesNotExposePrivateErrorDetails() = runTest {
         val repo = mockk<VaultRepository>()
         coEvery { repo.readBook() } throws IllegalStateException("synthetic private account detail")
