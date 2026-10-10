@@ -93,6 +93,7 @@ class VaultViewModel @Inject constructor(
 
     fun onIntent(intent: VaultIntent) {
         val request = ++requestGeneration
+        val originalRevision = session.credentialEpoch()
         // Revoke authorization immediately, rather than waiting for a coroutine to run.
         if (intent == VaultIntent.Close || intent == VaultIntent.CredentialUnavailable) {
             session.lock()
@@ -115,7 +116,7 @@ class VaultViewModel @Inject constructor(
                             val next = when {
                                 !info.initialized -> VaultUiState.NotCreated
                                 !info.opened -> VaultUiState.Closed
-                                !session.isUnlocked() -> {
+                                !session.isCurrentSession(originalRevision) -> {
                                     // A status refresh must not leave an already-open
                                     // connection behind after authorization expires.
                                     repository.close()
@@ -123,14 +124,14 @@ class VaultViewModel @Inject constructor(
                                 }
                                 else -> {
                                     val health = verifiedHealthOrClose()
-                                    if (!session.isUnlocked()) {
+                                    if (!session.isCurrentSession(originalRevision)) {
                                         repository.close()
                                         VaultUiState.Closed
                                     } else VaultUiState.Ready(health)
                                 }
                             }
                             if (request == requestGeneration) {
-                                if (next is VaultUiState.Ready && !session.isUnlocked()) {
+                                if (next is VaultUiState.Ready && !session.isCurrentSession(originalRevision)) {
                                     // Authorization may expire between computing the
                                     // result and publishing it. Close before returning.
                                     repository.close()
@@ -150,29 +151,29 @@ class VaultViewModel @Inject constructor(
                         )
                     }
                     VaultIntent.OpenOrCreate -> {
-                        check(session.isUnlocked()) {
+                        check(session.isCurrentSession(originalRevision)) {
                             "Device authentication is required to open the native vault."
                         }
                         vaultOperationMutex.withLock {
                             // A close request may have revoked the credential while
                             // this open was waiting for the preceding operation.
-                            if (request != requestGeneration || !session.isUnlocked()) return@withLock
+                            if (request != requestGeneration || !session.isCurrentSession(originalRevision)) return@withLock
                             repository.openOrCreate()
                             // An expired credential must close the physical connection,
                             // even when no explicit Close intent has been dispatched.
-                            if (!session.isUnlocked()) {
+                            if (!session.isCurrentSession(originalRevision)) {
                                 repository.close()
                                 if (request == requestGeneration) mutableState.value = VaultUiState.Closed
                                 return@withLock
                             }
                             val health = verifiedHealthOrClose()
-                            if (!session.isUnlocked()) {
+                            if (!session.isCurrentSession(originalRevision)) {
                                 repository.close()
                                 if (request == requestGeneration) mutableState.value = VaultUiState.Closed
                                 return@withLock
                             }
                             if (request == requestGeneration) {
-                                if (!session.isUnlocked()) {
+                                if (!session.isCurrentSession(originalRevision)) {
                                     // Check once more immediately before publishing
                                     // financial access to the UI.
                                     repository.close()
