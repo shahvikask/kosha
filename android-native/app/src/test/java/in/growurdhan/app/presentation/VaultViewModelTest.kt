@@ -166,6 +166,51 @@ class VaultViewModelTest {
         coVerify(exactly = 1) { repo.close() }
     }
 
+    @Test fun refreshDoesNotReadStatusWhileVaultOpenIsInProgress() = runTest {
+        val repo = mockk<VaultRepository>()
+        val pendingOpen = CompletableDeferred<VaultStatus>()
+        coEvery { repo.status() } returns VaultStatus(true, true, 2)
+        coEvery { repo.openOrCreate() } coAnswers { pendingOpen.await() }
+        coEvery { repo.health() } returns VaultHealth("ok", 0, 0, 0, 0)
+        val gate = VaultSessionGate()
+        val vm = VaultViewModel(repo, gate)
+        advanceUntilIdle()
+        gate.grantDeviceCredential()
+
+        vm.onIntent(VaultIntent.OpenOrCreate)
+        runCurrent()
+        vm.onIntent(VaultIntent.Refresh)
+        runCurrent()
+
+        // The initial status read has finished. Refresh must wait for open.
+        coVerify(exactly = 1) { repo.status() }
+        pendingOpen.complete(VaultStatus(true, true, 2))
+        advanceUntilIdle()
+        coVerify(exactly = 2) { repo.status() }
+        assertEquals(VaultUiState.Ready(VaultHealth("ok", 0, 0, 0, 0)), vm.state.value)
+    }
+
+    @Test fun refreshDoesNotReadStatusWhileCloseIsInProgress() = runTest {
+        val repo = mockk<VaultRepository>()
+        val pendingClose = CompletableDeferred<Unit>()
+        coEvery { repo.status() } returns VaultStatus(true, false, 2)
+        coEvery { repo.close() } coAnswers { pendingClose.await() }
+        val gate = VaultSessionGate()
+        val vm = VaultViewModel(repo, gate)
+        advanceUntilIdle()
+
+        vm.onIntent(VaultIntent.Close)
+        runCurrent()
+        vm.onIntent(VaultIntent.Refresh)
+        runCurrent()
+
+        coVerify(exactly = 1) { repo.status() }
+        pendingClose.complete(Unit)
+        advanceUntilIdle()
+        coVerify(exactly = 3) { repo.status() }
+        assertEquals(VaultUiState.Closed, vm.state.value)
+    }
+
     @Test fun damagedVaultIsReportedRatherThanSilentlyReset() = runTest {
         val repo = mockk<VaultRepository>()
         coEvery { repo.status() } throws IllegalStateException("missing device key")
