@@ -135,17 +135,18 @@ fun HomeScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Icon(Icons.Outlined.AccountBalanceWallet, contentDescription = null)
                     Text(
-                        "Portfolio insights are being prepared",
+                        "Portfolio development status",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                     )
                 }
                 Text(
-                    "The native vault opens only after device authentication and does not " +
-                        "migrate your existing React/Tauri book. Set up a primary family member " +
-                        "before importing a CAS PDF. Verified PDF parsing is restricted to supported " +
-                        "ARM64 release builds and requires existing holding mappings. Full portfolio " +
-                        "and onboarding parity remain in development.",
+                    "Your recorded household totals and asset categories are available after " +
+                        "unlocking the native vault. These are not live market valuations. " +
+                        "Existing React/Tauri books are not automatically migrated. " +
+                        "CAS PDF imports require enrolled family members and holding mappings; " +
+                        "verified parsing is supported on ARM64 release builds. " +
+                        "Full portfolio and onboarding parity remain in development.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
