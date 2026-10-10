@@ -6,7 +6,9 @@ These are SOURCE checks, not Gradle builds or mobile penetration tests.
 """
 import unittest
 
-from security_preflight import read, repository_binding_errors, vault_health_boundary_errors
+from security_preflight import (
+    read, repository_binding_errors, vault_health_boundary_errors, cipher_page_integrity_errors,
+)
 
 SOURCE = "android-native/data/src/main/kotlin/in/growurdhan/data/vault/SqlCipherVaultRepository.kt"
 
@@ -108,6 +110,19 @@ class RepositoryPolicyRoutingTests(unittest.TestCase):
             "val health = verifiedHealthOrClose()", "val health = repository.health()", 1,
         )
         self.assertTrue(vault_health_boundary_errors(without_ui_route, gate))
+
+    def test_encrypted_page_hmac_must_be_validated_on_open(self):
+        schema = read(
+            "android-native/data/src/main/kotlin/in/growurdhan/data/vault/VaultSchema.kt"
+        )
+        self.assertEqual([], cipher_page_integrity_errors(schema))
+        without_hmac = schema.replace(
+            'db.rawQuery("PRAGMA cipher_integrity_check"',
+            'db.rawQuery("PRAGMA wrong_integrity_check"', 1,
+        )
+        self.assertTrue(cipher_page_integrity_errors(without_hmac))
+        ignored_errors = schema.replace("if (pageErrors != 0)", "if (false)", 1)
+        self.assertTrue(cipher_page_integrity_errors(ignored_errors))
 
     def test_missing_repository_method_is_rejected(self):
         mutant = self.production.replace(
