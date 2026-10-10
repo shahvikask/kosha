@@ -266,6 +266,7 @@ class MainActivity : ComponentActivity() {
                     } else {
                         HouseholdDashboardUiState.Locked
                     },
+                    onDashboardRefresh = dashboardViewModel::refresh,
                     onVaultIntent = ::handleVaultIntent,
                     reviewState = reviewState,
                     onReviewIntent = ::handleReviewIntent,
