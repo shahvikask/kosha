@@ -63,6 +63,9 @@ class HouseholdDashboardProjectorTest {
         assertEquals(80_000L, dashboard.liabilities.raw)
         assertEquals(170_000L, dashboard.netWorth.raw)
         assertEquals(2, dashboard.holdingCount)
+        assertEquals(1, dashboard.byCategory.size)
+        assertEquals("FIXED_INCOME", dashboard.byCategory.single().category)
+        assertEquals(250_000L, dashboard.byCategory.single().value.raw)
         assertEquals(2, dashboard.unknownCostHoldings)
         assertEquals(80_000L, dashboard.byMember.single { it.ownerId == other }.liabilities.raw)
     }
