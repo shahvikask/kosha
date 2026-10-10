@@ -11,6 +11,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 sealed interface VaultUiState {
     data object Loading : VaultUiState
@@ -42,6 +44,9 @@ class VaultViewModel @Inject constructor(
 
     /** Invalidates delayed results without interrupting a vault database transaction. */
     private var requestGeneration: Long = 0L
+    // Close must wait for any already-started open; otherwise a late open can
+    // leave the encrypted database connected after the user has locked it.
+    private val vaultOperationMutex = Mutex()
 
     init { onIntent(VaultIntent.Refresh) }
 
@@ -78,22 +83,27 @@ class VaultViewModel @Inject constructor(
                         check(session.isUnlocked()) {
                             "Device authentication is required to open the native vault."
                         }
-                        repository.openOrCreate()
-                        val health = repository.health()
-                        if (request == requestGeneration) {
-                            mutableState.value = if (session.isUnlocked())
-                                VaultUiState.Ready(health) else VaultUiState.Closed
+                        vaultOperationMutex.withLock {
+                            // A close request may have revoked the credential while
+                            // this open was waiting for the preceding operation.
+                            if (request != requestGeneration || !session.isUnlocked()) return@withLock
+                            repository.openOrCreate()
+                            val health = repository.health()
+                            if (request == requestGeneration) {
+                                mutableState.value = if (session.isUnlocked())
+                                    VaultUiState.Ready(health) else VaultUiState.Closed
+                            }
                         }
                     }
                     VaultIntent.Close -> {
-                        repository.close()
-                        // The document chooser can revoke a session on a new
-                        // device before any vault exists. Closing it must not
-                        // fabricate a "closed but initialized" status.
-                        val initialized = repository.status().initialized
-                        if (request == requestGeneration) {
-                            mutableState.value = if (initialized)
-                                VaultUiState.Closed else VaultUiState.NotCreated
+                        vaultOperationMutex.withLock {
+                            repository.close()
+                            // A cancelled picker must not invent an initialized vault.
+                            val initialized = repository.status().initialized
+                            if (request == requestGeneration) {
+                                mutableState.value = if (initialized)
+                                    VaultUiState.Closed else VaultUiState.NotCreated
+                            }
                         }
                     }
                 }
