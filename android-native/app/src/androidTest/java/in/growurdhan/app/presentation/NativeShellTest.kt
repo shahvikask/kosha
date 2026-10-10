@@ -103,6 +103,38 @@ class NativeShellTest {
         compose.onNodeWithText("synthetic-owner").assertDoesNotExist()
     }
 
+    @Test fun knownCostHoldingShowsVerifiedGainInsteadOfUnknownCostWarning() {
+        val row = RecordedHoldingDashboard(
+            "Synthetic Verified Cost Asset", "EQUITY", "Synthetic Member",
+            100_000_000L, MoneyScaled(175_000), MoneyScaled(45_000), false, false,
+        )
+        val dashboard = HouseholdDashboard(
+            asOf = LocalDate.parse("2026-10-09"),
+            assets = MoneyScaled(175_000),
+            liabilities = MoneyScaled(0),
+            netWorth = MoneyScaled(175_000),
+            memberCount = 1,
+            holdingCount = 1,
+            unknownCostHoldings = 0,
+            integrityWarnings = emptyList(),
+            byMember = emptyList(),
+            recordedHoldings = listOf(row),
+        )
+        compose.setContent {
+            GrowUrDhanTheme(AppearanceSettings(ThemeMode.LIGHT, dynamicColor = false)) {
+                HomeScreen(
+                    dashboardState = HouseholdDashboardUiState.Ready(dashboard),
+                    onOpenSettings = {},
+                    onOpenPrivacy = {},
+                )
+            }
+        }
+        compose.onNodeWithText("Synthetic Verified Cost Asset").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Unrealised gain/loss: 4.5000 INR")
+            .performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Historical purchase cost unavailable").assertDoesNotExist()
+    }
+
     @Test fun lockedDashboardNeverRendersFamilyNames() {
         compose.setContent {
             GrowUrDhanTheme(AppearanceSettings(ThemeMode.LIGHT, dynamicColor = false)) {

@@ -241,3 +241,8 @@ without exposing a document URI or decrypted book.
 
 Added synthetic coroutine tests verify that a suspended cleanup blocks SQLCipher
 access and that expired credentials cause failure without opening the database.
+
+The recorded-holdings coverage also tests a positive verified-acquisition-cost
+case: one unit with a known purchase price exposes its exact scaled-integer
+unrealised gain; it does not trigger the unknown-cost warning. Companion
+Compose coverage checks that value reaches the unlocked UI.

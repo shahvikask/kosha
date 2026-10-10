@@ -210,6 +210,28 @@ class HouseholdDashboardProjectorTest {
         assertEquals(2, dashboard.unknownCostHoldings)
     }
 
+    @Test fun verifiedOpeningCostAllowsRealUnrealisedGainWithoutPriceInference() {
+        val known = FinancialHolding(
+            holdingId = HoldingId("known-cost-fund"),
+            ownerId = owner,
+            name = "Synthetic Known Cost Fund",
+            category = "MUTUAL_FUND",
+            unitPrice = MoneyScaled(150_000),
+            storedQuantityScaled = QUANTITY_SCALE,
+            openingCostPerUnit = MoneyScaled(100_000),
+        )
+        val report = PortfolioEngine.derive(
+            listOf(known), emptyList(), LocalDate.parse("2026-10-09"),
+            knownMembers = listOf(owner), enforceKnownMembers = true,
+        )
+        val dashboard = HouseholdDashboardProjector.from(report)
+        val row = dashboard.recordedHoldings.single()
+        assertEquals(150_000L, row.recordedValue.raw)
+        assertEquals(50_000L, row.unrealisedGain?.raw)
+        assertFalse(row.unknownHistoricalCost)
+        assertEquals(0, dashboard.unknownCostHoldings)
+    }
+
     @Test fun strictOwnerModeNeverInventsMemberFromAnOrphanHolding() {
         val orphan = FinancialHolding(
             HoldingId("secret-orphan-id"), OwnerId("unregistered"),
