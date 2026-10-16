@@ -78,11 +78,17 @@ jobs:
               ("TestOnlyV9MigrationTest","unrecognizedLegacyExtensionColumnAndOpaqueValueSurviveUpgradeAndReopen"),
               ("TestOnlyV9MigrationTest","missingAppendOnlyTriggerFailsClosedWithoutRewritingRows"),
           }
+          required |= {
+              ("LegacyBackupEnvelopeReaderTest","readerPreservesBigIntegersOwnersAndUnknownJsonVerbatim"),
+              ("LegacyBackupEnvelopeReaderTest","passwordOnlyKosha1RetainsSameExactPayload"),
+              ("LegacyBackupEnvelopeReaderTest","wrongEmailWrongPasswordAndTamperingNeverYieldPlaintext"),
+              ("LegacyBackupEnvelopeReaderTest","shortInvalidHeaderAndKdfParametersAreRejected"),
+          }
           missing=required-seen
           assert not missing, f"Missing required M24 tests: {sorted(missing)}"
-          assert len(seen)==20, f"Expected exactly 20 database test methods, found {len(seen)}"
+          assert len(seen)==24, f"Expected exactly 24 database test methods, found {len(seen)}"
           assert failures==errors==skipped==0, f"JUnit failures={failures}, errors={errors}, skipped={skipped}"
-          print(f"M24_JUNIT_CONFIRMED total={len(seen)} new=7 failures=0 errors=0 skipped=0")
+          print(f"M24_JUNIT_CONFIRMED total={len(seen)} new=11 failures=0 errors=0 skipped=0")
           PY
       - name: Upload database JUnit evidence
         if: always()
