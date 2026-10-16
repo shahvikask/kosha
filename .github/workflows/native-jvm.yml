@@ -1,8 +1,14 @@
 name: GrowUrDhan native JVM
 
-# Dispatch only. A push must not start an Android build.
+# GitHub returns 404 for workflow_dispatch when the file is not on the
+# default branch. A push of this file on the redevelopment branch starts
+# one run. Other files do not.
 on:
   workflow_dispatch:
+  push:
+    branches: [GUD-Android-Redevelopment]
+    paths:
+      - .github/workflows/native-jvm.yml
 
 jobs:
   native-jvm:
