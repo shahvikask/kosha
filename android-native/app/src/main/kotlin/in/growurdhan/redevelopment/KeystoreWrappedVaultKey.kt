@@ -51,7 +51,7 @@ internal class KeystoreWrappedVaultKey(context: Context) {
      */
     @Synchronized
     fun getOrCreateForFreshInstall(legacyVaultPresent: Boolean): ByteArray {
-        if (keyFile.baseFile.exists()) return unwrapExisting()
+        if (keyFile.baseFile.exists() || File(keyFile.baseFile.path + ".bak").exists()) return unwrapExisting()
         check(!legacyVaultPresent) { "Refusing to overwrite or orphan legacy vault data" }
         val key = ByteArray(32).also(random::nextBytes)
         try {
