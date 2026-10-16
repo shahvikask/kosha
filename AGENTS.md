@@ -45,7 +45,7 @@ Before ending a substantial session, update the handoff files and give the Secti
 
 ## Current stage
 
-M00 is owner-accepted against `e551472498760f46ab0f3a5b248e963b496f2323`, with the limitations in `docs/implementation/STATUS.md`. SQLCipher and Chaquopy stay unlinked. M24 is not started.
+M00 is owner-accepted with limitations. M24 is started and not accepted. The schema v9 catalog names 18 tables and 210 columns. The database still does not open, and SQLCipher is not linked.
 
 ## Loop check
 

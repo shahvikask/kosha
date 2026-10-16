@@ -1,10 +1,11 @@
 package `in`.growurdhan.database
 
 /**
- * M00 module boundary. SQLCipher, migrations, and the schema-v9 tables
- * belong to M24. This module opens nothing and defines no table.
+ * The database module still opens nothing. Table names come from the
+ * frozen schema v9 catalog. SQLCipher is not linked.
  */
 object DatabaseBoundary {
     const val OPENS_DATABASE = false
-    val tableNames: List<String> = emptyList()
+    const val SQLCIPHER_LINKED = EncryptedSchemaBoundary.SQLCIPHER_LINKED
+    val tableNames: List<String> = SchemaV9Catalog.tableNames
 }

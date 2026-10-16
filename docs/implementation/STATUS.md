@@ -1,6 +1,6 @@
 # GrowUrDhan implementation status
 
-Updated: 2026-10-16. The owner accepted milestone M00 against `e551472498760f46ab0f3a5b248e963b496f2323`. The limitations below stay open.
+Updated: 2026-10-16. M24 is started and not accepted. The schema catalog is mapped. The database does not open.
 
 ## Repository
 
@@ -17,18 +17,19 @@ Updated: 2026-10-16. The owner accepted milestone M00 against `e551472498760f46a
 
 ## Milestone
 
-**Current:** M00 — owner-accepted, with limitations. M24 is not started.
+**Current:** M24 — started, not accepted. M00 stays owner-accepted with limitations.
 
 | Milestone piece | Status |
 |---|---|
 | Instruction files and legacy inventory | on GitHub |
-| Screen, command, schema v9, and parser-hash inventory | present. Holding forms, holding-detail rows, and home rows are listed. This is not a native screen |
+| Schema v9 map | `SchemaV9Catalog` names the 18 tables and 210 columns from `src/db/schema.ts`. There is no table named snapshot |
+| Encrypted schema | Boundary only. `EncryptedSchemaBoundary` refuses a plaintext open. SQLCipher is not linked and no database is opened |
+| Migrations, triggers, golden rows | NOT STARTED |
 | `android-native/` scaffold | debug APK assembled locally. Locked, sample home, and sample holding concept screens |
 | Lock behavior | `ConceptLock.vaultOpen` is always false. There is no unlock method and no password field |
 | Section 6A screenshots | Owner accepted the three Paparazzi images on `d7868b215f8a69b10c9170cf7614b74012c279ce` |
-| Dependency review | written in `docs/implementation/DEPENDENCY-REVIEW.md`. Pins were not changed |
-| SQLCipher, Chaquopy, financial ledger | still boundaries only. Not linked. M24 owns the schema |
-| M24–M34 | NOT STARTED |
+| SQLCipher and Chaquopy | SQLCipher is still not linked. Chaquopy is not linked. No financial row was inserted |
+| M25–M34 | NOT STARTED |
 
 ## Requirements
 
@@ -51,7 +52,7 @@ P01–P39 and E01–E18 remain **NOT STARTED**. See `parity-register.csv`.
 | Compose semantics | PASS. `:app:testDebugUnitTest` wrote 3 tests, 0 failures, at 2026-10-16T14:24:43Z. The three assertions were not changed. Bitmap capture is still not part of this test |
 | Bitmap capture | PASS locally via Paparazzi. The owner accepted the three images. See decision D13 |
 | `./gradlew :core:model:test` | PASS, 10 tests. See decisions D07 and D08 |
-| Boundary tests | PASS. `:core:database:test` 1 test at 2026-10-16T14:29:41Z. `:core:parser-api:test` 1 test at 2026-10-16T14:29:43Z. Both 0 failures |
+| Boundary tests | PASS. `:core:database:test` wrote 2 tests, 0 failures, at 2026-10-16T15:57:59Z |
 | Native CI | PASS on `63b5b8d5b8cc2352d144c6b8494b4d4bbc3f4340`. Run 38925309401. The log says BUILD SUCCESSFUL. It does not print individual test counts. Screenshot pixels were not produced |
 | Emulator and device | NOT RUN |
 | Gmail and Play Billing | BLOCKED |
@@ -69,4 +70,4 @@ These were not closed by the owner's acceptance:
 
 ## Next authorized work
 
-Do not rework the lock flow. Do not start M24 unless the owner asks. Do not add financial tables. Do not link SQLCipher or Chaquopy yet. Do not dispatch the legacy Tauri AAB. Do not dispatch the native JVM workflow unless the owner says to run it.
+Do not mark M24 accepted. Do not insert financial rows. Do not link SQLCipher until a local test can open an encrypted database. Do not link Chaquopy. Do not dispatch the legacy Tauri AAB. Do not dispatch the native JVM workflow unless the owner says to run it.
