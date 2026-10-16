@@ -1,6 +1,6 @@
 # GrowUrDhan implementation status
 
-Updated: 2026-10-16 after the database and parser module boundaries. M00 is not accepted.
+Updated: 2026-10-16 after adding the unrun native JVM workflow. M00 is not accepted.
 
 ## Repository
 
@@ -9,7 +9,7 @@ Updated: 2026-10-16 after the database and parser module boundaries. M00 is not 
 | Remote | `https://github.com/shahvikask/kosha` |
 | Working branch | `GUD-Android-Redevelopment` |
 | Frozen reference | `GUD-Android-Gmail` @ `af96dcc8967ab595e1d9acee78e29e500cb99a9e` |
-| GitHub tip at the start of this boundary | `1b675d35d9c8c8f679c014d6f17e638f2dfbd9f9` |
+| GitHub tip at the start of this workflow | `e2fd33ad4f27cd4dd33b13d2d07002247261064b` |
 | Workflow-file fix | `99064638e0f1c9ac000ec5ed3379ffbe59041dee` |
 | Last accepted SHA | none |
 | Native app | scaffold only, application id `in.growurdhan.redevelopment` |
@@ -52,11 +52,11 @@ P01–P39 and E01–E18 remain **NOT STARTED**. See `parity-register.csv`.
 | Bitmap capture | FAILED to produce an image. See decision D04 |
 | `./gradlew :core:model:test` | PASS, 10 tests. See decisions D07 and D08 |
 | Boundary tests | PASS. `:core:database:test` 1 test at 2026-10-16T14:29:41Z. `:core:parser-api:test` 1 test at 2026-10-16T14:29:43Z. Both 0 failures |
-| GitHub Actions | Kosha CI run 38913601615 passed on `936cf0e`. Legacy Node tests only. It does not build `android-native/` |
+| Native CI | `.github/workflows/native-jvm.yml` is `workflow_dispatch` only. It has not been run. It is not a pass |
 | Emulator and device | NOT RUN |
 | Gmail and Play Billing | BLOCKED |
 | Security signoff and owner visual acceptance | PENDING |
 
 ## Next authorized work
 
-Do not rework the lock flow. Do not upgrade AGP, Kotlin, or Compose unless the owner asks. Do not start M24. Do not add financial tables. Do not link SQLCipher or Chaquopy yet. Do not dispatch the legacy Tauri AAB. Do not spend Actions credits unless the owner authorizes them. The open M00 gates are screenshot pixels and a native CI job.
+Do not rework the lock flow. Do not upgrade AGP, Kotlin, or Compose unless the owner asks. Do not start M24. Do not add financial tables. Do not link SQLCipher or Chaquopy yet. Do not dispatch the legacy Tauri AAB. Do not dispatch the native JVM workflow unless the owner says to run it. The open visual gate is screenshot pixels.

@@ -1,0 +1,27 @@
+name: GrowUrDhan native JVM
+
+# Dispatch only. A push must not start an Android build.
+on:
+  workflow_dispatch:
+
+jobs:
+  native-jvm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: SDK platform 35
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Compile and run the existing unit tests
+        working-directory: android-native
+        run: ./gradlew :core:model:test :core:database:test :core:parser-api:test :app:assembleDebug :app:testDebugUnitTest --no-daemon

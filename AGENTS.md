@@ -45,7 +45,7 @@ Before ending a substantial session, update the handoff files and give the Secti
 
 ## Current stage
 
-M00 is open. `:core:database` and `:core:parser-api` are module boundaries only. They open no database, define no table, and do not link SQLCipher or Chaquopy. Screenshots and a native CI job are not done. Do not mark M00 accepted. See `docs/implementation/STATUS.md`.
+M00 is open. A dispatch-only native JVM workflow exists and has not been run. Screenshot pixels are still missing. Do not mark M00 accepted. See `docs/implementation/STATUS.md`.
 
 ## Loop check
 
