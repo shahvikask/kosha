@@ -71,3 +71,8 @@ These were not closed by the owner's acceptance:
 ## Next authorized work
 
 Do not mark M24 accepted. Do not insert financial rows. Do not link SQLCipher until a local test can open an encrypted database. Do not link Chaquopy. Do not dispatch the legacy Tauri AAB. Do not dispatch the native JVM workflow unless the owner says to run it.
+
+
+## Supplemental M00 emulator screenshot gate — 2026-10-16
+
+M00 remains OWNER-ACCEPTED at `e551472498760f46ab0f3a5b248e963b496f2323` with documented limitations. Separately, owner authorized **real Android emulator pixel capture** to strengthen the already-accepted three Paparazzi concept images. Workflow source commit [`430c171782ff967e4f107fb46f7c863ade35faf3`](https://github.com/shahvikask/kosha/commit/430c171782ff967e4f107fb46f7c863ade35faf3) adds only `.github/workflows/m00-emulator-screenshots.yml` and `android-native/scripts/m00-emulator-screenshots.sh`. It captures six sanitized lock/home/holding light/dark screenshots, validates PNG identity/uniqueness and uploads an artifact; the workflow does not change product/app, original reference, parser, financial tables, SQLCipher or Chaquopy. GitHub native emulator [run 38948959678](https://github.com/shahvikask/kosha/actions/runs/38948959678) was RUNNING when this entry was prepared; **do not infer PASS until terminal job and artifact check**. M24 remains NOT STARTED.
