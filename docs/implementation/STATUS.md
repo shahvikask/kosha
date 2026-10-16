@@ -1,6 +1,6 @@
 # GrowUrDhan implementation status
 
-Updated: 2026-10-16 after the lock-state and Compose semantics check. Nothing below is inferred from chat memory.
+Updated: 2026-10-16 after the dependency review. The pins were not changed.
 
 ## Repository
 
@@ -9,7 +9,7 @@ Updated: 2026-10-16 after the lock-state and Compose semantics check. Nothing be
 | Remote | `https://github.com/shahvikask/kosha` |
 | Working branch | `GUD-Android-Redevelopment` |
 | Frozen reference | `GUD-Android-Gmail` @ `af96dcc8967ab595e1d9acee78e29e500cb99a9e` |
-| GitHub tip at the start of this lock-state change | `ddb0926f1859992318c3e9580cdc923d69536532` |
+| GitHub tip at the start of this review | `b949c1d26cd8145b5ecf9861b0190bb27273c0e8` |
 | Last accepted SHA | none |
 | Native app | scaffold only, application id `in.growurdhan.redevelopment` |
 | CI | not run |
@@ -25,6 +25,7 @@ Updated: 2026-10-16 after the lock-state and Compose semantics check. Nothing be
 | `android-native/` scaffold | debug APK assembled locally. Locked, sample home, and sample holding concept screens |
 | Lock behavior | `ConceptLock.vaultOpen` is always false. There is no unlock method and no password field |
 | Section 6A screenshots | NOT CAPTURED. Compose semantics for the three screens passed. Owner approval is pending |
+| Dependency review | written in `docs/implementation/DEPENDENCY-REVIEW.md`. Pins were not changed |
 | SQLCipher, Chaquopy, financial ledger | not started |
 | M24–M34 | NOT STARTED |
 
@@ -56,4 +57,4 @@ P01–P39 and E01–E18 remain **NOT STARTED**. See `parity-register.csv`.
 
 ## Next authorized work
 
-Do not rework the lock flow. Do not start M24. Screenshot pixels remain blocked in this environment. The next M00 piece is a written dependency review of the pinned Android Gradle Plugin, Kotlin, and Compose versions. Do not add a database. Do not dispatch Actions unless the owner authorizes them.
+Do not rework the lock flow. Do not upgrade AGP, Kotlin, or Compose unless the owner asks. Do not start M24. Do not add a database. Screenshot pixels remain blocked in the last environment. Do not dispatch Actions unless the owner authorizes them.

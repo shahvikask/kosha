@@ -45,4 +45,4 @@ Before ending a substantial session, update the handoff files and give the Secti
 
 ## Current stage
 
-M00 is open. The scaffold has a lock state that does not open a vault, and Compose semantics for that state passed. Screenshots, SQLCipher, Chaquopy, financial code, and GitHub Actions are not done. Do not mark M00 accepted. See `docs/implementation/STATUS.md`.
+M00 is open. The scaffold lock state and Compose semantics remain as previously tested. A dependency review of the pinned AGP, Kotlin, and Compose versions is in `docs/implementation/DEPENDENCY-REVIEW.md`. The pins were not changed. Screenshots, SQLCipher, Chaquopy, financial code, and GitHub Actions are not done. Do not mark M00 accepted. See `docs/implementation/STATUS.md`.
