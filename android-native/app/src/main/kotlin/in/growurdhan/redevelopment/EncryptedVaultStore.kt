@@ -182,6 +182,24 @@ internal class EncryptedVaultStore(private val context: Context) {
                 }
             }
         }
+        if (schemaVersion == 9) {
+            // Preserve unknown-but-valid physical extensions, while refusing
+            // every missing canonical v9 field including the seven additions.
+            for (table in SchemaV9Catalog.tables) {
+                val required = table.columns.toSet() +
+                    (if (table.name == "entity")
+                        setOf("cas_id", "pran", "gmail_sync", "cas_id_source",
+                            "pran_source", "cas_sync_after", "pran_sync_after")
+                    else emptySet())
+                db.rawQuery("PRAGMA table_info('${table.name}')", null).use { cur ->
+                    val actual = mutableSetOf<String>()
+                    while (cur.moveToNext()) actual.add(cur.getString(1))
+                    require(actual.containsAll(required)) {
+                        "Missing canonical v9 fields in ${table.name}: ${required - actual}"
+                    }
+                }
+            }
+        }
         for ((table, column, expected) in listOf(
             Triple("entity", "entity_id", "TEXT"),
             Triple("holding", "entity_id", "TEXT"),
