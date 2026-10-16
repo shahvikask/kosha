@@ -2,6 +2,7 @@ package `in`.growurdhan.redevelopment
 
 import android.content.Context
 import java.io.File
+import `in`.growurdhan.database.SchemaV9Catalog
 import net.zetetic.database.DatabaseErrorHandler
 import net.zetetic.database.sqlcipher.SQLiteDatabase
 
@@ -154,6 +155,39 @@ internal class EncryptedVaultStore(private val context: Context) {
     }
 
     private fun verifyOwnershipAndLedger(db: SQLiteDatabase) {
+        // Never bless a truncated legacy database by advancing only user_version.
+        for (table in SchemaV9Catalog.tableNames) {
+            db.rawQuery("SELECT COUNT(*) FROM sqlite_master " +
+                "WHERE type='table' AND name=?", arrayOf(table)).use { cur ->
+                require(cur.moveToFirst() && cur.getLong(0) == 1L) {
+                    "Missing required legacy table $table"
+                }
+            }
+            db.rawQuery("PRAGMA table_info('$table')", null).use { cur ->
+                while (cur.moveToNext()) {
+                    require(!cur.getString(2).equals("REAL", ignoreCase = true)) {
+                        "Floating-point persistence field in $table"
+                    }
+                }
+            }
+        }
+        for ((table, column, expected) in listOf(
+            Triple("entity", "entity_id", "TEXT"),
+            Triple("holding", "entity_id", "TEXT"),
+            Triple("holding", "current_price_minor", "INTEGER"),
+            Triple("ledger_event", "quantity_scaled", "INTEGER"),
+            Triple("ledger_event", "total_amount_minor", "INTEGER"),
+            Triple("ledger_event", "charges_minor", "INTEGER")
+        )) {
+            db.rawQuery("PRAGMA table_info('$table')", null).use { cur ->
+                var valid = false
+                while (cur.moveToNext()) {
+                    if (cur.getString(1) == column &&
+                        cur.getString(2).equals(expected, ignoreCase = true)) valid = true
+                }
+                require(valid) { "Missing/incompatible persisted field $table.$column" }
+            }
+        }
         db.rawQuery("PRAGMA foreign_key_list('account')", null).use { cur ->
             var found = false
             while (cur.moveToNext()) {
