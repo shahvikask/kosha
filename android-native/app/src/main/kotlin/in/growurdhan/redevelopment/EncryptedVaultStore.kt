@@ -82,7 +82,7 @@ internal class EncryptedVaultStore(private val context: Context) {
             val version = singleLong(db, "PRAGMA user_version").toInt()
             require(version in 1..9) { "Unknown or unsupported schema version" }
             verifyVersion(db, version)
-            verifyOwnershipAndLedger(db)
+            verifyOwnershipAndLedger(db, requireCompleteV9 = version == 9)
             if (version < 9) migrateInsideTransaction(db, version)
             verifyVersion(db, 9)
             verifyOwnershipAndLedger(db)
@@ -154,9 +154,16 @@ internal class EncryptedVaultStore(private val context: Context) {
         }
     }
 
-    private fun verifyOwnershipAndLedger(db: SQLiteDatabase) {
+    private fun verifyOwnershipAndLedger(db: SQLiteDatabase, requireCompleteV9: Boolean = true) {
         // Never bless a truncated legacy database by advancing only user_version.
-        for (table in SchemaV9Catalog.tableNames) {
+        // The frozen V1 baseline has 15 tables; three are added in later
+        // versions. Enforce foundational tables BEFORE migration, full v9
+        // inventory AFTER it; never CREATE missing v1 tables implicitly.
+        val requiredTables = if (requireCompleteV9) SchemaV9Catalog.tableNames else
+            SchemaV9Catalog.tableNames.filterNot {
+                it in setOf("listed_security", "gmail_seen", "vault_account")
+            }
+        for (table in requiredTables) {
             db.rawQuery("SELECT COUNT(*) FROM sqlite_master " +
                 "WHERE type='table' AND name=?", arrayOf(table)).use { cur ->
                 require(cur.moveToFirst() && cur.getLong(0) == 1L) {
@@ -241,3 +248,4 @@ internal class EncryptedVaultStore(private val context: Context) {
             if (sql.isBlank()) null else version to sql
         }
     }
+}
