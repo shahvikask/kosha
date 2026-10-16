@@ -3,6 +3,7 @@ package `in`.growurdhan.redevelopment
 import android.content.Context
 import android.util.AtomicFile
 import `in`.growurdhan.database.LegacyBackupEnvelopeReader
+import `in`.growurdhan.database.RestoreIdentityGate
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.security.MessageDigest
@@ -136,6 +137,64 @@ internal class LockedRestoreStaging(context: Context) {
         }
         return Inspection(sha256(bytes), storedEmail,
             members.length(), holdings.length(), ledger.length(), validOwners)
+    }
+
+    /**
+     * Security-gated read-only inspection. The passphrase unlocks the archive;
+     * account password, PAN/DOB and BOTH recovery answers are independently
+     * checked. Still never commits or replaces any ledger row.
+     * A masked-only PAN remains a weaker historical check and must not alone
+     * establish device trust or authorize import.
+     */
+    @Synchronized
+    fun inspectWithRecoveryProof(
+        credentials: RestoreIdentityGate.Credentials
+    ): Inspection {
+        val inspection = inspect(credentials.email, credentials.password)
+        require(inspection.ownersConsistent) { "Restore ownership invalid" }
+        val bytes = staged.openRead().use { source ->
+            val out = ByteArrayOutputStream()
+            val buffer = ByteArray(8192)
+            var total = 0
+            while (true) {
+                val count = source.read(buffer)
+                if (count < 0) break
+                total += count
+                require(total <= maxBytes) { "Oversized staged restore" }
+                out.write(buffer, 0, count)
+            }
+            out.toByteArray()
+        }
+        val plain = if (bytes.size >= 8 &&
+            bytes.copyOfRange(0, 8).contentEquals(magic)) {
+            LegacyBackupEnvelopeReader.decodeGUDVLT01(
+                bytes, credentials.email, credentials.password)
+        } else {
+            val outer = JSONObject(String(bytes, Charsets.UTF_8))
+            LegacyBackupEnvelopeReader.decodeKOSHA1(
+                LegacyBackupEnvelopeReader.Kosha1(
+                    outer.getString("magic"), outer.getString("kdf"),
+                    outer.getInt("iterations"), outer.getString("saltB64"),
+                    outer.getString("ivB64"), outer.getString("cipherB64")
+                ), credentials.password)
+        }
+        val account = JSONObject(plain).getJSONObject("account")
+        RestoreIdentityGate.verifyForNewDevice(
+            RestoreIdentityGate.Account(
+                account.getString("email"),
+                account.getString("passwordSalt"),
+                account.getString("passwordHash"),
+                account.getInt("passwordIterations"),
+                account.optString("panForStatements"),
+                account.optString("panMasked"),
+                account.optString("dateOfBirth"),
+                account.getString("q1Id"),
+                account.getString("q1Hash"),
+                account.getString("q2Id"),
+                account.getString("q2Hash")
+            ), credentials
+        )
+        return inspection
     }
 
     private fun sha256(bytes: ByteArray): String =
