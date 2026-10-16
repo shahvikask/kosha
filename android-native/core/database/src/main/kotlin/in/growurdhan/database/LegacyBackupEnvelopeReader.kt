@@ -39,6 +39,12 @@ object LegacyBackupEnvelopeReader {
     fun decodeKOSHA1(blob: Kosha1, password: String): String {
         require(blob.magic == "KOSHA1" && blob.kdf == "PBKDF2-SHA256" &&
             blob.iterations == ITERATIONS) { "Unsupported legacy backup parameters" }
+        // Reject oversized wire strings BEFORE allocating decoded ciphertext.
+        // A malformed KOSHA1 document must not force an unbounded Base64 copy.
+        require(blob.saltB64.length <= 32 && blob.ivB64.length <= 24 &&
+            blob.cipherB64.length <= ((MAX_BACKUP_BYTES + 2L) / 3L * 4L + 4L)) {
+            "Oversized legacy Base64 envelope"
+        }
         val decoder = java.util.Base64.getDecoder()
         val salt = decoder.decode(blob.saltB64)
         val nonce = decoder.decode(blob.ivB64)
