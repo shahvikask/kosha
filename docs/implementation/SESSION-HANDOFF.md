@@ -1,20 +1,24 @@
-# GrowUrDhan — current mandatory handoff
+# GrowUrDhan — mandatory freshest handoff
 
-**2026-10-16 M24 CI verification checkpoint.** Remote `https://github.com/shahvikask/kosha.git`, development branch `GUD-Android-Redevelopment` ONLY. **Last tested Kotlin/SQL source SHA** `646e76573e533df0a9db1d41faed3cc84770fbd3` (the next documentation commit will advance branch HEAD without changing test source). **Always fetch the live HEAD from GitHub next session**; do not infer it from this file. Frozen original `GUD-Android-Gmail@af96dcc8967ab595e1d9acee78e29e500cb99a9e`, unchanged. Git working tree UNVERIFIED through GitHub connector. M00 owner-accepted with restrictions; **M24 STARTED/NOT ACCEPTED**.
+**UTC date:** 2026-10-16. **Remote:** `https://github.com/shahvikask/kosha.git`. **Working branch:** `GUD-Android-Redevelopment` only. **Starting HEAD:** `7a1bd1cd2e51ac0b09c7832e824dfbce950482bc`. After committing, resolve GitHub live SHA rather than assuming the current document includes its own hash. **Frozen branch:** `GUD-Android-Gmail@af96dcc8967ab595e1d9acee78e29e500cb99a9e`; original React/Tauri/parser/brand untouched. Git working tree CLEAN/dirty **UNVERIFIED** via API-only editing.
 
-## Required next-session reading
-Read repository-root `AGENTS.md`; COMPLETE `docs/GROK-FULL-NATIVE-REDEVELOPMENT-SPEC.md` v1.2 (G01–G15, M24, G05, Section 17); `STATUS.md`, this handoff, `CI-RUNS.md`, `DECISION-LOG.md`, `parity-register.csv`, and the two `24-M24-*` checkpoints before doing any development, builds or acceptance reporting. Print Section 17.3 startup receipt first.
+## Required start for every subsequent prompt
 
-## Fresh exact-SHA evidence
-- [M24 run 38958340108](https://github.com/shahvikask/kosha/actions/runs/38958340108) **FAIL** on `05be60757c10e26cc0e0d58d25552fc08cd33b48`, Gradle compiled/tests ran; 2/13 failed due to an incorrect expectation of identical SQLite physical column ordering after `ALTER TABLE`. Failed JUnit archive `12072061100` downloaded/diagnosed; do not erase.
-- [M24 run 38958783180](https://github.com/shahvikask/kosha/actions/runs/38958783180) **SUCCESS** on `646e76573e533df0a9db1d41faed3cc84770fbd3`, job `117168266417`. Corrected identity/count/types SQL column assertion in `TestOnlyV9MigrationTest.kt`; all six new tests retained. GitHub log `BUILD SUCCESSFUL in 2m 9s`; `M24_JUNIT_CONFIRMED total=13 new=6 failures=0 errors=0 skipped=0`.
-- JUnit ZIP artifact `12071881910` (**11861 bytes**, SHA256 `3fd747ad582e4cd6cb9b1974fde0119d708ebd7f967793a59a02480a5ea96af4`) opened: `TestOnlyV9MigrationTest` **6/6**, `EncryptedSchemaV9Test` **4/4**, `DatabaseBoundaryTest` **2/2**, `SqlCipherOpenTest` **1/1**. Total **13 PASS, 0 FAIL, 0 ERROR, 0 SKIP**. Concurrent [legacy Kosha CI 38958783184](https://github.com/shahvikask/kosha/actions/runs/38958783184) SUCCESS on exact same SHA, but is a separate Node gate.
-- The M24 targeted workflow is `.github/workflows/m24-encrypted-schema-jvm.yml` and push path-limited to changes to itself; future ordinary code/doc pushes do not automatically run it. No AAB or emulator invoked. New documentation-only commit message contains `[skip ci]`.
+Read `AGENTS.md`, full v1.2 spec (G01–G15/M24/Section 17), `STATUS.md`, this handoff, `CI-RUNS.md`, `DECISION-LOG.md`, `parity-register.csv`, and all THREE `docs/native-migration/24-M24-*` checkpoints. Verify live HEAD, frozen reference and CI. Print Section 17.3 startup receipt *before* editing. M00 OWNER ACCEPTED with limitations. M24 STARTED / NOT ACCEPTED. Do not start M25 absent owner approval.
 
-## Scope and still-open M24 exit gates
-- Targeted Linux/JVM **test-only** SQLCipher migration fixture validates synthetic supported v1–v8 → v9 upgrades, 18 tables, 217 final columns, 13 indexes, immutable ledger triggers, foreign keys, owner labels and scaled integer values, nested unknown JSON retention, populated encrypted file copy/reopen, injected rollback, damaged/unsupported schema refusal. It **does not** establish correctness with authentic historical database/backup bytes.
-- Production Android SQLCipher + Keystore, actual old backup format compatibility, low-storage rollback/replay, production owner isolation, full golden/Android device tests and independent AppSec remain pending; **do not close M24**. The app's `EncryptedSchemaBoundary` continues to have no production database connection.
-- No future paid native CI without new explicit owner instruction, and no M25 development without authorization.
-- Next recommended bounded step: source audit and golden fixture construction from frozen legacy version behaviors / real encrypted backup format (synthetic payloads only), then explicitly authorized Android database integration or another exact-SHA run as needed. Use 21-field Section 17.4 A–U report and next prompt beginning `Re-read AGENTS.md`.
+## This source-only authorized M24 increment
+
+- Original as-built `src/lib/backup.ts` GUDVLT01 8-byte magic + 4-byte big-endian 600000 iterations + 16 salt + 12 IV + AES-256-GCM encrypted JSON; email-normalized PBKDF2 passphrase. Older `KOSHA1` JSON/base64 ciphertext is password-only. LocalStorage migration `src/db/migrate.ts` verifies amounts/counts before renaming to `__pre_sqlite_backup` but the original process is not fully atomic.
+- Added **test-only** `FrozenLegacyBackupEnvelopeGoldenTest.kt` with **5 new JUnit methods**. Java-JCE wire golden, large integer strings, owner/opaque JSON, bad keys/tampering, old KOSHA1 envelope, proposed in-memory identity-gated replay oracle. These do NOT implement production replay, account verification or restore.
+- Hardened disposable JVM `TestOnlyV9Migration.kt` fail-closed preflight: both append-only trigger names/semantics and account→entity FK must exist. Added **2 JUnit methods** to `TestOnlyV9MigrationTest.kt`: unknown legacy column/value retention through v8→v9 and encrypted reopen, missing/inert same-name ledger trigger rejection without mutating rows/version. Previously passing six methods unchanged.
+- **Actual verification**: frozen source hashes read, static Kotlin lexical preflight passed, separate local Python PBKDF2-SHA256/AES-GCM wire-format/tamper smoke passed, local standalone `kotlinc` synthetic quote snippet passed. **Seven new JUnit methods NOT COMPILED/NOT RUN** under Gradle. No GitHub Actions dispatched or authorized; source commit requests `[skip ci]`.
+- **Last exact-source CI**: [M24 JVM run 38958783180](https://github.com/shahvikask/kosha/actions/runs/38958783180) **PASS 13/13** on earlier `646e76573e533df0a9db1d41faed3cc84770fbd3`. Last legacy [Kosha CI 38958783184](https://github.com/shahvikask/kosha/actions/runs/38958783184) PASS on same older source. Those results are **NOT transferable to this increment**.
+
+## Blockers and next authorized prompt
+
+- Authentic captured historical SQLite/backup bytes and exporter-generated cross-language vectors remain unavailable; synthetic source-derived fixtures are not proof of actual old backup compatibility.
+- Production Android Keystore + SQLCipher, full locked restore, replay protection, empty-target import, rollback under low-storage faults, PAN/DOB/security-answer gates and device security are NOT IMPLEMENTED/NOT ACCEPTED.
+- To get new evidence, owner must explicitly authorize *one targeted exact-SHA* `:core:database:test` native JVM workflow cycle. Verify 20 tests with XML (13 previous + 7 new). Fix actual failures without weakening tests; update CI-RUNS/STATUS/handoff and stay on M24.
+- M24 remains OPEN; no M25, emulator/AAB, original source or protected CASPARSER changes. Report A–U and next prompt starting `Re-read AGENTS.md`.
 
 Loop: no

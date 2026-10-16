@@ -121,6 +121,34 @@ internal object TestOnlyV9Migration {
         require(version(c) == from && metadataVersion(c) == from) {
             "Inconsistent schema version metadata"
         }
+        // A migration must never silently bless a legacy vault whose ledger
+        // already lost its append-only protection.
+        val ledgerTriggers = values(c,
+            "SELECT name FROM sqlite_master WHERE type='trigger' " +
+                "AND tbl_name='ledger_event'").toSet()
+        require(ledgerTriggers.containsAll(setOf(
+            "tg_ledger_event__no_update", "tg_ledger_event__no_delete"))) {
+            "Legacy ledger immutability guard is missing."
+        }
+        // A same-named no-op trigger is not an append-only guarantee.
+        for ((name, operation) in listOf(
+            "tg_ledger_event__no_update" to "BEFORE UPDATE",
+            "tg_ledger_event__no_delete" to "BEFORE DELETE"
+        )) {
+            val definition = values(c,
+                "SELECT UPPER(sql) FROM sqlite_master WHERE type='trigger' " +
+                    "AND name='" + name + "'").singleOrNull()
+            require(definition != null &&
+                definition.contains(operation) &&
+                definition.contains("ON LEDGER_EVENT") &&
+                definition.contains("RAISE(ABORT")) {
+                "Legacy append-only trigger behavior is invalid: " + name
+            }
+        }
+        require(count(c, "SELECT count(*) FROM pragma_foreign_key_list('account') " +
+            "WHERE \"table\"='entity' AND \"from\"='entity_id'") == 1L) {
+            "Legacy account ownership constraint missing."
+        }
         val mandatory = mapOf(
             "entity" to mapOf("entity_id" to "TEXT", "entity_type" to "TEXT"),
             "holding" to mapOf("holding_id" to "TEXT", "entity_id" to "TEXT",

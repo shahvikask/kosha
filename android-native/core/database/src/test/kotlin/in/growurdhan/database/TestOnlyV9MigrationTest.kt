@@ -320,4 +320,74 @@ class TestOnlyV9MigrationTest {
             } finally { untouchedBackup.delete() }
         } finally { file.delete() }
     }
+
+    @Test fun unrecognizedLegacyExtensionColumnAndOpaqueValueSurviveUpgradeAndReopen() {
+        val (file, key) = newFixture()
+        try {
+            TestOnlyV9Migration.connect(file, key).use { c ->
+                TestOnlyV9Migration.seedPriorVersion(c, 8)
+                c.createStatement().use {
+                    it.execute("ALTER TABLE holding ADD COLUMN legacy_opaque TEXT")
+                }
+                TestOnlyV9Migration.seedSyntheticRecords(c)
+                c.createStatement().use {
+                    it.executeUpdate("UPDATE holding SET legacy_opaque=" +
+                        "'{\"unknownOriginal\":{\"opaque\":[123,\"keep\"]}}' " +
+                        "WHERE holding_id='synthetic-holding'")
+                }
+                val oldValue = values(c, "SELECT legacy_opaque FROM holding")
+                val oldLedger = TestOnlyV9Migration.rowsFingerprint(c)
+                TestOnlyV9Migration.migrate(c)
+                assertEquals(9L, number(c, "PRAGMA user_version"))
+                assertEquals(oldValue, values(c, "SELECT legacy_opaque FROM holding"))
+                assertEquals(oldLedger.filterNot { it == "8" },
+                    TestOnlyV9Migration.rowsFingerprint(c).filterNot { it == "9" })
+                assertEquals(218, SchemaV9Catalog.tables.sumOf { table ->
+                    number(c, "SELECT count(*) FROM pragma_table_info('" +
+                        table.name + "')").toInt()
+                })
+                assertRecords(c)
+            }
+            TestOnlyV9Migration.connect(file, key).use { c ->
+                c.createStatement().use { it.execute("PRAGMA foreign_keys=ON") }
+                assertEquals(listOf("""{"unknownOriginal":{"opaque":[123,"keep"]}}"""),
+                    values(c, "SELECT legacy_opaque FROM holding"))
+                assertEquals(9L, number(c, "PRAGMA user_version"))
+            }
+        } finally { file.delete() }
+    }
+
+    @Test fun missingAppendOnlyTriggerFailsClosedWithoutRewritingRows() {
+        val (file, key) = newFixture()
+        try {
+            TestOnlyV9Migration.connect(file, key).use { c ->
+                TestOnlyV9Migration.seedPriorVersion(c, 8)
+                TestOnlyV9Migration.seedSyntheticRecords(c)
+                val before = TestOnlyV9Migration.rowsFingerprint(c)
+                c.createStatement().use {
+                    it.execute("DROP TRIGGER tg_ledger_event__no_delete")
+                }
+                val damagedDefinitions = TestOnlyV9Migration.definitionFingerprint(c)
+                assertThrows(IllegalArgumentException::class.java) {
+                    TestOnlyV9Migration.migrate(c)
+                }
+                assertEquals(before, TestOnlyV9Migration.rowsFingerprint(c))
+                assertEquals(damagedDefinitions, TestOnlyV9Migration.definitionFingerprint(c))
+                assertEquals(8L, number(c, "PRAGMA user_version"))
+                // Reusing the original name for an inert trigger must not
+                // bypass the migration's append-only preflight.
+                c.createStatement().use {
+                    it.execute("CREATE TRIGGER tg_ledger_event__no_delete " +
+                        "AFTER INSERT ON ledger_event BEGIN SELECT 1; END;")
+                }
+                val forgedDefinitions = TestOnlyV9Migration.definitionFingerprint(c)
+                assertThrows(IllegalArgumentException::class.java) {
+                    TestOnlyV9Migration.migrate(c)
+                }
+                assertEquals(forgedDefinitions, TestOnlyV9Migration.definitionFingerprint(c))
+                assertEquals(before, TestOnlyV9Migration.rowsFingerprint(c))
+                assertEquals(8L, number(c, "PRAGMA user_version"))
+            }
+        } finally { file.delete() }
+    }
 }
