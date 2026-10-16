@@ -45,4 +45,4 @@ Before ending a substantial session, update the handoff files and give the Secti
 
 ## Current stage
 
-M00 is open. Holding-form widgets, holding-detail rows, and home-screen rows are inventoried. Those documents are not a native screen. Screenshots, SQLCipher, Chaquopy, financial code, and a native CI job are not done. Do not mark M00 accepted. See `docs/implementation/STATUS.md`.
+M00 is open. `:core:model:test` passed locally: 10 tests, 0 failures. `:app:testDebugUnitTest` still dies in the Gradle worker, so the concept screens are not re-verified by that task. Screenshots, SQLCipher, Chaquopy, and a native CI job are not done. Do not mark M00 accepted. Do not continue screen-by-screen inventories as a substitute for those gaps. See `docs/implementation/STATUS.md`.
