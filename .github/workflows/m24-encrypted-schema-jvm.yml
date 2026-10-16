@@ -32,7 +32,6 @@ jobs:
         run: |
           echo "TESTED_SOURCE_SHA=$(git rev-parse HEAD)"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git branch --show-current)" = "" || true
       - name: Java 17
         uses: actions/setup-java@v4
         with:
@@ -43,6 +42,38 @@ jobs:
         run: |
           chmod +x ./gradlew
           ./gradlew :core:database:test --no-daemon --stacktrace --rerun-tasks
+      - name: Confirm exact M24 regression test set from JUnit XML
+        if: success()
+        working-directory: android-native
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          reports=list(Path("core/database/build/test-results/test").glob("**/TEST-*.xml"))
+          assert reports, "No database test reports were produced"
+          seen=set()
+          failures=errors=skipped=0
+          for f in reports:
+              root=ET.parse(f).getroot()
+              failures += int(root.attrib.get("failures","0"))
+              errors += int(root.attrib.get("errors","0"))
+              skipped += int(root.attrib.get("skipped","0"))
+              for tc in root.findall("testcase"):
+                  seen.add((tc.attrib.get("classname","").split(".")[-1], tc.attrib.get("name","")))
+          required={
+              ("TestOnlyV9MigrationTest","frozenHistoryProducesDeterministicNonDestructiveVersionPlans"),
+              ("TestOnlyV9MigrationTest","allSupportedPriorVersionMarkersMigrateAndPreserveSyntheticOwnersAndMoney"),
+              ("TestOnlyV9MigrationTest","exactEncryptedBackupCopyRetainsUnknownFieldsOwnerAndScaledIntegers"),
+              ("TestOnlyV9MigrationTest","injectedDdlFailureRollsBackSchemaVersionAndEverySyntheticRecord"),
+              ("TestOnlyV9MigrationTest","corruptMetadataUnknownVersionsAndIncompatibleSchemasFailClosed"),
+              ("TestOnlyV9MigrationTest","corruptedCiphertextIsRejectedWithoutResettingTheSourceFile"),
+          }
+          missing=required-seen
+          assert not missing, f"Missing required M24 tests: {sorted(missing)}"
+          assert len(seen)>=13, f"Expected at least 13 database test methods, found {len(seen)}"
+          assert failures==errors==skipped==0, f"JUnit failures={failures}, errors={errors}, skipped={skipped}"
+          print(f"M24_JUNIT_CONFIRMED total={len(seen)} new=6 failures=0 errors=0 skipped=0")
+          PY
       - name: Upload database JUnit evidence
         if: always()
         uses: actions/upload-artifact@v4
