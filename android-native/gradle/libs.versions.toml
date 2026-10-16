@@ -8,6 +8,8 @@ junit = "4.13.2"
 robolectric = "4.14.1"
 paparazzi = "1.3.5"
 sqliteJdbc = "3.53.4.0"
+sqlcipherAndroid = "4.17.0"
+androidxSqlite = "2.6.2"
 
 [libraries]
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
@@ -23,6 +25,8 @@ robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectr
 compose-ui-test = { module = "androidx.compose.ui:ui-test-junit4" }
 compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
 sqlite-jdbc = { module = "io.github.willena:sqlite-jdbc", version.ref = "sqliteJdbc" }
+sqlcipher-android = { module = "net.zetetic:sqlcipher-android", version.ref = "sqlcipherAndroid" }
+androidx-sqlite = { module = "androidx.sqlite:sqlite", version.ref = "androidxSqlite" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
