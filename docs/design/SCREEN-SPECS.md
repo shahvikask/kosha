@@ -5,9 +5,10 @@ These three screens are Compose source in `ConceptScreens.kt`. They use syntheti
 ## Unlock
 
 - Mark, wordmark, and tagline.
-- States that no password is checked and no vault is opened.
-- One control, “Preview sample home”, at least 48dp tall.
-- Empty, error, and offline states are not built. There is no credential to fail.
+- A lock banner: the vault remains locked and no book is open.
+- States that there is no password field because this build has no vault.
+- One control, “View sample layout”, at least 48dp tall. It does not call an unlock method.
+- Sample home and sample holding keep the same lock banner and can return to the locked screen.
 
 ## Home
 

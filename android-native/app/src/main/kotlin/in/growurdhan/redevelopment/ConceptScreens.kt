@@ -22,27 +22,35 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import `in`.growurdhan.designsystem.GUDBrandLockup
+import `in`.growurdhan.designsystem.GUDLockedBanner
 import `in`.growurdhan.designsystem.GUDNetWorthHero
 import `in`.growurdhan.designsystem.GUDUnknownCostNotice
 import `in`.growurdhan.designsystem.GudTheme
+import `in`.growurdhan.model.ConceptLock
+import `in`.growurdhan.model.ConceptPlace
 import `in`.growurdhan.model.InrFormat
 
 private const val SAMPLE_MINOR = 12_345_678_900L
 
-private enum class ConceptRoute { Unlock, Home, Holding }
-
 @Composable
 fun ConceptApp() {
-    var route by rememberSaveable { mutableStateOf(ConceptRoute.Unlock) }
-    when (route) {
-        ConceptRoute.Unlock -> UnlockScreen(onPreview = { route = ConceptRoute.Home })
-        ConceptRoute.Home -> HomeScreen(onOpenHolding = { route = ConceptRoute.Holding })
-        ConceptRoute.Holding -> HoldingDetailScreen(onBack = { route = ConceptRoute.Home })
+    var place by rememberSaveable { mutableStateOf(ConceptPlace.Locked) }
+    val lock = ConceptLock(place)
+    when (lock.place) {
+        ConceptPlace.Locked -> UnlockScreen(onViewSample = { place = lock.viewSampleLayout().place })
+        ConceptPlace.SampleHome -> HomeScreen(
+            onOpenHolding = { place = lock.viewSampleHolding().place },
+            onReturnToLocked = { place = lock.returnToLocked().place },
+        )
+        ConceptPlace.SampleHolding -> HoldingDetailScreen(
+            onBack = { place = lock.backToSampleHome().place },
+            onReturnToLocked = { place = lock.returnToLocked().place },
+        )
     }
 }
 
 @Composable
-fun UnlockScreen(onPreview: () -> Unit) {
+fun UnlockScreen(onViewSample: () -> Unit) {
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         Column(
             Modifier
@@ -55,22 +63,24 @@ fun UnlockScreen(onPreview: () -> Unit) {
             GUDBrandLockup()
             Spacer(Modifier.height(28.dp))
             Text("Locked", style = MaterialTheme.typography.headlineMedium)
+            Spacer(Modifier.height(12.dp))
+            GUDLockedBanner()
             Text(
-                "No vault is opened. This screen does not check a password or read a book.",
+                "There is no password field. This build has no vault to open.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 14.sp,
-                modifier = Modifier.padding(top = 8.dp),
+                modifier = Modifier.padding(top = 12.dp),
             )
             Spacer(Modifier.height(24.dp))
-            Button(onClick = onPreview, modifier = Modifier.height(48.dp)) {
-                Text("Preview sample home")
+            Button(onClick = onViewSample, modifier = Modifier.height(48.dp)) {
+                Text("View sample layout")
             }
         }
     }
 }
 
 @Composable
-fun HomeScreen(onOpenHolding: () -> Unit) {
+fun HomeScreen(onOpenHolding: () -> Unit, onReturnToLocked: () -> Unit) {
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         Column(
             Modifier
@@ -79,19 +89,24 @@ fun HomeScreen(onOpenHolding: () -> Unit) {
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState()),
         ) {
+            GUDLockedBanner()
+            Spacer(Modifier.height(16.dp))
             GUDBrandLockup()
             Spacer(Modifier.height(16.dp))
             GUDNetWorthHero(InrFormat.formatOverview(SAMPLE_MINOR))
             Spacer(Modifier.height(16.dp))
             Button(onClick = onOpenHolding, modifier = Modifier.height(48.dp)) {
-                Text("Open sample holding")
+                Text("View sample holding")
+            }
+            TextButton(onClick = onReturnToLocked, modifier = Modifier.height(48.dp)) {
+                Text("Return to locked screen")
             }
         }
     }
 }
 
 @Composable
-fun HoldingDetailScreen(onBack: () -> Unit) {
+fun HoldingDetailScreen(onBack: () -> Unit, onReturnToLocked: () -> Unit) {
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         Column(
             Modifier
@@ -100,6 +115,7 @@ fun HoldingDetailScreen(onBack: () -> Unit) {
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState()),
         ) {
+            GUDLockedBanner()
             TextButton(onClick = onBack, modifier = Modifier.height(48.dp)) {
                 Text("Back to sample home")
             }
@@ -111,6 +127,9 @@ fun HoldingDetailScreen(onBack: () -> Unit) {
             )
             Spacer(Modifier.height(16.dp))
             GUDUnknownCostNotice()
+            TextButton(onClick = onReturnToLocked, modifier = Modifier.height(48.dp)) {
+                Text("Return to locked screen")
+            }
         }
     }
 }
@@ -118,17 +137,17 @@ fun HoldingDetailScreen(onBack: () -> Unit) {
 @Preview(name = "Unlock light")
 @Composable
 private fun UnlockLightPreview() {
-    GudTheme(darkTheme = false) { UnlockScreen(onPreview = {}) }
+    GudTheme(darkTheme = false) { UnlockScreen(onViewSample = {}) }
 }
 
 @Preview(name = "Home dark")
 @Composable
 private fun HomeDarkPreview() {
-    GudTheme(darkTheme = true) { HomeScreen(onOpenHolding = {}) }
+    GudTheme(darkTheme = true) { HomeScreen(onOpenHolding = {}, onReturnToLocked = {}) }
 }
 
 @Preview(name = "Holding light")
 @Composable
 private fun HoldingLightPreview() {
-    GudTheme(darkTheme = false) { HoldingDetailScreen(onBack = {}) }
+    GudTheme(darkTheme = false) { HoldingDetailScreen(onBack = {}, onReturnToLocked = {}) }
 }

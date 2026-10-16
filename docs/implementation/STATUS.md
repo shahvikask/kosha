@@ -1,6 +1,6 @@
 # GrowUrDhan implementation status
 
-Updated: 2026-10-16 after the M00 scaffold compile. Nothing below is inferred from chat memory.
+Updated: 2026-10-16 after the lock-state and Compose semantics check. Nothing below is inferred from chat memory.
 
 ## Repository
 
@@ -9,7 +9,7 @@ Updated: 2026-10-16 after the M00 scaffold compile. Nothing below is inferred fr
 | Remote | `https://github.com/shahvikask/kosha` |
 | Working branch | `GUD-Android-Redevelopment` |
 | Frozen reference | `GUD-Android-Gmail` @ `af96dcc8967ab595e1d9acee78e29e500cb99a9e` |
-| GitHub tip at the start of this scaffold | `022f440b84197d7e80eedcbe83ed9e94d7610ed1` |
+| GitHub tip at the start of this lock-state change | `ddb0926f1859992318c3e9580cdc923d69536532` |
 | Last accepted SHA | none |
 | Native app | scaffold only, application id `in.growurdhan.redevelopment` |
 | CI | not run |
@@ -20,43 +20,40 @@ Updated: 2026-10-16 after the M00 scaffold compile. Nothing below is inferred fr
 
 | Milestone piece | Status |
 |---|---|
-| Instruction files and legacy inventory | on GitHub at `022f440` before this scaffold |
-| Screen, command, schema v9, and parser-hash inventory | present. HoldingDetails keys are listed in `M00Inventory`. Widget-by-widget form inventory is not done |
-| `android-native/` scaffold | debug APK assembled locally. Unlock, Home, and Holding detail are concept screens with sample data |
-| Section 6A exports and G14 screenshots | design notes exist. Screenshots were not captured. Owner approval is pending |
+| Instruction files and legacy inventory | on GitHub before this change |
+| Screen, command, schema v9, and parser-hash inventory | present. HoldingDetails keys are listed. Widget-by-widget form inventory is not done |
+| `android-native/` scaffold | debug APK assembled locally. Locked, sample home, and sample holding concept screens |
+| Lock behavior | `ConceptLock.vaultOpen` is always false. There is no unlock method and no password field |
+| Section 6A screenshots | NOT CAPTURED. Compose semantics for the three screens passed. Owner approval is pending |
 | SQLCipher, Chaquopy, financial ledger | not started |
 | M24–M34 | NOT STARTED |
 
 ## Requirements
 
-P01–P39 and E01–E18 remain **NOT STARTED**. The concept screens do not implement them. See `parity-register.csv`.
+P01–P39 and E01–E18 remain **NOT STARTED**. See `parity-register.csv`.
 
 ## UI status, separate from financial status
 
 | Surface | Status |
 |---|---|
-| Unlock, Home, Holding detail | Compose source compiled. Not screenshot-tested and not a finished screen |
+| Locked, sample home, sample holding | Compose source compiled. Semantics tested. Not a finished screen |
 | Other legacy surfaces | mapped, not built |
-| Brand mark bytes | copied. Compose redraw is not pixel-compared |
+| Brand mark | SVG snippets checked against `MarkGeometry`. Rendered pixels were not captured |
 
 ## Gates
 
 | Gate | Status |
 |---|---|
-| Local Kotlin/Gradle debug assemble | PASS on this machine for `:app:assembleDebug`. Unsigned debug APK. Not a release build |
-| JVM tests | 7 tests PASS via `org.junit.runner.JUnitCore`. `./gradlew :core:model:test` FAILED because the Gradle test worker could not keep its local socket. That is not a passing Gradle test task |
+| Local debug assemble | PASS for `:app:assembleDebug`. Unsigned. SHA-256 recorded in the session handoff after this change |
+| Model JVM tests | 10 tests PASS via `org.junit.runner.JUnitCore` |
+| Compose semantics | `ConceptVisualTest` 3 tests, 0 failures, via `:app:testDebugUnitTest` |
+| Bitmap capture | FAILED to produce an image. See decision D04 |
+| `./gradlew :core:model:test` | NOT PASSED. The Gradle test worker still drops its socket |
 | GitHub Actions | NOT RUN — not authorized |
-| Emulator | NOT RUN |
-| Physical device | NOT RUN |
-| Gmail OAuth production | BLOCKED — owner Cloud setup |
-| Play Billing production | BLOCKED — owner products/signing |
-| Security signoff | PENDING |
-| Owner visual acceptance | PENDING |
-
-## Blockers
-
-None for publishing this scaffold if the ruleset still allows this token. M00 is not complete.
+| Emulator and device | NOT RUN |
+| Gmail and Play Billing | BLOCKED |
+| Security signoff and owner visual acceptance | PENDING |
 
 ## Next authorized work
 
-Finish the remaining M00 evidence: pixel check of the Compose mark against `mark.svg`, a real lock screen rather than a preview button, and the G14 screenshot harness. Do not start M24 or financial calculations. Do not dispatch Actions unless the owner authorizes them.
+Do not rework the lock flow. Do not start M24. Screenshot pixels remain blocked in this environment. The next M00 piece is a written dependency review of the pinned Android Gradle Plugin, Kotlin, and Compose versions. Do not add a database. Do not dispatch Actions unless the owner authorizes them.

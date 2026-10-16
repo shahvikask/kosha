@@ -1,7 +1,4 @@
 screen,theme,viewport,font_scale,state,screenshot,test,owner_acceptance
-unlock,light,unspecified,default,sample,NOT CAPTURED,NOT RUN,PENDING
-unlock,dark,unspecified,default,sample,NOT CAPTURED,NOT RUN,PENDING
-home,light,unspecified,default,sample,NOT CAPTURED,NOT RUN,PENDING
-home,dark,unspecified,default,sample,NOT CAPTURED,NOT RUN,PENDING
-holding-detail,light,unspecified,default,unknown-cost,NOT CAPTURED,NOT RUN,PENDING
-holding-detail,dark,unspecified,default,unknown-cost,NOT CAPTURED,NOT RUN,PENDING
+unlock,light,360dp,default,locked,NOT CAPTURED,ConceptVisualTest.lockedScreenHasNoVaultAction PASS 2026-10-16,PENDING
+home,dark,360dp,default,sample-locked,NOT CAPTURED,ConceptVisualTest.sampleHomeKeepsTheLockVisible PASS 2026-10-16,PENDING
+holding-detail,light,360dp,default,unknown-cost,NOT CAPTURED,ConceptVisualTest.sampleHoldingDoesNotInventACost PASS 2026-10-16,PENDING
