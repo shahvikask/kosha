@@ -1,6 +1,6 @@
 name: GrowUrDhan M24 encrypted schema JVM
 
-# Rerun after correcting historical ALTER TABLE column order assumption (6 tests retained).
+# Owner-authorized M24 20-test source regression (13 original + seven goldens).
 # Single explicit owner-authorized source verification. The newly added workflow
 # self-triggers once when the YAML is committed to the redevelopment branch.
 # Do not add android-native/** to push paths: source pushes must not incur CI spend.
@@ -69,11 +69,20 @@ jobs:
               ("TestOnlyV9MigrationTest","corruptMetadataUnknownVersionsAndIncompatibleSchemasFailClosed"),
               ("TestOnlyV9MigrationTest","corruptedCiphertextIsRejectedWithoutResettingTheSourceFile"),
           }
+          required |= {
+              ("FrozenLegacyBackupEnvelopeGoldenTest","frozenBackupAndLegacySourceContractHasNotDrifted"),
+              ("FrozenLegacyBackupEnvelopeGoldenTest","binaryV2EnvelopeRoundTripRetainsLargeIntegersOwnerAndUnknownFields"),
+              ("FrozenLegacyBackupEnvelopeGoldenTest","encryptedEnvelopeRejectsTamperWrongIdentityAndInvalidHeaders"),
+              ("FrozenLegacyBackupEnvelopeGoldenTest","oldKosha1JsonEnvelopeUsesPasswordOnlyAndRequiresEmbeddedAccount"),
+              ("FrozenLegacyBackupEnvelopeGoldenTest","proposedTwoPhaseReplayAndFailureStagingNeverMarksUnapprovedBackups"),
+              ("TestOnlyV9MigrationTest","unrecognizedLegacyExtensionColumnAndOpaqueValueSurviveUpgradeAndReopen"),
+              ("TestOnlyV9MigrationTest","missingAppendOnlyTriggerFailsClosedWithoutRewritingRows"),
+          }
           missing=required-seen
           assert not missing, f"Missing required M24 tests: {sorted(missing)}"
-          assert len(seen)>=13, f"Expected at least 13 database test methods, found {len(seen)}"
+          assert len(seen)==20, f"Expected exactly 20 database test methods, found {len(seen)}"
           assert failures==errors==skipped==0, f"JUnit failures={failures}, errors={errors}, skipped={skipped}"
-          print(f"M24_JUNIT_CONFIRMED total={len(seen)} new=6 failures=0 errors=0 skipped=0")
+          print(f"M24_JUNIT_CONFIRMED total={len(seen)} new=7 failures=0 errors=0 skipped=0")
           PY
       - name: Upload database JUnit evidence
         if: always()
