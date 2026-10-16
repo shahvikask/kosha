@@ -27,3 +27,14 @@ Date: 2026-10-16. Work repository `shahvikask/kosha`, branch `GUD-Android-Redeve
 ## Decision boundary
 
 This is a SOURCE IMPLEMENTED / STATIC VERIFIED checkpoint only. M00 remains owner-accepted. M24 remains OPEN. No CI spending requested or dispatched.
+
+## Superseding exact-SHA verified JVM evidence — 2026-10-16
+
+**Native JVM CI PASSED** on tested source `ebc8d703a5e6791ae63bfca8383f196ea9bf7ec5` in [run #38954683658](https://github.com/shahvikask/kosha/actions/runs/38954683658), job 117154441202. Workflow addition only; underlying frozen SQL/Kotlin tests unchanged from `e7d72b71bb98618ae187246557f1f2cb5fda343c`. Actual GitHub job log prints the exact tested SHA and `BUILD SUCCESSFUL in 1m 49s`.
+
+**JUnit artifact downloaded and opened:** artifact 12070905373, 9,769-byte `m24-encrypted-schema-junit`; all tests **7 PASSED**, 0 failed, 0 errors, 0 skipped:
+- EncryptedSchemaV9Test: 4/4 passing for source equality, encrypted v9 schema/reopen/empty copy, foreign-key and guard, immutable trigger/rollback.
+- DatabaseBoundaryTest: 2/2 passing.
+- SqlCipherOpenTest: 1/1 passing.
+
+Previous statement `Gradle/JUnit/actual SQLCipher runtime tests NOT RUN` is historical pre-CI evidence, **superseded for this exact tested SHA only**. The tests prove an empty **JVM SQLCipher** schema, not populated backup retention, Android SQLCipher, Keystore, production migrations or full M24 acceptance. M24 remains OPEN. Legacy frozen original and approved branding unchanged.

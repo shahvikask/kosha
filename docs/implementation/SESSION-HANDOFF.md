@@ -1,23 +1,22 @@
-# GrowUrDhan — mandatory session handoff
+# GrowUrDhan — mandatory freshest session handoff
 
-**Updated:** 2026-10-16. Repository `https://github.com/shahvikask/kosha.git`, development branch `GUD-Android-Redevelopment`, starting HEAD `7bf76d1452f4b78bdcaecc21130386bf49861b23`. **Verify newest live HEAD at next prompt**; this file cannot encode its own commit ID. Frozen reference `GUD-Android-Gmail@af96dcc8967ab595e1d9acee78e29e500cb99a9e`, unchanged. Git working tree **UNVERIFIED** because the work was applied via GitHub connector.
+**UTC:** 2026-10-16 ~19:30Z. **Remote:** `https://github.com/shahvikask/kosha.git`. **Branch:** `GUD-Android-Redevelopment` only. **Source-test HEAD before documentation commit:** `ebc8d703a5e6791ae63bfca8383f196ea9bf7ec5`. Resolve latest HEAD from the GitHub branch API at next prompt; document cannot embed its own commit SHA. **Frozen source:** `GUD-Android-Gmail@af96dcc8967ab595e1d9acee78e29e500cb99a9e`, unchanged. Git working-tree cleanliness UNVERIFIED (GitHub connector, no local clone).
 
-## Scope completed in this increment
+## Current stage and this session's bounded work
 
-Authorized bounded **M24 only**, no M25, GUI, financial flows, real private rows, production SQLCipher or Chaquopy. Added test resource `android-native/core/database/src/test/resources/schema-v9-frozen.sql` containing the frozen CREATE TABLE/INDEX/TRIGGER definitions and seven later `entity` additions; added four test methods in `EncryptedSchemaV9Test.kt`. Actual source has 18 tables / 210 base columns and v8/v9 +7 = **217 final schema-v9 columns**. Zero customer data. SQLCipher DB and backup copies are temp files and deleted. A synthetic zero-value event is transaction-only, rolled back; no ledger rows persist.
+M00 previously OWNER ACCEPTED with limitations (D14). M24 STARTED and NOT ACCEPTED (P04/P05 partial). Read root AGENTS.md, complete spec v1.2 including G01–G15/M24/6A/Section 17, STATUS, CI-RUNS, DECISION-LOG, parity register and M24 checkpoint before work. User authorized **one exact-SHA targeted native JVM cycle** (no other paid CI).
 
-Source parity static check compared all generated DDL statements exactly with frozen `src/db/schema.ts`; table/column counts, no REAL, delimiter and Kotlin lexer checks passed. **No Gradle/JUnit/SQLite/SQLCipher runtime execution**; no Android local checkout/dependencies available. Do not mark tests PASSED or M24 accepted. Source schema test resource remains solely test-scoped, no production database-opener in application. Current `OPENS_DATABASE=false`, `SQLCIPHER_LINKED=false`.
+- Reviewed test-only `EncryptedSchemaV9Test.kt`, frozen `schema-v9-frozen.sql`, `SchemaV9Catalog.kt`, original immutable `src/db/schema.ts` and existing `SqlCipherOpenTest.kt`. Prior static source parity covered 41 DDL statements: 18 tables, 12 ordinary + 1 UNIQUE index, 3 triggers, 7 ALTER additions; resulting final schema has 217 columns (210 original CREATE base + 7 v8/v9).
+- Committed **CI-only workflow** `.github/workflows/m24-encrypted-schema-jvm.yml` at `ebc8d703a5e6791ae63bfca8383f196ea9bf7ec5` and used a one-time push of that YAML to start exact-SHA native JVM run. No test assertions relaxed and **no Kotlin/SQL source repair needed**. No changes to original TypeScript/React/Tauri, frozen CASPARSER, approved logo, production vault-opener or Chaquopy.
+- [Run 38954683658](https://github.com/shahvikask/kosha/actions/runs/38954683658) **SUCCESS**, exact tested SHA `ebc8d703a5e6791ae63bfca8383f196ea9bf7ec5`. Job `117154441202` success. `./gradlew :core:database:test --no-daemon --stacktrace --rerun-tasks` compiled and ran. Job log: `TESTED_SOURCE_SHA=ebc8d703a5e6791ae63bfca8383f196ea9bf7ec5`, `BUILD SUCCESSFUL in 1m 49s`.
+- Downloaded the JUnit artifact `12070905373`, name `m24-encrypted-schema-junit` (9,769-byte ZIP). Parsed all 3 XML suites: `EncryptedSchemaV9Test` **4/4 PASS**, `DatabaseBoundaryTest` **2/2 PASS**, `SqlCipherOpenTest` **1/1 PASS**. **Total 7 tests, 0 failures, 0 errors, 0 skipped.** No emulator, debug APK or production AAB.
+- Previous native JVM run [38925309401](https://github.com/shahvikask/kosha/actions/runs/38925309401) PASS on older SHA `63b5b8d5b8cc2352d144c6b8494b4d4bbc3f4340`, historical local worker failure D17 retained. Current tested source `ebc8d703a5e6791ae63bfca8383f196ea9bf7ec5` supersedes the M24 unrun source status, but **only test-only JVM SQLCipher is verified**.
 
-## Prior evidence and blockers
+## Remaining M24 exit gates and next safe action
 
-- M00 owner-accepted D14, with design/device limitations; M24 started D15, unaccepted.
-- Historical native JVM [38925309401](https://github.com/shahvikask/kosha/actions/runs/38925309401) PASS on old `63b5b8d5b8cc2352d144c6b8494b4d4bbc3f4340`. Latest before this increment legacy Node [38950501642](https://github.com/shahvikask/kosha/actions/runs/38950501642) PASS on `7bf76d1452f4b78bdcaecc21130386bf49861b23`, not Android schema proof.
-- Previous local database Gradle reruns failed in forked worker with `Unexpected type tag 71`; direct JUnitCore 3 earlier tests passed, but **these four new tests are UNRUN**.
-- Need real JVM SQLCipher compile/test and parity, versioned migration from existing vaults, foreign-key/ledger/failure goldens, backup-field preservation, Android encrypted database integration under separately approved scope; device and independent AppSec later.
-- Owner explicitly prohibited GitHub Actions dispatch this session. No Actions invoked. No legacy AAB or nonnative workflows changed.
-
-## Precise next task
-
-Re-read AGENTS, full v1.2 spec, STATUS, CI-RUNS, DECISION-LOG, parity register and [new M24 checkpoint](../native-migration/24-M24-ENCRYPTED-SCHEMA-TEST-CHECKPOINT.md). Verify live HEAD. Inspect new JVM SQL test compile/runtime risks and review generated SQL statement categorization. With **express owner authorization**, run native JVM `:core:database:test` against exact current `GUD-Android-Redevelopment` commit, diagnose any failure and repair/retest the corrected SHA. Keep M24 open pending all its exit gates. Complete A–U report and next prompt beginning `Re-read AGENTS.md`.
+- **Unimplemented:** production native Android SQLCipher/Keystore, actual versioned old-schema migrations and rollback, populated source-to-native golden fixtures, backup encrypted record/field retention and actual on-device storage. Empty encrypted file copy is not portable backup proof. Owner-sensitive workflows are later milestones.
+- M24 remains NOT ACCEPTED; P04/P05 only **CI JVM PARTIAL** (do not mark full source/persistence acceptance). Physical device security acceptance belongs to M34. No M25 features started.
+- Next owner-authorized work should be a bounded M24 source slice on deterministic v1–v9 migration/rollback and populated synthetic backup goldens **only after new owner authorization**. Do not start another expensive CI run automatically. Read all permanent files and print startup receipt first, verify HEAD, and report A–U with exact SHA.
+- The `m24-encrypted-schema-jvm.yml` workflow has `push.paths` restricted to its own filename: regular future code or documentation pushes **do not** auto-run it. Legacy `Kosha CI` auto-triggers on any push; label its results Node-only. No legacy AAB or emulator was dispatched.
 
 Loop: no
