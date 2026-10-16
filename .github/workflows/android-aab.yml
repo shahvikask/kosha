@@ -10,6 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      # Secrets are not allowed in if expressions. GitHub rejects the file before any job starts.
+      UPLOAD_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
     steps:
       - uses: actions/checkout@v4
 
@@ -42,7 +46,7 @@ jobs:
           node scripts/android_prepare.mjs
 
       - name: Decode upload keystore
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        if: ${{ env.UPLOAD_KEYSTORE_B64 != '' }}
         run: |
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > src-tauri/gen/android/app/upload.jks
           echo "storeFile=upload.jks" >> src-tauri/gen/android/keystore.properties
@@ -66,7 +70,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload to Play internal track
-        if: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
+        if: ${{ env.PLAY_SERVICE_ACCOUNT_JSON != '' }}
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
