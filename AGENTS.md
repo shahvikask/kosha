@@ -45,7 +45,7 @@ Before ending a substantial session, update the handoff files and give the Secti
 
 ## Current stage
 
-M00 is owner-accepted with limitations. M24 is started and not accepted. The schema v9 catalog names 18 tables and 210 columns. The database still does not open, and SQLCipher is not linked.
+M00 is owner-accepted with limitations. M24 is started and not accepted. A JVM test opens and closes a SQLCipher file. Production code still does not open a database.
 
 ## Loop check
 

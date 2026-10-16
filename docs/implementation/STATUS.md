@@ -1,6 +1,6 @@
 # GrowUrDhan implementation status
 
-Updated: 2026-10-16. M24 is started and not accepted. The schema catalog is mapped. The database does not open.
+Updated: 2026-10-16. M24 is started and not accepted. A test opens SQLCipher. Production code does not.
 
 ## Repository
 
@@ -23,12 +23,12 @@ Updated: 2026-10-16. M24 is started and not accepted. The schema catalog is mapp
 |---|---|
 | Instruction files and legacy inventory | on GitHub |
 | Schema v9 map | `SchemaV9Catalog` names the 18 tables and 210 columns from `src/db/schema.ts`. There is no table named snapshot |
-| Encrypted schema | Boundary only. `EncryptedSchemaBoundary` refuses a plaintext open. SQLCipher is not linked and no database is opened |
+| Encrypted schema | A unit test links `io.github.willena:sqlite-jdbc` 3.53.4.0, opens SQLCipher legacy 4, checks the header is not plaintext, rejects the wrong key, and deletes the file. `EncryptedSchemaBoundary.SQLCIPHER_LINKED` stays false because production code does not open a database |
 | Migrations, triggers, golden rows | NOT STARTED |
 | `android-native/` scaffold | debug APK assembled locally. Locked, sample home, and sample holding concept screens |
 | Lock behavior | `ConceptLock.vaultOpen` is always false. There is no unlock method and no password field |
 | Section 6A screenshots | Owner accepted the three Paparazzi images on `d7868b215f8a69b10c9170cf7614b74012c279ce` |
-| SQLCipher and Chaquopy | SQLCipher is still not linked. Chaquopy is not linked. No financial row was inserted |
+| SQLCipher and Chaquopy | The JVM SQLCipher driver is a test dependency only. Chaquopy is not linked. No financial row was inserted |
 | M25–M34 | NOT STARTED |
 
 ## Requirements
@@ -52,9 +52,9 @@ P01–P39 and E01–E18 remain **NOT STARTED**. See `parity-register.csv`.
 | Compose semantics | PASS. `:app:testDebugUnitTest` wrote 3 tests, 0 failures, at 2026-10-16T14:24:43Z. The three assertions were not changed. Bitmap capture is still not part of this test |
 | Bitmap capture | PASS locally via Paparazzi. The owner accepted the three images. See decision D13 |
 | `./gradlew :core:model:test` | PASS, 10 tests. See decisions D07 and D08 |
-| Boundary tests | PASS. `:core:database:test` wrote 2 tests, 0 failures, at 2026-10-16T15:57:59Z |
+| Boundary tests | PASS at 2026-10-16T18:43:29Z and 2026-10-16T18:43:30Z: 3 tests, 0 failures. This session's Gradle `--rerun-tasks` died in the test worker and wrote no new XML. Direct JUnitCore of the same classes returned OK (3 tests). See decision D17 |
 | Native CI | PASS on `63b5b8d5b8cc2352d144c6b8494b4d4bbc3f4340`. Run 38925309401. The log says BUILD SUCCESSFUL. It does not print individual test counts. Screenshot pixels were not produced |
-| Emulator and device | NOT RUN |
+| Emulator and device | Emulator run 38948959678 succeeded on `430c171`. Six PNGs were uploaded. Three were opened this session and show the concept screens, not blank frames. That is not a new owner acceptance. No device run |
 | Gmail and Play Billing | BLOCKED |
 | Security signoff and owner visual acceptance | Concept screenshots accepted. M00 accepted by the owner with limitations. Security signoff is not done |
 
@@ -62,17 +62,18 @@ P01–P39 and E01–E18 remain **NOT STARTED**. See `parity-register.csv`.
 
 These were not closed by the owner's acceptance:
 
-- SQLCipher and Chaquopy are not linked, and there is no financial table.
+- Production code does not link SQLCipher or Chaquopy, and there is no financial table. A test-only JVM driver can open and close a temporary encrypted file.
 - Native JVM run 38925309401 passed on `63b5b8d`, not on the accepted tip, and it did not run Paparazzi.
-- No emulator, device, or security review has passed.
+- Emulator run 38948959678 passed on `430c171`. Those pixels are not a new owner acceptance. No device or security review has passed.
 - P01–P39 and E01–E18 are not started.
 - Screens other than the three concept screens are mapped, not built.
 
 ## Next authorized work
 
-Do not mark M24 accepted. Do not insert financial rows. Do not link SQLCipher until a local test can open an encrypted database. Do not link Chaquopy. Do not dispatch the legacy Tauri AAB. Do not dispatch the native JVM workflow unless the owner says to run it.
-
+Do not mark M24 accepted. Do not insert financial rows. Do not treat the JVM test driver as the Android SQLCipher library. Do not link Chaquopy. Do not dispatch the legacy Tauri AAB. Do not dispatch the native JVM workflow unless the owner says to run it.
 
 ## Supplemental M00 emulator screenshot gate — 2026-10-16
 
-M00 remains OWNER-ACCEPTED at `e551472498760f46ab0f3a5b248e963b496f2323` with documented limitations. Separately, owner authorized **real Android emulator pixel capture** to strengthen the already-accepted three Paparazzi concept images. Workflow source commit [`430c171782ff967e4f107fb46f7c863ade35faf3`](https://github.com/shahvikask/kosha/commit/430c171782ff967e4f107fb46f7c863ade35faf3) adds only `.github/workflows/m00-emulator-screenshots.yml` and `android-native/scripts/m00-emulator-screenshots.sh`. It captures six sanitized lock/home/holding light/dark screenshots, validates PNG identity/uniqueness and uploads an artifact; the workflow does not change product/app, original reference, parser, financial tables, SQLCipher or Chaquopy. GitHub native emulator [run 38948959678](https://github.com/shahvikask/kosha/actions/runs/38948959678) was RUNNING when this entry was prepared; **do not infer PASS until terminal job and artifact check**. M24 remains NOT STARTED.
+M00 remains OWNER-ACCEPTED at `e551472498760f46ab0f3a5b248e963b496f2323` with documented limitations. Separately, the owner authorized real Android emulator pixel capture. Workflow source commit [`430c171782ff967e4f107fb46f7c863ade35faf3`](https://github.com/shahvikask/kosha/commit/430c171782ff967e4f107fb46f7c863ade35faf3) adds only `.github/workflows/m00-emulator-screenshots.yml` and `android-native/scripts/m00-emulator-screenshots.sh`. It does not change the product, the original reference, the parser, financial tables, production SQLCipher, or Chaquopy.
+
+[Run 38948959678](https://github.com/shahvikask/kosha/actions/runs/38948959678) completed with conclusion `success` on that SHA. Job `M00 API35 Compose real-pixel capture` succeeded. Artifact `m00-api35-real-compose-screenshots` is 433184 bytes and was not expired. This session opened `locked-light.png`, `sample-home-light.png`, and `sample-holding-dark.png`. They show the locked disclosure, the sample home figure labeled as not a ledger balance, and the sample holding with unknown cost. The other three PNGs were not opened. This is not a new G14 owner acceptance. M24 stays started and not accepted.

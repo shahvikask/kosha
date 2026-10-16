@@ -37,8 +37,9 @@ object SchemaV9Catalog {
 }
 
 /**
- * M24 encryption boundary. SQLCipher is not linked, so this object
- * cannot open a database. Plain SQLite is not an allowed open path.
+ * M24 encryption boundary. Production code does not open a database.
+ * A unit test links the JVM SQLCipher driver and deletes its file.
+ * Plain SQLite is not an allowed open path.
  */
 object EncryptedSchemaBoundary {
     const val SQLCIPHER_LINKED = false
