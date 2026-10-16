@@ -92,4 +92,4 @@ The note under those inputs says units are not edited here. A buy or sell change
 
 ## Not done
 
-This inventory does not draw the native form, does not persist a holding, and does not cover every read-only row inside the holding-detail view. Those rows are display, not form widgets.
+This inventory does not draw the native form and does not persist a holding. The read-only holding-detail rows are listed in `docs/implementation/HOLDING-DETAIL-ROWS.md`.

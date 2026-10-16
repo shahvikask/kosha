@@ -45,4 +45,4 @@ Before ending a substantial session, update the handoff files and give the Secti
 
 ## Current stage
 
-M00 is open. The add-holding widgets are inventoried in `docs/implementation/HOLDING-FORM-WIDGETS.md`. That is not a native form. Screenshots, SQLCipher, Chaquopy, financial code, and a native CI job are not done. Do not mark M00 accepted. See `docs/implementation/STATUS.md`.
+M00 is open. Holding-form widgets and read-only holding-detail rows are inventoried. Those documents are not a native screen. Screenshots, SQLCipher, Chaquopy, financial code, and a native CI job are not done. Do not mark M00 accepted. See `docs/implementation/STATUS.md`.

@@ -1,6 +1,6 @@
 # Session handoff
 
-UTC timestamp: 2026-10-16 (holding-form inventory, M00 not accepted).
+UTC timestamp: 2026-10-16 (read-only holding-detail inventory, M00 not accepted).
 
 ## Checkpoint
 
@@ -9,27 +9,27 @@ UTC timestamp: 2026-10-16 (holding-form inventory, M00 not accepted).
 | Remote | `https://github.com/shahvikask/kosha.git` |
 | Branch | `GUD-Android-Redevelopment` |
 | Frozen reference | `af96dcc8967ab595e1d9acee78e29e500cb99a9e` |
-| GitHub tip at start | `f29bf13f0bf2e06ca0ceec36573972729b963ee4` |
+| GitHub tip at start | `ab73f7d88fe7360778eabafaf712ed5e7d40b556` |
 | Reference branch modified? | no |
-| Actions | not dispatched. The owner did not authorize a new run |
+| Actions | the owner authorized credits. The legacy AAB workflow was not dispatched |
 
 ## What this session did
 
-Re-read `AGENTS.md`, rules G01–G15, M00, and Section 17, plus the tracking files and the parity register. `git ls-remote` matched `f29bf13` and `af96dcc`. The tree was clean.
+Re-read `AGENTS.md`, rules G01–G15, M00, and Section 17, plus the tracking files, the parity register, and the holding-form inventory. `git ls-remote` matched `ab73f7d` and `af96dcc`. The tree was clean. The repository is public.
 
-Listed every add-holding control and the holding-detail edit inputs in `docs/implementation/HOLDING-FORM-WIDGETS.md`. The source is `AddHoldingModal.tsx` and `HoldingDetailModal.tsx` at the frozen commit. No product source was edited.
+Listed the read-only rows in `HoldingDetailModal` in `docs/implementation/HOLDING-DETAIL-ROWS.md`. No product source was edited and no native form was built.
 
 ## Verification
 
-No compile and no test. The inventory is a document. Kosha CI runs 38912221715 and 38912435403 remain the last observed runs. They do not prove this document.
+No local compile. The inventory is a document. Kosha CI run 38913154434 passed on the starting SHA and does not prove this document.
 
 ## What this session did not do
 
-No lock-flow change, toolchain upgrade, database, ledger, screenshot, native CI, or AAB dispatch. M00 is not accepted.
+No lock-flow change, toolchain upgrade, database, ledger, screenshot, native form, or AAB dispatch. M00 is not accepted.
 
 ## Next safe task
 
-Do not start M24. The remaining adjacent inventory is the read-only rows in the holding-detail view. Do not build the form yet.
+Do not start M24 and do not build the holding form. Screenshot pixels are still blocked in the last environment.
 
 ## Owner decision required
 

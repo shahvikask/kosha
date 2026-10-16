@@ -38,7 +38,7 @@ Primary tabs in `src/App.tsx`: `HOME`, `HOLDINGS`, `ACCOUNTS`, `DOCUMENTS`, `FAM
 
 Eight asset categories in `src/types.ts`: `EQUITY`, `MUTUAL_FUND`, `GOLD_SGB`, `FIXED_INCOME`, `REAL_ESTATE`, `SPECIALISED`, `CASH_BANK`, `LIABILITY`. Subcategories are the arrays in `ASSET_SUBCATEGORIES` in that file. Eleven event types, matching the ledger check constraint: `OPENING_BALANCE`, `SNAPSHOT_ADJUSTMENT`, `BUY`, `SELL`, `BONUS`, `SPLIT`, `DIVIDEND`, `INTEREST`, `VALUATION_UPDATE`, `REPAYMENT`, `CORRECTION`.
 
-The add-holding widgets and the holding-detail edit inputs are listed in `docs/implementation/HOLDING-FORM-WIDGETS.md`. That list is not a native form and it is not M24. Read-only rows inside the holding-detail view are not included.
+The add-holding widgets and the holding-detail edit inputs are listed in `docs/implementation/HOLDING-FORM-WIDGETS.md`. The read-only holding-detail rows are listed in `docs/implementation/HOLDING-DETAIL-ROWS.md`. Neither document is a native screen, and neither is M24.
 
 ## Commands
 
