@@ -9,7 +9,20 @@
 import { packBackup } from '../src/lib/backup';
 import { encryptJson } from '../src/lib/vault';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { resolve, dirname } from 'node:path';
 
+// Validate the EXACT frozen Git blobs, not merely the presence of similarly named exports.
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+for (const [relative, expected] of [
+  ['src/lib/backup.ts', '5643af9eeb4ec00dfbf919b58cf998ffab67e858'],
+  ['src/lib/vault.ts', 'fa311299c08f3a327a465e1175664d778229bb3b'],
+] as const) {
+  const source = readFileSync(resolve(root, relative));
+  const gitBlob = createHash('sha1').update(`blob ${source.length}\\0`).update(source).digest('hex');
+  if (gitBlob !== expected) throw new Error(`Frozen source drift: ${relative}`);
+}
 const password = 'm24-fixture-password-not-a-secret';
 const email = ' M24-Owner@example.invalid ';
 const snapshot = {
