@@ -3,6 +3,7 @@ package `in`.growurdhan.redevelopment
 import android.content.Context
 import android.util.AtomicFile
 import `in`.growurdhan.database.LegacyBackupEnvelopeReader
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.security.MessageDigest
 import org.json.JSONObject
@@ -68,9 +69,18 @@ internal class LockedRestoreStaging(context: Context) {
         // AtomicFile may recover a .bak file even if baseFile is short or
         // absent. Limit the read itself rather than trusting baseFile.length().
         val bytes = staged.openRead().use { source ->
-            val bounded = source.readNBytes(maxBytes + 1)
-            require(bounded.size in 56..maxBytes) { "Oversized or truncated staged restore" }
-            bounded
+            val out = ByteArrayOutputStream()
+            val buffer = ByteArray(8192)
+            var total = 0
+            while (true) {
+                val n = source.read(buffer)
+                if (n < 0) break
+                total += n
+                require(total <= maxBytes) { "Oversized staged restore" }
+                out.write(buffer, 0, n)
+            }
+            require(total >= 56) { "Truncated staged restore" }
+            out.toByteArray()
         }
         val plain = if (bytes.copyOfRange(0, 8).contentEquals(magic)) {
             LegacyBackupEnvelopeReader.decodeGUDVLT01(bytes, email, password)
