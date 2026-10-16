@@ -1,0 +1,46 @@
+name: GrowUrDhan M00 Real Emulator Screenshots
+
+# The workflow file is only on the redevelopment branch, not default.
+# A commit changing THIS YAML runs once. Other commits do not start emulators.
+on:
+  workflow_dispatch:
+  push:
+    branches: [GUD-Android-Redevelopment]
+    paths:
+      - .github/workflows/m00-emulator-screenshots.yml
+
+permissions:
+  contents: read
+
+jobs:
+  m00-emulator-screenshots:
+    name: M00 API35 Compose real-pixel capture
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Grant emulator hardware acceleration
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - name: Capture six synthetic M00 screens on an Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_4
+          disable-animations: true
+          emulator-boot-timeout: 900
+          script: bash android-native/scripts/m00-emulator-screenshots.sh
+      - name: Upload real emulator evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m00-api35-real-compose-screenshots
+          path: m00-emulator-evidence/*.png
+          if-no-files-found: warn
+          retention-days: 14
