@@ -45,4 +45,4 @@ Before ending a substantial session, update the handoff files and give the Secti
 
 ## Current stage
 
-M00 is open. The scaffold lock state and Compose semantics remain as previously tested. A dependency review of the pinned AGP, Kotlin, and Compose versions is in `docs/implementation/DEPENDENCY-REVIEW.md`. The pins were not changed. Screenshots, SQLCipher, Chaquopy, financial code, and GitHub Actions are not done. Do not mark M00 accepted. See `docs/implementation/STATUS.md`.
+M00 is open. The AAB workflow file no longer fails before a job starts. Kosha CI passed on `99064638e0f1c9ac000ec5ed3379ffbe59041dee` and does not build `android-native/`. Screenshots, SQLCipher, Chaquopy, financial code, and a native CI job are not done. Do not mark M00 accepted. See `docs/implementation/STATUS.md`.
