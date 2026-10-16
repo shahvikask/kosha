@@ -145,4 +145,40 @@ class EncryptedVaultStoreInstrumentedTest {
         } finally { key.fill(0) }
         store.openExisting().use { assertEquals(9L, scalar(it, "PRAGMA user_version")) }
     }
+    @Test fun syntheticV8MarkerAdvancesAtomicallyWithoutRecreatingVault() {
+        val ctx = sandbox()
+        val store = EncryptedVaultStore(ctx)
+        store.createFresh(false).use { db ->
+            db.execSQL("INSERT INTO entity(entity_id,entity_type,display_name,created_at) " +
+                "VALUES ('synthetic-old','INDIVIDUAL','Owned','2026-10-16')")
+            db.execSQL("PRAGMA user_version=8")
+            db.execSQL("UPDATE vault_meta SET value='8' WHERE key='schema_version'")
+        }
+        store.openExisting().use { db ->
+            assertEquals(9L, scalar(db, "PRAGMA user_version"))
+            assertEquals(1L, scalar(db, "SELECT COUNT(*) FROM entity WHERE entity_id='synthetic-old'"))
+        }
+    }
+
+    @Test fun missingMandatoryTableRejectsMigrationWithoutChangingRecordsOrVersion() {
+        val ctx = sandbox()
+        val store = EncryptedVaultStore(ctx)
+        store.createFresh(false).use { db ->
+            db.execSQL("PRAGMA user_version=8")
+            db.execSQL("UPDATE vault_meta SET value='8' WHERE key='schema_version'")
+            db.execSQL("DROP TABLE instrument")
+        }
+        assertThrows(Exception::class.java) { store.openExisting().close() }
+        val key = KeystoreWrappedVaultKey(ctx).unwrapExisting()
+        try {
+            SQLiteDatabase.openDatabase(
+                ctx.getDatabasePath("growurdhan-v9.sqlcipher").absolutePath,
+                key, null, SQLiteDatabase.OPEN_READWRITE, preserve, null).use { db ->
+                assertEquals(8L, scalar(db, "PRAGMA user_version"))
+                assertEquals(0L, scalar(db,
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='instrument'"))
+            }
+        } finally { key.fill(0) }
+    }
+
 }
