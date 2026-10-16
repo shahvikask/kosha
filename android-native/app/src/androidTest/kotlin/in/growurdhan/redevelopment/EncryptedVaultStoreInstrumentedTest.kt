@@ -82,7 +82,7 @@ class EncryptedVaultStoreInstrumentedTest {
             db.execSQL("INSERT INTO holding(holding_id,instrument_id,entity_id," +
                 "current_price_minor,tags_json,created_at) VALUES " +
                 "('synthetic-H','synthetic-I','synthetic-A',999," +
-                "'{\\\"opaque\\\":true}','2026-10-16')")
+                "'{\"opaque\":true}','2026-10-16')")
             db.execSQL("INSERT INTO ledger_event(ledger_event_id,entity_id,holding_id," +
                 "holding_name,event_type,trade_date,quantity_scaled,unit_price_minor," +
                 "total_amount_minor,charges_minor,entered_at) VALUES " +
