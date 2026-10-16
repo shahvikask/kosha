@@ -20,7 +20,7 @@ for (const [relative, expected] of [
   ['src/lib/vault.ts', 'fa311299c08f3a327a465e1175664d778229bb3b'],
 ] as const) {
   const source = readFileSync(resolve(root, relative));
-  const gitBlob = createHash('sha1').update(`blob ${source.length}\\0`).update(source).digest('hex');
+  const gitBlob = createHash('sha1').update(`blob ${source.length}\0`).update(source).digest('hex');
   if (gitBlob !== expected) throw new Error(`Frozen source drift: ${relative}`);
 }
 const password = 'm24-fixture-password-not-a-secret';
