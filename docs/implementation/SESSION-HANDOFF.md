@@ -1,6 +1,6 @@
 # Session handoff
 
-UTC timestamp: 2026-10-16 (native JVM workflow passed, M00 not accepted).
+UTC timestamp: 2026-10-16 (Paparazzi concept screenshots, M00 not accepted).
 
 ## Checkpoint
 
@@ -9,28 +9,29 @@ UTC timestamp: 2026-10-16 (native JVM workflow passed, M00 not accepted).
 | Remote | `https://github.com/shahvikask/kosha.git` |
 | Branch | `GUD-Android-Redevelopment` |
 | Frozen reference | `af96dcc8967ab595e1d9acee78e29e500cb99a9e` |
-| Tested native SHA | `63b5b8d5b8cc2352d144c6b8494b4d4bbc3f4340` |
+| GitHub tip at start | `6fa90f526c3589dc1953f5d6050105782e4cbcff` |
 | Reference branch modified? | no |
-| Actions | the owner said to run the native JVM workflow |
+| Actions | not dispatched. The native JVM workflow file was not changed |
 
 ## What this session did
 
-GitHub returned 404 for `workflow_dispatch` because the file is not on the default branch. A push of the workflow file on this branch started the run.
+The owner authorized a non-Robolectric screenshot path. Added Paparazzi 1.3.5 and `ConceptScreenshotTest`. It does not use Robolectric, `captureToImage`, or `View.draw`.
 
-Run 38925227755 failed in 13 seconds. `android-actions/setup-android@v3` tried to install the removed package `tools`. The workflow now uses the runner SDK. Run 38925309401 passed on `63b5b8d`.
+The three images show the locked screen, the dark sample home, and the light sample holding. The vault stays locked and the holding says the cost is unknown.
 
 ## Verification
 
-Native run [38925309401](https://github.com/shahvikask/kosha/actions/runs/38925309401) completed successfully. Gradle reported `BUILD SUCCESSFUL in 3m 15s` for model, database, parser-api, assembleDebug, and testDebugUnitTest. The log does not print test counts.
+- `:app:recordPaparazziDebug` — PASS
+- `:app:verifyPaparazziDebug --offline --no-daemon` — PASS
 
 ## What this session did not do
 
-No screenshot retry, table, SQLCipher, Chaquopy, or AAB dispatch. M00 is not accepted.
+No M24 work, financial table, SQLCipher, Chaquopy, AAB dispatch, or native JVM dispatch. M00 is not accepted. The owner has not reviewed the images.
 
 ## Next safe task
 
-Do not retry Robolectric drawing. Screenshot pixels are still the open visual gate.
+Wait for the owner to accept or reject the three concept screenshots. Do not dispatch native CI unless asked.
 
 ## Owner decision required
 
-A non-Robolectric screenshot path, if screenshots are required before M00 can be accepted.
+Review the three Paparazzi images before M00 can be accepted.
