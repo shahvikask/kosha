@@ -45,7 +45,7 @@ Before ending a substantial session, update the handoff files and give the Secti
 
 ## Current stage
 
-M00 is open. Paparazzi recorded the locked, sample-home, and sample-holding screens. The owner has not accepted those pixels. Do not mark M00 accepted. See `docs/implementation/STATUS.md`.
+M00 is open. The owner accepted the three Paparazzi concept screenshots on `d7868b215f8a69b10c9170cf7614b74012c279ce`. That is not acceptance of M00. See `docs/implementation/STATUS.md`.
 
 ## Loop check
 
