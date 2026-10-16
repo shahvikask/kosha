@@ -43,6 +43,9 @@ kotlin {
 
 dependencies {
     implementation(project(":core:designsystem"))
+    implementation(project(":core:database"))
+    implementation(libs.sqlcipher.android)
+    implementation(libs.androidx.sqlite)
     implementation(libs.core.ktx)
     implementation(libs.activity.compose)
     implementation(platform(libs.compose.bom))
