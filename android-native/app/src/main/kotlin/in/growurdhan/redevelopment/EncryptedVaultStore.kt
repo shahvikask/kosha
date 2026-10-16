@@ -2,6 +2,7 @@ package `in`.growurdhan.redevelopment
 
 import android.content.Context
 import java.io.File
+import net.zetetic.database.DatabaseErrorHandler
 import net.zetetic.database.sqlcipher.SQLiteDatabase
 
 /**
@@ -15,6 +16,10 @@ import net.zetetic.database.sqlcipher.SQLiteDatabase
 internal class EncryptedVaultStore(private val context: Context) {
     private val keys = KeystoreWrappedVaultKey(context)
     private val file: File = context.getDatabasePath("growurdhan-v9.sqlcipher")
+    // SQLCipher default corruption handler DELETES damaged files. Never use it.
+    private val preserveOnCorruption = DatabaseErrorHandler {
+        throw IllegalStateException("Encrypted vault corruption: preserve original file")
+    }
 
     @Synchronized
     fun createFresh(legacyVaultPresent: Boolean): SQLiteDatabase {
@@ -32,7 +37,8 @@ internal class EncryptedVaultStore(private val context: Context) {
         val db = try {
             System.loadLibrary("sqlcipher")
             SQLiteDatabase.openDatabase(
-                file.absolutePath, key, null, SQLiteDatabase.CREATE_IF_NECESSARY, null
+                file.absolutePath, key, null, SQLiteDatabase.CREATE_IF_NECESSARY,
+                preserveOnCorruption, null
             )
         } finally { key.fill(0) }
         try {
@@ -66,7 +72,7 @@ internal class EncryptedVaultStore(private val context: Context) {
         val db = try {
             System.loadLibrary("sqlcipher")
             SQLiteDatabase.openDatabase(file.absolutePath, key, null,
-                SQLiteDatabase.OPEN_READWRITE, null)
+                SQLiteDatabase.OPEN_READWRITE, preserveOnCorruption, null)
         } finally { key.fill(0) }
         try {
             requireCipher(db)
