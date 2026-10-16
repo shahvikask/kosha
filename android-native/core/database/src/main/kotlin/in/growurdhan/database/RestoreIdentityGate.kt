@@ -28,6 +28,8 @@ object RestoreIdentityGate {
 
     /** Throws without returning any personally identifying value on failure. */
     fun verifyForNewDevice(account: Account, input: Credentials) {
+        require(input.password.length <= 4096 && input.q1Answer.length <= 4096 &&
+            input.q2Answer.length <= 4096) { "Restore identity invalid" }
         require(account.email.trim().lowercase(Locale.ROOT) ==
             input.email.trim().lowercase(Locale.ROOT)) { "Restore identity invalid" }
         require(verifySecret(input.password, account.passwordSalt,
@@ -66,7 +68,8 @@ object RestoreIdentityGate {
 
     private fun verifySecret(secret: String, saltB64: String, hashB64: String,
                              iterations: Int): Boolean {
-        if (iterations != FROZEN_PBKDF2_ROUNDS) return false
+        if (iterations != FROZEN_PBKDF2_ROUNDS ||
+            saltB64.length > 32 || hashB64.length > 48) return false
         val salt: ByteArray
         val expected: ByteArray
         try {
