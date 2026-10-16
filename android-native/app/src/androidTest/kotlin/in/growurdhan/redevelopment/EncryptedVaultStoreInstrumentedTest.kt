@@ -181,4 +181,32 @@ class EncryptedVaultStoreInstrumentedTest {
         } finally { key.fill(0) }
     }
 
+
+    @Test fun stagedCiphertextNeverOverwritesExistingPendingRestore() {
+        val ctx = sandbox()
+        val staging = LockedRestoreStaging(ctx)
+        // Plain or unknown envelopes must be refused without a file write.
+        assertThrows(IllegalArgumentException::class.java) {
+            staging.stageEncryptedArchiveOnce(
+                """{"holdings":[{"ownerId":"synthetic"}]}""".toByteArray()
+            )
+        }
+        val pending = File(ctx.noBackupFilesDir, "restore-pending.v1.kosha")
+        assertFalse(pending.exists())
+
+        // Staging stores untrusted ciphertext for later AUTHENTICATED review.
+        // It must not approve even structurally correct but unauthenticated GCM.
+        val corrupted = ByteArray(56)
+        "GUDVLT01".toByteArray(Charsets.US_ASCII).copyInto(corrupted)
+        val receipt = staging.stageEncryptedArchiveOnce(corrupted)
+        assertEquals(56, receipt.byteCount)
+        val preserved = pending.readBytes()
+        assertThrows(IllegalStateException::class.java) {
+            staging.stageEncryptedArchiveOnce(corrupted)
+        }
+        assertThrows(Exception::class.java) { staging.inspect("m24@example.invalid", "wrong") }
+        assertArrayEquals(preserved, pending.readBytes())
+        assertFalse(ctx.getDatabasePath("growurdhan-v9.sqlcipher").exists())
+    }
+
 }
