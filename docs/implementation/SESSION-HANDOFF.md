@@ -1,6 +1,6 @@
 # Session handoff
 
-UTC timestamp: 2026-10-16 (AAB workflow-file repair, M00 not accepted).
+UTC timestamp: 2026-10-16 (holding-form inventory, M00 not accepted).
 
 ## Checkpoint
 
@@ -9,31 +9,28 @@ UTC timestamp: 2026-10-16 (AAB workflow-file repair, M00 not accepted).
 | Remote | `https://github.com/shahvikask/kosha.git` |
 | Branch | `GUD-Android-Redevelopment` |
 | Frozen reference | `af96dcc8967ab595e1d9acee78e29e500cb99a9e` |
-| GitHub tip at start | `7ac5e953cffdddf0bb415fa38a0b9178854fcbe3` |
-| Workflow fix | `99064638e0f1c9ac000ec5ed3379ffbe59041dee` |
+| GitHub tip at start | `f29bf13f0bf2e06ca0ceec36573972729b963ee4` |
 | Reference branch modified? | no |
-| Actions | owner authorized this session. Kosha CI was observed. The legacy AAB job was not dispatched |
+| Actions | not dispatched. The owner did not authorize a new run |
 
 ## What this session did
 
-Re-read `AGENTS.md`, the specification rules and Section 17, and the tracking files. `git ls-remote` matched `7ac5e95` and `af96dcc`.
+Re-read `AGENTS.md`, rules G01–G15, M00, and Section 17, plus the tracking files and the parity register. `git ls-remote` matched `f29bf13` and `af96dcc`. The tree was clean.
 
-The latest failed run was `38909206998` on `7ac5e95`. It lasted 0 seconds and had zero jobs. `.github/workflows/android-aab.yml` used `secrets` in two `if` expressions, which GitHub rejects before a job starts. The conditions now use job environment variables. The signing and Play upload steps still run only when those values are non-empty.
+Listed every add-holding control and the holding-detail edit inputs in `docs/implementation/HOLDING-FORM-WIDGETS.md`. The source is `AddHoldingModal.tsx` and `HoldingDetailModal.tsx` at the frozen commit. No product source was edited.
 
 ## Verification
 
-- Failed: https://github.com/shahvikask/kosha/actions/runs/38909206998 — SHA `7ac5e953cffdddf0bb415fa38a0b9178854fcbe3` — zero jobs
-- Passed: https://github.com/shahvikask/kosha/actions/runs/38912221715 — SHA `99064638e0f1c9ac000ec5ed3379ffbe59041dee` — Kosha CI `validate` success
-- No AAB run was created for `9906463`. The branch filter is `GUD-Android` only. The previous 0-second failure did not recur.
+No compile and no test. The inventory is a document. Kosha CI runs 38912221715 and 38912435403 remain the last observed runs. They do not prove this document.
 
 ## What this session did not do
 
-No native Android job, emulator, screenshot, SQLCipher, Chaquopy, ledger, or version upgrade. M00 is not accepted. Kosha CI does not compile `android-native/`.
+No lock-flow change, toolchain upgrade, database, ledger, screenshot, native CI, or AAB dispatch. M00 is not accepted.
 
 ## Next safe task
 
-Do not dispatch the legacy Tauri AAB on this branch. Do not rework the lock flow, upgrade the toolchain, start M24, or add a database.
+Do not start M24. The remaining adjacent inventory is the read-only rows in the holding-detail view. Do not build the form yet.
 
 ## Owner decision required
 
-None for this workflow-file repair. A Play upload still needs target API 36 and a newer AGP, which was already recorded and was not changed.
+None.

@@ -1,6 +1,6 @@
 # GrowUrDhan implementation status
 
-Updated: 2026-10-16 after the AAB workflow-file repair. M00 is not accepted.
+Updated: 2026-10-16 after the holding-form widget inventory. M00 is not accepted.
 
 ## Repository
 
@@ -9,7 +9,7 @@ Updated: 2026-10-16 after the AAB workflow-file repair. M00 is not accepted.
 | Remote | `https://github.com/shahvikask/kosha` |
 | Working branch | `GUD-Android-Redevelopment` |
 | Frozen reference | `GUD-Android-Gmail` @ `af96dcc8967ab595e1d9acee78e29e500cb99a9e` |
-| GitHub tip at the start of this repair | `7ac5e953cffdddf0bb415fa38a0b9178854fcbe3` |
+| GitHub tip at the start of this inventory | `f29bf13f0bf2e06ca0ceec36573972729b963ee4` |
 | Workflow-file fix | `99064638e0f1c9ac000ec5ed3379ffbe59041dee` |
 | Last accepted SHA | none |
 | Native app | scaffold only, application id `in.growurdhan.redevelopment` |
@@ -22,7 +22,7 @@ Updated: 2026-10-16 after the AAB workflow-file repair. M00 is not accepted.
 | Milestone piece | Status |
 |---|---|
 | Instruction files and legacy inventory | on GitHub |
-| Screen, command, schema v9, and parser-hash inventory | present. HoldingDetails keys are listed. Widget-by-widget form inventory is not done |
+| Screen, command, schema v9, and parser-hash inventory | present. Add-holding widgets and holding-detail edit inputs are listed in `HOLDING-FORM-WIDGETS.md`. Read-only detail rows are not |
 | `android-native/` scaffold | debug APK assembled locally before this repair. Locked, sample home, and sample holding concept screens |
 | Lock behavior | `ConceptLock.vaultOpen` is always false. There is no unlock method and no password field |
 | Section 6A screenshots | NOT CAPTURED. Compose semantics for the three screens passed locally on an earlier SHA |
@@ -58,4 +58,4 @@ P01–P39 and E01–E18 remain **NOT STARTED**. See `parity-register.csv`.
 
 ## Next authorized work
 
-Do not rework the lock flow. Do not upgrade AGP, Kotlin, or Compose unless the owner asks. Do not start M24. Do not add a database. Do not dispatch the legacy Tauri AAB on this branch. Screenshot pixels remain blocked.
+Do not rework the lock flow. Do not upgrade AGP, Kotlin, or Compose unless the owner asks. Do not start M24. Do not add a database. Do not dispatch the legacy Tauri AAB. Do not spend Actions credits unless the owner authorizes them again. Screenshot pixels remain blocked. Read-only holding-detail rows are the remaining form-adjacent inventory gap.
