@@ -1,6 +1,6 @@
 # GrowUrDhan implementation status
 
-Updated: 2026-10-16 after a local Gradle recheck. M00 is not accepted.
+Updated: 2026-10-16 after the Gradle worker limit. M00 is not accepted.
 
 ## Repository
 
@@ -9,7 +9,7 @@ Updated: 2026-10-16 after a local Gradle recheck. M00 is not accepted.
 | Remote | `https://github.com/shahvikask/kosha` |
 | Working branch | `GUD-Android-Redevelopment` |
 | Frozen reference | `GUD-Android-Gmail` @ `af96dcc8967ab595e1d9acee78e29e500cb99a9e` |
-| GitHub tip at the start of this recheck | `0720a815bfbb5ce6e924717bf96e36349bf7609c` |
+| GitHub tip at the start of this fix | `9d54a593d0cd6e2d0fd3a6ff47e0944da935b431` |
 | Workflow-file fix | `99064638e0f1c9ac000ec5ed3379ffbe59041dee` |
 | Last accepted SHA | none |
 | Native app | scaffold only, application id `in.growurdhan.redevelopment` |
@@ -47,10 +47,11 @@ P01–P39 and E01–E18 remain **NOT STARTED**. See `parity-register.csv`.
 | Gate | Status |
 |---|---|
 | Local debug assemble | PASS. `:app:assembleDebug` was UP-TO-DATE and finished successfully with `ANDROID_HOME=/opt/android-sdk`. The existing debug APK is 9,511,985 bytes |
-| Model JVM tests | PASS. `./gradlew :core:model:test --offline --no-daemon` wrote 10 tests, 0 failures, at 2026-10-16T14:19:37Z. The daemon still prints `Unexpected type tag 71` |
-| Compose semantics | NOT RE-VERIFIED this session. `:app:testDebugUnitTest` exited 1 because the test process lost its socket. An older XML from 13:27Z is not evidence for this run |
+| Model JVM tests | PASS. Fresh XML at 2026-10-16T14:24:41Z. 10 tests, 0 failures, in the same Gradle invocation as the app tests |
+| Compose semantics | PASS. `:app:testDebugUnitTest` wrote 3 tests, 0 failures, at 2026-10-16T14:24:43Z. The three assertions were not changed. Bitmap capture is still not part of this test |
 | Bitmap capture | FAILED to produce an image. See decision D04 |
-| `./gradlew :core:model:test` | PASS, 10 tests. See decision D07 |
+| `./gradlew :core:model:test` | PASS, 10 tests. See decisions D07 and D08 |
+| `./gradlew :app:testDebugUnitTest` | PASS, 3 tests, after one worker and file watching off. The daemon still logs `Unexpected type tag 71` and discards those sockets |
 | GitHub Actions | Kosha CI run 38913601615 passed on `936cf0e`. Legacy Node tests only. It does not build `android-native/` |
 | Emulator and device | NOT RUN |
 | Gmail and Play Billing | BLOCKED |
@@ -58,4 +59,4 @@ P01–P39 and E01–E18 remain **NOT STARTED**. See `parity-register.csv`.
 
 ## Next authorized work
 
-Do not rework the lock flow. Do not upgrade AGP, Kotlin, or Compose unless the owner asks. Do not start M24. Do not add a database. Do not dispatch the legacy Tauri AAB. Do not spend Actions credits unless the owner authorizes them. Do not inventory another screen as the next task. The open M00 gates are the app unit-test worker, screenshots, SQLCipher, Chaquopy, and a native CI job.
+Do not rework the lock flow. Do not upgrade AGP, Kotlin, or Compose unless the owner asks. Do not start M24. Do not add a database. Do not dispatch the legacy Tauri AAB. Do not spend Actions credits unless the owner authorizes them. The open M00 gates are screenshots, SQLCipher, Chaquopy, and a native CI job.

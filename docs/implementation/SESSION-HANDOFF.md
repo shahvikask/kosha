@@ -1,6 +1,6 @@
 # Session handoff
 
-UTC timestamp: 2026-10-16 (local Gradle recheck, M00 not accepted).
+UTC timestamp: 2026-10-16 (Gradle worker limit, M00 not accepted).
 
 ## Checkpoint
 
@@ -9,30 +9,34 @@ UTC timestamp: 2026-10-16 (local Gradle recheck, M00 not accepted).
 | Remote | `https://github.com/shahvikask/kosha.git` |
 | Branch | `GUD-Android-Redevelopment` |
 | Frozen reference | `af96dcc8967ab595e1d9acee78e29e500cb99a9e` |
-| GitHub tip at start | `0720a815bfbb5ce6e924717bf96e36349bf7609c` |
+| GitHub tip at start | `9d54a593d0cd6e2d0fd3a6ff47e0944da935b431` |
 | Reference branch modified? | no |
-| Actions | not dispatched. This prompt did not authorize a new workflow |
+| Actions | not dispatched. A push still starts Kosha CI |
 
 ## What this session did
 
-Re-read `AGENTS.md`, Section 17, the M00 exit row, and the tracking files. `git ls-remote` matched `0720a81` and `af96dcc`. The tree was clean.
+Re-read `AGENTS.md`, the M00 exit row, Section 17, and the tracking files. `git ls-remote` matched `9d54a59` and `af96dcc`.
 
-Stopped the screen-inventory loop. Rechecked the native build locally.
+Limited Gradle to one worker and one test process, and turned file watching off. The three concept assertions were not edited.
 
 ## Verification
 
-- `./gradlew :core:model:test --offline --no-daemon` — PASS. 10 tests, 0 failures. XML timestamp 2026-10-16T14:19:37Z.
-- `./gradlew :app:assembleDebug --offline --no-daemon` with `ANDROID_HOME=/opt/android-sdk` — PASS, 56 tasks up to date.
-- `./gradlew :app:testDebugUnitTest` — FAIL. The Gradle test executor exited 1 after `Unexpected type tag 71` and a reset socket. No new result XML was written.
+One command, `./gradlew :core:model:test :app:testDebugUnitTest --offline --no-daemon`, finished successfully.
+
+- Model: 10 tests, 0 failures, XML `2026-10-16T14:24:41Z`
+- Concept screens: 3 tests, 0 failures, XML `2026-10-16T14:24:43Z`
+- `:app:assembleDebug :app:testDebugUnitTest` then finished successfully. The test task was up to date.
+
+The daemon still logs `Unexpected type tag 71` and discards those sockets. That log did not fail this run.
 
 ## What this session did not do
 
-No product-source edit, lock-flow change, toolchain upgrade, database, ledger, screenshot, native CI job, or AAB dispatch. M00 is not accepted.
+No lock-flow change, toolchain upgrade, database, screenshot, native CI job, or AAB dispatch. M00 is not accepted.
 
 ## Next safe task
 
-Do not inventory another screen. The next code change should make `:app:testDebugUnitTest` finish after the socket error, without weakening the three concept assertions. Do not start M24.
+Do not inventory another screen. The remaining M00 gaps are screenshot pixels, SQLCipher, Chaquopy, and a native CI job. A native CI job needs an explicit credit authorization.
 
 ## Owner decision required
 
-None for this recheck. A native CI run still needs an explicit credit authorization.
+None for this worker limit.
