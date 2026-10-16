@@ -26,12 +26,15 @@ internal class KeystoreWrappedVaultKey(context: Context) {
     private val magic = byteArrayOf(0x47, 0x55, 0x44, 0x4b, 0x45, 0x59, 0x30, 0x31)
     private val random = SecureRandom()
 
+    fun hasExistingEnvelope(): Boolean = keyFile.baseFile.exists() ||
+        File(keyFile.baseFile.path + ".bak").exists()
+
     private fun wrappingKey(): SecretKey {
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         val existing = store.getKey(alias, null)
         if (existing != null) return existing as SecretKey
         // Cannot recreate a missing Keystore key if an envelope already exists.
-        check(!keyFile.baseFile.exists()) { "Missing Keystore key for existing vault" }
+        check(!hasExistingEnvelope()) { "Missing Keystore key for existing vault" }
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
         generator.init(
             KeyGenParameterSpec.Builder(alias,
