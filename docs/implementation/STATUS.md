@@ -1,37 +1,33 @@
 # GrowUrDhan implementation status
 
-Updated: 2026-10-16 (M00 initialization only). Nothing below is inferred from chat memory.
+Updated: 2026-10-16 after the legacy inventory. Nothing below is inferred from chat memory.
 
 ## Repository
 
 | Item | Value |
 |---|---|
 | Remote | `https://github.com/shahvikask/kosha` |
-| Working branch | `GUD-Android-Redevelopment` @ initialization `d6b6b7408b6df0924fd69ec53cda78cbdfc0fba0` |
-| Frozen reference | `GUD-Android-Gmail` @ `af96dcc8967ab595e1d9acee78e29e500cb99a9e` |
-| Published Gmail tip observed at init | `origin/GUD-Android-Gmail` = `21d8ffbd48ed65c1d6eb02d09dfba571c7b4ef75` |
-| Reference relationship | `af96dcc` has parent `21d8ffb` and adds only `.chatgpt-write-access-check-2026-10-08.txt`. It was not on any remote branch when this branch was created. |
+| Working branch | `GUD-Android-Redevelopment` |
+| Frozen reference | `GUD-Android-Gmail` @ `af96dcc8967ab595e1d9acee78e29e500cb99a9e` (tree `1aa27c066362a4f1bed52b51c3e6a9eb35d91323`) |
+| Remote tips checked this session | Redevelopment `70eaa054f7813a1848b3e7357286910b1b28901d` before this inventory commit. Gmail `af96dcc8967ab595e1d9acee78e29e500cb99a9e`. |
 | Last accepted SHA | none |
 | Native app | not created |
 | CI | not run |
 
 ## Milestone
 
-**Current:** M00 — repository initialization only.
+**Current:** M00 — not accepted.
 
-Instruction files for this session are the deliverable. The rest of M00 in the specification is **not done**: source inventory, parser-hash freeze record, `android-native/` scaffold, Section 6A brand inventory, Compose concept screens, and G14 visual-test infrastructure.
-
-| Milestone | Status |
+| Milestone piece | Status |
 |---|---|
-| M00 initialization (instruction files) | in progress this session; not accepted until GitHub retrieval succeeds |
-| M00 remainder (inventory, scaffold, brand, smoke tests) | NOT STARTED |
+| Instruction files | committed and previously read back from GitHub |
+| Screen, command, schema v9, and parser-hash inventory | recorded in `LEGACY-INVENTORY.md` and `legacy-parser-sha256.txt`. Field-by-field form inventory is not finished. |
+| `android-native/` scaffold, Compose launch/lock, Section 6A exports, G14 harness, smoke tests | NOT STARTED |
 | M24–M34 | NOT STARTED |
-
-Do not advance to M24 until the owner authorizes the next milestone and M00’s remaining foundation work is either finished or explicitly split by an owner decision.
 
 ## Requirements
 
-P01–P39 and E01–E18 are **NOT STARTED**. No screen, calculation, import, licence, or security control has been reimplemented. See `parity-register.csv`.
+P01–P39 and E01–E18 remain **NOT STARTED**. The inventory names original files. It does not implement them. See `parity-register.csv`.
 
 ## Gates
 
@@ -49,8 +45,8 @@ P01–P39 and E01–E18 are **NOT STARTED**. No screen, calculation, import, lic
 
 ## Blockers
 
-None for instruction-file initialization. Native development has not been authorized in the initialization prompt.
+None for the inventory. Scaffold and design work were not in this prompt.
 
 ## Next authorized work
 
-After this initialization is verified on GitHub, stop. The next session may continue M00 foundation (inventory and scaffold) only when the owner pastes the continuation prompt. Do not dispatch Actions.
+Stop after this inventory commit. The next session may start the `android-native/` scaffold and Section 6A brand inventory only if the owner asks to continue M00. Do not dispatch Actions. Do not start M24.

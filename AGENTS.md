@@ -45,4 +45,4 @@ Before ending a substantial session, update the handoff files and give the Secti
 
 ## Current stage
 
-M00 repository initialization is the only authorized work until the owner says to continue. Native feature code, Gradle scaffold, and GitHub Actions are not started. See `docs/implementation/STATUS.md`.
+M00 is open. Instruction files and the legacy inventory (`docs/implementation/LEGACY-INVENTORY.md`, `docs/implementation/legacy-parser-sha256.txt`) are committed. Native scaffold, Compose screens, financial code, and GitHub Actions are not started. Do not mark M00 accepted. See `docs/implementation/STATUS.md`.

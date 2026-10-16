@@ -1,6 +1,6 @@
 # Session handoff
 
-UTC timestamp: 2026-10-16 (initialization session; exact commit time is the Git commit timestamp).
+UTC timestamp: 2026-10-16 (legacy inventory session).
 
 ## Checkpoint
 
@@ -8,39 +8,37 @@ UTC timestamp: 2026-10-16 (initialization session; exact commit time is the Git 
 |---|---|
 | Remote | `https://github.com/shahvikask/kosha.git` |
 | Branch | `GUD-Android-Redevelopment` |
-| Base commit | `af96dcc8967ab595e1d9acee78e29e500cb99a9e` |
-| HEAD | `d6b6b7408b6df0924fd69ec53cda78cbdfc0fba0` is the initialization commit. This handoff update is a later commit on the same branch; read `git rev-parse HEAD` for the tip. |
-| Working tree | must be clean after that commit |
-| Reference branch modified? | no |
+| Frozen reference | `af96dcc8967ab595e1d9acee78e29e500cb99a9e` |
+| HEAD before this commit | `70eaa054f7813a1848b3e7357286910b1b28901d` |
+| Working tree | clean after the inventory commit; read `git rev-parse HEAD` for the tip |
+| Reference branch modified by this session? | no |
 
 ## What this session did
 
-Created `GUD-Android-Redevelopment` from the owner-specified reference commit. Added:
+Read `AGENTS.md`, the specification (M00, Section 6A.1, Section 8), status, handoff, CI log, decision log, and the parity register. Confirmed the remote redevelopment tip and that Gmail is at `af96dcc`. No Actions were dispatched.
 
-- `AGENTS.md`
-- `docs/GROK-FULL-NATIVE-REDEVELOPMENT-SPEC.md` (byte copy of specification v1.2)
-- `docs/implementation/STATUS.md`
-- `docs/implementation/SESSION-HANDOFF.md`
-- `docs/implementation/CI-RUNS.md`
-- `docs/implementation/DECISION-LOG.md`
-- `docs/implementation/parity-register.csv` (required by Section 17.2; all rows NOT STARTED)
+Recorded, from that reference commit only:
+
+- Screens, gates, eight categories, and eleven event types
+- 25 Android and desktop command names
+- Schema version 9 tables, triggers, and v3–v9 additions
+- SHA-256 freeze of 28 `src/casparser-main` files and four protected scripts
+- Independent check that `public/brand/mark.svg` git blob is `52fd0aa1a9262e6d2ba8ab431c2955c6df5c417c`
+
+Files: `docs/implementation/LEGACY-INVENTORY.md`, `docs/implementation/legacy-parser-sha256.txt`. Parser manifest `1b19b126557b3054503139c7e7980528f14f18cde8688b139272b596685dc6d4`.
 
 ## What this session did not do
 
-No Kotlin, Compose, Gradle, parser, financial, Gmail, or billing code. No GitHub Actions. No change to `GUD-Android-Gmail` or `vikaskunjbiharishah-ui/GUD`.
-
-## Observed fact, not a decision
-
-`origin/GUD-Android-Gmail` was `21d8ffbd48ed65c1d6eb02d09dfba571c7b4ef75`. Commit `af96dcc8967ab595e1d9acee78e29e500cb99a9e` exists locally as its child and only adds `.chatgpt-write-access-check-2026-10-08.txt` (“test: verify ChatGPT write permission on Gmail branch”). It was not contained by any remote branch at initialization. The new branch starts at `af96dcc` because the specification names that SHA. Do not move the baseline unless the owner says so.
+No native scaffold, Compose UI, financial code, parser edit, or GitHub Actions. `docs/design/BRAND-INVENTORY.md` was not created. Field-by-field holding forms are not inventoried. M00 is not accepted.
 
 ## Tests
 
-No product tests were run. Initialization verification is: commit, push, then read the six required files back from GitHub.
+No product tests. The hash manifest was recomputed locally and matched. That is a hash check, not a build.
 
 ## Next safe task
 
-Do not start feature code. After GitHub confirms the files, wait for the owner. The following session should re-read `AGENTS.md` and continue **only the unfinished M00 foundation** (source inventory, parser hashes, native scaffold, Section 6A brand inventory) if the owner authorizes it. Still no Actions unless the prompt explicitly allows credit spend.
+If the owner continues M00, create `android-native/` scaffold and `docs/design/BRAND-INVENTORY.md` from the frozen assets, still without financial features and without Actions. Do not advance to M24.
 
 ## Owner decision required
 
-None to finish initialization. Later: whether M00 scaffold starts immediately, and confirmation that `af96dcc` remains the frozen baseline even though it is not the published Gmail tip.
+None to keep the baseline at `af96dcc`. Say when the scaffold may start.
