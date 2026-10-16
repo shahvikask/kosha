@@ -46,3 +46,7 @@ Before ending a substantial session, update the handoff files and give the Secti
 ## Current stage
 
 M00 is open. `:core:database` and `:core:parser-api` are module boundaries only. They open no database, define no table, and do not link SQLCipher or Chaquopy. Screenshots and a native CI job are not done. Do not mark M00 accepted. See `docs/implementation/STATUS.md`.
+
+## Loop check
+
+End every response with one line, exactly `Loop: no` or `Loop: yes — <reason>`. A loop is repeating a blocked M00 step, inventorying another screen, or making a documentation-only commit that does not change product behavior. Stopping with no commit is not a loop. Do not continue a loop.
