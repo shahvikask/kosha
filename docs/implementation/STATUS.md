@@ -1,6 +1,6 @@
 # GrowUrDhan implementation status
 
-Updated: 2026-10-16. The owner accepted the three concept screenshots. M00 is not accepted.
+Updated: 2026-10-16. The owner accepted milestone M00 against `e551472498760f46ab0f3a5b248e963b496f2323`. The limitations below stay open.
 
 ## Repository
 
@@ -11,23 +11,23 @@ Updated: 2026-10-16. The owner accepted the three concept screenshots. M00 is no
 | Frozen reference | `GUD-Android-Gmail` @ `af96dcc8967ab595e1d9acee78e29e500cb99a9e` |
 | GitHub tip at the start of this workflow | `e2fd33ad4f27cd4dd33b13d2d07002247261064b` |
 | Workflow-file fix | `99064638e0f1c9ac000ec5ed3379ffbe59041dee` |
-| Last accepted SHA | none |
+| Last accepted SHA | `e551472498760f46ab0f3a5b248e963b496f2323` for M00, with limitations |
 | Native app | scaffold only, application id `in.growurdhan.redevelopment` |
 | CI | Kosha CI run 38912221715 passed on the fix SHA. It does not build `android-native/`. The AAB workflow no longer fails at file load on this branch |
 
 ## Milestone
 
-**Current:** M00 — not accepted.
+**Current:** M00 — owner-accepted, with limitations. M24 is not started.
 
 | Milestone piece | Status |
 |---|---|
 | Instruction files and legacy inventory | on GitHub |
 | Screen, command, schema v9, and parser-hash inventory | present. Holding forms, holding-detail rows, and home rows are listed. This is not a native screen |
-| `android-native/` scaffold | debug APK assembled locally before this repair. Locked, sample home, and sample holding concept screens |
+| `android-native/` scaffold | debug APK assembled locally. Locked, sample home, and sample holding concept screens |
 | Lock behavior | `ConceptLock.vaultOpen` is always false. There is no unlock method and no password field |
-| Section 6A screenshots | Owner accepted the three Paparazzi images on `d7868b215f8a69b10c9170cf7614b74012c279ce`. This is not M00 acceptance |
+| Section 6A screenshots | Owner accepted the three Paparazzi images on `d7868b215f8a69b10c9170cf7614b74012c279ce` |
 | Dependency review | written in `docs/implementation/DEPENDENCY-REVIEW.md`. Pins were not changed |
-| SQLCipher, Chaquopy, financial ledger | module boundaries only. `:core:database` opens nothing and has no tables. `:core:parser-api` does not link Chaquopy and does not call the frozen parser. M24 still owns the schema |
+| SQLCipher, Chaquopy, financial ledger | still boundaries only. Not linked. M24 owns the schema |
 | M24–M34 | NOT STARTED |
 
 ## Requirements
@@ -55,8 +55,18 @@ P01–P39 and E01–E18 remain **NOT STARTED**. See `parity-register.csv`.
 | Native CI | PASS on `63b5b8d5b8cc2352d144c6b8494b4d4bbc3f4340`. Run 38925309401. The log says BUILD SUCCESSFUL. It does not print individual test counts. Screenshot pixels were not produced |
 | Emulator and device | NOT RUN |
 | Gmail and Play Billing | BLOCKED |
-| Security signoff and owner visual acceptance | The three concept screenshots are accepted. Security signoff is still pending. M00 is not accepted |
+| Security signoff and owner visual acceptance | Concept screenshots accepted. M00 accepted by the owner with limitations. Security signoff is not done |
+
+## Accepted limitations
+
+These were not closed by the owner's acceptance:
+
+- SQLCipher and Chaquopy are not linked, and there is no financial table.
+- Native JVM run 38925309401 passed on `63b5b8d`, not on the accepted tip, and it did not run Paparazzi.
+- No emulator, device, or security review has passed.
+- P01–P39 and E01–E18 are not started.
+- Screens other than the three concept screens are mapped, not built.
 
 ## Next authorized work
 
-Do not rework the lock flow. Do not start M24. Do not add financial tables. Do not link SQLCipher or Chaquopy yet. Do not dispatch the legacy Tauri AAB. Do not dispatch the native JVM workflow unless the owner says to run it. Do not treat the screenshot acceptance as M00 acceptance.
+Do not rework the lock flow. Do not start M24 unless the owner asks. Do not add financial tables. Do not link SQLCipher or Chaquopy yet. Do not dispatch the legacy Tauri AAB. Do not dispatch the native JVM workflow unless the owner says to run it.

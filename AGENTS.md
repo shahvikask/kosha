@@ -45,7 +45,7 @@ Before ending a substantial session, update the handoff files and give the Secti
 
 ## Current stage
 
-M00 is open. The owner accepted the three Paparazzi concept screenshots on `d7868b215f8a69b10c9170cf7614b74012c279ce`. That is not acceptance of M00. See `docs/implementation/STATUS.md`.
+M00 is owner-accepted against `e551472498760f46ab0f3a5b248e963b496f2323`, with the limitations in `docs/implementation/STATUS.md`. SQLCipher and Chaquopy stay unlinked. M24 is not started.
 
 ## Loop check
 

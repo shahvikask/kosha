@@ -1,6 +1,6 @@
 # Session handoff
 
-UTC timestamp: 2026-10-16 (three concept screenshots accepted, M00 not accepted).
+UTC timestamp: 2026-10-16 (M00 owner-accepted with limitations).
 
 ## Checkpoint
 
@@ -9,27 +9,26 @@ UTC timestamp: 2026-10-16 (three concept screenshots accepted, M00 not accepted)
 | Remote | `https://github.com/shahvikask/kosha.git` |
 | Branch | `GUD-Android-Redevelopment` |
 | Frozen reference | `af96dcc8967ab595e1d9acee78e29e500cb99a9e` |
-| GitHub tip at start | `d7868b215f8a69b10c9170cf7614b74012c279ce` |
+| Accepted foundation | `e551472498760f46ab0f3a5b248e963b496f2323` |
 | Reference branch modified? | no |
 | Actions | not dispatched |
 
 ## What this session did
 
-The owner wrote “Accept the three concept screenshots.” That accepts the locked, sample-home, and sample-holding Paparazzi images on `d7868b2`. It does not accept M00.
+The owner wrote “Accept milestone M00.” That accepts the foundation at `e551472`. It does not close the limitations listed in `STATUS.md`.
 
 ## Verification
 
-No new Gradle command. Kosha CI run 38926687528 had already passed on `d7868b2`. It does not build `android-native/`.
+No Gradle command. No product source changed.
 
 ## What this session did not do
 
-No product source change, M24 work, table, SQLCipher, Chaquopy, AAB dispatch, or native JVM dispatch. M00 is not accepted.
+No M24 work, table, SQLCipher, Chaquopy, AAB dispatch, or native JVM dispatch.
 
 ## Next safe task
 
-Do not start M24. Do not link SQLCipher or Chaquopy. Do not dispatch native CI unless asked.
+Wait for the owner to name the next milestone. Do not start M24 unasked.
 
 ## Owner decision required
 
-None for these three screenshots. They are accepted. M00 stays open.
-
+Name the next milestone before any schema or library work.
