@@ -65,9 +65,13 @@ internal class LockedRestoreStaging(context: Context) {
     fun inspect(email: String, password: String): Inspection {
         check(staged.baseFile.exists() ||
             File(staged.baseFile.path + ".bak").exists()) { "No pending encrypted restore" }
-        require(staged.baseFile.length() <= maxBytes) { "Oversized staged restore" }
-        val bytes = staged.openRead().use { it.readBytes() }
-        require(bytes.size in 56..maxBytes)
+        // AtomicFile may recover a .bak file even if baseFile is short or
+        // absent. Limit the read itself rather than trusting baseFile.length().
+        val bytes = staged.openRead().use { source ->
+            val bounded = source.readNBytes(maxBytes + 1)
+            require(bounded.size in 56..maxBytes) { "Oversized or truncated staged restore" }
+            bounded
+        }
         val plain = if (bytes.copyOfRange(0, 8).contentEquals(magic)) {
             LegacyBackupEnvelopeReader.decodeGUDVLT01(bytes, email, password)
         } else {
@@ -88,20 +92,36 @@ internal class LockedRestoreStaging(context: Context) {
         require(storedEmail.trim().equals(email.trim(), ignoreCase = true)) {
             "Backup account identity mismatch"
         }
-        val members = body.getJSONArray("familyMembers")
-        val holdings = body.getJSONArray("holdings")
-        val ledger = body.getJSONArray("ledgerEvents")
+        // The frozen KOSHA1 reader defaults absent optional arrays to [],
+        // while modern v2 exports always include them. Do not turn an invalid
+        // present-but-wrong-type field into an empty array.
+        fun rows(name: String) = if (body.has(name)) body.getJSONArray(name)
+            else {
+                require(!bytes.copyOfRange(0, 8).contentEquals(magic)) {
+                    "Missing required v2 field $name"
+                }
+                org.json.JSONArray()
+            }
+        val members = rows("familyMembers")
+        val holdings = rows("holdings")
+        val ledger = rows("ledgerEvents")
+        val accounts = rows("accounts")
+        val goals = rows("goals")
         val ownerIds = mutableSetOf<String>()
+        var validOwners = true
         for (i in 0 until members.length()) {
             val member = members.getJSONObject(i)
-            ownerIds.add(member.getString("id"))
+            val id = member.optString("id").trim()
+            if (id.isBlank() || !ownerIds.add(id)) validOwners = false
         }
-        var validOwners = true
-        for (arr in listOf(holdings, ledger)) {
+        for (arr in listOf(holdings, ledger, accounts, goals)) {
             for (i in 0 until arr.length()) {
-                val event = arr.getJSONObject(i)
-                val owner = event.optString("ownerId", event.optString("entityId"))
-                if (owner.isNotBlank() && owner !in ownerIds) validOwners = false
+                val row = arr.getJSONObject(i)
+                val owner = row.optString("ownerId", row.optString("entityId")).trim()
+                // Goals may be unowned in the frozen source. Other rows must
+                // always resolve to a unique original family member.
+                if ((owner.isBlank() && arr !== goals) ||
+                    (owner.isNotBlank() && owner !in ownerIds)) validOwners = false
             }
         }
         return Inspection(sha256(bytes), storedEmail,
