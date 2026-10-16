@@ -1,0 +1,55 @@
+name: GrowUrDhan M24 encrypted schema JVM
+
+# Single explicit owner-authorized source verification. The newly added workflow
+# self-triggers once when the YAML is committed to the redevelopment branch.
+# Do not add android-native/** to push paths: source pushes must not incur CI spend.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - GUD-Android-Redevelopment
+    paths:
+      - .github/workflows/m24-encrypted-schema-jvm.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m24-sqlcipher-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  m24-sqlcipher-jvm:
+    name: Verify frozen encrypted schema v9 (JVM only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out exact source revision
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Exact tested source
+        run: |
+          echo "TESTED_SOURCE_SHA=$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git branch --show-current)" = "" || true
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Compile and execute encrypted schema and database boundary JVM tests
+        working-directory: android-native
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :core:database:test --no-daemon --stacktrace --rerun-tasks
+      - name: Upload database JUnit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m24-encrypted-schema-junit
+          path: |
+            android-native/core/database/build/test-results/test/**/*.xml
+            android-native/core/database/build/reports/tests/test/**
+          if-no-files-found: warn
+          retention-days: 14
