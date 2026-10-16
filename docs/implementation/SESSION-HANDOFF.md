@@ -9,7 +9,7 @@ UTC timestamp: 2026-10-16 (initialization session; exact commit time is the Git 
 | Remote | `https://github.com/shahvikask/kosha.git` |
 | Branch | `GUD-Android-Redevelopment` |
 | Base commit | `af96dcc8967ab595e1d9acee78e29e500cb99a9e` |
-| HEAD | filled after the initialization commit; see `git rev-parse HEAD` |
+| HEAD | `d6b6b7408b6df0924fd69ec53cda78cbdfc0fba0` is the initialization commit. This handoff update is a later commit on the same branch; read `git rev-parse HEAD` for the tip. |
 | Working tree | must be clean after that commit |
 | Reference branch modified? | no |
 

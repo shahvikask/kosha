@@ -7,7 +7,7 @@ Updated: 2026-10-16 (M00 initialization only). Nothing below is inferred from ch
 | Item | Value |
 |---|---|
 | Remote | `https://github.com/shahvikask/kosha` |
-| Working branch | `GUD-Android-Redevelopment` |
+| Working branch | `GUD-Android-Redevelopment` @ initialization `d6b6b7408b6df0924fd69ec53cda78cbdfc0fba0` |
 | Frozen reference | `GUD-Android-Gmail` @ `af96dcc8967ab595e1d9acee78e29e500cb99a9e` |
 | Published Gmail tip observed at init | `origin/GUD-Android-Gmail` = `21d8ffbd48ed65c1d6eb02d09dfba571c7b4ef75` |
 | Reference relationship | `af96dcc` has parent `21d8ffb` and adds only `.chatgpt-write-access-check-2026-10-08.txt`. It was not on any remote branch when this branch was created. |
