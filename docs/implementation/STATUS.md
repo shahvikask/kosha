@@ -10,7 +10,8 @@ Updated: 2026-10-16 after an independent recheck of the legacy inventory. Nothin
 | Working branch | `GUD-Android-Redevelopment` |
 | Frozen reference | `GUD-Android-Gmail` @ `af96dcc8967ab595e1d9acee78e29e500cb99a9e` (tree `1aa27c066362a4f1bed52b51c3e6a9eb35d91323`) |
 | GitHub redevelopment tip at the start of this check | `70eaa054f7813a1848b3e7357286910b1b28901d` |
-| Local inventory commit that was not yet on GitHub | `60c10fe605efb10667ca0b17b5c8a7af92e8e81b` |
+| Local verification commit | `b1941891bd583a9a5cd55f4c09ef7d8c5bbb0213` on top of unpushed `60c10fe605efb10667ca0b17b5c8a7af92e8e81b` |
+| Push of that work | BLOCKED. Ruleset `AI Tools Bypass rule All Branch` (id 21876735) includes every branch except `GUD-Android-Gmail` and `current_user_can_bypass` is `never`. |
 | Gmail tip checked with `git ls-remote` | `af96dcc8967ab595e1d9acee78e29e500cb99a9e` |
 | Last accepted SHA | none |
 | Native app | not created |
@@ -47,7 +48,7 @@ P01–P39 and E01–E18 remain **NOT STARTED**. The inventory names original fil
 
 ## Blockers
 
-None for the inventory. Scaffold and design work were not in this prompt.
+None for the inventory contents. Publishing is blocked: GitHub still shows `70eaa05` until an allowed integration, or a ruleset change, accepts the local commits.
 
 ## Next authorized work
 

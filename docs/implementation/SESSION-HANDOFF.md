@@ -11,8 +11,9 @@ UTC timestamp: 2026-10-16 (inventory verification).
 | Frozen reference | `af96dcc8967ab595e1d9acee78e29e500cb99a9e` |
 | GitHub tip at start | `70eaa054f7813a1848b3e7357286910b1b28901d` |
 | Unpushed inventory found locally | `60c10fe605efb10667ca0b17b5c8a7af92e8e81b` |
-| Working tree | clean after this verification commit; read `git rev-parse HEAD` for the tip |
+| Working tree | local commits exist; GitHub was not updated |
 | Reference branch modified by this session? | no |
+| Push | REJECTED. `GH013` / “Cannot update this protected ref.” Ruleset 21876735 blocks this token. |
 
 ## What this session did
 
@@ -41,4 +42,4 @@ If the owner continues M00, create `android-native/` scaffold and `docs/design/B
 
 ## Owner decision required
 
-None to keep the baseline at `af96dcc`. Say when the scaffold may start.
+Allow this account, or the connected GitHub integration, to push `GUD-Android-Redevelopment`, then push local `b1941891bd583a9a5cd55f4c09ef7d8c5bbb0213` and the follow-up blocker note. Do not force-push. Baseline stays `af96dcc`. Say when the scaffold may start.
