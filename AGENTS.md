@@ -45,4 +45,4 @@ Before ending a substantial session, update the handoff files and give the Secti
 
 ## Current stage
 
-M00 is open. Holding-form widgets and read-only holding-detail rows are inventoried. Those documents are not a native screen. Screenshots, SQLCipher, Chaquopy, financial code, and a native CI job are not done. Do not mark M00 accepted. See `docs/implementation/STATUS.md`.
+M00 is open. Holding-form widgets, holding-detail rows, and home-screen rows are inventoried. Those documents are not a native screen. Screenshots, SQLCipher, Chaquopy, financial code, and a native CI job are not done. Do not mark M00 accepted. See `docs/implementation/STATUS.md`.

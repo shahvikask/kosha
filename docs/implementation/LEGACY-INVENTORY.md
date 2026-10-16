@@ -16,7 +16,7 @@ Primary tabs in `src/App.tsx`: `HOME`, `HOLDINGS`, `ACCOUNTS`, `DOCUMENTS`, `FAM
 | Onboarding | `src/components/screens/OnboardingScreen.tsx` | First-run, including Hindi path present in source |
 | Licence | `src/components/screens/LicenseScreen.tsx` | Trial and SKU purchase UI |
 | Auth | `src/components/screens/AuthScreen.tsx` | Register, login, recovery |
-| Home | `src/components/screens/HomeScreen.tsx` | Dashboard |
+| Home | `src/components/screens/HomeScreen.tsx` | Dashboard. Read-only rows are listed in `docs/implementation/HOME-ROWS.md` |
 | Holdings | `src/components/screens/HoldingsScreen.tsx` | List, filter, history entry |
 | Accounts | `src/components/screens/AccountsScreen.tsx` | Custody accounts |
 | Documents | `src/components/screens/DocumentsScreen.tsx` | Statements, tax, records |

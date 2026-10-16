@@ -1,6 +1,6 @@
 # GrowUrDhan implementation status
 
-Updated: 2026-10-16 after the read-only holding-detail inventory. M00 is not accepted.
+Updated: 2026-10-16 after the home-screen row inventory. M00 is not accepted.
 
 ## Repository
 
@@ -9,7 +9,7 @@ Updated: 2026-10-16 after the read-only holding-detail inventory. M00 is not acc
 | Remote | `https://github.com/shahvikask/kosha` |
 | Working branch | `GUD-Android-Redevelopment` |
 | Frozen reference | `GUD-Android-Gmail` @ `af96dcc8967ab595e1d9acee78e29e500cb99a9e` |
-| GitHub tip at the start of this inventory | `ab73f7d88fe7360778eabafaf712ed5e7d40b556` |
+| GitHub tip at the start of this inventory | `936cf0e929ef1a1c862aca28d6ce506e9cd65e6c` |
 | Workflow-file fix | `99064638e0f1c9ac000ec5ed3379ffbe59041dee` |
 | Last accepted SHA | none |
 | Native app | scaffold only, application id `in.growurdhan.redevelopment` |
@@ -22,7 +22,7 @@ Updated: 2026-10-16 after the read-only holding-detail inventory. M00 is not acc
 | Milestone piece | Status |
 |---|---|
 | Instruction files and legacy inventory | on GitHub |
-| Screen, command, schema v9, and parser-hash inventory | present. Add-holding widgets, holding-detail edit inputs, and read-only detail rows are listed. This is not a native screen |
+| Screen, command, schema v9, and parser-hash inventory | present. Holding forms, holding-detail rows, and home rows are listed. This is not a native screen |
 | `android-native/` scaffold | debug APK assembled locally before this repair. Locked, sample home, and sample holding concept screens |
 | Lock behavior | `ConceptLock.vaultOpen` is always false. There is no unlock method and no password field |
 | Section 6A screenshots | NOT CAPTURED. Compose semantics for the three screens passed locally on an earlier SHA |
@@ -51,11 +51,11 @@ P01–P39 and E01–E18 remain **NOT STARTED**. See `parity-register.csv`.
 | Compose semantics | `ConceptVisualTest` 3 tests, 0 failures, on an earlier SHA |
 | Bitmap capture | FAILED to produce an image. See decision D04 |
 | `./gradlew :core:model:test` | NOT PASSED. The Gradle test worker still drops its socket |
-| GitHub Actions | Kosha CI run 38913154434 passed on `ab73f7d`. Legacy Node tests only. It does not build `android-native/` |
+| GitHub Actions | Kosha CI run 38913601615 passed on `936cf0e`. Legacy Node tests only. It does not build `android-native/` |
 | Emulator and device | NOT RUN |
 | Gmail and Play Billing | BLOCKED |
 | Security signoff and owner visual acceptance | PENDING |
 
 ## Next authorized work
 
-Do not rework the lock flow. Do not upgrade AGP, Kotlin, or Compose unless the owner asks. Do not start M24. Do not add a database. Do not dispatch the legacy Tauri AAB. Do not build the native holding form. Screenshot pixels remain blocked.
+Do not rework the lock flow. Do not upgrade AGP, Kotlin, or Compose unless the owner asks. Do not start M24. Do not add a database. Do not dispatch the legacy Tauri AAB. Do not build the native holding form. Screenshot pixels remain blocked. The holdings list is the next unread screen.
