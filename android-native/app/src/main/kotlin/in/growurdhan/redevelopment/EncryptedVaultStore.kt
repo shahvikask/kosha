@@ -82,7 +82,7 @@ internal class EncryptedVaultStore(private val context: Context) {
             val version = singleLong(db, "PRAGMA user_version").toInt()
             require(version in 1..9) { "Unknown or unsupported schema version" }
             verifyVersion(db, version)
-            verifyOwnershipAndLedger(db, requireCompleteV9 = version == 9)
+            verifyOwnershipAndLedger(db, schemaVersion = version)
             if (version < 9) migrateInsideTransaction(db, version)
             verifyVersion(db, 9)
             verifyOwnershipAndLedger(db)
@@ -154,15 +154,19 @@ internal class EncryptedVaultStore(private val context: Context) {
         }
     }
 
-    private fun verifyOwnershipAndLedger(db: SQLiteDatabase, requireCompleteV9: Boolean = true) {
+    private fun verifyOwnershipAndLedger(db: SQLiteDatabase, schemaVersion: Int = 9) {
         // Never bless a truncated legacy database by advancing only user_version.
-        // The frozen V1 baseline has 15 tables; three are added in later
-        // versions. Enforce foundational tables BEFORE migration, full v9
-        // inventory AFTER it; never CREATE missing v1 tables implicitly.
-        val requiredTables = if (requireCompleteV9) SchemaV9Catalog.tableNames else
-            SchemaV9Catalog.tableNames.filterNot {
-                it in setOf("listed_security", "gmail_seen", "vault_account")
+        // Frozen V1 contains 15 baseline tables; v5 adds listed_security,
+        // v6 adds vault_account and v8 adds gmail_seen. Refuse absent tables
+        // appropriate to EACH source version before changing any schema.
+        val requiredTables = SchemaV9Catalog.tableNames.filter { table ->
+            when (table) {
+                "listed_security" -> schemaVersion >= 5
+                "vault_account" -> schemaVersion >= 6
+                "gmail_seen" -> schemaVersion >= 8
+                else -> true
             }
+        }
         for (table in requiredTables) {
             db.rawQuery("SELECT COUNT(*) FROM sqlite_master " +
                 "WHERE type='table' AND name=?", arrayOf(table)).use { cur ->
