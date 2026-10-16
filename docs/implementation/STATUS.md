@@ -1,6 +1,6 @@
 # GrowUrDhan implementation status
 
-Updated: 2026-10-16 after the Gradle worker limit. M00 is not accepted.
+Updated: 2026-10-16 after the database and parser module boundaries. M00 is not accepted.
 
 ## Repository
 
@@ -9,7 +9,7 @@ Updated: 2026-10-16 after the Gradle worker limit. M00 is not accepted.
 | Remote | `https://github.com/shahvikask/kosha` |
 | Working branch | `GUD-Android-Redevelopment` |
 | Frozen reference | `GUD-Android-Gmail` @ `af96dcc8967ab595e1d9acee78e29e500cb99a9e` |
-| GitHub tip at the start of this fix | `9d54a593d0cd6e2d0fd3a6ff47e0944da935b431` |
+| GitHub tip at the start of this boundary | `1b675d35d9c8c8f679c014d6f17e638f2dfbd9f9` |
 | Workflow-file fix | `99064638e0f1c9ac000ec5ed3379ffbe59041dee` |
 | Last accepted SHA | none |
 | Native app | scaffold only, application id `in.growurdhan.redevelopment` |
@@ -27,7 +27,7 @@ Updated: 2026-10-16 after the Gradle worker limit. M00 is not accepted.
 | Lock behavior | `ConceptLock.vaultOpen` is always false. There is no unlock method and no password field |
 | Section 6A screenshots | NOT CAPTURED. Compose semantics for the three screens passed locally on an earlier SHA |
 | Dependency review | written in `docs/implementation/DEPENDENCY-REVIEW.md`. Pins were not changed |
-| SQLCipher, Chaquopy, financial ledger | not started |
+| SQLCipher, Chaquopy, financial ledger | module boundaries only. `:core:database` opens nothing and has no tables. `:core:parser-api` does not link Chaquopy and does not call the frozen parser. M24 still owns the schema |
 | M24–M34 | NOT STARTED |
 
 ## Requirements
@@ -51,7 +51,7 @@ P01–P39 and E01–E18 remain **NOT STARTED**. See `parity-register.csv`.
 | Compose semantics | PASS. `:app:testDebugUnitTest` wrote 3 tests, 0 failures, at 2026-10-16T14:24:43Z. The three assertions were not changed. Bitmap capture is still not part of this test |
 | Bitmap capture | FAILED to produce an image. See decision D04 |
 | `./gradlew :core:model:test` | PASS, 10 tests. See decisions D07 and D08 |
-| `./gradlew :app:testDebugUnitTest` | PASS, 3 tests, after one worker and file watching off. The daemon still logs `Unexpected type tag 71` and discards those sockets |
+| Boundary tests | PASS. `:core:database:test` 1 test at 2026-10-16T14:29:41Z. `:core:parser-api:test` 1 test at 2026-10-16T14:29:43Z. Both 0 failures |
 | GitHub Actions | Kosha CI run 38913601615 passed on `936cf0e`. Legacy Node tests only. It does not build `android-native/` |
 | Emulator and device | NOT RUN |
 | Gmail and Play Billing | BLOCKED |
@@ -59,4 +59,4 @@ P01–P39 and E01–E18 remain **NOT STARTED**. See `parity-register.csv`.
 
 ## Next authorized work
 
-Do not rework the lock flow. Do not upgrade AGP, Kotlin, or Compose unless the owner asks. Do not start M24. Do not add a database. Do not dispatch the legacy Tauri AAB. Do not spend Actions credits unless the owner authorizes them. The open M00 gates are screenshots, SQLCipher, Chaquopy, and a native CI job.
+Do not rework the lock flow. Do not upgrade AGP, Kotlin, or Compose unless the owner asks. Do not start M24. Do not add financial tables. Do not link SQLCipher or Chaquopy yet. Do not dispatch the legacy Tauri AAB. Do not spend Actions credits unless the owner authorizes them. The open M00 gates are screenshot pixels and a native CI job.
