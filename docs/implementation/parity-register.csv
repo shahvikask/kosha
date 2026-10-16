@@ -1,0 +1,58 @@
+id,title,original_source,native_source,tests,status,milestone
+P01,Secure app-account registration,src/components/screens/AuthScreen.tsx; src/lib/auth.ts,,,NOT STARTED,M25
+P02,Login lock rotation and recovery,src/lib/autoLock.ts; src/context/KoshaContext.tsx; src/lib/auth.ts,,,NOT STARTED,M25
+P03,Legacy encrypted backup import,src/lib/backup.ts; backupIo.ts,,,NOT STARTED,M25
+P04,Schema v9 lossless mapping,src/db/schema.ts; src/db/repository.ts,,,NOT STARTED,M24
+P05,Eleven event types and append-only ledger,src/types.ts; ledger trigger; KoshaContext.tsx,,,NOT STARTED,M24/M27
+P06,Family members and ownership isolation,src/components/screens/FamilyScreen.tsx,,,NOT STARTED,M26
+P07,Custody accounts,src/components/screens/AccountsScreen.tsx; src/types.ts,,,NOT STARTED,M26
+P08,Goals,FamilyScreen.tsx; src/types.ts FamilyGoal,,,NOT STARTED,M26
+P09,Eight asset categories,src/types.ts ASSET_CATEGORIES,,,NOT STARTED,M27
+P10,Add holding wizard,src/components/modals/AddHoldingModal.tsx,,,NOT STARTED,M27
+P11,Specialist holding details,src/types.ts HoldingDetails; AddHoldingModal.tsx,,,NOT STARTED,M24/M27
+P12,Holding detail edit archive close,src/components/modals/HoldingDetailModal.tsx,,,NOT STARTED,M27
+P13,User money events,src/components/modals/AddRecordModal.tsx,,,NOT STARTED,M27
+P14,Split correction opening balance valuation,src/types.ts EventType; KoshaContext.tsx,,,NOT STARTED,M27
+P15,Holdings list filters and history,src/components/screens/HoldingsScreen.tsx,,,NOT STARTED,M27
+P16,FIFO cost and sale P&L,src/lib/lots.ts; positions.ts; costBasis.ts,,,NOT STARTED,M29
+P17,Documents screen,src/components/screens/DocumentsScreen.tsx,,,NOT STARTED,M28/M29
+P18,CAS PDF and CSV import,DocumentsScreen.tsx; src/lib/casParser.ts; casPython.ts,,,NOT STARTED,M28
+P19,Issuer and owner identity mapping,src/lib/statementMail.ts; src/types.ts,,,NOT STARTED,M28
+P20,Import history snapshots and chronology,src/lib/snapshot.ts; matchHolding.ts; KoshaContext.tsx,,,NOT STARTED,M28
+P21,Tax estimate and lot traceability,src/lib/taxRules.ts; DocumentsScreen.tsx,,,NOT STARTED,M29
+P22,Interest coupons and small-savings catch-up,src/lib/interest.ts,,,NOT STARTED,M29
+P23,EMI schedules,src/lib/emi.ts; AddHoldingModal.tsx,,,NOT STARTED,M29
+P24,Returns allocation and look-through,src/lib/returns.ts; returnMetrics.ts; growth.ts; lookthrough.ts,,,NOT STARTED,M29
+P25,Home dashboard and books health,src/lib/homeDashboard.ts; HomeScreen.tsx,,,NOT STARTED,M29/M31
+P26,NSE BSE AMFI catalog,src/lib/eodPrices.ts,,,NOT STARTED,M30
+P27,Dated price provenance,src/lib/eodPrices.ts; HoldingDetailModal.tsx,,,NOT STARTED,M30
+P28,Encrypted backup export and restore,src/lib/backup.ts; backupIo.ts,,,NOT STARTED,M25/M31
+P29,SAF backup schedule and retention,src/lib/backupSchedule.ts; FamilyScreen.tsx,,,NOT STARTED,M31
+P30,Emergency dossier with plaintext warning,src/components/modals/EmergencySheetModal.tsx,,,NOT STARTED,M31
+P31,Settings parity,FamilyScreen.tsx,,,NOT STARTED,M31
+P32,Opt-in diagnostics,Android plugin diagnostics; family settings,,,NOT STARTED,M31
+P33,Logo Hindi onboarding accessibility,BrandLogo.tsx; OnboardingScreen.tsx,,,NOT STARTED,M31
+P34,Gmail connect and duplicate tracking,src/lib/gmailSync.ts; GmailClient.kt,,,NOT STARTED,M32
+P35,Mailbox to member mapping,src/lib/statementMail.ts; FamilyScreen.tsx,,,NOT STARTED,M32
+P36,Onboarding terms and feedback prompt,OnboardingScreen.tsx; TermsGate.tsx; FeedbackPrompt.tsx,,,NOT STARTED,M31/M33
+P37,Trial and licence SKUs,src/lib/license.ts; LicenseScreen.tsx,,,NOT STARTED,M33
+P38,Play Billing and signed release,Android plugin; release workflows,,,NOT STARTED,M33
+P39,Device AppSec and owner signoff,original and native tests,,,NOT STARTED,M34
+E01,Heritage Modern Wealth Material 3,Section 6A,,,NOT STARTED,M00/M31
+E02,Accessibility and international UX,Section 6A,,,NOT STARTED,M31
+E03,Consistent family lens,specification Section 6,,,NOT STARTED,M26
+E04,Legal and beneficial ownership evidence,specification Section 6,,,NOT STARTED,M26
+E05,Secure recovery lifecycle,specification Section 6,,,NOT STARTED,M25
+E06,Statement issuer support with explanation,specification Section 6,,,NOT STARTED,M28
+E07,Multi-Gmail household workflow,specification Section 6,,,NOT STARTED,M32
+E08,Uncertainty UX,specification Section 6,,,NOT STARTED,M29/M31
+E09,Portfolio analytics,specification Section 6,,,NOT STARTED,M29
+E10,Market-data provenance,specification Section 6,,,NOT STARTED,M30
+E11,Private diagnostics export,specification Section 6,,,NOT STARTED,M31
+E12,Resilient backup formats,specification Section 6,,,NOT STARTED,M25/M31
+E13,Onboarding and data-quality coaching,specification Section 6,,,NOT STARTED,M31
+E14,Modular testability,specification Section 6,,,NOT STARTED,M00/M24
+E15,Supply-chain and AppSec,specification Section 6,,,NOT STARTED,M34
+E16,Play licensing fail-closed,specification Section 6,,,NOT STARTED,M33
+E17,Exact-SHA release pipeline,specification Section 6,,,NOT STARTED,M34
+E18,Privacy-first architecture,specification Section 6,,,NOT STARTED,M00/M34

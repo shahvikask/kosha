@@ -1,0 +1,48 @@
+# AGENTS.md — GrowUrDhan native redevelopment
+
+**Re-read this file before every prompt, code change, test, troubleshooting session, and GitHub Actions decision.** Chat memory is not a source of requirements.
+
+Authoritative requirements live in [docs/GROK-FULL-NATIVE-REDEVELOPMENT-SPEC.md](docs/GROK-FULL-NATIVE-REDEVELOPMENT-SPEC.md) (GrowUrDhan Grok Specification **v1.2**). If this file and the specification conflict, the specification wins. Rules **G01–G15**, requirements **P01–P39** and **E01–E18**, **Section 6A**, and **Section 17** are binding.
+
+## Repository boundaries
+
+| Role | Location |
+|---|---|
+| Original product | `https://github.com/shahvikask/kosha` |
+| Frozen functional reference | branch `GUD-Android-Gmail` at commit `af96dcc8967ab595e1d9acee78e29e500cb99a9e` |
+| This work | branch `GUD-Android-Redevelopment` only |
+| Forbidden | commits on `GUD-Android-Gmail`, `GUD-Android`, `GUD-Android-APK`, `main`, or `vikaskunjbiharishah-ui/GUD` |
+
+Do not merge the separate native repository `vikaskunjbiharishah-ui/GUD` into this experiment.
+
+## Binding rules (read the specification for the full text)
+
+- **G01** Build independently from the frozen legacy source. Never commit on the reference branch.
+- **G02** Treat original `src/`, `src-tauri/`, tests, fixtures, documents, and branded assets as read-only parity evidence. New native source goes under `android-native/`. Preserve `src/casparser-main/**` and the protected parser scripts **byte-for-byte**. Do not edit parser algorithms to fix a parse bug.
+- **G03** P01–P39 and E01–E18 are compulsory. Map every original screen, field, table, command, and error state. A mismatch needs an owner-approved deviation in `docs/implementation/DECISION-LOG.md`.
+- **G04** Production UI is Kotlin + Jetpack Compose + Material 3. No WebView financial UI and no new Tauri/Capacitor shell. Python stays only as the frozen CASPARSER via Chaquopy. No cloud book of household finances.
+- **G05** Scaled-integer money (scale 10,000) and quantity (scale 100,000,000). Append-only ledger. Do not invent costs, prices, tax law, ownership, or purchases.
+- **G06** Evidence cycle: audit, checklist, implement the whole scope, local tests, diff review, integration tests, coherent commit, then a deliberately dispatched workflow on the exact SHA. Watch that run to a terminal result.
+- **G07** Do not fake green. Do not delete or loosen failing tests. An unrun, skipped, cancelled, or older-SHA gate is not a pass.
+- **G08** Local checks before paid emulator CI. Do not push-trigger expensive Android emulator jobs. Do not dispatch GitHub Actions unless the owner explicitly authorizes spending credits in the current prompt.
+- **G09** No secrets, PAN, tokens, PDF bytes, vault keys, or real customer statements in Git, logs, CI artifacts, or prompts.
+- **G10** Gmail OAuth, Play Billing, signing, and real-device proof stay **BLOCKED** until the owner supplies the service or device. Do not claim those integrations work from unit tests.
+- **G11** When CI is authorized, inspect the real run, logs, and artifacts. A queued or running workflow is `RUNNING—NOT VERIFIED`. A new commit needs a new run.
+- **G12** Label the stage: `SOURCE MAPPED`, `IMPLEMENTED`, `LOCAL TESTED`, `CI JVM PASSED`, `CI EMULATOR PASSED`, `REAL DEVICE PASSED`, `SECURITY ACCEPTED`, `OWNER ACCEPTED`.
+- **G13** Rehydrate from this file, the specification, `docs/implementation/STATUS.md`, `SESSION-HANDOFF.md`, and `DECISION-LOG.md` at the start of every session.
+- **G14** Section 6A “Heritage Modern Wealth” is a release gate. Keep the approved GrowUrDhan logo and navy/gold/teal identity. A compiling screen is not a finished screen.
+- **G15** Start with the Section 17.3 receipt. End with the Section 17.4 delivery report, an updated `SESSION-HANDOFF.md`, and a next prompt that says to re-read `AGENTS.md`.
+
+## Startup and finish
+
+Before editing:
+
+1. Read this file, the specification sections that apply, `docs/implementation/STATUS.md`, `docs/implementation/SESSION-HANDOFF.md`, `docs/implementation/CI-RUNS.md`, and `docs/implementation/DECISION-LOG.md`.
+2. Verify `git remote -v`, branch, `git rev-parse HEAD`, and `git status --short`.
+3. Print the Section 17.3 STARTUP COMPLIANCE RECEIPT from observed evidence. Use `UNVERIFIED` or `TO CREATE IN M00` rather than inventing a read.
+
+Before ending a substantial session, update the handoff files and give the Section 17.4 report. Do not mark a milestone accepted without the required tests.
+
+## Current stage
+
+M00 repository initialization is the only authorized work until the owner says to continue. Native feature code, Gradle scaffold, and GitHub Actions are not started. See `docs/implementation/STATUS.md`.
