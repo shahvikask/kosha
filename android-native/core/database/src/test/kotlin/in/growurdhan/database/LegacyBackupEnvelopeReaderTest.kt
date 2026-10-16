@@ -86,6 +86,14 @@ class LegacyBackupEnvelopeReaderTest {
             LegacyBackupEnvelopeReader.decodeGUDVLT01(
                 badMagic, "m24@example.invalid", password)
         }
+        // Bounded preflight must run before Base64 decode or PBKDF2.
+        val oversizedLegacyField = LegacyBackupEnvelopeReader.Kosha1(
+            "KOSHA1", "PBKDF2-SHA256", 600_000,
+            "A".repeat(33), "AA==", "AA=="
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            LegacyBackupEnvelopeReader.decodeKOSHA1(oversizedLegacyField, password)
+        }
         val badRounds = bytes.clone()
         badRounds[11] = 0
         assertThrows(IllegalArgumentException::class.java) {
