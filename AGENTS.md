@@ -45,7 +45,7 @@ Before ending a substantial session, update the handoff files and give the Secti
 
 ## Current stage
 
-M00 is open. A dispatch-only native JVM workflow exists and has not been run. Screenshot pixels are still missing. Do not mark M00 accepted. See `docs/implementation/STATUS.md`.
+M00 is open. The native JVM workflow passed on `63b5b8d5b8cc2352d144c6b8494b4d4bbc3f4340` in run 38925309401. Screenshot pixels are still missing. Do not mark M00 accepted. See `docs/implementation/STATUS.md`.
 
 ## Loop check
 

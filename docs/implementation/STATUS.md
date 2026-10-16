@@ -1,6 +1,6 @@
 # GrowUrDhan implementation status
 
-Updated: 2026-10-16 after adding the unrun native JVM workflow. M00 is not accepted.
+Updated: 2026-10-16 after the native JVM workflow passed. M00 is not accepted.
 
 ## Repository
 
@@ -52,11 +52,11 @@ P01–P39 and E01–E18 remain **NOT STARTED**. See `parity-register.csv`.
 | Bitmap capture | FAILED to produce an image. See decision D04 |
 | `./gradlew :core:model:test` | PASS, 10 tests. See decisions D07 and D08 |
 | Boundary tests | PASS. `:core:database:test` 1 test at 2026-10-16T14:29:41Z. `:core:parser-api:test` 1 test at 2026-10-16T14:29:43Z. Both 0 failures |
-| Native CI | `.github/workflows/native-jvm.yml` is `workflow_dispatch` only. It has not been run. It is not a pass |
+| Native CI | PASS on `63b5b8d5b8cc2352d144c6b8494b4d4bbc3f4340`. Run 38925309401. The log says BUILD SUCCESSFUL. It does not print individual test counts. Screenshot pixels were not produced |
 | Emulator and device | NOT RUN |
 | Gmail and Play Billing | BLOCKED |
 | Security signoff and owner visual acceptance | PENDING |
 
 ## Next authorized work
 
-Do not rework the lock flow. Do not upgrade AGP, Kotlin, or Compose unless the owner asks. Do not start M24. Do not add financial tables. Do not link SQLCipher or Chaquopy yet. Do not dispatch the legacy Tauri AAB. Do not dispatch the native JVM workflow unless the owner says to run it. The open visual gate is screenshot pixels.
+Do not rework the lock flow. Do not start M24. Do not add financial tables. Do not link SQLCipher or Chaquopy yet. Do not dispatch the legacy Tauri AAB. Do not retry Robolectric screenshot drawing. The open visual gate is screenshot pixels.
