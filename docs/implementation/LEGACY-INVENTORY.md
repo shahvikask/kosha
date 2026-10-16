@@ -38,7 +38,7 @@ Primary tabs in `src/App.tsx`: `HOME`, `HOLDINGS`, `ACCOUNTS`, `DOCUMENTS`, `FAM
 
 Eight asset categories in `src/types.ts`: `EQUITY`, `MUTUAL_FUND`, `GOLD_SGB`, `FIXED_INCOME`, `REAL_ESTATE`, `SPECIALISED`, `CASH_BANK`, `LIABILITY`. Subcategories are the arrays in `ASSET_SUBCATEGORIES` in that file. Eleven event types, matching the ledger check constraint: `OPENING_BALANCE`, `SNAPSHOT_ADJUSTMENT`, `BUY`, `SELL`, `BONUS`, `SPLIT`, `DIVIDEND`, `INTEREST`, `VALUATION_UPDATE`, `REPAYMENT`, `CORRECTION`.
 
-Field-level mapping of every form input is **not finished** in this session. M24 and M27 still have to enumerate each `HoldingDetails` key. Do not treat this screen list as complete field parity.
+Field-level mapping of every form control is **not finished**. The 36 `HoldingDetails` keys are listed in `android-native/core/model` `M00Inventory.holdingFields`. That list is not widget parity and it is not M24.
 
 ## Commands
 
