@@ -19,6 +19,9 @@ internal class EncryptedVaultStore(private val context: Context) {
     @Synchronized
     fun createFresh(legacyVaultPresent: Boolean): SQLiteDatabase {
         check(!file.exists()) { "Encrypted vault already exists" }
+        check(!keys.hasExistingEnvelope()) {
+            "Wrapped key exists without database; refuse silent empty-vault recreation"
+        }
         // The caller must also check external legacy-import locations before
         // authorizing a new vault. This method checks the known local stores.
         check(!File(context.filesDir, "vault.enc").exists())
