@@ -7,6 +7,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 import java.nio.file.Files
 import java.util.UUID
+import net.zetetic.database.DatabaseErrorHandler
 import net.zetetic.database.sqlcipher.SQLiteDatabase
 import org.junit.Assert.*
 import org.junit.Test
@@ -30,6 +31,10 @@ class EncryptedVaultStoreInstrumentedTest {
             override fun getFilesDir(): File =
                 File(root, "files").also { it.mkdirs() }
         }
+    }
+
+    private val preserve = DatabaseErrorHandler {
+        throw IllegalStateException("Test corruption; never delete source")
     }
 
     private fun scalar(db: SQLiteDatabase, query: String): Long =
@@ -60,7 +65,7 @@ class EncryptedVaultStoreInstrumentedTest {
         try {
             val db = SQLiteDatabase.openDatabase(
                 ctx.getDatabasePath("growurdhan-v9.sqlcipher").absolutePath,
-                key, null, SQLiteDatabase.OPEN_READWRITE, null)
+                key, null, SQLiteDatabase.OPEN_READWRITE, preserve, null)
             db.use {
                 assertEquals(8L, scalar(it, "PRAGMA user_version"))
                 it.execSQL("PRAGMA user_version=9")
@@ -121,7 +126,7 @@ class EncryptedVaultStoreInstrumentedTest {
             try {
                 assertThrows(Exception::class.java) {
                     SQLiteDatabase.openDatabase(source.absolutePath, badKey, null,
-                        SQLiteDatabase.OPEN_READWRITE, null).use { db ->
+                        SQLiteDatabase.OPEN_READWRITE, preserve, null).use { db ->
                         db.rawQuery("SELECT name FROM sqlite_master", null).use { it.count }
                     }
                 }
