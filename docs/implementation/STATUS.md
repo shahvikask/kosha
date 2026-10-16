@@ -1,6 +1,6 @@
 # GrowUrDhan implementation status
 
-Updated: 2026-10-16 after the legacy inventory. Nothing below is inferred from chat memory.
+Updated: 2026-10-16 after an independent recheck of the legacy inventory. Nothing below is inferred from chat memory.
 
 ## Repository
 
@@ -9,7 +9,9 @@ Updated: 2026-10-16 after the legacy inventory. Nothing below is inferred from c
 | Remote | `https://github.com/shahvikask/kosha` |
 | Working branch | `GUD-Android-Redevelopment` |
 | Frozen reference | `GUD-Android-Gmail` @ `af96dcc8967ab595e1d9acee78e29e500cb99a9e` (tree `1aa27c066362a4f1bed52b51c3e6a9eb35d91323`) |
-| Remote tips checked this session | Redevelopment `70eaa054f7813a1848b3e7357286910b1b28901d` before this inventory commit. Gmail `af96dcc8967ab595e1d9acee78e29e500cb99a9e`. |
+| GitHub redevelopment tip at the start of this check | `70eaa054f7813a1848b3e7357286910b1b28901d` |
+| Local inventory commit that was not yet on GitHub | `60c10fe605efb10667ca0b17b5c8a7af92e8e81b` |
+| Gmail tip checked with `git ls-remote` | `af96dcc8967ab595e1d9acee78e29e500cb99a9e` |
 | Last accepted SHA | none |
 | Native app | not created |
 | CI | not run |
@@ -20,8 +22,8 @@ Updated: 2026-10-16 after the legacy inventory. Nothing below is inferred from c
 
 | Milestone piece | Status |
 |---|---|
-| Instruction files | committed and previously read back from GitHub |
-| Screen, command, schema v9, and parser-hash inventory | recorded in `LEGACY-INVENTORY.md` and `legacy-parser-sha256.txt`. Field-by-field form inventory is not finished. |
+| Instruction files | committed. GitHub still had them at `70eaa05` when this check started. |
+| Screen, command, schema v9, and parser-hash inventory | rechecked against `af96dcc`. 25 commands, 18 tables, schema v9, 32 protected files. Layout surfaces added. Protected manifest corrected. Field-by-field form inventory is not finished. |
 | `android-native/` scaffold, Compose launch/lock, Section 6A exports, G14 harness, smoke tests | NOT STARTED |
 | M24–M34 | NOT STARTED |
 
@@ -49,4 +51,4 @@ None for the inventory. Scaffold and design work were not in this prompt.
 
 ## Next authorized work
 
-Stop after this inventory commit. The next session may start the `android-native/` scaffold and Section 6A brand inventory only if the owner asks to continue M00. Do not dispatch Actions. Do not start M24.
+Stop after this inventory correction is pushed. The next session may start the `android-native/` scaffold and Section 6A brand inventory only if the owner asks to continue M00. Do not dispatch Actions. Do not start M24.

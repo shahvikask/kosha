@@ -31,6 +31,10 @@ Primary tabs in `src/App.tsx`: `HOME`, `HOLDINGS`, `ACCOUNTS`, `DOCUMENTS`, `FAM
 | Brand | `src/components/common/BrandLogo.tsx` | Wordmark and mark |
 | Errors | `src/components/common/ErrorBoundary.tsx` | Render failure |
 | Privacy | `src/components/common/PrivacyValue.tsx` | Masked amounts |
+| Charts | `src/components/growth/Charts.tsx` | Home growth graphics |
+| Header | `src/components/layout/Header.tsx` | Top bar and wordmark |
+| Sidebar | `src/components/layout/Sidebar.tsx` | Tab navigation |
+| Status bar | `src/components/layout/StatusBar.tsx` | Sync and vault status |
 
 Eight asset categories in `src/types.ts`: `EQUITY`, `MUTUAL_FUND`, `GOLD_SGB`, `FIXED_INCOME`, `REAL_ESTATE`, `SPECIALISED`, `CASH_BANK`, `LIABILITY`. Subcategories are the arrays in `ASSET_SUBCATEGORIES` in that file. Eleven event types, matching the ledger check constraint: `OPENING_BALANCE`, `SNAPSHOT_ADJUSTMENT`, `BUY`, `SELL`, `BONUS`, `SPLIT`, `DIVIDEND`, `INTEREST`, `VALUATION_UPDATE`, `REPAYMENT`, `CORRECTION`.
 
@@ -81,7 +85,7 @@ v8 entity columns, applied before v9: `cas_id`, `pran`, `gmail_sync`. Migrations
 
 ## Frozen parser and brand hashes
 
-SHA-256 of every protected parser file, plus the brand files named in Section 6A, is in [legacy-parser-sha256.txt](legacy-parser-sha256.txt). The manifest of those 39 path-and-hash lines is `1b19b126557b3054503139c7e7980528f14f18cde8688b139272b596685dc6d4`.
+SHA-256 of every protected parser file, plus the brand, schema, CSS, and `BrandLogo.tsx` files named beside them, is in [legacy-parser-sha256.txt](legacy-parser-sha256.txt). Every one of those 39 file hashes was recomputed from `git show af96dcc:path` and matched. The protected manifest, covering only the 28 `src/casparser-main` files and four scripts, is `003b6d852ac1ae257c1924d4376242381e7b823952a9dbea2aaa8749cc138060`. The earlier header value `1b19b126557b3054503139c7e7980528f14f18cde8688b139272b596685dc6d4` could not be reproduced and is withdrawn. The file hashes themselves were already correct.
 
 `src/casparser-main/` has 28 files. Protected scripts: `scripts/cas_android.py`, `scripts/android_casparser_isin.py`, `scripts/android_pydantic.py`, `scripts/cas_parse_server.py`. None of these bytes were changed.
 

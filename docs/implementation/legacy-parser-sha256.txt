@@ -1,5 +1,10 @@
 # SHA-256 freeze at af96dcc8967ab595e1d9acee78e29e500cb99a9e
-# manifest 1b19b126557b3054503139c7e7980528f14f18cde8688b139272b596685dc6d4
+# protected-manifest 003b6d852ac1ae257c1924d4376242381e7b823952a9dbea2aaa8749cc138060
+# The protected manifest is SHA-256 of the 32 src/casparser-main and scripts lines only,
+# UTF-8, in the order below, each line ending in LF. Brand, schema, CSS, and BrandLogo
+# lines are recorded too, but they are not part of that manifest. An earlier header
+# value 1b19b126557b3054503139c7e7980528f14f18cde8688b139272b596685dc6d4 did not match
+# any defined byte range and is withdrawn. Individual file hashes were not changed.
 # columns: sha256 bytes path
 e26ebdf2a839dd7871a325d0b4cf99b951f6d1fbb85e8174140436de1377fa5c  52571  public/brand/logo-full.png
 7cf1c17d1456c562385663f9bb4791ce29b133c21fd64934ba953b9ceb0733ee  32267  public/brand/logo.png

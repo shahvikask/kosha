@@ -1,6 +1,6 @@
 # Session handoff
 
-UTC timestamp: 2026-10-16 (legacy inventory session).
+UTC timestamp: 2026-10-16 (inventory verification).
 
 ## Checkpoint
 
@@ -9,23 +9,23 @@ UTC timestamp: 2026-10-16 (legacy inventory session).
 | Remote | `https://github.com/shahvikask/kosha.git` |
 | Branch | `GUD-Android-Redevelopment` |
 | Frozen reference | `af96dcc8967ab595e1d9acee78e29e500cb99a9e` |
-| HEAD before this commit | `70eaa054f7813a1848b3e7357286910b1b28901d` |
-| Working tree | clean after the inventory commit; read `git rev-parse HEAD` for the tip |
+| GitHub tip at start | `70eaa054f7813a1848b3e7357286910b1b28901d` |
+| Unpushed inventory found locally | `60c10fe605efb10667ca0b17b5c8a7af92e8e81b` |
+| Working tree | clean after this verification commit; read `git rev-parse HEAD` for the tip |
 | Reference branch modified by this session? | no |
 
 ## What this session did
 
-Read `AGENTS.md`, the specification (M00, Section 6A.1, Section 8), status, handoff, CI log, decision log, and the parity register. Confirmed the remote redevelopment tip and that Gmail is at `af96dcc`. No Actions were dispatched.
+Read `AGENTS.md`, specification sections 3, 4, 6A heading, 8 (M00), and 17, plus status, handoff, CI log, decision log, and the parity register. `git ls-remote` showed redevelopment at `70eaa05` and Gmail at `af96dcc`. No Actions were dispatched.
 
-Recorded, from that reference commit only:
+The local commit `60c10fe` already contained an inventory, but it was not on GitHub. This session recomputed it from `af96dcc`:
 
-- Screens, gates, eight categories, and eleven event types
-- 25 Android and desktop command names
-- Schema version 9 tables, triggers, and v3–v9 additions
-- SHA-256 freeze of 28 `src/casparser-main` files and four protected scripts
-- Independent check that `public/brand/mark.svg` git blob is `52fd0aa1a9262e6d2ba8ab431c2955c6df5c417c`
-
-Files: `docs/implementation/LEGACY-INVENTORY.md`, `docs/implementation/legacy-parser-sha256.txt`. Parser manifest `1b19b126557b3054503139c7e7980528f14f18cde8688b139272b596685dc6d4`.
+- 12 screen files, 4 modals, and the layout/chart surfaces `Header`, `Sidebar`, `StatusBar`, and `Charts`
+- 25 Android `@Command` methods, same 25 Tauri command names
+- Schema version 9, 18 tables, eleven event types, eight categories
+- 28 `src/casparser-main` files and four protected scripts; all 39 recorded file hashes matched
+- `public/brand/mark.svg` git blob `52fd0aa1a9262e6d2ba8ab431c2955c6df5c417c`
+- Protected manifest replaced with `003b6d852ac1ae257c1924d4376242381e7b823952a9dbea2aaa8749cc138060` because `1b19b126…` was not reproducible
 
 ## What this session did not do
 
@@ -33,7 +33,7 @@ No native scaffold, Compose UI, financial code, parser edit, or GitHub Actions. 
 
 ## Tests
 
-No product tests. The hash manifest was recomputed locally and matched. That is a hash check, not a build.
+No product tests and no Gradle build. The hash check was a local `git show` plus SHA-256 comparison. It passed for every listed file. It is not a CI result.
 
 ## Next safe task
 
