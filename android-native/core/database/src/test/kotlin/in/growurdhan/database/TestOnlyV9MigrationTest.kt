@@ -76,9 +76,32 @@ class TestOnlyV9MigrationTest {
                 (if (table.name == "entity") extraEntity else emptyList())
             val actual = values(c, "SELECT name FROM pragma_table_info('" +
                 table.name + "') ORDER BY cid")
-            assertEquals("Lost or reordered field in " + table.name, expected, actual)
+            // SQLite ALTER TABLE ADD COLUMN correctly APPENDS historical fields.
+            // For migrated v1–v8 vaults, cid order differs from fresh v9 DDL.
+            // Verify all exact original names, count/uniqueness, and mandatory
+            // financial/identity types without demanding impossible cid order.
+            assertEquals("Lost or invented field in " + table.name,
+                expected.toSet(), actual.toSet())
+            assertEquals("Duplicate or missing field in " + table.name,
+                expected.size, actual.size)
             assertEquals(0L, number(c, "SELECT count(*) FROM pragma_table_info('" +
                 table.name + "') WHERE UPPER(type)='REAL'"))
+            for ((field, requiredType) in listOf(
+                "entity" to ("entity_id" to "TEXT"),
+                "holding" to ("entity_id" to "TEXT"),
+                "holding" to ("current_price_minor" to "INTEGER"),
+                "ledger_event" to ("quantity_scaled" to "INTEGER"),
+                "ledger_event" to ("total_amount_minor" to "INTEGER"),
+                "ledger_event" to ("charges_minor" to "INTEGER"),
+            )) {
+                if (table.name == field) {
+                    val (name, type) = requiredType
+                    assertEquals("Wrong persisted affinity for " + table.name + "." + name,
+                        listOf(type), values(c,
+                            "SELECT UPPER(type) FROM pragma_table_info('" + table.name +
+                                "') WHERE name='" + name + "'"))
+                }
+            }
             actual.size
         }
         assertEquals(217, cols)

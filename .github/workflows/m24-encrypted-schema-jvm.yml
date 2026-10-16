@@ -1,5 +1,6 @@
 name: GrowUrDhan M24 encrypted schema JVM
 
+# Rerun after correcting historical ALTER TABLE column order assumption (6 tests retained).
 # Single explicit owner-authorized source verification. The newly added workflow
 # self-triggers once when the YAML is committed to the redevelopment branch.
 # Do not add android-native/** to push paths: source pushes must not incur CI spend.
