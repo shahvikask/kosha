@@ -63,6 +63,19 @@ object RestoreLedgerPreflight {
         }
         for (g in s.goals) if (g.ownerId != null)
             require(g.ownerId in owners) { "Unknown goal owner" }
+        // Frozen src/lib/positions.ts::derivePositions uses a transient
+        // openingBalanceFor() when a stored positive holding has NO ledger
+        // events. Native v9 persists quantity only in ledger_event, not
+        // holding. Importing this unchanged source would silently lose the
+        // position, while inventing a BUY/OPENING_BALANCE during restore
+        // would invent financial history. Refuse until an owner-reviewed,
+        // exact-source migration contract supports that exceptional case.
+        val eventHoldingIds = s.events.mapTo(HashSet()) { it.holdingId }
+        for (h in s.holdings) {
+            require(h.quantityScaled.toLong() <= 0L || h.id in eventHoldingIds) {
+                "Positive stored holding has no ledger; cannot restore without invented event"
+            }
+        }
         for (e in s.events) {
             require(e.holdingId in holdings && e.ownerId in owners) { "Orphan ledger event" }
             require(holdingOwners[e.holdingId] == e.ownerId) {
