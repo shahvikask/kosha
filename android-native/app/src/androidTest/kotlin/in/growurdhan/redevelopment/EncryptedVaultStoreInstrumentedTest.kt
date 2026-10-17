@@ -226,18 +226,23 @@ class EncryptedVaultStoreInstrumentedTest {
             "createdAt":"2026-10-16","panMasked":"ABCDE****F",
             "panForStatements":"ABCDE1234F","dateOfBirth":"1990-01-01"},
           "familyMembers":[{"id":"owner-A","name":"Fixture","relation":"Self","color":"#112233"}],
-          "accounts":[{"id":"account-A","ownerId":"owner-A","accountType":"DEMAT","custodian":"Test"}],
+          "accounts":[{"id":"account-A","ownerId":"owner-A","accountType":"DEMAT","custodian":"Test",
+            "dpId":"DP000123","clientId":"CL987","boId":"BO-SYNTH","nominee":"Fixture Only"}],
           "holdings":[{"id":"holding-A","ownerId":"owner-A","accountId":"account-A",
             "name":"Example","category":"EQUITY","subCategory":"Large cap",
+            "isin":"INE000TEST00","needsReview":true,"notes":"synthetic holding note",
             "symbolOrFolio":"TEST","quantityScaled":"1234567890123",
             "currentPriceMinor":"9007199254740993","lastPriceUpdated":"2026-10-16",
             "priceSource":"Test only"}],
           "ledgerEvents":[{"id":"event-A","ownerId":"owner-A","holdingId":"holding-A",
             "holdingName":"Example","eventType":"BUY","eventDate":"2026-10-16",
             "quantityScaled":"1234567890123","unitPriceMinor":"3",
-            "totalAmountMinor":"9007199254740993","createdAt":"2026-10-16"}],
+            "totalAmountMinor":"9007199254740993","createdAt":"2026-10-16",
+            "importBatchId":"test-batch","sourceRef":"synthetic-import-ref",
+            "notes":"original event note"}],
           "goals":[{"id":"goal-A","ownerId":"owner-A","name":"Test goal",
-            "targetMinor":"100000","createdAt":"2026-10-16"}],
+            "targetMinor":"100000","createdAt":"2026-10-16",
+            "priority":"HIGH"}],
           "unknownOpaque":{"nested":[true,"untouched"]}
         }""".trimIndent()
         val plan = FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(exact)
@@ -247,6 +252,22 @@ class EncryptedVaultStoreInstrumentedTest {
             .contains("ABCDE1234F"))
         assertTrue(plan.rows.single { it.table == "ledger_event" }.values
             .contains(9007199254740993L))
+        fun mapped(table: String, col: String): Any? {
+            val row = plan.rows.single { it.table == table }
+            return row.values[row.columns.indexOf(col).also { require(it >= 0) }]
+        }
+        assertEquals("DP000123", mapped("account", "dp_id"))
+        assertEquals("CL987", mapped("account", "client_id"))
+        assertEquals("BO-SYNTH", mapped("account", "bo_id"))
+        assertEquals("Fixture Only", mapped("account", "nominee"))
+        assertEquals("INE000TEST00", mapped("instrument", "isin"))
+        assertEquals(1L, mapped("holding", "needs_review"))
+        assertEquals("synthetic holding note", mapped("holding", "notes"))
+        assertEquals("test-batch", mapped("ledger_event", "import_batch_id"))
+        assertEquals("synthetic-import-ref", mapped("ledger_event", "source_ref"))
+        assertEquals("original event note", mapped("ledger_event", "notes"))
+        assertEquals("HIGH", mapped("goal", "priority"))
+
         assertThrows(Exception::class.java) {
             FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(exact.replace(
                 "\"totalAmountMinor\":\"9007199254740993\"",
