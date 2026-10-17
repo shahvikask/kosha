@@ -124,8 +124,13 @@ internal class ApprovedNewVaultRestore(private val context: Context) {
             require(onlyString("PRAGMA quick_check") == "ok") {
                 "Restore candidate SQLite integrity failed"
             }
-            require(onlyString("PRAGMA cipher_integrity_check") == "ok") {
-                "Restore candidate SQLCipher page integrity failed"
+            // SQLCipher 4.17 cipher_integrity_check returns ZERO rows when
+            // the page-HMAC envelope is valid, and one row for EACH error.
+            // Unlike SQLite quick_check, it does not return the text "ok".
+            db.rawQuery("PRAGMA cipher_integrity_check", null).use { cur ->
+                require(!cur.moveToFirst()) {
+                    "Restore candidate SQLCipher page HMAC integrity failed"
+                }
             }
             db.rawQuery("PRAGMA foreign_key_check", null).use {
                 require(!it.moveToFirst()) { "Restore candidate has invalid owner foreign keys" }
