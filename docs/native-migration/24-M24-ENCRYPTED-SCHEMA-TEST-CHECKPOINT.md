@@ -50,3 +50,7 @@ Added source `FrozenJsonV9Adapter.kt` to derive v9 rows exclusively from GCM-aut
 ## 2026-10-17 — schema's absent holding quantity makes historical fallback a P0 loss-risk
 
 Native v9 `holding` has no quantity column (original architecture derives positions from `ledger_event`). Frozen old `positions.ts` can derive positive quantities *without persisted events*. New exact-blob Kotlin `RestoreLedgerPreflight` refuses those data states, standalone PASS 3 accepted/8 denied. This is **not actual SQLCipher migration, trigger, foreign key or Android compilation**; prior 20/20 CI on older SHA remains historical. 24 JVM/7 Android @Test methods not rerun, no Actions. M24 NOT ACCEPTED.
+
+## 2026-10-17 — eleven original metadata columns mapped; no SQLCipher build acceptance
+
+Verified the canonical frozen v9 SQL `m24-frozen-v9.sql` Git blob `f1db349c8fd729ab2180d650208c6246ac950aa2` contains all 11 new first-class source-to-v9 metadata columns (account.dp_id/client_id/bo_id/nominee, instrument.isin, holding.notes/needs_review, ledger_event.import_batch_id/source_ref/notes, goal.priority). Exact-source `RestoreV9Plan` host Kotlin compilation/execution and 11 original metadata assertions PASS; the Android `FrozenJsonV9Adapter` source was mapped but NOT compiled against SDK/AAR. **No SQLCipher transaction, Gradle JUnit, FK, trigger or device proof on newest source.** 24 authored JVM and 7 authored Android methods unrun. Historical 20/20 JVM run applies only older SHA. M24 NOT ACCEPTED.
