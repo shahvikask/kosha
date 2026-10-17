@@ -1,0 +1,101 @@
+name: GrowUrDhan M24 Android SQLCipher instrumentation
+
+# Owner-authorized milestone-only workflow. WIP source pushes do not run emulators.
+on:
+  workflow_dispatch:
+  push:
+    branches: [GUD-Android-Redevelopment]
+    paths:
+      - .github/workflows/m24-android-instrumentation.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m24-android-runtime-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  m24-native-runtime:
+    name: M24 Android SQLCipher Keystore instrumentation (7)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out exact triggering SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify exact checked-out source
+        run: |
+          echo "ANDROID_INSTRUMENTATION_SHA=$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+      - name: Compile instrumentation Kotlin before emulator startup
+        working-directory: android-native
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:compileDebugAndroidTestKotlin --no-daemon --stacktrace
+      - name: Configure KVM
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; else echo "::warning::KVM unavailable"; fi
+      - name: Execute seven Android SQLCipher and Keystore probes
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 2048M
+          heap-size: 512M
+          force-avd-creation: true
+          disable-animations: true
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: cd android-native && ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace
+      - name: Confirm seven Android instrumented JUnit results
+        if: success()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          reports=list(Path("android-native/app/build/outputs/androidTest-results").rglob("*.xml"))
+          expected={
+              "encryptedV9PersistsAcrossRestartAndRejectsBrokenSchemaMarkers",
+              "ledgerIsAppendOnlyAndInvalidAccountOwnershipIsRejected",
+              "wrongKeyAndCorruptCopyFailWithoutResettingLiveCiphertext",
+              "syntheticV8MarkerAdvancesAtomicallyWithoutRecreatingVault",
+              "missingMandatoryTableRejectsMigrationWithoutChangingRecordsOrVersion",
+              "stagedCiphertextNeverOverwritesExistingPendingRestore",
+              "strictAuthenticatedJsonV9PreviewDoesNotInventMoneyEvents",
+          }
+          methods=[]
+          failures=errors=skips=0
+          for report in reports:
+              doc=ET.parse(report).getroot()
+              for case in doc.findall(".//testcase"):
+                  methods.append(case.attrib.get("name",""))
+                  failures += len(case.findall("failure"))
+                  errors += len(case.findall("error"))
+                  skips += len(case.findall("skipped"))
+          assert len(methods)==7 and set(methods)==expected, f"Expected seven named M24 tests, got {methods!r}"
+          assert failures==errors==skips==0, f"failures={failures} errors={errors} skips={skips}"
+          print("M24_ANDROID_JUNIT_CONFIRMED total=7 failures=0 errors=0 skipped=0")
+          PY
+      - name: Upload Android JUnit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m24-android-instrumentation-xml
+          path: |
+            android-native/app/build/outputs/androidTest-results/connected/**/*.xml
+            android-native/app/build/reports/androidTests/connected/**
+          if-no-files-found: warn
+          retention-days: 14
