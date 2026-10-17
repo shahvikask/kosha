@@ -13,7 +13,12 @@ import javax.crypto.spec.PBEKeySpec
  * are additional gates. No account credentials are persisted here.
  */
 object RestoreIdentityGate {
-    private const val FROZEN_PBKDF2_ROUNDS = 600_000
+    // Frozen auth.ts hashSecret() uses 210_000, while backup.ts/vault.ts
+    // ENVELOPE encryption uses 600_000. Account hashes store their own
+    // iteration count and must not be confused with envelope KDF params.
+    // Bounded historical counts are accepted only for read-only inspection.
+    private const val MIN_ACCOUNT_ROUNDS = 100_000
+    private const val MAX_ACCOUNT_ROUNDS = 1_000_000
     data class Account(
         val email: String, val passwordSalt: String, val passwordHash: String,
         val passwordIterations: Int, val panForStatements: String?, val panMasked: String?,
@@ -68,7 +73,7 @@ object RestoreIdentityGate {
 
     private fun verifySecret(secret: String, saltB64: String, hashB64: String,
                              iterations: Int): Boolean {
-        if (iterations != FROZEN_PBKDF2_ROUNDS ||
+        if (iterations !in MIN_ACCOUNT_ROUNDS..MAX_ACCOUNT_ROUNDS ||
             saltB64.length > 32 || hashB64.length > 48) return false
         val salt: ByteArray
         val expected: ByteArray
