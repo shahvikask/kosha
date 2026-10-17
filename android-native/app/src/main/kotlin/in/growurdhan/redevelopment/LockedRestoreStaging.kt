@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.AtomicFile
 import `in`.growurdhan.database.LegacyBackupEnvelopeReader
 import `in`.growurdhan.database.RestoreIdentityGate
+import `in`.growurdhan.database.RestoreV9Plan
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.security.MessageDigest
@@ -208,6 +209,52 @@ internal class LockedRestoreStaging(context: Context) {
             ), credentials
         )
         return inspection
+    }
+
+    /**
+     * Read-only, fail-closed projection of the exact GCM-decrypted archive
+     * AFTER strict account proof. The staged SHA binds this second read to
+     * the previously inspected bytes, including across two AtomicFile reads.
+     * Incomplete historical snapshots fail; no guessed ledger rows are made.
+     *
+     * NOT a restore/approval API: no database, Keystore key, replay claim or
+     * destination file is modified. Caller cannot skip ownership review.
+     */
+    @Synchronized
+    fun previewAuthenticatedV9(
+        credentials: RestoreIdentityGate.Credentials
+    ): RestoreV9Plan.Plan {
+        val proof = inspectWithRecoveryProof(credentials)
+        check(proof.ownersConsistent) { "Restore owner references are invalid" }
+        val bytes = staged.openRead().use { input ->
+            val out = ByteArrayOutputStream()
+            val buffer = ByteArray(8192)
+            var total = 0
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                total += count
+                require(total <= maxBytes) { "Oversized staged restore" }
+                out.write(buffer, 0, count)
+            }
+            out.toByteArray()
+        }
+        require(sha256(bytes) == proof.sha256) { "Staged restore changed after identity proof" }
+        val plain = if (bytes.size >= 8 && bytes.copyOfRange(0, 8).contentEquals(magic)) {
+            LegacyBackupEnvelopeReader.decodeGUDVLT01(bytes, credentials.email, credentials.password)
+        } else {
+            val outer = JSONObject(String(bytes, Charsets.UTF_8))
+            LegacyBackupEnvelopeReader.decodeKOSHA1(
+                LegacyBackupEnvelopeReader.Kosha1(
+                    outer.getString("magic"), outer.getString("kdf"),
+                    outer.getInt("iterations"), outer.getString("saltB64"),
+                    outer.getString("ivB64"), outer.getString("cipherB64")
+                ), credentials.password)
+        }
+        // The strict adapter requires genuine v2 schema fields in the SAME
+        // decrypted JSON; older/partial archives remain read-only until a
+        // separately reviewed lossless migration policy exists.
+        return FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(plain)
     }
 
     private fun sha256(bytes: ByteArray): String =
