@@ -25,7 +25,9 @@ object RestoreV9Plan {
     data class Login(val email: String, val firstName: String, val lastName: String,
         val passwordSalt: String, val passwordHash: String, val passwordIterations: Int,
         val passwordChangedAt: String, val q1Id: String, val q1Hash: String,
-        val q2Id: String, val q2Hash: String, val createdAt: String)
+        val q2Id: String, val q2Hash: String, val createdAt: String,
+        val panMasked: String? = null, val panForStatements: String? = null,
+        val dateOfBirth: String? = null)
     data class Snapshot(val exportedAt: String, val login: Login,
         val families: List<Family>, val accounts: List<Account>,
         val holdings: List<Holding>, val events: List<Event>, val goals: List<Goal>,
@@ -73,7 +75,9 @@ object RestoreV9Plan {
             "password_iterations" to l.passwordIterations.toLong(),
             "password_changed_at" to l.passwordChangedAt, "q1_id" to l.q1Id,
             "q1_hash" to l.q1Hash, "q2_id" to l.q2Id, "q2_hash" to l.q2Hash,
-            "created_at" to l.createdAt)
+            "created_at" to l.createdAt, "pan_masked" to l.panMasked,
+            "pan_for_statements" to l.panForStatements,
+            "date_of_birth" to l.dateOfBirth)
         for (f in s.families) {
             require(f.relation in relations)
             rows += row("entity", "entity_id" to f.id,
