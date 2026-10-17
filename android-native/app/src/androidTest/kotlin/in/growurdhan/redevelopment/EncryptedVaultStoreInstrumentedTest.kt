@@ -510,6 +510,157 @@ class EncryptedVaultStoreInstrumentedTest {
         }
     }
 
+    @Test fun readOnlyOwnerRecoveryInspectionHandlesEveryPublicationBoundary() {
+        val (archive, credentials) = newSyntheticEncryptedBackup(
+            true, "forensic@example.invalid", "synthetic-recovery-only")
+        val cases = listOf(
+            ApprovedNewVaultRestore.Boundary.BEFORE_CLAIM to
+                RestoreRecoveryInspector.State.AMBIGUOUS,
+            ApprovedNewVaultRestore.Boundary.AFTER_CLAIM to
+                RestoreRecoveryInspector.State.CLAIM_ONLY,
+            ApprovedNewVaultRestore.Boundary.AFTER_KEY_CREATION to
+                RestoreRecoveryInspector.State.INCOMPLETE,
+            ApprovedNewVaultRestore.Boundary.AFTER_CANDIDATE_VERIFIED to
+                RestoreRecoveryInspector.State.VERIFIED_CANDIDATE,
+            ApprovedNewVaultRestore.Boundary.BEFORE_KEY_PUBLICATION to
+                RestoreRecoveryInspector.State.VERIFIED_CANDIDATE,
+            ApprovedNewVaultRestore.Boundary.AFTER_KEY_PUBLICATION to
+                RestoreRecoveryInspector.State.VERIFIED_CANDIDATE,
+            ApprovedNewVaultRestore.Boundary.BEFORE_DATABASE_PUBLICATION to
+                RestoreRecoveryInspector.State.VERIFIED_CANDIDATE,
+            ApprovedNewVaultRestore.Boundary.AFTER_DATABASE_PUBLICATION to
+                RestoreRecoveryInspector.State.VERIFIED_LIVE
+        )
+        for ((boundary, expected) in cases) {
+            val ctx = sandbox()
+            LockedRestoreStaging(ctx).stageEncryptedArchiveOnce(archive)
+            var reached = false
+            assertThrows(IllegalStateException::class.java) {
+                ApprovedNewVaultRestore(ctx) { point ->
+                    if (point == boundary) {
+                        reached = true
+                        throw IllegalStateException("Synthetic crash injection")
+                    }
+                }.restoreFromStagedNewVault(credentials, explicitOwnerApproval = true)
+            }
+            assertTrue("Restore should reach injected $boundary", reached)
+            fun snapshot(): Map<String, ByteArray> {
+                val folders = listOf(ctx.noBackupFilesDir,
+                    ctx.getDatabasePath("growurdhan-v9.sqlcipher").parentFile!!)
+                return folders.flatMap { root ->
+                    root.walkTopDown().filter { it.isFile }.map {
+                        it.absolutePath to it.readBytes()
+                    }.toList()
+                }.toMap()
+            }
+            val before = snapshot()
+            val inspector = RestoreRecoveryInspector(ctx)
+            assertThrows(IllegalStateException::class.java) {
+                inspector.inspectForOwnerReview(credentials, explicitOwnerApproval = false)
+            }
+            assertThrows(Exception::class.java) {
+                inspector.inspectForOwnerReview(
+                    credentials.copy(password = "incorrect-password"),
+                    explicitOwnerApproval = true)
+            }
+            val first = inspector.inspectForOwnerReview(credentials, explicitOwnerApproval = true)
+            val second = RestoreRecoveryInspector(ctx).inspectForOwnerReview(
+                credentials, explicitOwnerApproval = true)
+            assertEquals(boundary.toString(), expected, first.state)
+            assertEquals(first, second)
+            if (expected == RestoreRecoveryInspector.State.VERIFIED_CANDIDATE ||
+                expected == RestoreRecoveryInspector.State.VERIFIED_LIVE) {
+                assertEquals(8, first.verifiedRows)
+                assertTrue(first.durableClaimPresent)
+            }
+            val after = snapshot()
+            assertEquals(before.keys, after.keys)
+            for (file in before.keys)
+                assertArrayEquals("Recovery review must not modify $boundary", before[file], after[file])
+            // Even a fully verified candidate or a completed live vault is NOT
+            // permission to bypass the immutable replay claim.
+            if (boundary != ApprovedNewVaultRestore.Boundary.BEFORE_CLAIM) {
+                assertThrows(Exception::class.java) {
+                    ApprovedNewVaultRestore(ctx).restoreFromStagedNewVault(
+                        credentials, explicitOwnerApproval = true)
+                }
+            }
+        }
+    }
+
+    @Test fun ownerRecoveryRejectsUnmatchedKeysChangedRowsAndCorruptCipherWithoutCleanup() {
+        val (archive, credentials) = newSyntheticEncryptedBackup(
+            false, "forensic-legacy@example.invalid", "synthetic-legacy-password")
+        fun interrupted(): Context {
+            val ctx = sandbox()
+            LockedRestoreStaging(ctx).stageEncryptedArchiveOnce(archive)
+            var reached = false
+            assertThrows(IllegalStateException::class.java) {
+                ApprovedNewVaultRestore(ctx) { point ->
+                    if (point == ApprovedNewVaultRestore.Boundary.AFTER_CANDIDATE_VERIFIED) {
+                        reached = true
+                        throw IllegalStateException("Synthetic interruption after verification")
+                    }
+                }.restoreFromStagedNewVault(credentials, explicitOwnerApproval = true)
+            }
+            assertTrue(reached)
+            assertEquals(RestoreRecoveryInspector.State.VERIFIED_CANDIDATE,
+                RestoreRecoveryInspector(ctx).inspectForOwnerReview(
+                    credentials, explicitOwnerApproval = true).state)
+            return ctx
+        }
+        val mismatched = interrupted()
+        val originalKey = mismatched.noBackupFilesDir.listFiles()!!.single {
+            it.name.startsWith("vault-key.v1.restore-")
+        }
+        val switched = File(mismatched.noBackupFilesDir,
+            "vault-key.v1.restore-" + UUID.randomUUID())
+        assertTrue(originalKey.renameTo(switched))
+        val switchedBytes = switched.readBytes()
+        val rejected = RestoreRecoveryInspector(mismatched).inspectForOwnerReview(
+            credentials, explicitOwnerApproval = true)
+        assertEquals(RestoreRecoveryInspector.State.AMBIGUOUS, rejected.state)
+        assertArrayEquals(switchedBytes, switched.readBytes())
+
+        val changedRows = interrupted()
+        val candidate = changedRows.getDatabasePath("growurdhan-v9.sqlcipher")
+            .parentFile!!.listFiles()!!.single { it.name.startsWith(
+                "growurdhan-v9.sqlcipher.restore-") }
+        val keyFile = changedRows.noBackupFilesDir.listFiles()!!.single {
+            it.name.startsWith("vault-key.v1.restore-")
+        }
+        val dbKey = KeystoreWrappedVaultKey(changedRows, keyFile.name).unwrapExisting()
+        try {
+            SQLiteDatabase.openDatabase(candidate.absolutePath, dbKey, null,
+                SQLiteDatabase.OPEN_READWRITE,
+                DatabaseErrorHandler { _, _ -> throw IllegalStateException("Synthetic corruption") },
+                null).use { db ->
+                db.execSQL("UPDATE entity SET display_name='ALTERED SYNTHETIC' WHERE entity_id='owner'")
+            }
+        } finally { dbKey.fill(0) }
+        val tamperedBytes = candidate.readBytes()
+        assertThrows(Exception::class.java) {
+            RestoreRecoveryInspector(changedRows).inspectForOwnerReview(
+                credentials, explicitOwnerApproval = true)
+        }
+        assertArrayEquals(tamperedBytes, candidate.readBytes())
+
+        val corrupted = interrupted()
+        val encrypted = corrupted.getDatabasePath("growurdhan-v9.sqlcipher")
+            .parentFile!!.listFiles()!!.single { it.name.startsWith(
+                "growurdhan-v9.sqlcipher.restore-") }
+        val wrongCipherBytes = encrypted.readBytes().also {
+            it[0] = (it[0].toInt() xor 1).toByte()
+        }
+        encrypted.writeBytes(wrongCipherBytes)
+        assertThrows(Exception::class.java) {
+            RestoreRecoveryInspector(corrupted).inspectForOwnerReview(
+                credentials, explicitOwnerApproval = true)
+        }
+        assertArrayEquals(wrongCipherBytes, encrypted.readBytes())
+        assertFalse(corrupted.getDatabasePath("growurdhan-v9.sqlcipher").exists())
+    }
+
     @Test fun genuineBinaryGcmStagingPublishesOnlyNewEncryptedVaultAndRejectsReplay() {
         val ctx = sandbox()
         val (archive, credentials) = newSyntheticEncryptedBackup(
