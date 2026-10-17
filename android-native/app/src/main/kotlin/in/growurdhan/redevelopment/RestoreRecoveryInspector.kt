@@ -74,10 +74,13 @@ internal class RestoreRecoveryInspector(private val context: Context) {
             }
             val claim = claimFiles.single()
             val expectedClaim = "restore-" + plan.originalJsonSha256 + ".claim"
+            val expectedClaimBytes =
+                ("GUD_RESTORE_CLAIM_V1\n" + plan.originalJsonSha256 + "\n")
+                    .toByteArray(Charsets.US_ASCII)
+            // Never allocate unbounded memory from a suspicious recovery mark.
             if (claim.name != expectedClaim ||
-                !Files.readAllBytes(claim.toPath()).contentEquals(
-                    ("GUD_RESTORE_CLAIM_V1\n" + plan.originalJsonSha256 + "\n")
-                        .toByteArray(Charsets.US_ASCII))) {
+                Files.size(claim.toPath()) != expectedClaimBytes.size.toLong() ||
+                !Files.readAllBytes(claim.toPath()).contentEquals(expectedClaimBytes)) {
                 return@exclusively Review(State.AMBIGUOUS, durableClaimPresent = true)
             }
             val claimBefore = fingerprint(claim)
