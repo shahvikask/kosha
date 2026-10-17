@@ -705,6 +705,58 @@ class EncryptedVaultStoreInstrumentedTest {
         }
     }
 
+    @Test fun incompleteAtomicFileNewRemnantsNeverEraseEncryptedRecoveryEvidence() {
+        val (archive, credentials) = newSyntheticEncryptedBackup(
+            true, "atomic@example.invalid", "synthetic-atomic-pass")
+
+        val stagedOnly = sandbox()
+        val orphanedPendingNew = File(stagedOnly.noBackupFilesDir,
+            "restore-pending.v1.kosha.new").apply { writeBytes(byteArrayOf(9, 8, 7, 6)) }
+        val pendingNewBytes = orphanedPendingNew.readBytes()
+        assertThrows(IllegalStateException::class.java) {
+            LockedRestoreStaging(stagedOnly).stageEncryptedArchiveOnce(archive)
+        }
+        assertThrows(IllegalStateException::class.java) {
+            EncryptedVaultStore(stagedOnly).createFresh(false).close()
+        }
+        assertArrayEquals(pendingNewBytes, orphanedPendingNew.readBytes())
+        assertFalse(stagedOnly.getDatabasePath("growurdhan-v9.sqlcipher").exists())
+
+        val wrappedOnly = sandbox()
+        val keyNew = File(wrappedOnly.noBackupFilesDir,
+            "vault-key.v1.new").apply { writeBytes(byteArrayOf(1, 2, 3, 4)) }
+        val keyNewBytes = keyNew.readBytes()
+        assertTrue(KeystoreWrappedVaultKey(wrappedOnly).hasExistingEnvelope())
+        assertThrows(IllegalStateException::class.java) {
+            KeystoreWrappedVaultKey(wrappedOnly).unwrapExisting()
+        }
+        assertThrows(IllegalStateException::class.java) {
+            EncryptedVaultStore(wrappedOnly).createFresh(false).close()
+        }
+        assertArrayEquals(keyNewBytes, keyNew.readBytes())
+        assertFalse(wrappedOnly.getDatabasePath("growurdhan-v9.sqlcipher").exists())
+
+        val stagedWithNew = sandbox()
+        LockedRestoreStaging(stagedWithNew).stageEncryptedArchiveOnce(archive)
+        val pending = File(stagedWithNew.noBackupFilesDir, "restore-pending.v1.kosha")
+        val pristine = pending.readBytes()
+        val partial = File(pending.path + ".new").apply {
+            writeBytes(byteArrayOf(5, 4, 3, 2))
+        }
+        val partialBytes = partial.readBytes()
+        assertThrows(IllegalStateException::class.java) {
+            RestoreRecoveryInspector(stagedWithNew).inspectForOwnerReview(
+                credentials, explicitOwnerApproval = true)
+        }
+        assertThrows(IllegalStateException::class.java) {
+            ApprovedNewVaultRestore(stagedWithNew).restoreFromStagedNewVault(
+                credentials, explicitOwnerApproval = true)
+        }
+        assertArrayEquals(pristine, pending.readBytes())
+        assertArrayEquals(partialBytes, partial.readBytes())
+        assertFalse(stagedWithNew.getDatabasePath("growurdhan-v9.sqlcipher").exists())
+    }
+
     @Test fun genuineBinaryGcmStagingPublishesOnlyNewEncryptedVaultAndRejectsReplay() {
         val ctx = sandbox()
         val (archive, credentials) = newSyntheticEncryptedBackup(
