@@ -202,5 +202,35 @@ class LegacyBackupEnvelopeReaderTest {
                     .forEach { java.nio.file.Files.deleteIfExists(it) }
             }
         }
+
+        // An already-established SQLCipher file must never be replaced by
+        // an unreviewed restore. createLink is exclusive across publishers.
+        val dir = java.nio.file.Files.createTempDirectory("m24-vault-publish-")
+        try {
+            val stagedDb = dir.resolve("verified.sqlcipher")
+            val liveDb = dir.resolve("growurdhan-v9.sqlcipher")
+            val original = ByteArray(128) { (it + 1).toByte() }
+            java.nio.file.Files.write(stagedDb, original)
+            EncryptedRestorePublisher.publishExclusive(stagedDb, liveDb)
+            assertArrayEquals(original, java.nio.file.Files.readAllBytes(liveDb))
+            assertFalse(java.nio.file.Files.exists(stagedDb))
+            java.nio.file.Files.write(stagedDb, ByteArray(128) { 42 })
+            assertThrows(IllegalStateException::class.java) {
+                EncryptedRestorePublisher.publishExclusive(stagedDb, liveDb)
+            }
+            assertArrayEquals(original, java.nio.file.Files.readAllBytes(liveDb))
+            val withWal = dir.resolve("uncheckpointed.sqlcipher")
+            java.nio.file.Files.write(withWal, original)
+            java.nio.file.Files.write(dir.resolve("uncheckpointed.sqlcipher-wal"), byteArrayOf(1))
+            assertThrows(IllegalArgumentException::class.java) {
+                EncryptedRestorePublisher.publishExclusive(withWal, dir.resolve("unused.sqlcipher"))
+            }
+            assertFalse(java.nio.file.Files.exists(dir.resolve("unused.sqlcipher")))
+        } finally {
+            java.nio.file.Files.walk(dir).use { files ->
+                files.sorted(java.util.Comparator.reverseOrder())
+                    .forEach { java.nio.file.Files.deleteIfExists(it) }
+            }
+        }
     }
 }
