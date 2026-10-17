@@ -23,6 +23,14 @@ internal class LockedRestoreStaging(context: Context) {
     private val magic = "GUDVLT01".toByteArray(Charsets.US_ASCII)
     private val maxBytes = 64 * 1024 * 1024
 
+    private fun requireNoUnfinishedAtomicWrite() {
+        // Android AtomicFile.openRead can delete a dangling .new file.
+        // Never mutate or consume a partially written encrypted archive.
+        check(!File(staged.baseFile.path + ".new").exists()) {
+            "Interrupted encrypted restore staging; preserve .new for owner review"
+        }
+    }
+
     data class QuarantineReceipt(val sha256: String, val byteCount: Int)
     data class Inspection(
         val sha256: String,
@@ -45,7 +53,8 @@ internal class LockedRestoreStaging(context: Context) {
                 outer.has("cipherB64")) { "Unencrypted or unknown backup refused" }
         }
         check(!staged.baseFile.exists() &&
-            !File(staged.baseFile.path + ".bak").exists()) {
+            !File(staged.baseFile.path + ".bak").exists() &&
+            !File(staged.baseFile.path + ".new").exists()) {
             "A restore is already staged; explicit review is required"
         }
         val out = staged.startWrite()
@@ -66,10 +75,12 @@ internal class LockedRestoreStaging(context: Context) {
      */
     @Synchronized
     fun inspect(email: String, password: String): Inspection {
+        requireNoUnfinishedAtomicWrite()
         check(staged.baseFile.exists() ||
             File(staged.baseFile.path + ".bak").exists()) { "No pending encrypted restore" }
         // AtomicFile may recover a .bak file even if baseFile is short or
         // absent. Limit the read itself rather than trusting baseFile.length().
+        requireNoUnfinishedAtomicWrite()
         val bytes = staged.openRead().use { source ->
             val out = ByteArrayOutputStream()
             val buffer = ByteArray(8192)
@@ -226,6 +237,7 @@ internal class LockedRestoreStaging(context: Context) {
     ): RestoreV9Plan.Plan {
         val proof = inspectWithRecoveryProof(credentials)
         check(proof.ownersConsistent) { "Restore owner references are invalid" }
+        requireNoUnfinishedAtomicWrite()
         val bytes = staged.openRead().use { input ->
             val out = ByteArrayOutputStream()
             val buffer = ByteArray(8192)
