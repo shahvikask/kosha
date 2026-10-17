@@ -37,8 +37,15 @@ object LegacyBackupEnvelopeReader {
     }
 
     fun decodeKOSHA1(blob: Kosha1, password: String): String {
-        require(blob.magic == "KOSHA1" && blob.kdf == "PBKDF2-SHA256" &&
-            blob.iterations == ITERATIONS) { "Unsupported legacy backup parameters" }
+        // The immutable frozen TypeScript unpackLegacyJson() accepts absent
+        // KDF metadata and missing/zero rounds using PBKDF2-SHA256/600000.
+        // An explicitly different algorithm or nonzero round count is never
+        // silently downgraded. GCM authentication is still mandatory.
+        require(blob.magic == "KOSHA1" &&
+            (blob.kdf.isEmpty() || blob.kdf == "PBKDF2-SHA256") &&
+            (blob.iterations == 0 || blob.iterations == ITERATIONS)) {
+            "Unsupported legacy backup parameters"
+        }
         // Reject oversized wire strings BEFORE allocating decoded ciphertext.
         // A malformed KOSHA1 document must not force an unbounded Base64 copy.
         require(blob.saltB64.length <= 32 && blob.ivB64.length <= 24 &&
