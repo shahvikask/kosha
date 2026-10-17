@@ -186,7 +186,7 @@ class LegacyBackupEnvelopeReaderTest {
             assertThrows(IllegalArgumentException::class.java) {
                 RestoreOnceJournal(root.resolve("missing")).claimOnce("b".repeat(64))
             }
-            assertEquals("GUD_RESTORE_CLAIM_V1\\n" + digest + "\\n",
+            assertEquals("GUD_RESTORE_CLAIM_V1\n" + digest + "\n",
                 java.nio.file.Files.readString(root.resolve("restore-" + digest + ".claim")))
         } finally {
             java.nio.file.Files.walk(root).use { paths ->
