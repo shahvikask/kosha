@@ -24,7 +24,7 @@ Do not merge the separate native repository `vikaskunjbiharishah-ui/GUD` into th
 - **G05** Scaled-integer money (scale 10,000) and quantity (scale 100,000,000). Append-only ledger. Do not invent costs, prices, tax law, ownership, or purchases.
 - **G06** Evidence cycle: audit, checklist, implement the whole scope, local tests, diff review, integration tests, coherent commit, then a deliberately dispatched workflow on the exact SHA. Watch that run to a terminal result.
 - **G07** Do not fake green. Do not delete or loosen failing tests. An unrun, skipped, cancelled, or older-SHA gate is not a pass.
-- **G08** Local checks before paid emulator CI. Do not push-trigger expensive Android emulator jobs. Do not dispatch GitHub Actions unless the owner explicitly authorizes spending credits in the current prompt.
+- **G08** Local checks before costly emulator CI. Avoid push-triggered expensive Android emulator jobs. **Owner standing authorization (2026-10-17):** the owner made `shahvikask/kosha` public and explicitly authorized relevant GitHub Actions development builds and tests without a fresh per-run approval. Deliberately dispatch source-SHA-pinned, milestone-relevant workflows when useful; prefer targeted JVM/build checks before expensive emulator runs, group tests, monitor each run to a terminal result, and record evidence. Public visibility does not itself guarantee every runner or workflow is free. This authorization does **not** permit release publishing, changing protected/frozen branches, exposing secrets, or waiving security/device/owner acceptance.
 - **G09** No secrets, PAN, tokens, PDF bytes, vault keys, or real customer statements in Git, logs, CI artifacts, or prompts.
 - **G10** Gmail OAuth, Play Billing, signing, and real-device proof stay **BLOCKED** until the owner supplies the service or device. Do not claim those integrations work from unit tests.
 - **G11** When CI is authorized, inspect the real run, logs, and artifacts. A queued or running workflow is `RUNNING—NOT VERIFIED`. A new commit needs a new run.
@@ -45,7 +45,7 @@ Before ending a substantial session, update the handoff files and give the Secti
 
 ## Current stage
 
-M00 is owner-accepted with limitations. M24 remains STARTED / NOT ACCEPTED. JVM SQLCipher tests passed only on an older exact SHA; new Android SQLCipher/Keystore opener source exists but has NOT been compiled, integrated, or run on Android. Actual frozen TypeScript exporter/JCE interoperability passed locally with synthetic data, but replay-safe atomic financial restore, Android build/device tests and owner acceptance are still open. No GitHub Actions credit spending without explicit owner authorization.
+M00 is owner-accepted with limitations. M24 remains STARTED / NOT ACCEPTED. JVM SQLCipher tests passed only on an older exact SHA; new Android SQLCipher/Keystore opener source exists but has NOT been compiled, integrated, or run on Android. Actual frozen TypeScript exporter/JCE interoperability passed locally with synthetic data, but replay-safe atomic financial restore, Android build/device tests and owner acceptance are still open. **GitHub Actions standing authorization granted 2026-10-17:** relevant targeted M24 and subsequent development builds/tests on the redevelopment branch may be deliberately dispatched without asking again for each run. Preserve cost discipline and exact-SHA verification; M24 remains NOT ACCEPTED until all mandatory gates pass.
 
 ## Loop check
 
