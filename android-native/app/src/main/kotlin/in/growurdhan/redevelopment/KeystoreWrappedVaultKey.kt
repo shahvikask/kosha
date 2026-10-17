@@ -34,12 +34,16 @@ internal class KeystoreWrappedVaultKey(
     // files; only a fully verified candidate envelope may be published
     // exclusively to vault-key.v1. Both use the non-exportable Keystore alias.
     private val keyFile = AtomicFile(File(context.noBackupFilesDir, envelopeName))
+    // AtomicFile may leave a .new file after power loss. It contains a wrapped
+    // 256-bit SQLCipher key and must NEVER be silently replaced or erased.
+    private val unfinished = File(keyFile.baseFile.path + ".new")
+    private val backup = File(keyFile.baseFile.path + ".bak")
     private val alias = "in.growurdhan.redevelopment.vault.wrap.v1"
     private val magic = byteArrayOf(0x47, 0x55, 0x44, 0x4b, 0x45, 0x59, 0x30, 0x31)
     private val random = SecureRandom()
 
     fun hasExistingEnvelope(): Boolean = keyFile.baseFile.exists() ||
-        File(keyFile.baseFile.path + ".bak").exists()
+        backup.exists() || unfinished.exists()
 
     private fun wrappingKey(): SecretKey {
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
@@ -66,7 +70,10 @@ internal class KeystoreWrappedVaultKey(
      */
     @Synchronized
     fun getOrCreateForFreshInstall(legacyVaultPresent: Boolean): ByteArray {
-        if (keyFile.baseFile.exists() || File(keyFile.baseFile.path + ".bak").exists()) return unwrapExisting()
+        check(!unfinished.exists() && !backup.exists()) {
+            "Interrupted wrapped key write; preserve AtomicFile recovery evidence"
+        }
+        if (keyFile.baseFile.exists()) return unwrapExisting()
         check(!legacyVaultPresent) { "Refusing to overwrite or orphan legacy vault data" }
         val key = ByteArray(32).also(random::nextBytes)
         try {
@@ -92,7 +99,12 @@ internal class KeystoreWrappedVaultKey(
 
     @Synchronized
     fun unwrapExisting(): ByteArray {
-        // No file = no key; never auto-create on a locked open path.
+        // AtomicFile.openRead may reconcile .bak or delete a stray .new.
+        // Key custody must preserve either artifact for owner-reviewed recovery.
+        check(!unfinished.exists() && !backup.exists()) {
+            "Incomplete wrapped key AtomicFile state; manual recovery required"
+        }
+        check(keyFile.baseFile.isFile) { "Missing wrapped key envelope" }
         val bytes = keyFile.openRead().use { it.readBytes() }
         require(bytes.size == 8 + 12 + 32 + 16 && bytes.copyOfRange(0, 8).contentEquals(magic)) {
             "Invalid vault key envelope"
