@@ -100,8 +100,8 @@ internal class LockedRestoreStaging(context: Context) {
         } else {
             val outer = JSONObject(String(bytes, Charsets.UTF_8))
             val blob = LegacyBackupEnvelopeReader.Kosha1(
-                outer.getString("magic"), outer.getString("kdf"),
-                outer.getInt("iterations"), outer.getString("saltB64"),
+                outer.getString("magic"),
+                legacyKdf(outer), legacyRounds(outer), outer.getString("saltB64"),
                 outer.getString("ivB64"), outer.getString("cipherB64")
             )
             LegacyBackupEnvelopeReader.decodeKOSHA1(blob, password)
@@ -198,8 +198,8 @@ internal class LockedRestoreStaging(context: Context) {
             val outer = JSONObject(String(bytes, Charsets.UTF_8))
             LegacyBackupEnvelopeReader.decodeKOSHA1(
                 LegacyBackupEnvelopeReader.Kosha1(
-                    outer.getString("magic"), outer.getString("kdf"),
-                    outer.getInt("iterations"), outer.getString("saltB64"),
+                    outer.getString("magic"),
+                legacyKdf(outer), legacyRounds(outer), outer.getString("saltB64"),
                     outer.getString("ivB64"), outer.getString("cipherB64")
                 ), credentials.password)
         }
@@ -258,8 +258,8 @@ internal class LockedRestoreStaging(context: Context) {
             val outer = JSONObject(String(bytes, Charsets.UTF_8))
             LegacyBackupEnvelopeReader.decodeKOSHA1(
                 LegacyBackupEnvelopeReader.Kosha1(
-                    outer.getString("magic"), outer.getString("kdf"),
-                    outer.getInt("iterations"), outer.getString("saltB64"),
+                    outer.getString("magic"),
+                legacyKdf(outer), legacyRounds(outer), outer.getString("saltB64"),
                     outer.getString("ivB64"), outer.getString("cipherB64")
                 ), credentials.password)
         }
@@ -268,6 +268,16 @@ internal class LockedRestoreStaging(context: Context) {
         // separately reviewed lossless migration policy exists.
         return FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(plain)
     }
+
+    // Frozen backup.ts unpackLegacyJson uses PBKDF2-SHA256/600000 when
+    // optional legacy JSON metadata is absent (or rounds are zero).
+    // Preserve an explicitly supplied non-default value for the strict
+    // LegacyBackupEnvelopeReader to reject. Never infer financial rows.
+    private fun legacyKdf(outer: JSONObject): String =
+        if (outer.has("kdf")) outer.getString("kdf") else ""
+
+    private fun legacyRounds(outer: JSONObject): Int =
+        if (outer.has("iterations")) outer.getInt("iterations") else 0
 
     private fun sha256(bytes: ByteArray): String =
         MessageDigest.getInstance("SHA-256").digest(bytes)
