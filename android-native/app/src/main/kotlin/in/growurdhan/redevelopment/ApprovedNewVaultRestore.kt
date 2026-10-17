@@ -52,6 +52,10 @@ internal class ApprovedNewVaultRestore(private val context: Context) {
                 "Existing or ambiguous vault state; never overwrite or recreate"
             }
 
+            // A previous different archive may have claimed restore and left
+            // an orphaned candidate/key. Never begin a second recovery over it.
+            RestoreArtifactGuard.requireNoAbandonedRestore(context)
+
             // All GCM, password, PAN/DOB, two recovery answers and strict
             // original owner/ledger proofs precede a durable replay claim.
             val plan = LockedRestoreStaging(context)
