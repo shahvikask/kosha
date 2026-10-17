@@ -109,6 +109,14 @@ class LegacyBackupEnvelopeReaderTest {
             RestoreLedgerPreflight.validate(complete.copy(
                 events = complete.events.map { it.copy(eventType = "UNKNOWN") }))
         }
+        assertThrows(IllegalArgumentException::class.java) {
+            RestoreLedgerPreflight.validate(complete.copy(
+                events = complete.events.map { it.copy(eventType = "CORRECTION") }))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            RestoreLedgerPreflight.validate(complete.copy(
+                events = complete.events.map { it.copy(supersedesEventId = "event-A") }))
+        }
     }
 
     @Test fun passwordOnlyKosha1RetainsSameExactPayload() {
