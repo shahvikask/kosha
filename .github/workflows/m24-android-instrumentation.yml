@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   m24-native-runtime:
-    name: M24 owner recovery and frozen KOSHA1 legacy compatibility (14)
+    name: M24 KOSHA1 legacy defaults corrected JVM (25) + Android (14)
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
