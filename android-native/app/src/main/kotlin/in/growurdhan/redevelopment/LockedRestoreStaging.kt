@@ -95,7 +95,14 @@ internal class LockedRestoreStaging(context: Context) {
             LegacyBackupEnvelopeReader.decodeKOSHA1(blob, password)
         }
         val body = JSONObject(plain)
-        require(body.getString("kind") == "GUDVAULT" && body.has("account")) {
+        // The frozen v2 exporter writes kind=GUDVAULT. The older KOSHA1
+        // decryptor accepts an account without a kind field and supplies kind
+        // itself during unpackLegacyJson; rejecting all kind-less blobs here
+        // would make genuine older encrypted backups permanently unrestorable.
+        val modern = bytes.copyOfRange(0, 8).contentEquals(magic)
+        require(body.has("account") &&
+            (if (modern) body.getString("kind") == "GUDVAULT"
+             else !body.has("kind") || body.getString("kind") == "GUDVAULT")) {
             "Decrypted archive has incompatible payload type"
         }
         val account = body.getJSONObject("account")
@@ -164,6 +171,12 @@ internal class LockedRestoreStaging(context: Context) {
                 out.write(buffer, 0, count)
             }
             out.toByteArray()
+        }
+        // Restore review must bind to the exact archive inspected earlier.
+        // A second instance or filesystem actor could otherwise replace the
+        // atomic file between inspect() and recovery credential verification.
+        require(sha256(bytes) == inspection.sha256) {
+            "Staged archive changed during recovery inspection"
         }
         val plain = if (bytes.size >= 8 &&
             bytes.copyOfRange(0, 8).contentEquals(magic)) {
