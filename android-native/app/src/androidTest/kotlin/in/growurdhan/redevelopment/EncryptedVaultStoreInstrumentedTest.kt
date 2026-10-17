@@ -5,6 +5,19 @@ import android.content.ContextWrapper
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import `in`.growurdhan.database.RestoreV9InsertTransaction
+import `in`.growurdhan.database.RestoreIdentityGate
+import `in`.growurdhan.database.RestoreOnceJournal
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.security.SecureRandom
+import java.util.Base64
+import javax.crypto.Cipher
+import javax.crypto.SecretKeyFactory
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.PBEKeySpec
+import javax.crypto.spec.SecretKeySpec
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 import java.nio.file.Files
 import java.util.UUID
@@ -339,6 +352,173 @@ class EncryptedVaultStoreInstrumentedTest {
             FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(exact.replace(
                 "\"kind\":\"GUDVAULT\"", "\"kind\":\"UNKNOWN\""))
         }
+    }
+
+    /**
+     * Synthetic, non-user cryptographic fixture. Creates the same binary
+     * authenticated envelope framing as the frozen GUDVLT01 exporter.
+     * No passwords, PAN or vault keys are persisted in CI artifacts.
+     */
+    private fun newSyntheticEncryptedBackup(
+        modern: Boolean, email: String, password: String
+    ): Pair<ByteArray, RestoreIdentityGate.Credentials> {
+        val random = SecureRandom()
+        fun pbkdf(secret: String, salt: ByteArray, rounds: Int): ByteArray {
+            val spec = PBEKeySpec(secret.toCharArray(), salt, rounds, 256)
+            return try {
+                SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+                    .generateSecret(spec).encoded
+            } finally { spec.clearPassword() }
+        }
+        fun saltedHash(secret: String): Pair<String, String> {
+            val salt = ByteArray(16).also(random::nextBytes)
+            return Base64.getEncoder().encodeToString(salt) to
+                Base64.getEncoder().encodeToString(pbkdf(secret, salt, 210_000))
+        }
+        val (passwordSalt, passwordHash) = saltedHash(password)
+        fun answerPack(answer: String): String {
+            val (salt, hash) = saltedHash(answer)
+            return salt + ":" + hash + ":210000"
+        }
+        val q1 = answerPack("blue")
+        val q2 = answerPack("river")
+        val account = JSONObject()
+            .put("email", email).put("firstName", "Synthetic")
+            .put("lastName", "Fixture").put("passwordSalt", passwordSalt)
+            .put("passwordHash", passwordHash).put("passwordIterations", 210_000)
+            .put("passwordChangedAt", "2026-10-17")
+            .put("q1Id", "city").put("q1Hash", q1)
+            .put("q2Id", "pet").put("q2Hash", q2)
+            .put("createdAt", "2026-10-17").put("dateOfBirth", "1990-01-01")
+            .put("panForStatements", "ABCDE1234F").put("panMasked", "ABCDE****F")
+        val original = JSONObject()
+            .put("kind", "GUDVAULT").put("version", 2)
+            .put("exportedAt", "2026-10-17T00:00:00Z")
+            .put("account", account)
+            .put("familyMembers", JSONArray().put(
+                JSONObject().put("id", "owner")
+                    .put("name", "Synthetic").put("relation", "Self")))
+            .put("accounts", JSONArray().put(
+                JSONObject().put("id", "account").put("ownerId", "owner")
+                    .put("accountType", "DEMAT").put("custodian", "Synthetic")))
+            .put("holdings", JSONArray().put(
+                JSONObject().put("id", "holding").put("ownerId", "owner")
+                    .put("accountId", "account").put("name", "Synthetic instrument")
+                    .put("category", "EQUITY").put("subCategory", "")
+                    .put("symbolOrFolio", "SYNTH")
+                    .put("quantityScaled", "1234567890123")
+                    .put("currentPriceMinor", "9007199254740993")
+                    .put("lastPriceUpdated", "2026-10-17")
+                    .put("priceSource", "synthetic-only")))
+            .put("ledgerEvents", JSONArray().put(
+                JSONObject().put("id", "event").put("ownerId", "owner")
+                    .put("holdingId", "holding")
+                    .put("holdingName", "Synthetic instrument")
+                    .put("eventType", "BUY").put("eventDate", "2026-10-17")
+                    .put("quantityScaled", "1234567890123")
+                    .put("unitPriceMinor", "100")
+                    .put("totalAmountMinor", "9007199254740993")
+                    .put("createdAt", "2026-10-17")))
+            .put("goals", JSONArray())
+            .put("unknownOpaque", JSONObject().put("untouched", true))
+            .toString()
+        val salt = ByteArray(16).also(random::nextBytes)
+        val nonce = ByteArray(12).also(random::nextBytes)
+        val material = if (modern) {
+            "GrowUrDhan\\n" + email.lowercase() + "\\n" + password
+        } else password
+        val rawKey = pbkdf(material, salt, 600_000)
+        val ciphertext = try {
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(rawKey, "AES"),
+                GCMParameterSpec(128, nonce))
+            cipher.doFinal(original.toByteArray(Charsets.UTF_8))
+        } finally { rawKey.fill(0) }
+        val envelope = if (modern) {
+            ByteBuffer.allocate(40 + ciphertext.size).order(ByteOrder.BIG_ENDIAN)
+                .put("GUDVLT01".toByteArray(Charsets.US_ASCII))
+                .putInt(600_000).put(salt).put(nonce).put(ciphertext).array()
+        } else {
+            JSONObject().put("magic", "KOSHA1").put("kdf", "PBKDF2-SHA256")
+                .put("iterations", 600_000)
+                .put("saltB64", Base64.getEncoder().encodeToString(salt))
+                .put("ivB64", Base64.getEncoder().encodeToString(nonce))
+                .put("cipherB64", Base64.getEncoder().encodeToString(ciphertext))
+                .toString().toByteArray(Charsets.UTF_8)
+        }
+        val credentials = RestoreIdentityGate.Credentials(
+            email, password, "ABCDE1234F", "1990-01-01",
+            "city", "blue", "pet", "river")
+        return envelope to credentials
+    }
+
+    @Test fun genuineBinaryGcmStagingPublishesOnlyNewEncryptedVaultAndRejectsReplay() {
+        val ctx = sandbox()
+        val (archive, credentials) = newSyntheticEncryptedBackup(
+            true, "owner@example.invalid", "synthetic-not-a-secret")
+        val staging = LockedRestoreStaging(ctx)
+        val receipt = staging.stageEncryptedArchiveOnce(archive)
+        val wrong = credentials.copy(password = "incorrect-credential")
+        assertThrows(Exception::class.java) {
+            ApprovedNewVaultRestore(ctx).restoreFromStagedNewVault(
+                wrong, explicitOwnerApproval = true)
+        }
+        assertFalse(ctx.getDatabasePath("growurdhan-v9.sqlcipher").exists())
+        assertThrows(IllegalStateException::class.java) {
+            ApprovedNewVaultRestore(ctx).restoreFromStagedNewVault(
+                credentials, explicitOwnerApproval = false)
+        }
+        val result = ApprovedNewVaultRestore(ctx).restoreFromStagedNewVault(
+            credentials, explicitOwnerApproval = true)
+        assertEquals(8, result.restoredRows)
+        assertTrue(result.authenticatedPlaintextSha256.matches(
+            Regex("[0-9a-f]{64}")))
+        assertEquals(archive.size, receipt.byteCount)
+        val file = ctx.getDatabasePath("growurdhan-v9.sqlcipher")
+        assertTrue(file.isFile)
+        assertFalse(file.readBytes().copyOfRange(0, 16).contentEquals(
+            "SQLite format 3\\u0000".toByteArray(Charsets.UTF_8)))
+        EncryptedVaultStore(ctx).openExisting().use { db ->
+            assertEquals(1L, scalar(db, "SELECT COUNT(*) FROM ledger_event"))
+            assertEquals(9007199254740993L,
+                scalar(db, "SELECT total_amount_minor FROM ledger_event"))
+            assertEquals(1L, scalar(db, "SELECT COUNT(*) FROM entity"))
+        }
+        assertTrue(RestoreOnceJournal(File(ctx.noBackupFilesDir, "restore-claims")
+            .toPath()).hasClaim(result.authenticatedPlaintextSha256))
+        val bytes = file.readBytes()
+        assertThrows(Exception::class.java) {
+            ApprovedNewVaultRestore(ctx).restoreFromStagedNewVault(
+                credentials, explicitOwnerApproval = true)
+        }
+        assertArrayEquals(bytes, file.readBytes())
+    }
+
+    @Test fun syntheticKosha1GcmAndTamperMustNotCreateOrOverwriteVault() {
+        val (archive, credentials) = newSyntheticEncryptedBackup(
+            false, "older@example.invalid", "synthetic-not-a-secret")
+        val ctx = sandbox()
+        LockedRestoreStaging(ctx).stageEncryptedArchiveOnce(archive)
+        val r = ApprovedNewVaultRestore(ctx).restoreFromStagedNewVault(
+            credentials, explicitOwnerApproval = true)
+        assertEquals(8, r.restoredRows)
+        EncryptedVaultStore(ctx).openExisting().use { db ->
+            assertEquals(9007199254740993L,
+                scalar(db, "SELECT total_amount_minor FROM ledger_event"))
+        }
+        val tamperContext = sandbox()
+        val changed = archive.clone().also {
+            // Last Base64 char may be padding; corrupt authenticated JSON
+            // without changing its KOSHA1 outer metadata shape.
+            val i = it.indexOfLast { b -> b == 'A'.code.toByte() }
+            if (i >= 0) it[i] = 'B'.code.toByte() else it[it.size - 3] = 'Q'.code.toByte()
+        }
+        LockedRestoreStaging(tamperContext).stageEncryptedArchiveOnce(changed)
+        assertThrows(Exception::class.java) {
+            ApprovedNewVaultRestore(tamperContext).restoreFromStagedNewVault(
+                credentials, explicitOwnerApproval = true)
+        }
+        assertFalse(tamperContext.getDatabasePath("growurdhan-v9.sqlcipher").exists())
     }
 
 }
