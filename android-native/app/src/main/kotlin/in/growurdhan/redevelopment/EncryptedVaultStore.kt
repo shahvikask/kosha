@@ -18,7 +18,9 @@ internal class EncryptedVaultStore(private val context: Context) {
     private val keys = KeystoreWrappedVaultKey(context)
     private val file: File = context.getDatabasePath("growurdhan-v9.sqlcipher")
     // SQLCipher default corruption handler DELETES damaged files. Never use it.
-    private val preserveOnCorruption = DatabaseErrorHandler {
+    private val preserveOnCorruption = DatabaseErrorHandler { _, _ ->
+        // SQLCipher Android 4.17 requires (database, SQLiteException)
+        // parameters. Do not invoke the default destructive error handler.
         throw IllegalStateException("Encrypted vault corruption: preserve original file")
     }
 
