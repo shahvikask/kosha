@@ -200,6 +200,10 @@ class EncryptedVaultStoreInstrumentedTest {
         "GUDVLT01".toByteArray(Charsets.US_ASCII).copyInto(corrupted)
         val receipt = staging.stageEncryptedArchiveOnce(corrupted)
         assertEquals(56, receipt.byteCount)
+        // No silent blank SQLCipher vault while a restore review is pending.
+        assertThrows(IllegalStateException::class.java) {
+            EncryptedVaultStore(ctx).createFresh(false).close()
+        }
         val preserved = pending.readBytes()
         assertThrows(IllegalStateException::class.java) {
             staging.stageEncryptedArchiveOnce(corrupted)
