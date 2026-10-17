@@ -42,7 +42,8 @@ internal class RestoreRecoveryInspector(private val context: Context) {
             val target = context.getDatabasePath("growurdhan-v9.sqlcipher")
             val parent = target.parentFile ?: error("Missing protected database directory")
             val pending = File(noBackup, "restore-pending.v1.kosha")
-            check(regular(pending) && !exists(File(pending.path + ".bak"))) {
+            check(regular(pending) && !exists(File(pending.path + ".bak")) &&
+                !exists(File(pending.path + ".new"))) {
                 "Missing or ambiguous staged archive; do not modify AtomicFile evidence"
             }
             // A clean baseFile is required because AtomicFile.openRead may
