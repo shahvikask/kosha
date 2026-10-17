@@ -42,7 +42,8 @@ internal class EncryptedVaultStore(private val context: Context) {
         check(!File(context.noBackupFilesDir, "vault.enc").exists())
         check(!legacyVaultPresent) { "Existing legacy vault requires explicit import" }
         val pending = File(context.noBackupFilesDir, "restore-pending.v1.kosha")
-        check(!pending.exists() && !File(pending.path + ".bak").exists()) {
+        check(!pending.exists() && !File(pending.path + ".bak").exists() &&
+            !File(pending.path + ".new").exists()) {
             "Pending encrypted restore must be explicitly reviewed before creating a vault"
         }
         check(file.parentFile?.mkdirs() == true || file.parentFile?.isDirectory == true)
