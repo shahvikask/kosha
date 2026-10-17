@@ -610,6 +610,28 @@ class EncryptedVaultStoreInstrumentedTest {
                     credentials, explicitOwnerApproval = true).state)
             return ctx
         }
+        // A valid, freshly initialized encrypted database without the source
+        // financial rows must never be mistaken for a complete restore.
+        val initializedOnly = sandbox()
+        LockedRestoreStaging(initializedOnly).stageEncryptedArchiveOnce(archive)
+        var interruptedAfterInitialization = false
+        assertThrows(IllegalStateException::class.java) {
+            ApprovedNewVaultRestore(initializedOnly) { point ->
+                if (point == ApprovedNewVaultRestore.Boundary.AFTER_CANDIDATE_INITIALIZED) {
+                    interruptedAfterInitialization = true
+                    throw IllegalStateException("Synthetic crash before financial INSERT")
+                }
+            }.restoreFromStagedNewVault(credentials, explicitOwnerApproval = true)
+        }
+        assertTrue(interruptedAfterInitialization)
+        assertEquals(1, File(initializedOnly.noBackupFilesDir, "restore-claims")
+            .listFiles()!!.size)
+        assertThrows(Exception::class.java) {
+            RestoreRecoveryInspector(initializedOnly).inspectForOwnerReview(
+                credentials, explicitOwnerApproval = true)
+        }
+        assertFalse(initializedOnly.getDatabasePath("growurdhan-v9.sqlcipher").exists())
+
         val mismatched = interrupted()
         val originalKey = mismatched.noBackupFilesDir.listFiles()!!.single {
             it.name.startsWith("vault-key.v1.restore-")
