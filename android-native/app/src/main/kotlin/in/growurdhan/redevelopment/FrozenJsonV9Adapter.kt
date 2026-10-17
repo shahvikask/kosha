@@ -1,0 +1,130 @@
+package `in`.growurdhan.redevelopment
+
+import `in`.growurdhan.database.RestoreV9Plan
+import org.json.JSONArray
+import org.json.JSONObject
+
+/**
+ * Strict adapter from the EXACT GCM-authenticated plaintext string to a v9 row plan.
+ *
+ * Every typed field is read from one immutable source string; a caller cannot
+ * substitute unrelated typed records while claiming an authentic source digest.
+ * This class never persists, promotes a vault, or approves a device.
+ */
+internal object FrozenJsonV9Adapter {
+    private const val MAX_JSON_BYTES = 64 * 1024 * 1024
+    private val primaryRelations = setOf("Self")
+    private fun bad(): Nothing = throw IllegalArgumentException("Incompatible restore snapshot")
+
+    private fun string(o: JSONObject, k: String): String {
+        val v = if (o.has(k)) o.get(k) else bad()
+        if (v !is String || v.isBlank() || v.length > 4096) bad()
+        return v
+    }
+
+    private fun optional(o: JSONObject, k: String): String? {
+        if (!o.has(k) || o.isNull(k)) return null
+        val v = o.get(k)
+        if (v !is String || v.length > 65_536) bad()
+        return v
+    }
+
+    private fun decimal(o: JSONObject, k: String): String {
+        val v = if (o.has(k)) o.get(k) else bad()
+        if (v !is String || !v.matches(Regex("-?(0|[1-9][0-9]*)")) ||
+            v.length > 20 || v.toLongOrNull() == null) bad()
+        return v
+    }
+
+    private fun bool(o: JSONObject, k: String): Boolean? {
+        if (!o.has(k) || o.isNull(k)) return null
+        return o.get(k) as? Boolean ?: bad()
+    }
+
+    private fun int(o: JSONObject, k: String): Int {
+        val n = if (o.has(k)) o.get(k) else bad()
+        return when (n) {
+            is Int -> n
+            is Long -> n.takeIf { it in Int.MIN_VALUE..Int.MAX_VALUE }?.toInt() ?: bad()
+            else -> bad()
+        }
+    }
+
+    private fun array(parent: JSONObject, k: String): JSONArray {
+        if (!parent.has(k) || parent.isNull(k)) bad()
+        return parent.get(k) as? JSONArray ?: bad()
+    }
+
+    private fun <T> rows(parent: JSONObject, key: String, mapper: (JSONObject) -> T): List<T> {
+        val a = array(parent, key)
+        if (a.length() > 250_000) bad()
+        return List(a.length()) { i -> mapper(a.get(i) as? JSONObject ?: bad()) }
+    }
+
+    fun planFromAuthenticatedPlaintext(exactPlaintext: String): RestoreV9Plan.Plan {
+        val encodedBytes = exactPlaintext.toByteArray(Charsets.UTF_8)
+        require(encodedBytes.size in 1..MAX_JSON_BYTES) { "Invalid authenticated snapshot size" }
+        val json = JSONObject(exactPlaintext)
+        require(string(json, "kind") == "GUDVAULT" && int(json, "version") == 2) {
+            "Unknown frozen backup kind or version"
+        }
+        val login = json.get("account") as? JSONObject ?: bad()
+        val record = RestoreV9Plan.Login(
+            email = string(login, "email"), firstName = string(login, "firstName"),
+            lastName = string(login, "lastName"),
+            passwordSalt = string(login, "passwordSalt"),
+            passwordHash = string(login, "passwordHash"),
+            passwordIterations = int(login, "passwordIterations"),
+            passwordChangedAt = string(login, "passwordChangedAt"),
+            q1Id = string(login, "q1Id"), q1Hash = string(login, "q1Hash"),
+            q2Id = string(login, "q2Id"), q2Hash = string(login, "q2Hash"),
+            createdAt = string(login, "createdAt")
+        )
+        val members = rows(json, "familyMembers") { member ->
+            val relation = string(member, "relation")
+            val primary = bool(member, "isPrimary") ?: (relation in primaryRelations)
+            RestoreV9Plan.Family(id = string(member, "id"), name = string(member, "name"),
+                relation = relation, isPrimary = primary, color = optional(member, "color"),
+                panMasked = optional(member, "panMasked"),
+                panForStatements = optional(member, "panForStatements"),
+                dateOfBirth = optional(member, "dateOfBirth"))
+        }
+        val accounts = rows(json, "accounts") { a ->
+            RestoreV9Plan.Account(id = string(a, "id"), ownerId = string(a, "ownerId"),
+                accountType = string(a, "accountType"), custodian = string(a, "custodian"),
+                identifierMasked = optional(a, "identifierMasked"))
+        }
+        val holdings = rows(json, "holdings") { h ->
+            RestoreV9Plan.Holding(id = string(h, "id"), ownerId = string(h, "ownerId"),
+                accountId = optional(h, "accountId"), name = string(h, "name"),
+                category = string(h, "category"), subCategory = string(h, "subCategory"),
+                symbolOrFolio = string(h, "symbolOrFolio"),
+                quantityScaled = decimal(h, "quantityScaled"),
+                currentPriceMinor = decimal(h, "currentPriceMinor"),
+                lastPriceUpdated = string(h, "lastPriceUpdated"),
+                priceSource = string(h, "priceSource"))
+        }
+        val events = rows(json, "ledgerEvents") { e ->
+            RestoreV9Plan.Event(id = string(e, "id"), holdingId = string(e, "holdingId"),
+                holdingName = string(e, "holdingName"), ownerId = string(e, "ownerId"),
+                eventType = string(e, "eventType"), eventDate = string(e, "eventDate"),
+                quantityScaled = decimal(e, "quantityScaled"),
+                unitPriceMinor = decimal(e, "unitPriceMinor"),
+                totalAmountMinor = decimal(e, "totalAmountMinor"),
+                chargesMinor = if (e.has("chargesMinor") && !e.isNull("chargesMinor"))
+                    decimal(e, "chargesMinor") else "0",
+                createdAt = string(e, "createdAt"),
+                supersedesEventId = optional(e, "supersedesEventId"))
+        }
+        val goals = rows(json, "goals") { g ->
+            RestoreV9Plan.Goal(id = string(g, "id"), ownerId = optional(g, "ownerId"),
+                name = string(g, "name"), targetMinor = decimal(g, "targetMinor"),
+                targetDate = optional(g, "targetDate"), createdAt = string(g, "createdAt"))
+        }
+        return RestoreV9Plan.project(
+            RestoreV9Plan.Snapshot(exportedAt = string(json, "exportedAt"),
+                login = record, families = members, accounts = accounts,
+                holdings = holdings, events = events, goals = goals,
+                authenticatedOriginalJson = exactPlaintext))
+    }
+}
