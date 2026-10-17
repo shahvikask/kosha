@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   m24-native-runtime:
-    name: M24 Android restore + crash-artifact guard (10)
+    name: M24 read-only recovery & crash-state inspection (13)
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -81,7 +81,7 @@ jobs:
       - name: Configure KVM
         run: |
           if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; else echo "::warning::KVM unavailable"; fi
-      - name: Execute ten Android encrypted restore and crash-recovery probes
+      - name: Execute thirteen Android recovery, cipher and fault-injection probes
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -96,7 +96,7 @@ jobs:
           emulator-boot-timeout: 900
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: cd android-native && ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace
-      - name: Confirm ten Android instrumented JUnit results
+      - name: Confirm thirteen Android instrumented JUnit results
         if: success()
         run: |
           python3 - <<'PY'
@@ -114,6 +114,9 @@ jobs:
               "genuineBinaryGcmStagingPublishesOnlyNewEncryptedVaultAndRejectsReplay",
               "syntheticKosha1GcmAndTamperMustNotCreateOrOverwriteVault",
               "orphanedRestoreClaimsAndCandidatesBlockAnyNewVaultWithoutDeletingEvidence",
+              "readOnlyOwnerRecoveryInspectionHandlesEveryPublicationBoundary",
+              "ownerRecoveryRejectsUnmatchedKeysChangedRowsAndCorruptCipherWithoutCleanup",
+              "lowStorageFaultInjectionPreservesClaimAndOrphanedPublicationEvidence",
           }
           methods=[]
           failures=errors=skips=0
@@ -124,9 +127,9 @@ jobs:
                   failures += len(case.findall("failure"))
                   errors += len(case.findall("error"))
                   skips += len(case.findall("skipped"))
-          assert len(methods)==10 and set(methods)==expected, f"Expected ten named M24 tests, got {methods!r}"
+          assert len(methods)==13 and set(methods)==expected, f"Expected thirteen named M24 tests, got {methods!r}"
           assert failures==errors==skips==0, f"failures={failures} errors={errors} skips={skips}"
-          print("M24_ANDROID_JUNIT_CONFIRMED total=10 failures=0 errors=0 skipped=0")
+          print("M24_ANDROID_JUNIT_CONFIRMED total=13 failures=0 errors=0 skipped=0")
           PY
       - name: Upload Android JUnit evidence
         if: always()
