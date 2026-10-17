@@ -249,20 +249,20 @@ class EncryptedVaultStoreInstrumentedTest {
             .contains(9007199254740993L))
         assertThrows(Exception::class.java) {
             FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(exact.replace(
-                """"totalAmountMinor":"9007199254740993"""",
-                """"totalAmountMinor":9007199254740993"""))
+                "\"totalAmountMinor\":\"9007199254740993\"",
+                "\"totalAmountMinor\":9007199254740993"))
         }
         assertThrows(Exception::class.java) {
             FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(exact.replace(
-                """"eventType":"BUY"""", """"eventType":"FAKE""""))
+                "\"eventType\":\"BUY\"", "\"eventType\":\"FAKE\""))
         }
         assertThrows(Exception::class.java) {
             FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(exact.replace(
-                """"name":"Example"""", """"name":"""))
+                "\"name\":\"Example\"", "\"name\":\"\""))
         }
         assertThrows(Exception::class.java) {
             FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(exact.replace(
-                """"kind":"GUDVAULT"""", """"kind":"UNKNOWN""""))
+                "\"kind\":\"GUDVAULT\"", "\"kind\":\"UNKNOWN\""))
         }
     }
 
