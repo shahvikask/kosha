@@ -213,4 +213,57 @@ class EncryptedVaultStoreInstrumentedTest {
         assertFalse(ctx.getDatabasePath("growurdhan-v9.sqlcipher").exists())
     }
 
+
+    @Test fun strictAuthenticatedJsonV9PreviewDoesNotInventMoneyEvents() {
+        // Synthetic full record, NEVER a genuine user archive. Amount larger
+        // than JS safe integer must survive as a Kotlin Long, without rounding.
+        val exact = """{
+          "kind":"GUDVAULT","version":2,"exportedAt":"2026-10-16T00:00:00Z",
+          "account":{"email":"owner@example.invalid","firstName":"Fixture","lastName":"Only",
+            "passwordSalt":"syntheticSalt","passwordHash":"syntheticHash",
+            "passwordIterations":210000,"passwordChangedAt":"2026-10-16",
+            "q1Id":"city","q1Hash":"syntheticQ1","q2Id":"pet","q2Hash":"syntheticQ2",
+            "createdAt":"2026-10-16","panMasked":"ABCDE****F",
+            "panForStatements":"ABCDE1234F","dateOfBirth":"1990-01-01"},
+          "familyMembers":[{"id":"owner-A","name":"Fixture","relation":"Self","color":"#112233"}],
+          "accounts":[{"id":"account-A","ownerId":"owner-A","accountType":"DEMAT","custodian":"Test"}],
+          "holdings":[{"id":"holding-A","ownerId":"owner-A","accountId":"account-A",
+            "name":"Example","category":"EQUITY","subCategory":"Large cap",
+            "symbolOrFolio":"TEST","quantityScaled":"1234567890123",
+            "currentPriceMinor":"9007199254740993","lastPriceUpdated":"2026-10-16",
+            "priceSource":"Test only"}],
+          "ledgerEvents":[{"id":"event-A","ownerId":"owner-A","holdingId":"holding-A",
+            "holdingName":"Example","eventType":"BUY","eventDate":"2026-10-16",
+            "quantityScaled":"1234567890123","unitPriceMinor":"3",
+            "totalAmountMinor":"9007199254740993","createdAt":"2026-10-16"}],
+          "goals":[{"id":"goal-A","ownerId":"owner-A","name":"Test goal",
+            "targetMinor":"100000","createdAt":"2026-10-16"}],
+          "unknownOpaque":{"nested":[true,"untouched"]}
+        }""".trimIndent()
+        val plan = FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(exact)
+        assertEquals(8, plan.rows.size)
+        assertEquals(exact, plan.rows.last().values.last())
+        assertTrue(plan.rows.single { it.table == "vault_account" }.values
+            .contains("ABCDE1234F"))
+        assertTrue(plan.rows.single { it.table == "ledger_event" }.values
+            .contains(9007199254740993L))
+        assertThrows(Exception::class.java) {
+            FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(exact.replace(
+                """"totalAmountMinor":"9007199254740993"""",
+                """"totalAmountMinor":9007199254740993"""))
+        }
+        assertThrows(Exception::class.java) {
+            FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(exact.replace(
+                """"eventType":"BUY"""", """"eventType":"FAKE""""))
+        }
+        assertThrows(Exception::class.java) {
+            FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(exact.replace(
+                """"name":"Example"""", """"name":"""))
+        }
+        assertThrows(Exception::class.java) {
+            FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(exact.replace(
+                """"kind":"GUDVAULT"""", """"kind":"UNKNOWN""""))
+        }
+    }
+
 }
