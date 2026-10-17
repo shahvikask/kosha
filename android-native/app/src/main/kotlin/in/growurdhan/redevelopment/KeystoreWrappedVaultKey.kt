@@ -20,8 +20,20 @@ import javax.crypto.spec.GCMParameterSpec
  * SQLCipher wiring, migration and recovery are still acceptance blockers.
  * No silent reset on invalidated Keystore key, corrupted envelope or I/O error.
  */
-internal class KeystoreWrappedVaultKey(context: Context) {
-    private val keyFile = AtomicFile(File(context.noBackupFilesDir, "vault-key.v1"))
+internal class KeystoreWrappedVaultKey(
+    context: Context,
+    envelopeName: String = "vault-key.v1"
+) {
+    init {
+        require(envelopeName == "vault-key.v1" ||
+            envelopeName.matches(Regex("vault-key\\.v1\\.restore-[0-9a-f-]{36}"))) {
+            "Unsafe encrypted key-envelope filename"
+        }
+    }
+    // Restore candidates have DISTINCT wrapped database keys and envelope
+    // files; only a fully verified candidate envelope may be published
+    // exclusively to vault-key.v1. Both use the non-exportable Keystore alias.
+    private val keyFile = AtomicFile(File(context.noBackupFilesDir, envelopeName))
     private val alias = "in.growurdhan.redevelopment.vault.wrap.v1"
     private val magic = byteArrayOf(0x47, 0x55, 0x44, 0x4b, 0x45, 0x59, 0x30, 0x31)
     private val random = SecureRandom()
