@@ -1,9 +1,9 @@
 name: GrowUrDhan M24 encrypted schema JVM
 
-# Owner-authorized M24 20-test source regression (13 original + seven goldens).
-# Single explicit owner-authorized source verification. The newly added workflow
-# self-triggers once when the YAML is committed to the redevelopment branch.
-# Do not add android-native/** to push paths: source pushes must not incur CI spend.
+# Owner standing-authorized exact-SHA M24 regression (24 current JVM tests)
+# plus compilation of the native Android app Kotlin against pinned SQLCipher.
+# A deliberate YAML-only push triggers this workflow on the redevelopment branch.
+# WIP source pushes do not trigger this workflow; avoid emulator/AAB jobs.
 on:
   workflow_dispatch:
   push:
@@ -90,6 +90,29 @@ jobs:
           assert failures==errors==skipped==0, f"JUnit failures={failures}, errors={errors}, skipped={skipped}"
           print(f"M24_JUNIT_CONFIRMED total={len(seen)} new=11 failures=0 errors=0 skipped=0")
           PY
+      - name: Confirm available Android SDK 35
+        run: |
+          if [ -z "${ANDROID_SDK_ROOT:-}" ] && [ -n "${ANDROID_HOME:-}" ]; then
+            echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+            ANDROID_SDK_ROOT="$ANDROID_HOME"
+          fi
+          test -n "${ANDROID_SDK_ROOT:-}" || { echo "::error::Android SDK is not configured"; exit 1; }
+          SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -d "$ANDROID_SDK_ROOT/platforms/android-35" ]; then
+            test -x "$SDKMANAGER" || { echo "::error::sdkmanager missing"; exit 1; }
+            yes | "$SDKMANAGER" --licenses >/dev/null || true
+            "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0"
+          fi
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          test -f "$ANDROID_SDK_ROOT/platforms/android-35/android.jar"
+
+      - name: Compile native Android Kotlin against pinned SQLCipher dependencies
+        working-directory: android-native
+        run: |
+          echo "NATIVE_COMPILE_SOURCE_SHA=$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          ./gradlew :app:compileDebugKotlin --no-daemon --stacktrace
+
       - name: Upload database JUnit evidence
         if: always()
         uses: actions/upload-artifact@v4
