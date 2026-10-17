@@ -38,3 +38,7 @@ This is a SOURCE IMPLEMENTED / STATIC VERIFIED checkpoint only. M00 remains owne
 - SqlCipherOpenTest: 1/1 passing.
 
 Previous statement `Gradle/JUnit/actual SQLCipher runtime tests NOT RUN` is historical pre-CI evidence, **superseded for this exact tested SHA only**. The tests prove an empty **JVM SQLCipher** schema, not populated backup retention, Android SQLCipher, Keystore, production migrations or full M24 acceptance. M24 remains OPEN. Legacy frozen original and approved branding unchanged.
+
+## 2026-10-16 source update (not superseding exact-old-SHA JVM CI)
+
+New `RestoreV9Plan` and `RestoreV9InsertTransaction` core source locally compiled against byte-exact Git blobs with 1 accepted/12 rejected row plans and 1 fake committed/5 rejected transactional cases; Android `AndroidRestoreV9SqlTarget` compiled against a synthetic interface stub only. **NO actual SQLCipher native Android compilation, encrypted database restore transaction, JUnit XML or device gate passed for the new source**. The historical SQLCipher JVM results in this checkpoint apply to their precise historical SHAs only. **M24 NOT ACCEPTED**.
