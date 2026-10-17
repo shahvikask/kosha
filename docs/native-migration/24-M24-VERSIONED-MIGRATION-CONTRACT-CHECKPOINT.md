@@ -43,3 +43,7 @@ This checkpoint's 13/13 JVM CI evidence applies **only** to exact older SHA `646
 ## 2026-10-16 newest source has NO native migration acceptance evidence
 
 New `RestoreV9Plan.kt` and `RestoreV9InsertTransaction.kt` were exact-source Kotlin host-tested; `AndroidRestoreV9SqlTarget.kt` only syntax-checked with a mock database API. The Gradle run `:core:database:test :app:compileDebugKotlin` cannot start in current container without an Android checkout/SDK/cache (no `gradlew`). No historic v1–v8 Android migration, real SQLCipher restore rollback, append-only trigger restart or device data-loss test was run. Prior JVM CI 13/13 at `646e76573e533df0a9db1d41faed3cc84770fbd3` and 20/20 at `e583fb38d04ee4c23cd0cb8ba1c9fc51468f2e13` remain only older-SHA results. **M24 NOT ACCEPTED**.
+
+## 2026-10-17 — current SHA still lacks native migration evidence
+
+New strict source JSON parsing/read-only stage preview and PAN/DOB column mapping do not migrate an actual populated SQLCipher database and were not compiled against Android. `./android-native/gradlew :core:database:test :app:compileDebugKotlin --no-daemon` failed to start (full checkout absent); 24 JVM and 7 Android authored tests remain **UNRUN on current SHA**, no JUnit XML. Historical v1–v8 FK, append-only, crash/rollback, wrong-key and schema migrations stay open. Do not transfer older-SHA 13/13 or 20/20 CI results. No Actions spent; M24 NOT ACCEPTED.
