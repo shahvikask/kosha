@@ -42,3 +42,7 @@ Previous statement `Gradle/JUnit/actual SQLCipher runtime tests NOT RUN` is hist
 ## 2026-10-16 source update (not superseding exact-old-SHA JVM CI)
 
 New `RestoreV9Plan` and `RestoreV9InsertTransaction` core source locally compiled against byte-exact Git blobs with 1 accepted/12 rejected row plans and 1 fake committed/5 rejected transactional cases; Android `AndroidRestoreV9SqlTarget` compiled against a synthetic interface stub only. **NO actual SQLCipher native Android compilation, encrypted database restore transaction, JUnit XML or device gate passed for the new source**. The historical SQLCipher JVM results in this checkpoint apply to their precise historical SHAs only. **M24 NOT ACCEPTED**.
+
+## 2026-10-17 — strictly read-only JSON adapter source, zero new SQLCipher evidence
+
+Added source `FrozenJsonV9Adapter.kt` to derive v9 rows exclusively from GCM-authenticated original v2 plaintext, and read-only `LockedRestoreStaging.previewAuthenticatedV9`. Earlier 20/20 M24 JVM CI result remains confined to old SHA `e583fb38d04ee4c23cd0cb8ba1c9fc51468f2e13`. Neither changed parser nor SQLCipher Android adapter compiled on the new branch source because Android SDK/Gradle checkout/AAR unavailable. Authored source tests now 24 JVM and 7 Android; **NO current-SHA test execution**. Immutable trigger, FKs, encrypted row import, Keystore and device gates NOT VERIFIED. No Actions dispatched. **M24 NOT ACCEPTED.**
