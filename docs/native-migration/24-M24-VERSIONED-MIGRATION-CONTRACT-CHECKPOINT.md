@@ -51,3 +51,7 @@ New strict source JSON parsing/read-only stage preview and PAN/DOB column mappin
 ## 2026-10-17 — unrecorded positive legacy holdings require explicit migration policy
 
 A native schema migration and backup restore must not silently discard original positive stored quantity when historical events are absent. The frozen application derives a transient opening balance in this case. The new preflight fails closed and is locally source-tested 3 positive/8 rejected cases; no transformation into canonical ledger history is authorized or implemented. Historical v1–v8 migrations and real SQLCipher/Android/rollback remain NOT RUN on current HEAD. Older-SHA 13/13 and 20/20 JVM actions do not cover this code. M24 NOT ACCEPTED.
+
+## 2026-10-17 — new column usage on v9 source plan, real versioned migrations still blocked
+
+Source-matched original v9 schema has 11 columns now populated from frozen account/holding/ledger/goal metadata by `RestoreV9Plan`, with exact Kotlin host test and opaque source retention PASS. All those columns already exist in original v9 DDL; **NO new native ALTER or schema modification**. Still no full Android checkout/SDK/SQLCipher AAR, so original v1-v8 upgrade chains, encrypted target write, referential constraints, rollback, reboot and current-SHA JUnit/instrumentation tests NOT RUN. Do not promote previous 13/13 or 20/20 old-SHA CI to new-source success. No Actions credits. M24 NOT ACCEPTED.
