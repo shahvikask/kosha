@@ -45,7 +45,7 @@ Before ending a substantial session, update the handoff files and give the Secti
 
 ## Current stage
 
-M00 is owner-accepted with limitations. M24 is started and not accepted. A JVM test opens and closes a SQLCipher file. Production code still does not open a database.
+M00 is owner-accepted with limitations. M24 remains STARTED / NOT ACCEPTED. JVM SQLCipher tests passed only on an older exact SHA; new Android SQLCipher/Keystore opener source exists but has NOT been compiled, integrated, or run on Android. Actual frozen TypeScript exporter/JCE interoperability passed locally with synthetic data, but replay-safe atomic financial restore, Android build/device tests and owner acceptance are still open. No GitHub Actions credit spending without explicit owner authorization.
 
 ## Loop check
 
