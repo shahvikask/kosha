@@ -177,7 +177,7 @@ class LegacyBackupEnvelopeReaderTest {
             LegacyBackupEnvelopeReader.decodeKOSHA1(
                 legacyWithoutOptionalKdf, "wrong-password")
         }
-        val brokenCipher = b64.getDecoder().decode(encrypted)
+        val brokenCipher = Base64.getDecoder().decode(encrypted)
         brokenCipher[brokenCipher.lastIndex] =
             (brokenCipher.last().toInt() xor 1).toByte()
         assertThrows(Exception::class.java) {
