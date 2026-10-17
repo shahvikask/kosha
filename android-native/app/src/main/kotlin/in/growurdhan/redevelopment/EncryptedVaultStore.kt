@@ -25,7 +25,12 @@ internal class EncryptedVaultStore(private val context: Context) {
     }
 
     @Synchronized
-    fun createFresh(legacyVaultPresent: Boolean): SQLiteDatabase {
+    fun createFresh(legacyVaultPresent: Boolean): SQLiteDatabase =
+        VaultLifecycleLock.exclusively(context) {
+            createFreshUnderLock(legacyVaultPresent)
+        }
+
+    private fun createFreshUnderLock(legacyVaultPresent: Boolean): SQLiteDatabase {
         check(!file.exists()) { "Encrypted vault already exists" }
         check(!keys.hasExistingEnvelope()) {
             "Wrapped key exists without database; refuse silent empty-vault recreation"
