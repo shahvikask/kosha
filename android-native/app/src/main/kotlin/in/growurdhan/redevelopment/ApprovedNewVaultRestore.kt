@@ -34,7 +34,7 @@ internal class ApprovedNewVaultRestore(
 ) {
     internal enum class Boundary {
         BEFORE_CLAIM, AFTER_CLAIM, AFTER_KEY_CREATION,
-        AFTER_CANDIDATE_VERIFIED, BEFORE_KEY_PUBLICATION,
+        AFTER_CANDIDATE_INITIALIZED, AFTER_CANDIDATE_VERIFIED, BEFORE_KEY_PUBLICATION,
         AFTER_KEY_PUBLICATION, BEFORE_DATABASE_PUBLICATION,
         AFTER_DATABASE_PUBLICATION
     }
@@ -101,6 +101,7 @@ internal class ApprovedNewVaultRestore(
                 // One canonical frozen-v9 initialization transaction, then one
                 // INSERT-only transaction. The live database is NEVER opened.
                 EncryptedVaultStore(context).createNewRestoreCandidate(candidate, newKey).use {
+                    at(Boundary.AFTER_CANDIDATE_INITIALIZED)
                     RestoreV9InsertTransaction.apply(plan, AndroidRestoreV9SqlTarget(it))
                 }
                 // Re-open the CLOSED candidate using its independent wrapped
