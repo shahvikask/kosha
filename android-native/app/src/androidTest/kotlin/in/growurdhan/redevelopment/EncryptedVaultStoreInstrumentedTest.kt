@@ -7,6 +7,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import `in`.growurdhan.database.RestoreV9InsertTransaction
 import `in`.growurdhan.database.RestoreIdentityGate
 import `in`.growurdhan.database.RestoreOnceJournal
+import `in`.growurdhan.database.EncryptedRestorePublisher
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.security.SecureRandom
@@ -491,6 +492,16 @@ class EncryptedVaultStoreInstrumentedTest {
         assertTrue(RestoreOnceJournal(File(ctx.noBackupFilesDir, "restore-claims")
             .toPath()).hasClaim(result.authenticatedPlaintextSha256))
         val bytes = file.readBytes()
+        // A completely separate candidate must NEVER overwrite the already
+        // published financial vault, even if publication is called directly.
+        val unrelated = File(file.parentFile, "unrelated-synthetic-candidate")
+        unrelated.writeBytes(byteArrayOf(1, 2, 3, 4))
+        assertThrows(Exception::class.java) {
+            EncryptedRestorePublisher.publishReservedAtomic(
+                unrelated.toPath(), file.toPath())
+        }
+        assertArrayEquals(bytes, file.readBytes())
+        assertTrue(unrelated.exists()) // failed attempt preserves forensic source
         assertThrows(Exception::class.java) {
             ApprovedNewVaultRestore(ctx).restoreFromStagedNewVault(
                 credentials, explicitOwnerApproval = true)
