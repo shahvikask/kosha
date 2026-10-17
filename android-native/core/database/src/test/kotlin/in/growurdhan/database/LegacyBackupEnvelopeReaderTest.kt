@@ -232,5 +232,74 @@ class LegacyBackupEnvelopeReaderTest {
                     .forEach { java.nio.file.Files.deleteIfExists(it) }
             }
         }
+
+        // This is a strict typed plan from synthetic COMPLETE source rows.
+        // No missing holding or ledger fields may be inferred from the older
+        // intentionally incomplete cryptographic compatibility fixture.
+        val p = RestoreV9Plan
+        val complete = p.Snapshot(
+            "2026-10-16T00:00:00Z",
+            p.Login("owner@example.invalid", "Synthetic", "Owner",
+                "salt", "hash", 210_000, "2026-10-16", "city", "answer1",
+                "pet", "answer2", "2026-10-16"),
+            listOf(p.Family("owner-A", "Owner", "Self", true, "#000")),
+            listOf(p.Account("account-A", "owner-A", "DEMAT", "Test")),
+            listOf(p.Holding("holding-A", "owner-A", "account-A",
+                "Synthetic Holding", "EQUITY", "Large cap", "TEST",
+                "1234567890123", "9007199254740993", "2026-10-16", "NSE")),
+            listOf(p.Event("event-A", "holding-A", "Synthetic Holding",
+                "owner-A", "BUY", "2026-10-16", "1234567890123", "3",
+                "9007199254740993", "0", "2026-10-16")),
+            listOf(p.Goal("goal-A", "owner-A", "Retirement",
+                "100000", "2030-10-16", "2026-10-16")),
+            """{"kind":"GUDVAULT","unknown":{"preserve":true}}"""
+        )
+        val insertPlan = p.project(complete)
+        assertEquals(8, insertPlan.rows.size)
+        assertEquals(9007199254740993L,
+            insertPlan.rows.single { it.table == "ledger_event" }
+                .values.first { it == 9007199254740993L })
+        assertEquals(complete.authenticatedOriginalJson, insertPlan.rows.last().values.last())
+        assertThrows(IllegalArgumentException::class.java) {
+            p.project(complete.copy(events = complete.events.map {
+                it.copy(holdingName = "invented")
+            }))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            p.project(complete.copy(holdings = complete.holdings.map {
+                it.copy(currentPriceMinor = "9007199254740993.5")
+            }))
+        }
+        class FakeFreshTarget : RestoreV9InsertTransaction.EmptyEncryptedTarget {
+            var pending = 0
+            var persisted = 0
+            var marked = false
+            var ended = false
+            var failAt = -1
+            override fun verifyNewEmptyCipherTarget() { check(persisted == 0) }
+            override fun beginTransaction() {}
+            override fun insert(table: String, columns: List<String>, parameters: List<Any?>) {
+                if (pending == failAt) error("synthetic mid-transaction failure")
+                pending++
+            }
+            override fun verifyTransactionIntegrity(expectedRows: Int) {
+                check(pending == expectedRows)
+            }
+            override fun setTransactionSuccessful() { marked = true }
+            override fun endTransaction() {
+                if (marked) persisted += pending
+                pending = 0
+                ended = true
+            }
+        }
+        val rolledBack = FakeFreshTarget().apply { failAt = 3 }
+        assertThrows(IllegalStateException::class.java) {
+            RestoreV9InsertTransaction.apply(insertPlan, rolledBack)
+        }
+        assertEquals(0, rolledBack.persisted)
+        assertTrue(rolledBack.ended)
+        val committed = FakeFreshTarget()
+        RestoreV9InsertTransaction.apply(insertPlan, committed)
+        assertEquals(8, committed.persisted)
     }
 }
