@@ -149,6 +149,44 @@ class LegacyBackupEnvelopeReaderTest {
         }
     }
 
+    @Test fun frozenKosha1AbsentMetadataAndZeroIterationsRemainAuthenticated() {
+        val b64 = Base64.getEncoder()
+        val encrypted = b64.encodeToString(encrypt(password))
+        val legacyWithoutOptionalKdf = LegacyBackupEnvelopeReader.Kosha1(
+            "KOSHA1", "", 0, b64.encodeToString(salt),
+            b64.encodeToString(iv), encrypted
+        )
+        assertEquals(json, LegacyBackupEnvelopeReader.decodeKOSHA1(
+            legacyWithoutOptionalKdf, password))
+        // Frozen original also accepts explicit zero rounds with a supported
+        // algorithm, but no alternative nonzero KDF cost or algorithm.
+        assertEquals(json, LegacyBackupEnvelopeReader.decodeKOSHA1(
+            legacyWithoutOptionalKdf.copy(kdf = "PBKDF2-SHA256"), password))
+        for (invalid in listOf(
+            legacyWithoutOptionalKdf.copy(kdf = "PBKDF2-SHA1"),
+            legacyWithoutOptionalKdf.copy(iterations = 1),
+            legacyWithoutOptionalKdf.copy(iterations = 599_999),
+            legacyWithoutOptionalKdf.copy(iterations = 600_001),
+            legacyWithoutOptionalKdf.copy(magic = "UNKNOWN")
+        )) {
+            assertThrows(IllegalArgumentException::class.java) {
+                LegacyBackupEnvelopeReader.decodeKOSHA1(invalid, password)
+            }
+        }
+        assertThrows(Exception::class.java) {
+            LegacyBackupEnvelopeReader.decodeKOSHA1(
+                legacyWithoutOptionalKdf, "wrong-password")
+        }
+        val brokenCipher = b64.getDecoder().decode(encrypted)
+        brokenCipher[brokenCipher.lastIndex] =
+            (brokenCipher.last().toInt() xor 1).toByte()
+        assertThrows(Exception::class.java) {
+            LegacyBackupEnvelopeReader.decodeKOSHA1(
+                legacyWithoutOptionalKdf.copy(cipherB64 =
+                    b64.encodeToString(brokenCipher)), password)
+        }
+    }
+
     @Test fun wrongEmailWrongPasswordAndTamperingNeverYieldPlaintext() {
         val bytes = modern()
         assertThrows(Exception::class.java) {
