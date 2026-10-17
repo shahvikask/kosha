@@ -26,7 +26,19 @@ import net.zetetic.database.sqlcipher.SQLiteDatabase
  * leaves a preserved encrypted candidate or a partial publication and needs
  * explicit forensic recovery. A retry cannot silently reset or replace a vault.
  */
-internal class ApprovedNewVaultRestore(private val context: Context) {
+internal class ApprovedNewVaultRestore(
+    private val context: Context,
+    // Tests may throw at an irreversible boundary. Production uses null.
+    // This callback cannot authenticate, bypass, publish, or reset a claim.
+    private val faultAt: ((Boundary) -> Unit)? = null
+) {
+    internal enum class Boundary {
+        BEFORE_CLAIM, AFTER_CLAIM, AFTER_KEY_CREATION,
+        AFTER_CANDIDATE_VERIFIED, BEFORE_KEY_PUBLICATION,
+        AFTER_KEY_PUBLICATION, BEFORE_DATABASE_PUBLICATION,
+        AFTER_DATABASE_PUBLICATION
+    }
+    private fun at(boundary: Boundary) { faultAt?.invoke(boundary) }
     data class Receipt(val authenticatedPlaintextSha256: String, val restoredRows: Int)
 
     @Synchronized
@@ -69,7 +81,9 @@ internal class ApprovedNewVaultRestore(private val context: Context) {
             val journal = RestoreOnceJournal(journalDir)
             // Claim BEFORE any candidate generation. A failed attempt is
             // intentionally permanent until an owner-reviewed recovery.
+            at(Boundary.BEFORE_CLAIM)
             journal.claimOnce(sourceFingerprint)
+            at(Boundary.AFTER_CLAIM)
 
             val nonce = UUID.randomUUID().toString()
             val keyName = "vault-key.v1.restore-$nonce"
@@ -80,6 +94,7 @@ internal class ApprovedNewVaultRestore(private val context: Context) {
             val keyManager = KeystoreWrappedVaultKey(context, keyName)
             val newKey = keyManager.getOrCreateForFreshInstall(legacyVaultPresent = false)
             try {
+                at(Boundary.AFTER_KEY_CREATION)
                 // One canonical frozen-v9 initialization transaction, then one
                 // INSERT-only transaction. The live database is NEVER opened.
                 EncryptedVaultStore(context).createNewRestoreCandidate(candidate, newKey).use {
@@ -89,6 +104,7 @@ internal class ApprovedNewVaultRestore(private val context: Context) {
                 // key, and verify committed ciphertext and exact original JSON
                 // before making any irreversible live-name publication.
                 verifyClosedCandidate(candidate, newKey, plan)
+                at(Boundary.AFTER_CANDIDATE_VERIFIED)
             } finally {
                 newKey.fill(0)
             }
@@ -101,10 +117,14 @@ internal class ApprovedNewVaultRestore(private val context: Context) {
             // The cipher is atomically published second via an exclusive
             // zero-byte reservation, never over an existing vault.\n            // Any failure leaves
             // the journal, pending archive and artifacts intact for review.
+            at(Boundary.BEFORE_KEY_PUBLICATION)
             EncryptedRestorePublisher.publishReservedAtomic(
                 candidateKeyFile.toPath(), liveKey.toPath())
+            at(Boundary.AFTER_KEY_PUBLICATION)
+            at(Boundary.BEFORE_DATABASE_PUBLICATION)
             EncryptedRestorePublisher.publishReservedAtomic(
                 candidate.toPath(), target.toPath())
+            at(Boundary.AFTER_DATABASE_PUBLICATION)
             Receipt(sourceFingerprint, plan.rows.size)
         }
     }
