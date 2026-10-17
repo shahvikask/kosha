@@ -419,13 +419,17 @@ class EncryptedVaultStoreInstrumentedTest {
                     .put("unitPriceMinor", "100")
                     .put("totalAmountMinor", "9007199254740993")
                     .put("createdAt", "2026-10-17")))
-            .put("goals", JSONArray())
+            .put("goals", JSONArray().put(
+                JSONObject().put("id", "goal").put("ownerId", "owner")
+                    .put("name", "Synthetic goal")
+                    .put("targetMinor", "10000")
+                    .put("createdAt", "2026-10-17")))
             .put("unknownOpaque", JSONObject().put("untouched", true))
             .toString()
         val salt = ByteArray(16).also(random::nextBytes)
         val nonce = ByteArray(12).also(random::nextBytes)
         val material = if (modern) {
-            "GrowUrDhan\\n" + email.lowercase() + "\\n" + password
+            "GrowUrDhan\n" + email.lowercase() + "\n" + password
         } else password
         val rawKey = pbkdf(material, salt, 600_000)
         val ciphertext = try {
@@ -477,7 +481,7 @@ class EncryptedVaultStoreInstrumentedTest {
         val file = ctx.getDatabasePath("growurdhan-v9.sqlcipher")
         assertTrue(file.isFile)
         assertFalse(file.readBytes().copyOfRange(0, 16).contentEquals(
-            "SQLite format 3\\u0000".toByteArray(Charsets.UTF_8)))
+            "SQLite format 3\u0000".toByteArray(Charsets.UTF_8)))
         EncryptedVaultStore(ctx).openExisting().use { db ->
             assertEquals(1L, scalar(db, "SELECT COUNT(*) FROM ledger_event"))
             assertEquals(9007199254740993L,
@@ -507,12 +511,11 @@ class EncryptedVaultStoreInstrumentedTest {
                 scalar(db, "SELECT total_amount_minor FROM ledger_event"))
         }
         val tamperContext = sandbox()
-        val changed = archive.clone().also {
-            // Last Base64 char may be padding; corrupt authenticated JSON
-            // without changing its KOSHA1 outer metadata shape.
-            val i = it.indexOfLast { b -> b == 'A'.code.toByte() }
-            if (i >= 0) it[i] = 'B'.code.toByte() else it[it.size - 3] = 'Q'.code.toByte()
-        }
+        val wrapped = JSONObject(String(archive, Charsets.UTF_8))
+        val ciphertext = wrapped.getString("cipherB64")
+        wrapped.put("cipherB64",
+            (if (ciphertext[0] == 'A') "B" else "A") + ciphertext.substring(1))
+        val changed = wrapped.toString().toByteArray(Charsets.UTF_8)
         LockedRestoreStaging(tamperContext).stageEncryptedArchiveOnce(changed)
         assertThrows(Exception::class.java) {
             ApprovedNewVaultRestore(tamperContext).restoreFromStagedNewVault(
