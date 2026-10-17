@@ -103,7 +103,9 @@ internal object FrozenJsonV9Adapter {
         val accounts = rows(json, "accounts") { a ->
             RestoreV9Plan.Account(id = string(a, "id"), ownerId = string(a, "ownerId"),
                 accountType = string(a, "accountType"), custodian = string(a, "custodian"),
-                identifierMasked = optional(a, "identifierMasked"))
+                identifierMasked = optional(a, "identifierMasked"),
+                dpId = optional(a, "dpId"), clientId = optional(a, "clientId"),
+                boId = optional(a, "boId"), nominee = optional(a, "nominee"))
         }
         val holdings = rows(json, "holdings") { h ->
             RestoreV9Plan.Holding(id = string(h, "id"), ownerId = string(h, "ownerId"),
@@ -113,7 +115,9 @@ internal object FrozenJsonV9Adapter {
                 quantityScaled = decimal(h, "quantityScaled"),
                 currentPriceMinor = decimal(h, "currentPriceMinor"),
                 lastPriceUpdated = string(h, "lastPriceUpdated"),
-                priceSource = string(h, "priceSource"))
+                priceSource = string(h, "priceSource"),
+                isin = optional(h, "isin"), notes = optional(h, "notes"),
+                needsReview = bool(h, "needsReview"))
         }
         val events = rows(json, "ledgerEvents") { e ->
             RestoreV9Plan.Event(id = string(e, "id"), holdingId = string(e, "holdingId"),
@@ -125,12 +129,15 @@ internal object FrozenJsonV9Adapter {
                 chargesMinor = if (e.has("chargesMinor") && !e.isNull("chargesMinor"))
                     decimal(e, "chargesMinor") else "0",
                 createdAt = string(e, "createdAt"),
-                supersedesEventId = optional(e, "supersedesEventId"))
+                supersedesEventId = optional(e, "supersedesEventId"),
+                importBatchId = optional(e, "importBatchId"),
+                sourceRef = optional(e, "sourceRef"), notes = optional(e, "notes"))
         }
         val goals = rows(json, "goals") { g ->
             RestoreV9Plan.Goal(id = string(g, "id"), ownerId = optional(g, "ownerId"),
                 name = string(g, "name"), targetMinor = decimal(g, "targetMinor"),
-                targetDate = optional(g, "targetDate"), createdAt = string(g, "createdAt"))
+                targetDate = optional(g, "targetDate"), createdAt = string(g, "createdAt"),
+                priority = optional(g, "priority"))
         }
         return RestoreV9Plan.project(
             RestoreV9Plan.Snapshot(exportedAt = string(json, "exportedAt"),
