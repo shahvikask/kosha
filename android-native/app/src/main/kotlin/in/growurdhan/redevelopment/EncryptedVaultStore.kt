@@ -31,6 +31,7 @@ internal class EncryptedVaultStore(private val context: Context) {
         }
 
     private fun createFreshUnderLock(legacyVaultPresent: Boolean): SQLiteDatabase {
+        RestoreArtifactGuard.requireNoAbandonedRestore(context)
         check(!file.exists()) { "Encrypted vault already exists" }
         check(!keys.hasExistingEnvelope()) {
             "Wrapped key exists without database; refuse silent empty-vault recreation"
