@@ -21,6 +21,10 @@ internal object RestoreArtifactGuard {
         val dbDir = context.getDatabasePath("growurdhan-v9.sqlcipher").parentFile
             ?: error("Missing protected vault directory")
         val claims = File(noBackup, "restore-claims")
+        check(!File(noBackup, "restore-pending.v1.kosha.new").exists() &&
+            !File(noBackup, "vault-key.v1.new").exists()) {
+            "Interrupted AtomicFile encrypted backup or key write; owner review required"
+        }
 
         fun filesIn(directory: File): Array<File> {
             if (!Files.exists(directory.toPath(), LinkOption.NOFOLLOW_LINKS)) return emptyArray()
