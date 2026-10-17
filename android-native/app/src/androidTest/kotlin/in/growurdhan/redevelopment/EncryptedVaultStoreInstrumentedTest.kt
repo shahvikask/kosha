@@ -33,7 +33,7 @@ class EncryptedVaultStoreInstrumentedTest {
         }
     }
 
-    private val preserve = DatabaseErrorHandler {
+    private val preserve = DatabaseErrorHandler { _, _ ->
         throw IllegalStateException("Test corruption; never delete source")
     }
 
