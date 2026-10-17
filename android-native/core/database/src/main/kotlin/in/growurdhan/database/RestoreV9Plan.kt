@@ -11,17 +11,24 @@ object RestoreV9Plan {
         val isPrimary: Boolean, val color: String?, val panMasked: String? = null,
         val panForStatements: String? = null, val dateOfBirth: String? = null)
     data class Account(val id: String, val ownerId: String, val accountType: String,
-        val custodian: String, val identifierMasked: String? = null)
+        val custodian: String, val identifierMasked: String? = null,
+        val dpId: String? = null, val clientId: String? = null,
+        val boId: String? = null, val nominee: String? = null)
     data class Holding(val id: String, val ownerId: String, val accountId: String?,
         val name: String, val category: String, val subCategory: String,
         val symbolOrFolio: String, val quantityScaled: String, val currentPriceMinor: String,
-        val lastPriceUpdated: String, val priceSource: String)
+        val lastPriceUpdated: String, val priceSource: String,
+        val isin: String? = null, val notes: String? = null,
+        val needsReview: Boolean? = null)
     data class Event(val id: String, val holdingId: String, val holdingName: String,
         val ownerId: String, val eventType: String, val eventDate: String,
         val quantityScaled: String, val unitPriceMinor: String, val totalAmountMinor: String,
-        val chargesMinor: String, val createdAt: String, val supersedesEventId: String? = null)
+        val chargesMinor: String, val createdAt: String, val supersedesEventId: String? = null,
+        val importBatchId: String? = null, val sourceRef: String? = null,
+        val notes: String? = null)
     data class Goal(val id: String, val ownerId: String?, val name: String,
-        val targetMinor: String, val targetDate: String?, val createdAt: String)
+        val targetMinor: String, val targetDate: String?, val createdAt: String,
+        val priority: String? = null)
     data class Login(val email: String, val firstName: String, val lastName: String,
         val passwordSalt: String, val passwordHash: String, val passwordIterations: Int,
         val passwordChangedAt: String, val q1Id: String, val q1Hash: String,
@@ -94,6 +101,8 @@ object RestoreV9Plan {
         for (a in s.accounts) rows += row("account", "account_id" to a.id,
             "entity_id" to a.ownerId, "account_type" to required(a.accountType),
             "custodian" to required(a.custodian), "identifier_masked" to a.identifierMasked,
+            "dp_id" to a.dpId, "client_id" to a.clientId,
+            "bo_id" to a.boId, "nominee" to a.nominee,
             "created_at" to s.exportedAt)
         for (h in s.holdings) {
             require(h.category in categories)
@@ -104,10 +113,12 @@ object RestoreV9Plan {
             rows += row("instrument", "instrument_id" to instrument,
                 "name" to h.name, "category" to h.category,
                 "sub_category" to h.subCategory, "symbol_or_folio" to h.symbolOrFolio,
-                "created_at" to s.exportedAt)
+                "isin" to h.isin, "created_at" to s.exportedAt)
             rows += row("holding", "holding_id" to h.id, "instrument_id" to instrument,
                 "entity_id" to h.ownerId, "account_id" to h.accountId,
                 "current_price_minor" to money(h.currentPriceMinor),
+                "needs_review" to (if (h.needsReview == true) 1L else 0L),
+                "notes" to h.notes,
                 "last_price_updated" to h.lastPriceUpdated,
                 "price_source" to h.priceSource, "created_at" to s.exportedAt)
         }
@@ -122,12 +133,13 @@ object RestoreV9Plan {
                 "total_amount_minor" to money(e.totalAmountMinor),
                 "charges_minor" to money(e.chargesMinor),
                 "supersedes_event_id" to e.supersedesEventId,
-                "entered_at" to required(e.createdAt))
+                "import_batch_id" to e.importBatchId, "source_ref" to e.sourceRef,
+                "notes" to e.notes, "entered_at" to required(e.createdAt))
         }
         for (g in s.goals) rows += row("goal", "goal_id" to g.id,
             "entity_id" to g.ownerId, "name" to required(g.name),
             "target_minor" to money(g.targetMinor), "target_date" to g.targetDate,
-            "created_at" to required(g.createdAt))
+            "priority" to g.priority, "created_at" to required(g.createdAt))
         rows += row("setting", "key" to "m24.authenticated_frozen_original_json",
             "value" to s.authenticatedOriginalJson)
         val digest = MessageDigest.getInstance("SHA-256")
