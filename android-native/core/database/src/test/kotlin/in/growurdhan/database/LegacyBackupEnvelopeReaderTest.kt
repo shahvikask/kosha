@@ -276,6 +276,35 @@ class LegacyBackupEnvelopeReaderTest {
             insertPlan.rows.single { it.table == "ledger_event" }
                 .values.first { it == 9007199254740993L })
         assertEquals(complete.authenticatedOriginalJson, insertPlan.rows.last().values.last())
+
+        val metadataPlan = RestoreV9Plan.project(complete.copy(
+            accounts = complete.accounts.map { it.copy(
+                dpId = "DP-TEST", clientId = "CLIENT-TEST",
+                boId = "BO-TEST", nominee = "Synthetic nominee") },
+            holdings = complete.holdings.map { it.copy(
+                isin = "INE000SYNTH0", notes = "Original holding note", needsReview = true) },
+            events = complete.events.map { it.copy(
+                importBatchId = "source-batch", sourceRef = "source-reference",
+                notes = "Original ledger note") },
+            goals = complete.goals.map { it.copy(priority = "HIGH") }
+        ))
+        fun field(table: String, column: String): Any? {
+            val row = metadataPlan.rows.single { it.table == table }
+            return row.values[row.columns.indexOf(column).also { check(it >= 0) }]
+        }
+        assertEquals("DP-TEST", field("account", "dp_id"))
+        assertEquals("CLIENT-TEST", field("account", "client_id"))
+        assertEquals("BO-TEST", field("account", "bo_id"))
+        assertEquals("Synthetic nominee", field("account", "nominee"))
+        assertEquals("INE000SYNTH0", field("instrument", "isin"))
+        assertEquals(1L, field("holding", "needs_review"))
+        assertEquals("Original holding note", field("holding", "notes"))
+        assertEquals("source-batch", field("ledger_event", "import_batch_id"))
+        assertEquals("source-reference", field("ledger_event", "source_ref"))
+        assertEquals("Original ledger note", field("ledger_event", "notes"))
+        assertEquals("HIGH", field("goal", "priority"))
+        assertEquals(1, metadataPlan.rows.count { it.table == "ledger_event" })
+
         assertThrows(IllegalArgumentException::class.java) {
             RestoreV9Plan.project(complete.copy(events = complete.events.map {
                 it.copy(holdingName = "invented")
