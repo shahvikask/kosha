@@ -78,6 +78,37 @@ class LegacyBackupEnvelopeReaderTest {
             RestoreIdentityGate.verifyForNewDevice(account.copy(
                 passwordIterations = 600_000), valid)
         }
+        // Restore preflight is deliberately independent from decryption:
+        // it cannot synthesize a missing ledger ID, owner or cash flow.
+        val complete = RestoreLedgerPreflight.Snapshot(
+            owners = listOf(RestoreLedgerPreflight.Owner("owner-A")),
+            holdings = listOf(RestoreLedgerPreflight.Holding(
+                "holding-A", "owner-A", null, "1234567890123", "9007199254740993")),
+            accounts = listOf(RestoreLedgerPreflight.Account("account-A", "owner-A")),
+            goals = emptyList(),
+            events = listOf(RestoreLedgerPreflight.Event(
+                "event-A", "holding-A", "owner-A", "BUY", "2026-10-16",
+                "1234567890123", "10000", "9007199254740993"))
+        )
+        assertEquals(1, RestoreLedgerPreflight.validate(complete).events)
+        assertThrows(IllegalArgumentException::class.java) {
+            RestoreLedgerPreflight.validate(complete.copy(
+                events = complete.events.map { it.copy(holdingId = "missing") }))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            RestoreLedgerPreflight.validate(complete.copy(
+                holdings = complete.holdings.map {
+                    it.copy(currentPriceMinor = "9007199254740993.5") }))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            RestoreLedgerPreflight.validate(complete.copy(
+                holdings = complete.holdings.map {
+                    it.copy(currentPriceMinor = "9223372036854775808") }))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            RestoreLedgerPreflight.validate(complete.copy(
+                events = complete.events.map { it.copy(eventType = "UNKNOWN") }))
+        }
     }
 
     @Test fun passwordOnlyKosha1RetainsSameExactPayload() {
