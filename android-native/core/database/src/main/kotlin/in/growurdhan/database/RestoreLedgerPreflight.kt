@@ -76,6 +76,10 @@ object RestoreLedgerPreflight {
             scaled(e.unitPriceMinor)
             scaled(e.totalAmountMinor)
             scaled(e.chargesMinor)
+            // Must match frozen ck_event__correction: no fabricated correction
+            // reference and no ordinary event claiming to supersede history.
+            require((e.eventType == "CORRECTION") ==
+                (e.supersedesEventId != null)) { "Invalid correction linkage" }
             if (e.supersedesEventId != null) {
                 require(e.supersedesEventId != e.id && e.supersedesEventId in events) {
                     "Invalid correction linkage"
