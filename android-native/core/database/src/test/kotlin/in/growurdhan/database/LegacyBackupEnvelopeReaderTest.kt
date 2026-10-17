@@ -91,6 +91,23 @@ class LegacyBackupEnvelopeReaderTest {
                 "1234567890123", "10000", "9007199254740993"))
         )
         assertEquals(1, RestoreLedgerPreflight.validate(complete).events)
+        // The frozen positions.ts synthesizes a transient opening balance
+        // for a positive holding with NO events. Native v9 has no quantity
+        // column on holding: reject rather than silently zeroing the book
+        // or inventing a cash-flow event during restore.
+        assertThrows(IllegalArgumentException::class.java) {
+            RestoreLedgerPreflight.validate(complete.copy(events = emptyList()))
+        }
+        // A wholly sold/empty legacy holding with zero quantity needs no
+        // synthetic ledger row; retain its reference record unchanged.
+        assertEquals(0, RestoreLedgerPreflight.validate(complete.copy(
+            holdings = complete.holdings.map { it.copy(quantityScaled = "0") },
+            events = emptyList())).events)
+        assertThrows(IllegalArgumentException::class.java) {
+            RestoreLedgerPreflight.validate(complete.copy(
+                holdings = complete.holdings + RestoreLedgerPreflight.Holding(
+                    "orphan-position", "owner-A", null, "500", "7")))
+        }
         assertThrows(IllegalArgumentException::class.java) {
             RestoreLedgerPreflight.validate(complete.copy(
                 events = complete.events.map { it.copy(holdingId = "missing") }))
