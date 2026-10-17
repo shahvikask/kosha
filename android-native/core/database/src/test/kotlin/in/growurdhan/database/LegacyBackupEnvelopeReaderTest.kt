@@ -33,6 +33,19 @@ class LegacyBackupEnvelopeReaderTest {
         } finally { key.fill(0) }
     }
 
+    /** auth.ts account hashes use 210k, unlike backup.ts envelope's 600k. */
+    private fun authHashAt210k(secret: String): Pair<String, String> {
+        val spec = PBEKeySpec(secret.toCharArray(), salt, 210_000, 256)
+        val raw = try {
+            SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+                .generateSecret(spec).encoded
+        } finally { spec.clearPassword() }
+        return try {
+            Base64.getEncoder().encodeToString(salt) to
+                Base64.getEncoder().encodeToString(raw)
+        } finally { raw.fill(0) }
+    }
+
     private fun modern(): ByteArray {
         val blob = encrypt("GrowUrDhan\nm24@example.invalid\n" + password)
         return ByteBuffer.allocate(40 + blob.size).order(ByteOrder.BIG_ENDIAN)
@@ -43,6 +56,28 @@ class LegacyBackupEnvelopeReaderTest {
     @Test fun readerPreservesBigIntegersOwnersAndUnknownJsonVerbatim() {
         assertEquals(json, LegacyBackupEnvelopeReader.decodeGUDVLT01(
             modern(), " M24@EXAMPLE.INVALID ", password))
+        val login = authHashAt210k(password)
+        val first = authHashAt210k("first city")
+        val second = authHashAt210k("blue sea")
+        val account = RestoreIdentityGate.Account(
+            "m24@example.invalid", login.first, login.second, 210_000,
+            "ABCDE1234F", "ABCDE****F", "1990-01-01", "city",
+            "${first.first}:${first.second}:210000", "pet",
+            "${second.first}:${second.second}:210000"
+        )
+        val valid = RestoreIdentityGate.Credentials(
+            " M24@EXAMPLE.INVALID ", password, "ABCDE1234F", "1990-01-01",
+            "city", "First City", "pet", " Blue   Sea "
+        )
+        RestoreIdentityGate.verifyForNewDevice(account, valid)
+        assertThrows(IllegalArgumentException::class.java) {
+            RestoreIdentityGate.verifyForNewDevice(account,
+                valid.copy(q2Answer = "wrong"))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            RestoreIdentityGate.verifyForNewDevice(account.copy(
+                passwordIterations = 600_000), valid)
+        }
     }
 
     @Test fun passwordOnlyKosha1RetainsSameExactPayload() {
