@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import `in`.growurdhan.database.RestoreV9InsertTransaction
 import java.io.File
 import java.nio.file.Files
 import java.util.UUID
@@ -267,6 +268,59 @@ class EncryptedVaultStoreInstrumentedTest {
         assertEquals("synthetic-import-ref", mapped("ledger_event", "source_ref"))
         assertEquals("original event note", mapped("ledger_event", "notes"))
         assertEquals("HIGH", mapped("goal", "priority"))
+
+        // Real SQLCipher data-path proof, not just a mocked transaction.
+        // These rows are synthetic and only ever touch a private isolated vault.
+        val successContext = sandbox()
+        val successStore = EncryptedVaultStore(successContext)
+        successStore.createFresh(false).use { db ->
+            RestoreV9InsertTransaction.apply(plan, AndroidRestoreV9SqlTarget(db))
+            assertEquals(1L, scalar(db, "SELECT COUNT(*) FROM entity"))
+            assertEquals(1L, scalar(db, "SELECT COUNT(*) FROM ledger_event"))
+            assertEquals(9007199254740993L,
+                scalar(db, "SELECT total_amount_minor FROM ledger_event"))
+            db.rawQuery("SELECT value FROM setting WHERE key=?", arrayOf(
+                "m24.authenticated_frozen_original_json")).use { result ->
+                assertTrue(result.moveToFirst())
+                assertEquals(exact, result.getString(0))
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                RestoreV9InsertTransaction.apply(plan, AndroidRestoreV9SqlTarget(db))
+            }
+            assertEquals(1L, scalar(db, "SELECT COUNT(*) FROM ledger_event"))
+        }
+        successStore.openExisting().use { db ->
+            assertEquals(1L, scalar(db, "SELECT COUNT(*) FROM ledger_event"))
+            assertEquals(9007199254740993L,
+                scalar(db, "SELECT total_amount_minor FROM ledger_event"))
+        }
+
+        // Introduce a foreign-key violation into a separate synthetic plan
+        // without changing its authenticated source digest. The target must
+        // roll back ALL previous inserts: entity and vault_account included.
+        val account = plan.rows.single { it.table == "account" }
+        val invalidAccount = account.copy(values = account.values.mapIndexed { index, value ->
+            if (account.columns[index] == "entity_id") "missing-owner" else value
+        })
+        val invalidPlan = plan.copy(rows = plan.rows.map {
+            if (it.table == "account") invalidAccount else it
+        })
+        val rejectedContext = sandbox()
+        val rejectedStore = EncryptedVaultStore(rejectedContext)
+        rejectedStore.createFresh(false).use { db ->
+            assertThrows(Exception::class.java) {
+                RestoreV9InsertTransaction.apply(
+                    invalidPlan, AndroidRestoreV9SqlTarget(db))
+            }
+            assertEquals(0L, scalar(db, "SELECT COUNT(*) FROM entity"))
+            assertEquals(0L, scalar(db, "SELECT COUNT(*) FROM vault_account"))
+            assertEquals(0L, scalar(db, "SELECT COUNT(*) FROM ledger_event"))
+        }
+        rejectedStore.openExisting().use { db ->
+            assertEquals(0L, scalar(db, "SELECT COUNT(*) FROM entity"))
+            assertEquals(0L, scalar(db, "SELECT COUNT(*) FROM ledger_event"))
+        }
+
 
         assertThrows(Exception::class.java) {
             FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(exact.replace(
