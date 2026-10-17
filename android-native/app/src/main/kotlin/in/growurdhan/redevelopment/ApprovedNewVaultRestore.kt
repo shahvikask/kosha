@@ -94,11 +94,12 @@ internal class ApprovedNewVaultRestore(private val context: Context) {
             }
             // The envelope is linked first. A crash in between leaves an
             // orphan live envelope, which blocks blank vault recreation.
-            // The cipher is published second, NOREPLACE. Any failure leaves
+            // The cipher is atomically published second via an exclusive
+            // zero-byte reservation, never over an existing vault.\n            // Any failure leaves
             // the journal, pending archive and artifacts intact for review.
-            EncryptedRestorePublisher.publishExclusive(
+            EncryptedRestorePublisher.publishReservedAtomic(
                 candidateKeyFile.toPath(), liveKey.toPath())
-            EncryptedRestorePublisher.publishExclusive(
+            EncryptedRestorePublisher.publishReservedAtomic(
                 candidate.toPath(), target.toPath())
             Receipt(sourceFingerprint, plan.rows.size)
         }
