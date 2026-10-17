@@ -46,3 +46,7 @@ New `RestoreV9Plan` and `RestoreV9InsertTransaction` core source locally compile
 ## 2026-10-17 — strictly read-only JSON adapter source, zero new SQLCipher evidence
 
 Added source `FrozenJsonV9Adapter.kt` to derive v9 rows exclusively from GCM-authenticated original v2 plaintext, and read-only `LockedRestoreStaging.previewAuthenticatedV9`. Earlier 20/20 M24 JVM CI result remains confined to old SHA `e583fb38d04ee4c23cd0cb8ba1c9fc51468f2e13`. Neither changed parser nor SQLCipher Android adapter compiled on the new branch source because Android SDK/Gradle checkout/AAR unavailable. Authored source tests now 24 JVM and 7 Android; **NO current-SHA test execution**. Immutable trigger, FKs, encrypted row import, Keystore and device gates NOT VERIFIED. No Actions dispatched. **M24 NOT ACCEPTED.**
+
+## 2026-10-17 — schema's absent holding quantity makes historical fallback a P0 loss-risk
+
+Native v9 `holding` has no quantity column (original architecture derives positions from `ledger_event`). Frozen old `positions.ts` can derive positive quantities *without persisted events*. New exact-blob Kotlin `RestoreLedgerPreflight` refuses those data states, standalone PASS 3 accepted/8 denied. This is **not actual SQLCipher migration, trigger, foreign key or Android compilation**; prior 20/20 CI on older SHA remains historical. 24 JVM/7 Android @Test methods not rerun, no Actions. M24 NOT ACCEPTED.
