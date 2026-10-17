@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   m24-native-runtime:
-    name: M24 read-only recovery & AtomicFile crash inspection (14)
+    name: M24 owner recovery and frozen KOSHA1 legacy compatibility (14)
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -37,12 +37,12 @@ jobs:
           java-version: '17'
       - name: Gradle cache
         uses: gradle/actions/setup-gradle@v4
-      - name: Run all 24 native database JVM tests on exact SHA
+      - name: Run all 25 native database JVM tests on exact SHA
         working-directory: android-native
         run: |
           chmod +x ./gradlew
           ./gradlew :core:database:test --no-daemon --stacktrace --rerun-tasks
-      - name: Attest 24 database JUnit methods with no skips
+      - name: Attest 25 database JUnit methods with no skips
         working-directory: android-native
         run: |
           python3 - <<'PY'
@@ -59,9 +59,9 @@ jobs:
                   failures+=len(case.findall("failure"))
                   errors+=len(case.findall("error"))
                   skips+=len(case.findall("skipped"))
-          assert len(methods)==24, f"Expected 24 distinct database JVM methods, got {len(methods)}"
+          assert len(methods)==25, f"Expected 25 distinct database JVM methods, got {len(methods)}"
           assert failures==errors==skips==0, f"failed={failures} errors={errors} skipped={skips}"
-          print("M24_JVM_JUNIT_CONFIRMED total=24 failures=0 errors=0 skipped=0")
+          print("M24_JVM_JUNIT_CONFIRMED total=25 failures=0 errors=0 skipped=0")
           PY
       - name: Upload database JVM JUnit evidence
         if: always()
