@@ -131,3 +131,24 @@ Actual local executed `cd /mnt/data/m24_metadata_check && kotlinc RestoreLedgerP
 ## 2026-10-17 — CI authorization change; NO WORKFLOW RUN FOR POLICY EDIT
 
 Repository public status **verified** through GitHub API. Owner granted *standing permission* to run necessary GitHub Actions development builds without fresh per-prompt authorization; see `AGENTS.md` G08 and decision D35. Exact-SHA, milestone-relevant, budget-conscious workflow selection still applies; monitor actual run to terminal, preserve XML and artifacts. **No workflow dispatched for this documentation-only authorization update.** Last historical M24 JVM #38961697701 SUCCESS 20/20 exclusively at SHA `e583fb38d04ee4c23cd0cb8ba1c9fc51468f2e13`; no policy update or current-source build acceptance inferred.
+
+## 2026-10-17 — M24 exact-SHA native compile + 24 database JVM suite, owner standing-authorized
+
+**Starting source:** `41edd70271adefb4a84ee933f8856e7a45e62217` (policy handoff; branch `GUD-Android-Redevelopment`). Local clone `git ls-remote` failed DNS; local Android SDK and Gradle unavailable. GitHub connector has no direct `workflow_dispatch` operation, so deliberately updated ONLY the existing M24 workflow YAML, whose *own* push path is configured to launch the targeted build. No emulator or AAB. Existing Kosha CI was also triggered automatically by the push; both standard CI runs were SUCCESS.
+
+**Run A** [M24 #39023121369](https://github.com/shahvikask/kosha/actions/runs/39023121369), exact SHA `aa8aaa6bd240170d0472aa341d44a56b4e9aa60d`, **FAILED overall**. Gradle `:core:database:test --no-daemon --stacktrace --rerun-tasks` **SUCCESS**, JUnit XML gate `M24_JUNIT_CONFIRMED total=24 new=11 failures=0 errors=0 skipped=0`. Android SDK platform 35 check SUCCESS. `:app:compileDebugKotlin` FAILED: `EncryptedVaultStore.kt:21:61` pinned SQLCipher 4.17 `DatabaseErrorHandler` requires `Function2<SQLiteDatabase, SQLiteException, Unit>`, source supplied zero-argument lambda. Standard Kosha CI [#39023121756](https://github.com/shahvikask/kosha/actions/runs/39023121756) SUCCESS same SHA. JUnit evidence artifact #12097054569 (initial failed overall run). 
+
+**Source correction:** commit `f384dca8ad5a0fc57b2e71771db9575dd6b79a7f`, `android-native/app/src/main/kotlin/in/growurdhan/redevelopment/EncryptedVaultStore.kt` changes only to `DatabaseErrorHandler { _, _ -> throw IllegalStateException(...) }`. Preserves fail-closed *nondeleting* corruption handler.
+
+**Run B** [M24 #39023384556](https://github.com/shahvikask/kosha/actions/runs/39023384556), exact SHA `38d349a2676a4c99cc9d80dfcf07a1a03efa793d`, attempt **1 FAILED before compilation** while Gradle could not resolve pinned `app.cash.paparazzi` plugin `1.3.5` from plugin repositories; no dependency pins/test assertions changed. Re-ran failed jobs once via GitHub API, exact same SHA.
+
+**Run B attempt 2** terminal **SUCCESS**, 2026-10-17T10:06:38Z. Actual job log:
+- `TESTED_SOURCE_SHA=38d349a2676a4c99cc9d80dfcf07a1a03efa793d`
+- `./gradlew :core:database:test --no-daemon --stacktrace --rerun-tasks` — `BUILD SUCCESSFUL in 1m 56s`
+- `M24_JUNIT_CONFIRMED total=24 new=11 failures=0 errors=0 skipped=0`
+- SDK 35 check — SUCCESS.
+- `NATIVE_COMPILE_SOURCE_SHA=38d349a2676a4c99cc9d80dfcf07a1a03efa793d`
+- `./gradlew :app:compileDebugKotlin --no-daemon --stacktrace` — `> Task :app:compileDebugKotlin`, `BUILD SUCCESSFUL in 44s`.
+- [JUnit XML artifact #12097686982](https://github.com/shahvikask/kosha/actions/runs/39023384556/artifacts/12097686982), 16034 bytes, GitHub published digest `sha256:e4256aab792616494935849c211b5a37ff17d63a0c86f74b41e9e636a710dd40`, retention until 2026-10-31. Standard Kosha CI [#39023384594](https://github.com/shahvikask/kosha/actions/runs/39023384594) SUCCESS at the same source SHA.
+
+**Evidence stage:** `CI JVM PASSED` 24/24 on exact SHA above; `Android app Kotlin COMPILED` on that exact SHA. **NO Android instrumentation (7 authored methods unrun), APK install, physical device, actual SQLCipher/Keystore runtime/atomic restore, historical migration/device AppSec, or OWNER ACCEPTANCE**. M24 remains STARTED / NOT ACCEPTED. Later `[skip ci]` documentation commits do not inherit a separate exact-SHA run; last tested source remains `38d349a2676a4c99cc9d80dfcf07a1a03efa793d`.
