@@ -22,6 +22,14 @@ internal object FrozenJsonV9Adapter {
         return v
     }
 
+    // Present-but-empty fields are legal in original Holding for categories
+    // without a tradable symbol or populated subcategory.
+    private fun presentString(o: JSONObject, k: String): String {
+        val v = if (o.has(k)) o.get(k) else bad()
+        if (v !is String || v.length > 4096) bad()
+        return v
+    }
+
     private fun optional(o: JSONObject, k: String): String? {
         if (!o.has(k) || o.isNull(k)) return null
         val v = o.get(k)
@@ -85,7 +93,7 @@ internal object FrozenJsonV9Adapter {
         )
         val members = rows(json, "familyMembers") { member ->
             val relation = string(member, "relation")
-            val primary = bool(member, "isPrimary") ?: (relation in primaryRelations)
+            val primary = (bool(member, "isPrimary") == true) || (relation in primaryRelations)
             RestoreV9Plan.Family(id = string(member, "id"), name = string(member, "name"),
                 relation = relation, isPrimary = primary, color = optional(member, "color"),
                 panMasked = optional(member, "panMasked"),
@@ -100,8 +108,8 @@ internal object FrozenJsonV9Adapter {
         val holdings = rows(json, "holdings") { h ->
             RestoreV9Plan.Holding(id = string(h, "id"), ownerId = string(h, "ownerId"),
                 accountId = optional(h, "accountId"), name = string(h, "name"),
-                category = string(h, "category"), subCategory = string(h, "subCategory"),
-                symbolOrFolio = string(h, "symbolOrFolio"),
+                category = string(h, "category"), subCategory = presentString(h, "subCategory"),
+                symbolOrFolio = presentString(h, "symbolOrFolio"),
                 quantityScaled = decimal(h, "quantityScaled"),
                 currentPriceMinor = decimal(h, "currentPriceMinor"),
                 lastPriceUpdated = string(h, "lastPriceUpdated"),
