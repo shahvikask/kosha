@@ -20,6 +20,7 @@ import javax.crypto.spec.SecretKeySpec
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.IOException
 import java.nio.file.Files
 import java.util.UUID
 import net.zetetic.database.DatabaseErrorHandler
@@ -659,6 +660,49 @@ class EncryptedVaultStoreInstrumentedTest {
         }
         assertArrayEquals(wrongCipherBytes, encrypted.readBytes())
         assertFalse(corrupted.getDatabasePath("growurdhan-v9.sqlcipher").exists())
+    }
+
+    @Test fun lowStorageFaultInjectionPreservesClaimAndOrphanedPublicationEvidence() {
+        val (archive, credentials) = newSyntheticEncryptedBackup(
+            true, "lowspace@example.invalid", "synthetic-lowspace-pass")
+        for (boundary in listOf(
+            ApprovedNewVaultRestore.Boundary.AFTER_CLAIM,
+            ApprovedNewVaultRestore.Boundary.BEFORE_DATABASE_PUBLICATION
+        )) {
+            val ctx = sandbox()
+            LockedRestoreStaging(ctx).stageEncryptedArchiveOnce(archive)
+            val pending = File(ctx.noBackupFilesDir, "restore-pending.v1.kosha")
+            val originalPending = pending.readBytes()
+            var reached = false
+            assertThrows(IOException::class.java) {
+                ApprovedNewVaultRestore(ctx) { point ->
+                    if (point == boundary) {
+                        reached = true
+                        throw IOException("Synthetic storage exhaustion (no actual disk filled)")
+                    }
+                }.restoreFromStagedNewVault(credentials, explicitOwnerApproval = true)
+            }
+            assertTrue(reached)
+            assertArrayEquals(originalPending, pending.readBytes())
+            val claimsDir = File(ctx.noBackupFilesDir, "restore-claims")
+            assertEquals(1, claimsDir.listFiles()!!.size)
+            val claim = claimsDir.listFiles()!!.single()
+            val claimBytes = claim.readBytes()
+            val inspection = RestoreRecoveryInspector(ctx).inspectForOwnerReview(
+                credentials, explicitOwnerApproval = true)
+            assertEquals(
+                if (boundary == ApprovedNewVaultRestore.Boundary.AFTER_CLAIM)
+                    RestoreRecoveryInspector.State.CLAIM_ONLY
+                else RestoreRecoveryInspector.State.VERIFIED_CANDIDATE,
+                inspection.state)
+            assertArrayEquals(claimBytes, claim.readBytes())
+            assertFalse(ctx.getDatabasePath("growurdhan-v9.sqlcipher").exists())
+            assertThrows(Exception::class.java) {
+                ApprovedNewVaultRestore(ctx).restoreFromStagedNewVault(
+                    credentials, explicitOwnerApproval = true)
+            }
+            assertArrayEquals(originalPending, pending.readBytes())
+        }
     }
 
     @Test fun genuineBinaryGcmStagingPublishesOnlyNewEncryptedVaultAndRejectsReplay() {
