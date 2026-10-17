@@ -45,7 +45,7 @@ jobs:
       - name: Configure KVM
         run: |
           if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; else echo "::warning::KVM unavailable"; fi
-      - name: Execute nine GCM-to-SQLCipher probes with corrected HMAC result semantics
+      - name: Execute nine GCM-to-SQLCipher probes with reserved atomic no-clobber publication
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
