@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   m24-sqlcipher-jvm:
-    name: Verify frozen encrypted schema v9 (JVM only)
+    name: Verify M24 frozen v9 JVM (24) and native Android Kotlin
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
