@@ -47,3 +47,7 @@ New `RestoreV9Plan.kt` and `RestoreV9InsertTransaction.kt` were exact-source Kot
 ## 2026-10-17 — current SHA still lacks native migration evidence
 
 New strict source JSON parsing/read-only stage preview and PAN/DOB column mapping do not migrate an actual populated SQLCipher database and were not compiled against Android. `./android-native/gradlew :core:database:test :app:compileDebugKotlin --no-daemon` failed to start (full checkout absent); 24 JVM and 7 Android authored tests remain **UNRUN on current SHA**, no JUnit XML. Historical v1–v8 FK, append-only, crash/rollback, wrong-key and schema migrations stay open. Do not transfer older-SHA 13/13 or 20/20 CI results. No Actions spent; M24 NOT ACCEPTED.
+
+## 2026-10-17 — unrecorded positive legacy holdings require explicit migration policy
+
+A native schema migration and backup restore must not silently discard original positive stored quantity when historical events are absent. The frozen application derives a transient opening balance in this case. The new preflight fails closed and is locally source-tested 3 positive/8 rejected cases; no transformation into canonical ledger history is authorized or implemented. Historical v1–v8 migrations and real SQLCipher/Android/rollback remain NOT RUN on current HEAD. Older-SHA 13/13 and 20/20 JVM actions do not cover this code. M24 NOT ACCEPTED.
