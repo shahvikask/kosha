@@ -166,5 +166,33 @@ class LegacyBackupEnvelopeReaderTest {
             LegacyBackupEnvelopeReader.decodeGUDVLT01(
                 badRounds, "m24@example.invalid", password)
         }
+
+        // Persistently claim an authenticated archive once. A restart,
+        // duplicate restore, malformed digest and missing directory must
+        // all fail closed; no code here deletes or clears a replay claim.
+        val root = java.nio.file.Files.createTempDirectory("m24-replay-")
+        try {
+            val digest = "a".repeat(64)
+            val journal = RestoreOnceJournal(root)
+            assertFalse(journal.hasClaim(digest))
+            journal.claimOnce(digest)
+            assertTrue(RestoreOnceJournal(root).hasClaim(digest))
+            assertThrows(IllegalStateException::class.java) {
+                journal.claimOnce(digest)
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                journal.claimOnce("../invalid")
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                RestoreOnceJournal(root.resolve("missing")).claimOnce("b".repeat(64))
+            }
+            assertEquals("GUD_RESTORE_CLAIM_V1\\n" + digest + "\\n",
+                java.nio.file.Files.readString(root.resolve("restore-" + digest + ".claim")))
+        } finally {
+            java.nio.file.Files.walk(root).use { paths ->
+                paths.sorted(java.util.Comparator.reverseOrder())
+                    .forEach { java.nio.file.Files.deleteIfExists(it) }
+            }
+        }
     }
 }
