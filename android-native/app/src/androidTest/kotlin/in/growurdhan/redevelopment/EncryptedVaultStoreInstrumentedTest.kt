@@ -843,6 +843,44 @@ class EncryptedVaultStoreInstrumentedTest {
             assertEquals(9007199254740993L,
                 scalar(db, "SELECT total_amount_minor FROM ledger_event"))
         }
+        // The frozen TypeScript v1 KOSHA1 reader accepts an omitted 'kdf'
+        // and missing/zero 'iterations'. The same *genuine ciphertext*
+        // must still pass account recovery and land in a NEW encrypted
+        // target, without relaxing GCM or destination safety.
+        val oldMetadataContext = sandbox()
+        val oldMetadata = JSONObject(String(archive, Charsets.UTF_8))
+        oldMetadata.remove("kdf")
+        oldMetadata.remove("iterations")
+        LockedRestoreStaging(oldMetadataContext).stageEncryptedArchiveOnce(
+            oldMetadata.toString().toByteArray(Charsets.UTF_8))
+        val restored = ApprovedNewVaultRestore(oldMetadataContext)
+            .restoreFromStagedNewVault(credentials, explicitOwnerApproval = true)
+        assertEquals(8, restored.restoredRows)
+        EncryptedVaultStore(oldMetadataContext).openExisting().use { db ->
+            assertEquals(9007199254740993L,
+                scalar(db, "SELECT total_amount_minor FROM ledger_event"))
+        }
+        val invalidKdfContext = sandbox()
+        val invalidMetadata = JSONObject(String(archive, Charsets.UTF_8))
+        invalidMetadata.put("kdf", "PBKDF2-SHA1")
+        LockedRestoreStaging(invalidKdfContext).stageEncryptedArchiveOnce(
+            invalidMetadata.toString().toByteArray(Charsets.UTF_8))
+        assertThrows(Exception::class.java) {
+            ApprovedNewVaultRestore(invalidKdfContext).restoreFromStagedNewVault(
+                credentials, explicitOwnerApproval = true)
+        }
+        assertFalse(invalidKdfContext.getDatabasePath("growurdhan-v9.sqlcipher").exists())
+        val invalidRoundsContext = sandbox()
+        val invalidRounds = JSONObject(String(archive, Charsets.UTF_8))
+        invalidRounds.put("iterations", 599999)
+        LockedRestoreStaging(invalidRoundsContext).stageEncryptedArchiveOnce(
+            invalidRounds.toString().toByteArray(Charsets.UTF_8))
+        assertThrows(Exception::class.java) {
+            ApprovedNewVaultRestore(invalidRoundsContext).restoreFromStagedNewVault(
+                credentials, explicitOwnerApproval = true)
+        }
+        assertFalse(invalidRoundsContext.getDatabasePath("growurdhan-v9.sqlcipher").exists())
+
         val tamperContext = sandbox()
         val wrapped = JSONObject(String(archive, Charsets.UTF_8))
         val ciphertext = wrapped.getString("cipherB64")
