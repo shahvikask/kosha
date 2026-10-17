@@ -457,6 +457,59 @@ class EncryptedVaultStoreInstrumentedTest {
         return envelope to credentials
     }
 
+    @Test fun orphanedRestoreClaimsAndCandidatesBlockAnyNewVaultWithoutDeletingEvidence() {
+        val (archive, credentials) = newSyntheticEncryptedBackup(
+            true, "recovery@example.invalid", "synthetic-recovery-password")
+        val variants = listOf("claim", "candidate-key", "candidate-db", "candidate-wal")
+        for (variant in variants) {
+            val ctx = sandbox()
+            val staging = LockedRestoreStaging(ctx)
+            staging.stageEncryptedArchiveOnce(archive)
+            val pending = File(ctx.noBackupFilesDir, "restore-pending.v1.kosha")
+            val pendingBytes = pending.readBytes()
+            val marker = when (variant) {
+                "claim" -> {
+                    val claims = File(ctx.noBackupFilesDir, "restore-claims").apply { mkdirs() }
+                    RestoreOnceJournal(claims.toPath()).claimOnce("a".repeat(64))
+                    File(claims, "restore-" + "a".repeat(64) + ".claim")
+                }
+                "candidate-key" -> File(ctx.noBackupFilesDir,
+                    "vault-key.v1.restore-" + UUID.randomUUID()).apply {
+                    writeBytes(byteArrayOf(3, 4, 5, 6))
+                }
+                "candidate-db" -> File(ctx.getDatabasePath("growurdhan-v9.sqlcipher").parentFile,
+                    "growurdhan-v9.sqlcipher.restore-" + UUID.randomUUID()).apply {
+                    writeBytes(byteArrayOf(7, 8, 9))
+                }
+                else -> File(ctx.getDatabasePath("growurdhan-v9.sqlcipher").parentFile,
+                    "growurdhan-v9.sqlcipher.restore-" + UUID.randomUUID() + "-wal").apply {
+                    writeBytes(byteArrayOf(10, 11))
+                }
+            }
+            val markerBytes = marker.readBytes()
+            assertThrows(IllegalStateException::class.java) {
+                RestoreArtifactGuard.requireNoAbandonedRestore(ctx)
+            }
+            assertThrows(IllegalStateException::class.java) {
+                ApprovedNewVaultRestore(ctx).restoreFromStagedNewVault(
+                    credentials, explicitOwnerApproval = true)
+            }
+            assertFalse(ctx.getDatabasePath("growurdhan-v9.sqlcipher").exists())
+            assertFalse(File(ctx.noBackupFilesDir, "vault-key.v1").exists())
+            assertArrayEquals(pendingBytes, pending.readBytes())
+            assertArrayEquals(markerBytes, marker.readBytes())
+
+            // Simulate manual removal of the pending archive only. The
+            // orphan itself must continue to prevent empty book creation.
+            assertTrue(pending.delete())
+            assertThrows(IllegalStateException::class.java) {
+                EncryptedVaultStore(ctx).createFresh(false).close()
+            }
+            assertFalse(ctx.getDatabasePath("growurdhan-v9.sqlcipher").exists())
+            assertArrayEquals(markerBytes, marker.readBytes())
+        }
+    }
+
     @Test fun genuineBinaryGcmStagingPublishesOnlyNewEncryptedVaultAndRejectsReplay() {
         val ctx = sandbox()
         val (archive, credentials) = newSyntheticEncryptedBackup(
