@@ -78,7 +78,10 @@ internal object FrozenJsonV9Adapter {
             passwordChangedAt = string(login, "passwordChangedAt"),
             q1Id = string(login, "q1Id"), q1Hash = string(login, "q1Hash"),
             q2Id = string(login, "q2Id"), q2Hash = string(login, "q2Hash"),
-            createdAt = string(login, "createdAt")
+            createdAt = string(login, "createdAt"),
+            panMasked = optional(login, "panMasked"),
+            panForStatements = optional(login, "panForStatements"),
+            dateOfBirth = optional(login, "dateOfBirth")
         )
         val members = rows(json, "familyMembers") { member ->
             val relation = string(member, "relation")
