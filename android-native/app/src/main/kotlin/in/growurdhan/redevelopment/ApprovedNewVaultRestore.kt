@@ -52,6 +52,9 @@ internal class ApprovedNewVaultRestore(
             val liveKey = File(context.noBackupFilesDir, "vault-key.v1")
             val liveKeyBak = File(liveKey.path + ".bak")
             val pending = File(context.noBackupFilesDir, "restore-pending.v1.kosha")
+            check(!File(pending.path + ".new").exists()) {
+                "Interrupted encrypted staging write; forensic inspection required"
+            }
             check(pending.isFile || File(pending.path + ".bak").isFile) {
                 "No staged encrypted archive to restore"
             }
