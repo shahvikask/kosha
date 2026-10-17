@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   m24-native-runtime:
-    name: M24 Android authenticated restore + SQLCipher instrumentation (9)
+    name: M24 Android restore + crash-artifact guard (10)
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -37,6 +37,42 @@ jobs:
           java-version: '17'
       - name: Gradle cache
         uses: gradle/actions/setup-gradle@v4
+      - name: Run all 24 native database JVM tests on exact SHA
+        working-directory: android-native
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :core:database:test --no-daemon --stacktrace --rerun-tasks
+      - name: Attest 24 database JUnit methods with no skips
+        working-directory: android-native
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          files=list(Path("core/database/build/test-results/test").rglob("TEST-*.xml"))
+          assert files, "Missing M24 database JUnit XML"
+          methods=set()
+          failures=errors=skips=0
+          for path in files:
+              root=ET.parse(path).getroot()
+              for case in root.findall(".//testcase"):
+                  methods.add((case.attrib.get("classname"),case.attrib.get("name")))
+                  failures+=len(case.findall("failure"))
+                  errors+=len(case.findall("error"))
+                  skips+=len(case.findall("skipped"))
+          assert len(methods)==24, f"Expected 24 distinct database JVM methods, got {len(methods)}"
+          assert failures==errors==skips==0, f"failed={failures} errors={errors} skipped={skips}"
+          print("M24_JVM_JUNIT_CONFIRMED total=24 failures=0 errors=0 skipped=0")
+          PY
+      - name: Upload database JVM JUnit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m24-jvm-junit-on-android-source
+          path: |
+            android-native/core/database/build/test-results/test/**/*.xml
+            android-native/core/database/build/reports/tests/test/**
+          if-no-files-found: warn
+          retention-days: 14
       - name: Compile instrumentation Kotlin before emulator startup
         working-directory: android-native
         run: |
@@ -45,7 +81,7 @@ jobs:
       - name: Configure KVM
         run: |
           if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; else echo "::warning::KVM unavailable"; fi
-      - name: Execute nine GCM-to-SQLCipher probes with reserved atomic no-clobber publication
+      - name: Execute ten Android encrypted restore and crash-recovery probes
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -60,7 +96,7 @@ jobs:
           emulator-boot-timeout: 900
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: cd android-native && ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace
-      - name: Confirm nine Android instrumented JUnit results
+      - name: Confirm ten Android instrumented JUnit results
         if: success()
         run: |
           python3 - <<'PY'
@@ -77,6 +113,7 @@ jobs:
               "strictAuthenticatedJsonV9PreviewDoesNotInventMoneyEvents",
               "genuineBinaryGcmStagingPublishesOnlyNewEncryptedVaultAndRejectsReplay",
               "syntheticKosha1GcmAndTamperMustNotCreateOrOverwriteVault",
+              "orphanedRestoreClaimsAndCandidatesBlockAnyNewVaultWithoutDeletingEvidence",
           }
           methods=[]
           failures=errors=skips=0
@@ -87,9 +124,9 @@ jobs:
                   failures += len(case.findall("failure"))
                   errors += len(case.findall("error"))
                   skips += len(case.findall("skipped"))
-          assert len(methods)==9 and set(methods)==expected, f"Expected nine named M24 tests, got {methods!r}"
+          assert len(methods)==10 and set(methods)==expected, f"Expected ten named M24 tests, got {methods!r}"
           assert failures==errors==skips==0, f"failures={failures} errors={errors} skips={skips}"
-          print("M24_ANDROID_JUNIT_CONFIRMED total=9 failures=0 errors=0 skipped=0")
+          print("M24_ANDROID_JUNIT_CONFIRMED total=10 failures=0 errors=0 skipped=0")
           PY
       - name: Upload Android JUnit evidence
         if: always()
