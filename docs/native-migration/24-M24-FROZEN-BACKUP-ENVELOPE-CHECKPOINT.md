@@ -55,3 +55,7 @@ Read-only `FrozenJsonV9Adapter` can only create a `RestoreV9Plan` from the exact
 ## 2026-10-17 — frozen original zero-event holding parity
 
 Actual frozen `src/lib/positions.ts` creates a transient derived OPENING_BALANCE for an original holding with positive `quantityScaled` and no ledger events. GCM-compatible archives may therefore still be **financially incompatible** with the unfinished native v9 row mapper. A new locally verified `RestoreLedgerPreflight` rule refuses this situation before any native transaction; it **does not invent an event or fix historical import**. Kotlin-only source smoke 3 accepted/8 rejected; original TypeScript/JCE exporter was not rerun in this session. Real historical original account and device acceptance remain open. M24 NOT ACCEPTED.
+
+## 2026-10-17 — original metadata preserved as typed fields, no new encrypted export tested
+
+In addition to preserving authenticated original JSON, native first-class plan now retains source account DP/client/BO identifiers and nominee, holding ISIN/notes/review flag, ledger importBatchId/sourceRef/notes and goal priority. Frozen `src/types.ts` supports these and original v9 DDL columns were matched 11/11. Exact Kotlin planner and preflight host test PASS 11 fields/2 large integers/4 rejected cases. **Original frozen TypeScript producer and Kotlin/JCE decoder NOT rerun in this session**. Actual historic archive, original source-to-parser Android compatibility, v1 KOSHA1 support and entire domain parity remain not accepted. No Actions spent.
