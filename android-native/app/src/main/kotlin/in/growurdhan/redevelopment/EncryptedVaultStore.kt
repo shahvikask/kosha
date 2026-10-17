@@ -49,26 +49,63 @@ internal class EncryptedVaultStore(private val context: Context) {
             )
         } finally { key.fill(0) }
         try {
-            requireCipher(db)
-            db.execSQL("PRAGMA foreign_keys=ON")
-            db.beginTransaction()
-            try {
-                for ((_, statement) in readStatements("m24-frozen-v9.sql")) db.execSQL(statement)
-                db.execSQL("PRAGMA user_version=9")
-                db.execSQL("INSERT INTO vault_meta(key,value,updated_at) " +
-                    "VALUES ('schema_version','9','2026-10-16')")
-                verifyVersion(db, 9)
-                verifyOwnershipAndLedger(db)
-                verifyIntegrity(db)
-                db.setTransactionSuccessful()
-            } finally { db.endTransaction() }
+            initialiseFreshV9(db)
             return db
         } catch (failure: Exception) {
             db.close()
-            // Do not delete a partially initialized encrypted database:
-            // keep it quarantined for diagnostics and explicit recovery.
+            // Preserve failed encrypted files and wrapped keys for review.
             throw failure
         }
+    }
+
+    /**
+     * Restore candidate ONLY. A caller must hold the exclusive lifecycle lock,
+     * possess a DISTINCT candidate envelope, and have completed GCM account proof.
+     * This never opens, creates, or updates the live vault path.
+     */
+    internal fun createNewRestoreCandidate(candidate: File, candidateKey: ByteArray): SQLiteDatabase {
+        val live = file.absoluteFile.toPath().normalize()
+        val path = candidate.absoluteFile.toPath().normalize()
+        require(path.parent == live.parent && path != live &&
+            path.fileName.toString().matches(
+                Regex("growurdhan-v9\\.sqlcipher\\.restore-[0-9a-f-]{36}"))) {
+            "Invalid isolated restore target filename"
+        }
+        check(!candidate.exists() &&
+            !File(candidate.path + "-journal").exists() &&
+            !File(candidate.path + "-wal").exists() &&
+            !File(candidate.path + "-shm").exists()) {
+            "Restore candidate already exists; manual recovery is required"
+        }
+        require(candidateKey.size == 32) { "Invalid new SQLCipher key length" }
+        require(candidate.parentFile?.isDirectory == true)
+        System.loadLibrary("sqlcipher")
+        val db = SQLiteDatabase.openDatabase(candidate.absolutePath, candidateKey,
+            null, SQLiteDatabase.CREATE_IF_NECESSARY, preserveOnCorruption, null)
+        try {
+            initialiseFreshV9(db)
+            return db
+        } catch (failure: Exception) {
+            db.close()
+            // No auto-delete: preserve the candidate for explicit recovery.
+            throw failure
+        }
+    }
+
+    private fun initialiseFreshV9(db: SQLiteDatabase) {
+        requireCipher(db)
+        db.execSQL("PRAGMA foreign_keys=ON")
+        db.beginTransaction()
+        try {
+            for ((_, statement) in readStatements("m24-frozen-v9.sql")) db.execSQL(statement)
+            db.execSQL("PRAGMA user_version=9")
+            db.execSQL("INSERT INTO vault_meta(key,value,updated_at) " +
+                "VALUES ('schema_version','9','2026-10-16')")
+            verifyVersion(db, 9)
+            verifyOwnershipAndLedger(db)
+            verifyIntegrity(db)
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
     }
 
     /** Existing native database ONLY. Never opens non-existent files or reset-to-empty. */
