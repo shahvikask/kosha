@@ -45,7 +45,7 @@ jobs:
       - name: Configure KVM
         run: |
           if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; else echo "::warning::KVM unavailable"; fi
-      - name: Execute seven Android SQLCipher and Keystore probes
+      - name: Execute seven Android probes including real row import and rollback
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
