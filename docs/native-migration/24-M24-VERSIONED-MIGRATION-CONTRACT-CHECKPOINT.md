@@ -39,3 +39,7 @@
 ## Latest source boundary — 2026-10-16
 
 This checkpoint's 13/13 JVM CI evidence applies **only** to exact older SHA `646e76573e533df0a9db1d41faed3cc84770fbd3`. The newer 20/20 targeted JVM result [38961697701](https://github.com/shahvikask/kosha/actions/runs/38961697701) applies **only** to SHA `e583fb38d04ee4c23cd0cb8ba1c9fc51468f2e13`. Subsequent source improvements, including `RestoreLedgerPreflight`, `RestoreOnceJournal` and locally verified `EncryptedRestorePublisher`, have **NO exact-current-SHA Gradle/JUnit/Android evidence**: authored 24 JVM and 6 Android methods remain unrun. Genuine v1–v8 SQLCipher Android migration, wrong-key, foreign keys, append-only, low-storage/restart and rollback remain production acceptance blockers. No Actions credits spent. **M24 NOT ACCEPTED**.
+
+## 2026-10-16 newest source has NO native migration acceptance evidence
+
+New `RestoreV9Plan.kt` and `RestoreV9InsertTransaction.kt` were exact-source Kotlin host-tested; `AndroidRestoreV9SqlTarget.kt` only syntax-checked with a mock database API. The Gradle run `:core:database:test :app:compileDebugKotlin` cannot start in current container without an Android checkout/SDK/cache (no `gradlew`). No historic v1–v8 Android migration, real SQLCipher restore rollback, append-only trigger restart or device data-loss test was run. Prior JVM CI 13/13 at `646e76573e533df0a9db1d41faed3cc84770fbd3` and 20/20 at `e583fb38d04ee4c23cd0cb8ba1c9fc51468f2e13` remain only older-SHA results. **M24 NOT ACCEPTED**.
