@@ -253,7 +253,7 @@ class EncryptedVaultStoreInstrumentedTest {
           "ledgerEvents":[{"id":"event-A","ownerId":"owner-A","holdingId":"holding-A",
             "holdingName":"Example","eventType":"BUY","eventDate":"2026-10-16",
             "quantityScaled":"1234567890123","unitPriceMinor":"3",
-            "totalAmountMinor":"9007199254740993","createdAt":"2026-10-16",
+            "totalAmountMinor":"9007199254740993","chargesMinor":"0","createdAt":"2026-10-16",
             "importBatchId":"test-batch","sourceRef":"synthetic-import-ref",
             "notes":"original event note"}],
           "goals":[{"id":"goal-A","ownerId":"owner-A","name":"Test goal",
@@ -261,6 +261,20 @@ class EncryptedVaultStoreInstrumentedTest {
             "priority":"HIGH"}],
           "unknownOpaque":{"nested":[true,"untouched"]}
         }""".trimIndent()
+        // Historical inner payloads with missing financial provenance must fail
+        // closed, not silently acquire invented costs or timestamps.
+        val absentCharges = exact.replace(",\\\"chargesMinor\\\":\\\"0\\\"", "")
+        assertThrows(Exception::class.java) {
+            FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(absentCharges)
+        }
+        assertThrows(Exception::class.java) {
+            FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(
+                exact.replace(",\\\"exportedAt\\\":\\\"2026-10-16T00:00:00Z\\\"", ""))
+        }
+        assertThrows(Exception::class.java) {
+            FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(exact.replace(
+                "\\\"version\\\":2", "\\\"version\\\":1"))
+        }
         val plan = FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(exact)
         assertEquals(8, plan.rows.size)
         assertEquals(exact, plan.rows.last().values.last())

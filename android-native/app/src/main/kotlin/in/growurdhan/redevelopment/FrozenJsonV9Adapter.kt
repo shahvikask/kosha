@@ -126,8 +126,9 @@ internal object FrozenJsonV9Adapter {
                 quantityScaled = decimal(e, "quantityScaled"),
                 unitPriceMinor = decimal(e, "unitPriceMinor"),
                 totalAmountMinor = decimal(e, "totalAmountMinor"),
-                chargesMinor = if (e.has("chargesMinor") && !e.isNull("chargesMinor"))
-                    decimal(e, "chargesMinor") else "0",
+                // Never manufacture a zero charge for a historical ledger event.
+                // Absence cannot distinguish waived from unknown transaction costs.
+                chargesMinor = decimal(e, "chargesMinor"),
                 createdAt = string(e, "createdAt"),
                 supersedesEventId = optional(e, "supersedesEventId"),
                 importBatchId = optional(e, "importBatchId"),
