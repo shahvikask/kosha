@@ -37,6 +37,26 @@ class NativeAccountRepositoryInstrumentedTest {
         clock: () -> Long = System::currentTimeMillis): NativeAccountRepository =
         NativeAccountRepository(ctx, admitted(), clock)
 
+    @Test fun interruptedRegistrationCodeCanBeSafelyReplacedAfterFreshAuthentication() {
+        val context = sandbox()
+        val input = NativeCredentials.Enrollment("delivery@example.org", "Delivery",
+            "Owner", "Strong!Pass123", "school", "First School", "pet", "My Cat")
+        val first = repository(context)
+        // Simulate the Activity losing its response after the encrypted enrollment
+        // committed: no plaintext code is written to persistent storage.
+        first.enroll(input)
+        first.onBackground()
+        val restarted = repository(context)
+        assertTrue(restarted.login(input.email, input.password))
+        val replacement = restarted.replaceRecoveryCode(input.email)
+        assertTrue(replacement.startsWith("GUD-"))
+        restarted.onBackground()
+        restarted.recoverWithCode(input.email, replacement, "school", "First School",
+            "pet", "My Cat", "NewStrong!345")
+        assertFalse(repository(context).login(input.email, input.password))
+        assertTrue(repository(context).login(input.email, "NewStrong!345"))
+    }
+
     @Test fun interruptionRollsBackEncryptedPortfolioBoundaryWrite() {
         val ctx = sandbox()
         val gate = admitted()
