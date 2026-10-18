@@ -3,6 +3,7 @@ package `in`.growurdhan.redevelopment
 import android.content.Context
 import android.os.SystemClock
 import `in`.growurdhan.model.NativeCredentials
+import `in`.growurdhan.model.NativeDeviceAdmission
 import `in`.growurdhan.model.NativeSession
 import java.time.Instant
 import java.security.MessageDigest
@@ -12,7 +13,8 @@ import net.zetetic.database.sqlcipher.SQLiteDatabase
 
 /** Explicit enrollment/login boundary. UI remains locked until a separate M25 UI flow is approved. */
 internal class NativeAccountRepository(
-    context: Context, private val wallClockMillis: () -> Long = System::currentTimeMillis
+    context: Context, private val deviceAdmission: NativeDeviceAdmission,
+    private val wallClockMillis: () -> Long = System::currentTimeMillis
 ) {
     companion object {
         private const val THROTTLE_KEY = "m25.auth.failure_state"
@@ -61,9 +63,17 @@ internal class NativeAccountRepository(
     private var session = NativeSession()
     // Bound to the exact encrypted account credential version at successful login.
     private var sessionPasswordHash: String? = null
+    private fun ticket(): Long = deviceAdmission.ticket()
+        ?: throw IllegalStateException("Android device authentication required")
+    private fun requireTicket(ticket: Long) {
+        check(deviceAdmission.validTicket(ticket)) {
+            "Android device authentication expired"
+        }
+    }
 
     /** Called only after explicit creation consent; failed DB writes are preserved for recovery. */
     fun enroll(input: NativeCredentials.Enrollment, createdAt: String = Instant.now().toString()): String {
+        ticket() // require explicit foreground device proof before any vault file is created
         val account = NativeCredentials.enroll(input, createdAt)
         val ownerId = UUID.randomUUID().toString()
         val issued = NativeCredentials.issueRecoveryCapability()
@@ -82,6 +92,10 @@ internal class NativeAccountRepository(
                     "relation,is_primary,created_at) VALUES (?,?,?,?,?,?)", arrayOf<Any>(
                         ownerId, "INDIVIDUAL", "${account.firstName} ${account.lastName}",
                         "Self", 1, createdAt))
+                // Once a fresh SQLCipher vault exists, complete its first account
+                // atomically even if Android backgrounds mid-creation. Aborting here
+                // leaves an unowned encrypted file and wrapped Keystore key that may
+                // not be silently deleted/recreated.
                 writeSetting(db, RECOVERY_KEY, issued.verifier)
                 db.setTransactionSuccessful()
             } finally { db.endTransaction() }
@@ -100,6 +114,7 @@ internal class NativeAccountRepository(
     @Synchronized fun loginResult(email: String, password: String): SignInResult {
         lock()
         return try {
+            val admissionTicket = ticket()
             var account: NativeCredentials.Account? = null
             var valid = false
             vault.openExisting().use { db ->
@@ -115,15 +130,18 @@ internal class NativeAccountRepository(
                         saveThrottle(db, if (valid) Throttle(0, now, 0)
                             else denied(state, now))
                     }
+                    requireTicket(admissionTicket)
                     db.setTransactionSuccessful()
                 } finally { db.endTransaction() }
             }
+            requireTicket(admissionTicket)
             if (!valid || account == null) SignInResult.DENIED
             else if (NativeCredentials.passwordExpired(account!!, Instant.now()))
                 SignInResult.ROTATION_REQUIRED
             else {
                 session = NativeSession()
-                if (session.login(account!!, email, password, SystemClock.elapsedRealtime())) {
+                if (session.login(account!!, email, password, SystemClock.elapsedRealtime()) &&
+                    deviceAdmission.validTicket(admissionTicket)) {
                     sessionPasswordHash = account!!.passwordHash
                     SignInResult.UNLOCKED
                 } else SignInResult.DENIED
@@ -139,7 +157,8 @@ internal class NativeAccountRepository(
      */
     @Synchronized fun rotatePassword(email: String, oldPassword: String, newPassword: String,
         changedAt: String = Instant.now().toString()) {
-        session.lock()
+        val admissionTicket = ticket()
+        lock()
         var success = false
         vault.openExisting().use { db ->
             db.beginTransaction()
@@ -157,6 +176,7 @@ internal class NativeAccountRepository(
                         success = true
                     } else saveThrottle(db, denied(state, now))
                 }
+                requireTicket(admissionTicket)
                 db.setTransactionSuccessful()
             } finally { db.endTransaction() }
         }
@@ -169,7 +189,8 @@ internal class NativeAccountRepository(
     @Synchronized fun recoverWithCode(email: String, code: String,
         q1Id: String, answer1: String, q2Id: String, answer2: String,
         newPassword: String, changedAt: String = Instant.now().toString()) {
-        session.lock()
+        val admissionTicket = ticket()
+        lock()
         var success = false
         vault.openExisting().use { db ->
             db.beginTransaction()
@@ -191,6 +212,7 @@ internal class NativeAccountRepository(
                         success = true
                     } else saveThrottle(db, denied(state, now))
                 }
+                requireTicket(admissionTicket)
                 db.setTransactionSuccessful()
             } finally { db.endTransaction() }
         }
@@ -199,12 +221,14 @@ internal class NativeAccountRepository(
 
     /** One-time replacement must start from an already password-verified session. */
     @Synchronized fun replaceRecoveryCode(email: String): String {
+        val admissionTicket = ticket()
         val issued = NativeCredentials.issueRecoveryCapability()
         vault.openExisting().use { db ->
             db.beginTransaction()
             try {
                 requireBoundCredential(db, email)
                 writeSetting(db, RECOVERY_KEY, issued.verifier)
+                requireTicket(admissionTicket)
                 db.setTransactionSuccessful()
             } finally { db.endTransaction() }
         }
@@ -245,11 +269,21 @@ internal class NativeAccountRepository(
         }
     }
 
-    @Synchronized fun <T> withUnlockedVault(email: String, action: (SQLiteDatabase) -> T): T =
-        vault.openExisting().use { db ->
-            requireBoundCredential(db, email)
-            action(db)
+    @Synchronized fun <T> withUnlockedVault(email: String, action: (SQLiteDatabase) -> T): T {
+        val admissionTicket = ticket()
+        return vault.openExisting().use { db ->
+            db.beginTransaction()
+            try {
+                requireTicket(admissionTicket)
+                requireBoundCredential(db, email)
+                val result = action(db)
+                requireTicket(admissionTicket)
+                requireBoundCredential(db, email)
+                db.setTransactionSuccessful()
+                result
+            } finally { db.endTransaction() }
         }
+    }
 
     fun lock() {
         sessionPasswordHash = null

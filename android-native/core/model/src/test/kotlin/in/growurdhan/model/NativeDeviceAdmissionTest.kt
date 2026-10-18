@@ -33,6 +33,22 @@ class NativeDeviceAdmissionTest {
         gate.cancel()
         assertFalse(gate.complete(true))
     }
+    @Test fun generationTicketsRevokeOnForegroundLossAndNewChallenge() {
+        val gate = NativeDeviceAdmission()
+        gate.onStart()
+        assertTrue(gate.begin())
+        assertTrue(gate.complete(true))
+        val old = gate.ticket()!!
+        assertTrue(gate.validTicket(old))
+        gate.onStop()
+        assertFalse(gate.validTicket(old))
+        gate.onStart()
+        assertTrue(gate.begin())
+        assertTrue(gate.complete(true))
+        assertFalse(gate.validTicket(old))
+        assertNotNull(gate.ticket())
+    }
+
     @Test fun osChallengeCanReturnAfterActivityWasPaused() {
         val gate = NativeDeviceAdmission()
         gate.onStart()

@@ -37,7 +37,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
-        accounts = NativeAccountRepository(applicationContext)
+        accounts = NativeAccountRepository(applicationContext, admission)
         enableEdgeToEdge()
         setContent {
             GudTheme {

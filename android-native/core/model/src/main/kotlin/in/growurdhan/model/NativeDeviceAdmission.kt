@@ -10,19 +10,26 @@ class NativeDeviceAdmission {
     private var foreground = false
     private var pending = false
     private var admitted = false
-    fun onStart() { foreground = true }
-    fun onStop() { foreground = false; admitted = false }
-    fun begin(): Boolean {
+    private var generation = 0L
+    @Synchronized fun onStart() { foreground = true }
+    @Synchronized fun onStop() { foreground = false; admitted = false; generation++ }
+    @Synchronized fun begin(): Boolean {
         admitted = false
+        generation++
         if (!foreground) return false
         pending = true
         return true
     }
-    fun complete(success: Boolean): Boolean {
+    @Synchronized fun complete(success: Boolean): Boolean {
         admitted = foreground && pending && success
+        generation++
         pending = false
         return admitted
     }
-    fun valid(): Boolean = foreground && admitted
-    fun cancel() { pending = false; admitted = false }
+    @Synchronized fun valid(): Boolean = foreground && admitted
+    /** Tickets are ephemeral generation identifiers, not OS credentials. */
+    @Synchronized fun ticket(): Long? = if (valid()) generation else null
+    @Synchronized fun validTicket(value: Long): Boolean =
+        foreground && admitted && generation == value
+    @Synchronized fun cancel() { pending = false; admitted = false; generation++ }
 }
