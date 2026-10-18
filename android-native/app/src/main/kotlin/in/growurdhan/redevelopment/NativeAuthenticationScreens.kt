@@ -181,7 +181,7 @@ internal fun NativeAuthenticationScreen(
                                 "register" -> {
                                     val code = onEnroll(input)
                                     message = if (code != null) "Account created. Save the recovery code before leaving."
-                                        else "Account could not be created. Existing vaults are never overwritten."
+                                        else "Registration was interrupted or denied. A vault may already exist: verify this device, sign in with your password, then replace the recovery code. Existing vaults are never overwritten."
                                     if (code != null) {
                                         oneTimeRecoveryCode = code
                                         mode = "login"
