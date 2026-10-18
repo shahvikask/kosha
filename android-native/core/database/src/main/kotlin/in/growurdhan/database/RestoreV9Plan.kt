@@ -9,7 +9,8 @@ object RestoreV9Plan {
     }
     data class Family(val id: String, val name: String, val relation: String,
         val isPrimary: Boolean, val color: String?, val panMasked: String? = null,
-        val panForStatements: String? = null, val dateOfBirth: String? = null)
+        val panForStatements: String? = null, val dateOfBirth: String? = null,
+        val notes: String? = null)
     data class Account(val id: String, val ownerId: String, val accountType: String,
         val custodian: String, val identifierMasked: String? = null,
         val dpId: String? = null, val clientId: String? = null,
@@ -92,7 +93,7 @@ object RestoreV9Plan {
                 "entity_type" to (if (f.relation == "HUF") "HUF" else "INDIVIDUAL"),
                 "display_name" to required(f.name), "relation" to f.relation,
                 "is_primary" to (if (f.isPrimary) 1L else 0L),
-                "color" to f.color, "pan_masked" to f.panMasked,
+                "color" to f.color, "notes" to f.notes, "pan_masked" to f.panMasked,
                 "pan_for_statements" to f.panForStatements,
                 "date_of_birth" to f.dateOfBirth,
                 // Frozen FamilyMember has no creation timestamp; this is the

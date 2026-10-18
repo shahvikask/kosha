@@ -106,7 +106,8 @@ internal object FrozenJsonV9Adapter {
                 relation = relation, isPrimary = primary, color = optional(member, "color"),
                 panMasked = optional(member, "panMasked"),
                 panForStatements = optional(member, "panForStatements"),
-                dateOfBirth = optional(member, "dateOfBirth"))
+                dateOfBirth = optional(member, "dateOfBirth"),
+                notes = optional(member, "notes"))
         }
         val accounts = rows(json, "accounts", version == 1) { a ->
             RestoreV9Plan.Account(id = string(a, "id"), ownerId = string(a, "ownerId"),

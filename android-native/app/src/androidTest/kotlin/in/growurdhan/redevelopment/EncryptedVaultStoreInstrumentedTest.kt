@@ -241,7 +241,7 @@ class EncryptedVaultStoreInstrumentedTest {
             "q1Id":"city","q1Hash":"syntheticQ1","q2Id":"pet","q2Hash":"syntheticQ2",
             "createdAt":"2026-10-16","panMasked":"ABCDE****F",
             "panForStatements":"ABCDE1234F","dateOfBirth":"1990-01-01"},
-          "familyMembers":[{"id":"owner-A","name":"Fixture","relation":"Self","color":"#112233"}],
+          "familyMembers":[{"id":"owner-A","name":"Fixture","relation":"Self","color":"#112233","notes":"Family-owned historical note"}],
           "accounts":[{"id":"account-A","ownerId":"owner-A","accountType":"DEMAT","custodian":"Test",
             "dpId":"DP000123","clientId":"CL987","boId":"BO-SYNTH","nominee":"Fixture Only"}],
           "holdings":[{"id":"holding-A","ownerId":"owner-A","accountId":"account-A",
@@ -328,6 +328,12 @@ class EncryptedVaultStoreInstrumentedTest {
             ownersPlan.rows.filter { it.table == "setting" &&
                 it.values.first().toString().startsWith("m24.frozen_average_cost_per_unit_minor.")
             }.map { it.values.last().toString() })
+        val invalidNotes = JSONObject(exact).apply {
+            getJSONArray("familyMembers").getJSONObject(0).put("notes", 77)
+        }.toString()
+        assertThrows(Exception::class.java) {
+            FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(invalidNotes)
+        }
         val plan = FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(exact)
         assertEquals("123456789012345", plan.rows.single { it.table == "setting" &&
             it.values.first() == "m24.frozen_average_cost_per_unit_minor.holding-A" }.values.last())
@@ -341,6 +347,7 @@ class EncryptedVaultStoreInstrumentedTest {
             val row = plan.rows.single { it.table == table }
             return row.values[row.columns.indexOf(col).also { require(it >= 0) }]
         }
+        assertEquals("Family-owned historical note", mapped("entity", "notes"))
         assertEquals("DP000123", mapped("account", "dp_id"))
         assertEquals("CL987", mapped("account", "client_id"))
         assertEquals("BO-SYNTH", mapped("account", "bo_id"))

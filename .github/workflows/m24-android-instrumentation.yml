@@ -1,4 +1,5 @@
 name: GrowUrDhan M24 Android SQLCipher instrumentation
+# M24 exact frozen FamilyMember notes projection native entity column
 # M24 corrected expected restored row total with authenticated cost provenance
 # M24 transaction invariant: exactly one original JSON and bounded cost provenance settings
 # Verify historical average-cost encrypted reopen persisted-provenance gate
