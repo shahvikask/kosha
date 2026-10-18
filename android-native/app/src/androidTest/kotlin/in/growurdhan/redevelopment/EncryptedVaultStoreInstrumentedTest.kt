@@ -647,7 +647,7 @@ class EncryptedVaultStoreInstrumentedTest {
             assertEquals(first, second)
             if (expected == RestoreRecoveryInspector.State.VERIFIED_CANDIDATE ||
                 expected == RestoreRecoveryInspector.State.VERIFIED_LIVE) {
-                assertEquals(8, first.verifiedRows)
+                assertEquals(9, first.verifiedRows)
                 assertTrue(first.durableClaimPresent)
             }
             val after = snapshot()
@@ -900,7 +900,7 @@ class EncryptedVaultStoreInstrumentedTest {
         }
         val result = ApprovedNewVaultRestore(ctx).restoreFromStagedNewVault(
             credentials, explicitOwnerApproval = true)
-        assertEquals(8, result.restoredRows)
+        assertEquals(9, result.restoredRows)
         assertTrue(result.authenticatedPlaintextSha256.matches(
             Regex("[0-9a-f]{64}")))
         assertEquals(archive.size, receipt.byteCount)
@@ -941,7 +941,7 @@ class EncryptedVaultStoreInstrumentedTest {
         LockedRestoreStaging(ctx).stageEncryptedArchiveOnce(archive)
         val r = ApprovedNewVaultRestore(ctx).restoreFromStagedNewVault(
             credentials, explicitOwnerApproval = true)
-        assertEquals(8, r.restoredRows)
+        assertEquals(9, r.restoredRows)
         EncryptedVaultStore(ctx).openExisting().use { db ->
             assertEquals(9007199254740993L,
                 scalar(db, "SELECT total_amount_minor FROM ledger_event"))
@@ -958,7 +958,7 @@ class EncryptedVaultStoreInstrumentedTest {
             oldMetadata.toString().toByteArray(Charsets.UTF_8))
         val restored = ApprovedNewVaultRestore(oldMetadataContext)
             .restoreFromStagedNewVault(credentials, explicitOwnerApproval = true)
-        assertEquals(8, restored.restoredRows)
+        assertEquals(9, restored.restoredRows)
         EncryptedVaultStore(oldMetadataContext).openExisting().use { db ->
             assertEquals(9007199254740993L,
                 scalar(db, "SELECT total_amount_minor FROM ledger_event"))
