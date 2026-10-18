@@ -374,6 +374,11 @@ class EncryptedVaultStoreInstrumentedTest {
             assertEquals(1L, scalar(db, "SELECT COUNT(*) FROM ledger_event"))
         }
         successStore.openExisting().use { db ->
+            db.rawQuery("SELECT value FROM setting WHERE key=?", arrayOf(
+                "m24.frozen_average_cost_per_unit_minor.holding-A")).use { result ->
+                assertTrue(result.moveToFirst())
+                assertEquals("123456789012345", result.getString(0))
+            }
             assertEquals(1L, scalar(db, "SELECT COUNT(*) FROM ledger_event"))
             assertEquals(9007199254740993L,
                 scalar(db, "SELECT total_amount_minor FROM ledger_event"))
