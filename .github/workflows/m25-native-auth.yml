@@ -1,4 +1,5 @@
 name: GrowUrDhan M25 Native Account and Session
+# Exact-source M25 regression run after recovery-code handoff isolation (2026-10-18).
 on:
   workflow_dispatch:
   push:
