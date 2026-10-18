@@ -1,0 +1,101 @@
+name: GrowUrDhan M25 Native Account and Session
+on:
+  workflow_dispatch:
+  push:
+    branches: [GUD-Android-Redevelopment]
+    paths:
+      - .github/workflows/m25-native-auth.yml
+
+permissions:
+  contents: read
+
+jobs:
+  native-m25-auth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check exact source SHA
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: M25 credential and session JVM tests plus unchanged M24 database suite
+        working-directory: android-native
+        run: |
+          chmod +x gradlew
+          ./gradlew :core:model:test :core:database:test :app:compileDebugAndroidTestKotlin --no-daemon --stacktrace --rerun-tasks
+      - name: Verify M25 JVM methods and no skipped/failed tests
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          def checks(directory):
+              files=list(Path(directory).rglob("TEST-*.xml"))
+              assert files, directory
+              cases=[t for f in files for t in ET.parse(f).getroot().findall(".//testcase")]
+              assert not any(c.find("failure") is not None or c.find("error") is not None or c.find("skipped") is not None for c in cases)
+              return cases
+          m=checks("android-native/core/model/build/test-results/test")
+          d=checks("android-native/core/database/build/test-results/test")
+          expected={"registrationProducesIndependentSaltedHashesAndVerifies",
+              "recoveryAnswerNormalisationAndTampering","weakPasswordsRepeatedQuestionsAndInvalidIdentityRejectBeforeCreation",
+              "sessionLocksOnBackgroundAndIdleAndRejectsClockRollback",
+              "fiveFailedLoginsFailClosedWithoutAutoUnlock",
+              "passwordChangeRequiresOldPasswordAndInvalidatesOldHash"}
+          assert expected.issubset({c.attrib.get("name") for c in m})
+          assert len(d)==25, len(d)
+          print("M25_JVM_CREDENTIAL_CONFIRMED new=6 model_total=%d database_total=25 failures=0 errors=0 skipped=0"%len(m))
+          PY
+      - name: Upload M25 JVM JUnit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m25-account-jvm-junit
+          path: |
+            android-native/core/model/build/test-results/test/**/*.xml
+            android-native/core/database/build/test-results/test/**/*.xml
+          retention-days: 14
+      - name: Configure KVM
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; else echo "::warning::KVM unavailable"; fi
+      - name: Android API 35 encrypted account creation and login regression
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 2048M
+          heap-size: 512M
+          force-avd-creation: true
+          disable-animations: true
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: cd android-native && ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace
+      - name: Confirm M25 Android plus M24 regression
+        if: success()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          reports=list(Path("android-native/app/build/outputs/androidTest-results").rglob("*.xml"))
+          methods=[c for p in reports for c in ET.parse(p).getroot().findall(".//testcase")]
+          assert len(methods)==16, [c.attrib.get("name") for c in methods]
+          assert "encryptedRegistrationRequiresPasswordForActualNativeVaultAccess" in {c.attrib.get("name") for c in methods}
+          assert not any(c.find("failure") is not None or c.find("error") is not None or c.find("skipped") is not None for c in methods)
+          print("M25_ANDROID_JUNIT_CONFIRMED total=16 new=1 failures=0 errors=0 skipped=0")
+          PY
+      - name: Upload M25 Android JUnit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m25-account-android-junit
+          path: |
+            android-native/app/build/outputs/androidTest-results/connected/**/*.xml
+          retention-days: 14
