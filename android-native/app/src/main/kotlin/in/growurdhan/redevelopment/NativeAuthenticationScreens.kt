@@ -95,8 +95,7 @@ internal fun NativeAuthenticationScreen(
                     oneTimeRecoveryCode = ""
                     onLock()
                 }) { Text("I have saved the recovery code") }
-            }
-            if (unlocked) {
+            } else if (unlocked) {
                 Text("Authentication completed. Portfolio screens are not enabled in this M25 increment.")
                 Button(enabled = !busy, onClick = {
                     busy = true
