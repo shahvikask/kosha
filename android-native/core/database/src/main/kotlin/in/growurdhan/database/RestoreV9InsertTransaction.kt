@@ -31,7 +31,13 @@ object RestoreV9InsertTransaction {
         require(plan.rows.first().table == "vault_account" &&
             plan.rows.count { it.table == "vault_account" } == 1 &&
             plan.rows.any { it.table == "entity" } &&
-            plan.rows.count { it.table == "setting" } == 1) {
+            plan.rows.count { it.table == "setting" &&
+                it.values.firstOrNull() == "m24.authenticated_frozen_original_json" } == 1 &&
+            plan.rows.filter { it.table == "setting" }.all {
+                it.values.firstOrNull() == "m24.authenticated_frozen_original_json" ||
+                (it.values.firstOrNull() as? String)?.startsWith(
+                    "m24.frozen_average_cost_per_unit_minor.") == true
+            }) {
             "Missing mandatory restored owner/login or duplicated raw source"
         }
         val original = plan.rows.last()

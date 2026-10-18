@@ -304,7 +304,7 @@ class EncryptedVaultStoreInstrumentedTest {
         assertThrows(Exception::class.java) {
             FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(exact.replace(
                 "\"averageCostPerUnitMinor\":\"123456789012345\"",
-                "\"averageCostPerUnitMinor\":\"90071992547409930\""))
+                "\"averageCostPerUnitMinor\":\"9223372036854775808\""))
         }
         // Separate owners' costs remain distinct opaque provenance, never BUYs.
         val withTwoOwners = JSONObject(exact).apply {
