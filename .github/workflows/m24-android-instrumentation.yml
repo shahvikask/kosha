@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   m24-native-runtime:
-    name: M24 KOSHA1 legacy defaults corrected JVM (25) + Android (14)
+    name: M24 KOSHA1 legacy defaults corrected JVM (25) + Android (15)
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -81,7 +81,7 @@ jobs:
       - name: Configure KVM
         run: |
           if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; else echo "::warning::KVM unavailable"; fi
-      - name: Execute fourteen Android restore, recovery and AtomicFile probes
+      - name: Execute fifteen Android restore, recovery and AtomicFile probes
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -96,7 +96,7 @@ jobs:
           emulator-boot-timeout: 900
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: cd android-native && ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace
-      - name: Confirm fourteen Android instrumented JUnit results
+      - name: Confirm fifteen Android instrumented JUnit results
         if: success()
         run: |
           python3 - <<'PY'
@@ -118,6 +118,7 @@ jobs:
               "ownerRecoveryRejectsUnmatchedKeysChangedRowsAndCorruptCipherWithoutCleanup",
               "lowStorageFaultInjectionPreservesClaimAndOrphanedPublicationEvidence",
               "incompleteAtomicFileNewRemnantsNeverEraseEncryptedRecoveryEvidence",
+              "orphanedAtomicBackupsCannotBeSilentlyReplacedByBlankVault",
           }
           methods=[]
           failures=errors=skips=0
@@ -128,9 +129,9 @@ jobs:
                   failures += len(case.findall("failure"))
                   errors += len(case.findall("error"))
                   skips += len(case.findall("skipped"))
-          assert len(methods)==14 and set(methods)==expected, f"Expected fourteen named M24 tests, got {methods!r}"
+          assert len(methods)==15 and set(methods)==expected, f"Expected fifteen named M24 tests, got {methods!r}"
           assert failures==errors==skips==0, f"failures={failures} errors={errors} skips={skips}"
-          print("M24_ANDROID_JUNIT_CONFIRMED total=14 failures=0 errors=0 skipped=0")
+          print("M24_ANDROID_JUNIT_CONFIRMED total=15 failures=0 errors=0 skipped=0")
           PY
       - name: Upload Android JUnit evidence
         if: always()
