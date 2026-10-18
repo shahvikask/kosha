@@ -282,6 +282,18 @@ class EncryptedVaultStoreInstrumentedTest {
             remove("version")
             remove("goals")
         }.toString()
+        for (financialCollection in listOf("holdings", "ledgerEvents")) {
+            val incomplete = JSONObject(legacy).apply { remove(financialCollection) }.toString()
+            assertThrows(Exception::class.java) {
+                FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(incomplete)
+            }
+        }
+        val explicitlyEmpty = JSONObject(legacy).apply {
+            put("holdings", JSONArray())
+            put("ledgerEvents", JSONArray())
+        }.toString()
+        assertEquals(4,
+            FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(explicitlyEmpty).rows.size)
         val legacyPlan = FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(legacy)
         assertEquals(7, legacyPlan.rows.size)
         assertEquals(legacy, legacyPlan.rows.last().values.last())

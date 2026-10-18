@@ -82,6 +82,8 @@ internal object FrozenJsonV9Adapter {
         }
         // Frozen KOSHA1 defaults absent collections to empty, but source
         // timestamp, identity, money and ownership remain mandatory.
+        // Financial collection presence is authenticated evidence: missing
+        // holdings or ledgerEvents is NOT equivalent to an explicit empty array.
         val login = json.get("account") as? JSONObject ?: bad()
         val record = RestoreV9Plan.Login(
             email = string(login, "email"), firstName = string(login, "firstName"),
@@ -113,7 +115,7 @@ internal object FrozenJsonV9Adapter {
                 dpId = optional(a, "dpId"), clientId = optional(a, "clientId"),
                 boId = optional(a, "boId"), nominee = optional(a, "nominee"))
         }
-        val holdings = rows(json, "holdings", version == 1) { h ->
+        val holdings = rows(json, "holdings") { h ->
             RestoreV9Plan.Holding(id = string(h, "id"), ownerId = string(h, "ownerId"),
                 accountId = optional(h, "accountId"), name = string(h, "name"),
                 category = string(h, "category"), subCategory = presentString(h, "subCategory"),
@@ -125,7 +127,7 @@ internal object FrozenJsonV9Adapter {
                 isin = optional(h, "isin"), notes = optional(h, "notes"),
                 needsReview = bool(h, "needsReview"))
         }
-        val events = rows(json, "ledgerEvents", version == 1) { e ->
+        val events = rows(json, "ledgerEvents") { e ->
             RestoreV9Plan.Event(id = string(e, "id"), holdingId = string(e, "holdingId"),
                 holdingName = string(e, "holdingName"), ownerId = string(e, "ownerId"),
                 eventType = string(e, "eventType"), eventDate = string(e, "eventDate"),
