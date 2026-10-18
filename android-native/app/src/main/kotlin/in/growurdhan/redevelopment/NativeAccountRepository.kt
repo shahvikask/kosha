@@ -5,6 +5,8 @@ import android.os.SystemClock
 import `in`.growurdhan.model.NativeCredentials
 import `in`.growurdhan.model.NativeSession
 import java.time.Instant
+import java.security.MessageDigest
+import java.util.Locale
 import java.util.UUID
 import net.zetetic.database.sqlcipher.SQLiteDatabase
 
@@ -57,6 +59,8 @@ internal class NativeAccountRepository(
     enum class SignInResult { UNLOCKED, DENIED, ROTATION_REQUIRED }
     private val vault = EncryptedVaultStore(context)
     private var session = NativeSession()
+    // Bound to the exact encrypted account credential version at successful login.
+    private var sessionPasswordHash: String? = null
 
     /** Called only after explicit creation consent; failed DB writes are preserved for recovery. */
     fun enroll(input: NativeCredentials.Enrollment, createdAt: String = Instant.now().toString()): String {
@@ -94,7 +98,7 @@ internal class NativeAccountRepository(
      * Clock rollback fails closed. Device time acceleration cannot be completely defeated offline.
      */
     @Synchronized fun loginResult(email: String, password: String): SignInResult {
-        session.lock()
+        lock()
         return try {
             var account: NativeCredentials.Account? = null
             var valid = false
@@ -119,8 +123,10 @@ internal class NativeAccountRepository(
                 SignInResult.ROTATION_REQUIRED
             else {
                 session = NativeSession()
-                if (session.login(account!!, email, password, SystemClock.elapsedRealtime()))
-                    SignInResult.UNLOCKED else SignInResult.DENIED
+                if (session.login(account!!, email, password, SystemClock.elapsedRealtime())) {
+                    sessionPasswordHash = account!!.passwordHash
+                    SignInResult.UNLOCKED
+                } else SignInResult.DENIED
             }
         } catch (_: Exception) {
             session.lock()
@@ -193,13 +199,11 @@ internal class NativeAccountRepository(
 
     /** One-time replacement must start from an already password-verified session. */
     @Synchronized fun replaceRecoveryCode(email: String): String {
-        check(session.allowed(email.trim().lowercase(java.util.Locale.ROOT),
-            SystemClock.elapsedRealtime())) { "Account session is locked" }
         val issued = NativeCredentials.issueRecoveryCapability()
         vault.openExisting().use { db ->
             db.beginTransaction()
             try {
-                require(readOneAccount(db)?.email == email.trim().lowercase(java.util.Locale.ROOT))
+                requireBoundCredential(db, email)
                 writeSetting(db, RECOVERY_KEY, issued.verifier)
                 db.setTransactionSuccessful()
             } finally { db.endTransaction() }
@@ -221,13 +225,37 @@ internal class NativeAccountRepository(
         }
     }
 
-    fun <T> withUnlockedVault(email: String, action: (SQLiteDatabase) -> T): T {
-        check(session.allowed(email.trim().lowercase(java.util.Locale.ROOT),
-            SystemClock.elapsedRealtime())) { "Account session is locked" }
-        return vault.openExisting().use(action)
+    /** A session only authenticates the exact credential hash it was issued for.
+     * A password rotation/recovery by another instance immediately invalidates it.
+     * Never rely solely on a mutable Compose or Activity unlocked flag.
+     */
+    private fun requireBoundCredential(db: SQLiteDatabase, email: String) {
+        val normalized = email.trim().lowercase(Locale.ROOT)
+        val record = readOneAccount(db)
+        val expected = sessionPasswordHash
+        val valid = expected != null && record != null &&
+            record.email == normalized &&
+            MessageDigest.isEqual(expected.toByteArray(Charsets.UTF_8),
+                record.passwordHash.toByteArray(Charsets.UTF_8)) &&
+            !NativeCredentials.passwordExpired(record, Instant.now()) &&
+            session.allowed(normalized, SystemClock.elapsedRealtime())
+        if (!valid) {
+            lock()
+            throw IllegalStateException("Account session is locked or revoked")
+        }
     }
-    fun lock() = session.lock()
-    fun onBackground() = session.onBackground()
+
+    @Synchronized fun <T> withUnlockedVault(email: String, action: (SQLiteDatabase) -> T): T =
+        vault.openExisting().use { db ->
+            requireBoundCredential(db, email)
+            action(db)
+        }
+
+    fun lock() {
+        sessionPasswordHash = null
+        session.lock()
+    }
+    fun onBackground() = lock()
 
     private fun readOneAccount(db: SQLiteDatabase): NativeCredentials.Account? {
         db.rawQuery("SELECT email,first_name,last_name,password_salt,password_hash," +

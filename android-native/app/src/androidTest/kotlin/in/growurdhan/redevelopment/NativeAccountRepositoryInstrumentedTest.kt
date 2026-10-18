@@ -25,6 +25,61 @@ class NativeAccountRepositoryInstrumentedTest {
     }
 
 
+    @Test fun passwordRotationInOtherInstanceImmediatelyRevokesStaleSession() {
+        val context = sandbox()
+        val input = NativeCredentials.Enrollment("revoked@example.org", "Revoked", "Owner",
+            "Strong!Pass123", "school", "First School", "pet", "My Cat")
+        val primary = NativeAccountRepository(context)
+        primary.enroll(input)
+        assertTrue(primary.login(input.email, input.password))
+        primary.withUnlockedVault(input.email) { db ->
+            db.rawQuery("SELECT COUNT(*) FROM ledger_event", null).use {
+                assertTrue(it.moveToFirst())
+                assertEquals(0L, it.getLong(0))
+            }
+        }
+        val other = NativeAccountRepository(context)
+        other.rotatePassword(input.email, input.password, "NewStrong!345")
+        assertThrows(IllegalStateException::class.java) {
+            primary.withUnlockedVault(input.email) { Unit }
+        }
+        assertThrows(IllegalStateException::class.java) {
+            primary.replaceRecoveryCode(input.email)
+        }
+        assertFalse(primary.login(input.email, input.password))
+        assertTrue(primary.login(input.email, "NewStrong!345"))
+        primary.onBackground()
+        assertThrows(IllegalStateException::class.java) {
+            primary.withUnlockedVault(input.email) { Unit }
+        }
+        assertTrue(NativeAccountRepository(context).login(input.email, "NewStrong!345"))
+    }
+
+    @Test fun olderAccountWithoutRecoveryCodeCannotResetAndCanProvisionAfterLogin() {
+        val context = sandbox()
+        val input = NativeCredentials.Enrollment("legacy@example.org", "Legacy", "Owner",
+            "Strong!Pass123", "school", "First School", "pet", "My Cat")
+        val repository = NativeAccountRepository(context)
+        repository.enroll(input)
+        assertTrue(repository.login(input.email, input.password))
+        repository.withUnlockedVault(input.email) { db ->
+            db.execSQL("DELETE FROM setting WHERE key='m25.auth.recovery_code_verifier'")
+        }
+        repository.onBackground()
+        assertThrows(IllegalArgumentException::class.java) {
+            repository.recoverWithCode(input.email, "GUD-unprovisioned",
+                "school", "First School", "pet", "My Cat", "NewStrong!345")
+        }
+        assertTrue(repository.login(input.email, input.password))
+        val code = repository.replaceRecoveryCode(input.email)
+        assertTrue(code.startsWith("GUD-"))
+        repository.onBackground()
+        repository.recoverWithCode(input.email, code, "school", "First School",
+            "pet", "My Cat", "NewStrong!345")
+        assertFalse(repository.login(input.email, input.password))
+        assertTrue(NativeAccountRepository(context).login(input.email, "NewStrong!345"))
+    }
+
     @Test fun recoveryCodeRequiresOriginalAnswersAndIsSingleUseAcrossEncryptedRestart() {
         val ctx = sandbox()
         val input = NativeCredentials.Enrollment("recovery@example.org", "Recovery", "Owner",

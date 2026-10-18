@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import `in`.growurdhan.designsystem.GudTheme
 import `in`.growurdhan.model.NativeCredentials
+import `in`.growurdhan.model.NativeDeviceAdmission
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -25,10 +26,11 @@ class MainActivity : ComponentActivity() {
     private var unlocked by mutableStateOf(false)
     private var deviceMessage by mutableStateOf("")
     private var lifecycleEpoch = 0
+    private val admission = NativeDeviceAdmission()
 
     private val osChallenge = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()) { result ->
-        deviceVerified = result.resultCode == Activity.RESULT_OK
+        deviceVerified = admission.complete(result.resultCode == Activity.RESULT_OK)
         deviceMessage = if (deviceVerified) "" else "Device authentication was not completed"
     }
 
@@ -45,7 +47,7 @@ class MainActivity : ComponentActivity() {
                     deviceMessage = deviceMessage,
                     onDeviceChallenge = { requestDeviceChallenge() },
                     onEnroll = { input ->
-                        if (!deviceVerified) null else {
+                        if (!deviceVerified || !admission.valid()) null else {
                             val atStart = lifecycleEpoch
                             val code = withContext(Dispatchers.IO) {
                                 runCatching { accounts.enroll(input) }.getOrNull()
@@ -55,7 +57,7 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                     onLogin = { email, password ->
-                        if (!deviceVerified) NativeAccountRepository.SignInResult.DENIED
+                        if (!deviceVerified || !admission.valid()) NativeAccountRepository.SignInResult.DENIED
                         else {
                             val atStart = lifecycleEpoch
                             val result = withContext(Dispatchers.IO) {
@@ -71,7 +73,7 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                     onRotation = { email, old, replacement ->
-                        if (!deviceVerified) false else {
+                        if (!deviceVerified || !admission.valid()) false else {
                             val atStart = lifecycleEpoch
                             val result = withContext(Dispatchers.IO) {
                                 runCatching {
@@ -86,7 +88,7 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                     onRecover = { email, code, q1, a1, q2, a2, newPass ->
-                        if (!deviceVerified) false else {
+                        if (!deviceVerified || !admission.valid()) false else {
                             val atStart = lifecycleEpoch
                             val result = withContext(Dispatchers.IO) {
                                 runCatching {
@@ -99,7 +101,7 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                     onReplaceRecoveryCode = { email ->
-                        if (!deviceVerified || !unlocked) null else {
+                        if (!deviceVerified || !admission.valid() || !unlocked) null else {
                             val atStart = lifecycleEpoch
                             val code = withContext(Dispatchers.IO) {
                                 runCatching { accounts.replaceRecoveryCode(email) }.getOrNull()
@@ -126,18 +128,33 @@ class MainActivity : ComponentActivity() {
             deviceMessage = "Device authentication unavailable"
             return
         }
-        osChallenge.launch(challenge)
+        if (!admission.begin()) {
+            deviceMessage = "Device authentication unavailable"
+            return
+        }
+        try { osChallenge.launch(challenge) }
+        catch (_: Exception) {
+            admission.cancel()
+            deviceMessage = "Device authentication unavailable"
+        }
     }
 
-    private fun lockCompletely() {
+    private fun lockCompletely(preservePendingChallenge: Boolean = false) {
         if (::accounts.isInitialized) accounts.lock()
         unlocked = false
         deviceVerified = false
+        if (!preservePendingChallenge) admission.cancel()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        admission.onStart()
     }
 
     override fun onStop() {
+        admission.onStop()
         lifecycleEpoch++
-        lockCompletely()
+        lockCompletely(preservePendingChallenge = true)
         if (::accounts.isInitialized) accounts.onBackground()
         super.onStop()
     }

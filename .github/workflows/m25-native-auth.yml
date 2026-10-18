@@ -50,8 +50,14 @@ jobs:
               "passwordExpiryIsExactly180DaysAndFailsClosedOnCorruptDate",
               "recoveryNeedsEntropyAndBothCorrectFrozenAnswers"}
           assert expected.issubset({c.attrib.get("name") for c in m})
+          assert len(m)==22, len(m)
+          os_expected={"unsolicitedAndBackgroundResultsDoNotAdmit",
+              "successfulExplicitForegroundChallengeAdmitsUntilBackground",
+              "canceledOrFailedResultNeverAdmits",
+              "osChallengeCanReturnAfterActivityWasPaused"}
+          assert os_expected.issubset({c.attrib.get("name") for c in m})
           assert len(d)==25, len(d)
-          print("M25_JVM_CREDENTIAL_CONFIRMED new=8 model_total=%d database_total=25 failures=0 errors=0 skipped=0"%len(m))
+          print("M25_JVM_CREDENTIAL_CONFIRMED credential=8 admission=4 model_total=%d database_total=25 failures=0 errors=0 skipped=0"%len(m))
           PY
       - name: Upload M25 JVM JUnit evidence
         if: always()
@@ -88,14 +94,16 @@ jobs:
           from xml.etree import ElementTree as ET
           reports=list(Path("android-native/app/build/outputs/androidTest-results").rglob("*.xml"))
           methods=[c for p in reports for c in ET.parse(p).getroot().findall(".//testcase")]
-          assert len(methods)==19, [c.attrib.get("name") for c in methods]
+          assert len(methods)==21, [c.attrib.get("name") for c in methods]
           assert {"encryptedRegistrationRequiresPasswordForActualNativeVaultAccess",
                   "expiredNativePasswordRequiresTransactionalRotationAndReopen",
                   "recoveryCodeRequiresOriginalAnswersAndIsSingleUseAcrossEncryptedRestart",
-                  "durableLoginAndRecoveryThrottleSurvivesRestartAndClockRollback"}.issubset(
+                  "durableLoginAndRecoveryThrottleSurvivesRestartAndClockRollback",
+                  "passwordRotationInOtherInstanceImmediatelyRevokesStaleSession",
+                  "olderAccountWithoutRecoveryCodeCannotResetAndCanProvisionAfterLogin"}.issubset(
                   {c.attrib.get("name") for c in methods})
           assert not any(c.find("failure") is not None or c.find("error") is not None or c.find("skipped") is not None for c in methods)
-          print("M25_ANDROID_JUNIT_CONFIRMED total=19 new=4 failures=0 errors=0 skipped=0")
+          print("M25_ANDROID_JUNIT_CONFIRMED total=21 new=6 failures=0 errors=0 skipped=0")
           PY
       - name: Upload M25 Android JUnit
         if: always()
