@@ -95,7 +95,7 @@ jobs:
           from xml.etree import ElementTree as ET
           reports=list(Path("android-native/app/build/outputs/androidTest-results").rglob("*.xml"))
           methods=[c for p in reports for c in ET.parse(p).getroot().findall(".//testcase")]
-          assert len(methods)==23, [c.attrib.get("name") for c in methods]
+          assert len(methods)==24, [c.attrib.get("name") for c in methods]
           assert {"encryptedRegistrationRequiresPasswordForActualNativeVaultAccess",
                   "expiredNativePasswordRequiresTransactionalRotationAndReopen",
                   "recoveryCodeRequiresOriginalAnswersAndIsSingleUseAcrossEncryptedRestart",
@@ -103,10 +103,10 @@ jobs:
                   "passwordRotationInOtherInstanceImmediatelyRevokesStaleSession",
                   "olderAccountWithoutRecoveryCodeCannotResetAndCanProvisionAfterLogin",
                   "repositoryRequiresOsAdmissionForPasswordAndVaultOperations",
-                  "interruptionRollsBackEncryptedPortfolioBoundaryWrite"}.issubset(
+                  "interruptionRollsBackEncryptedPortfolioBoundaryWrite",\n                  "interruptedRegistrationCodeCanBeSafelyReplacedAfterFreshAuthentication"}.issubset(
                   {c.attrib.get("name") for c in methods})
           assert not any(c.find("failure") is not None or c.find("error") is not None or c.find("skipped") is not None for c in methods)
-          print("M25_ANDROID_JUNIT_CONFIRMED total=23 new=8 failures=0 errors=0 skipped=0")
+          print("M25_ANDROID_JUNIT_CONFIRMED total=24 new=9 failures=0 errors=0 skipped=0")
           PY
       - name: Upload M25 Android JUnit
         if: always()
