@@ -457,6 +457,7 @@ class EncryptedVaultStoreInstrumentedTest {
                     .put("symbolOrFolio", "SYNTH")
                     .put("quantityScaled", "1234567890123")
                     .put("currentPriceMinor", "9007199254740993")
+                    .put("averageCostPerUnitMinor", "123456789012345")
                     .put("lastPriceUpdated", "2026-10-17")
                     .put("priceSource", "synthetic-only")))
             .put("ledgerEvents", JSONArray().put(
