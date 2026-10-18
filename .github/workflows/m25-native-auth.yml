@@ -103,7 +103,8 @@ jobs:
                   "passwordRotationInOtherInstanceImmediatelyRevokesStaleSession",
                   "olderAccountWithoutRecoveryCodeCannotResetAndCanProvisionAfterLogin",
                   "repositoryRequiresOsAdmissionForPasswordAndVaultOperations",
-                  "interruptionRollsBackEncryptedPortfolioBoundaryWrite",\n                  "interruptedRegistrationCodeCanBeSafelyReplacedAfterFreshAuthentication"}.issubset(
+                  "interruptionRollsBackEncryptedPortfolioBoundaryWrite",
+                  "interruptedRegistrationCodeCanBeSafelyReplacedAfterFreshAuthentication"}.issubset(
                   {c.attrib.get("name") for c in methods})
           assert not any(c.find("failure") is not None or c.find("error") is not None or c.find("skipped") is not None for c in methods)
           print("M25_ANDROID_JUNIT_CONFIRMED total=24 new=9 failures=0 errors=0 skipped=0")
