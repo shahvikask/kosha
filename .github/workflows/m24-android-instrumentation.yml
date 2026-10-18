@@ -1,4 +1,5 @@
 name: GrowUrDhan M24 Android SQLCipher instrumentation
+# Exact-SHA M24 owner-review AtomicFile .new forensic regression
 
 # Owner-authorized milestone-only workflow. WIP source pushes do not run emulators.
 on:
