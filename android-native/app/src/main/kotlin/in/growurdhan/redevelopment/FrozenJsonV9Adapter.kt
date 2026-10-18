@@ -58,6 +58,32 @@ internal object FrozenJsonV9Adapter {
         }
     }
 
+    /**
+     * The original authenticated JSON is retained verbatim, but retaining a value
+     * opaquely must not be mistaken for migrating unknown financial semantics.
+     * Reject unrecognized money/quantity fields instead of silently omitting them
+     * from the canonical ledger, position or goal.
+     */
+    private fun rejectUnknownFinancialFields(o: JSONObject, allowed: Set<String>) {
+        val financial = Regex("(?i)(amount|minor|scaled|charges?|fees?|cost|price|quantity|units?|value|tax|interest|rate|principal|balance|proceeds|premium|target)")
+        val keys = o.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            if (key !in allowed && financial.containsMatchIn(key)) bad()
+        }
+    }
+
+    private val holdingFields = setOf("id", "ownerId", "accountId", "name",
+        "category", "subCategory", "symbolOrFolio", "quantityScaled",
+        "currentPriceMinor", "lastPriceUpdated", "priceSource", "isin",
+        "notes", "needsReview", "averageCostPerUnitMinor")
+    private val eventFields = setOf("id", "holdingId", "holdingName", "ownerId",
+        "eventType", "eventDate", "quantityScaled", "unitPriceMinor",
+        "totalAmountMinor", "chargesMinor", "createdAt", "supersedesEventId",
+        "importBatchId", "sourceRef", "notes")
+    private val goalFields = setOf("id", "ownerId", "name", "targetMinor",
+        "targetDate", "createdAt", "priority")
+
     private fun array(parent: JSONObject, k: String, legacy: Boolean): JSONArray {
         if (legacy && !parent.has(k)) return JSONArray()
         if (!parent.has(k) || parent.isNull(k)) bad()
@@ -117,6 +143,7 @@ internal object FrozenJsonV9Adapter {
                 boId = optional(a, "boId"), nominee = optional(a, "nominee"))
         }
         val holdings = rows(json, "holdings") { h ->
+            rejectUnknownFinancialFields(h, holdingFields)
             RestoreV9Plan.Holding(id = string(h, "id"), ownerId = string(h, "ownerId"),
                 accountId = optional(h, "accountId"), name = string(h, "name"),
                 category = string(h, "category"), subCategory = presentString(h, "subCategory"),
@@ -130,6 +157,7 @@ internal object FrozenJsonV9Adapter {
                 averageCostPerUnitMinor = decimal(h, "averageCostPerUnitMinor"))
         }
         val events = rows(json, "ledgerEvents") { e ->
+            rejectUnknownFinancialFields(e, eventFields)
             RestoreV9Plan.Event(id = string(e, "id"), holdingId = string(e, "holdingId"),
                 holdingName = string(e, "holdingName"), ownerId = string(e, "ownerId"),
                 eventType = string(e, "eventType"), eventDate = string(e, "eventDate"),
@@ -145,6 +173,7 @@ internal object FrozenJsonV9Adapter {
                 sourceRef = optional(e, "sourceRef"), notes = optional(e, "notes"))
         }
         val goals = rows(json, "goals", version == 1) { g ->
+            rejectUnknownFinancialFields(g, goalFields)
             RestoreV9Plan.Goal(id = string(g, "id"), ownerId = optional(g, "ownerId"),
                 name = string(g, "name"), targetMinor = decimal(g, "targetMinor"),
                 targetDate = optional(g, "targetDate"), createdAt = string(g, "createdAt"),

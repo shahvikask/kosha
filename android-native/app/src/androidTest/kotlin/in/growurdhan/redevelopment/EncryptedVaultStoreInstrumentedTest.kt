@@ -294,6 +294,25 @@ class EncryptedVaultStoreInstrumentedTest {
         }.toString()
         assertEquals(4,
             FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(explicitlyEmpty).rows.size)
+        // Authenticated but unmapped monetary fields cannot be silently treated
+        // as migrated typed finances, even though the raw JSON is retained.
+        for ((collection, name) in listOf(
+            "holdings" to "unmappedCostMinor",
+            "ledgerEvents" to "unmappedFeeMinor",
+            "goals" to "unmappedTargetMinor"
+        )) {
+            val augmented = JSONObject(exact).apply {
+                getJSONArray(collection).getJSONObject(0).put(name, "13579")
+            }.toString()
+            assertThrows(Exception::class.java) {
+                FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(augmented)
+            }
+        }
+        val opaqueNonFinancial = JSONObject(legacy).apply {
+            getJSONArray("holdings").getJSONObject(0).put("opaqueMemo", "authenticated")
+        }.toString()
+        assertEquals(8,
+            FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(opaqueNonFinancial).rows.size)
         val legacyPlan = FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(legacy)
         assertEquals(8, legacyPlan.rows.size)
         assertEquals(legacy, legacyPlan.rows.last().values.last())
