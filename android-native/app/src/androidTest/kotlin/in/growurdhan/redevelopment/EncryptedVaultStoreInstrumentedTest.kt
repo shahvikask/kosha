@@ -306,6 +306,28 @@ class EncryptedVaultStoreInstrumentedTest {
                 "\"averageCostPerUnitMinor\":\"123456789012345\"",
                 "\"averageCostPerUnitMinor\":\"90071992547409930\""))
         }
+        // Separate owners' costs remain distinct opaque provenance, never BUYs.
+        val withTwoOwners = JSONObject(exact).apply {
+            getJSONArray("familyMembers").put(
+                JSONObject(getJSONArray("familyMembers").getJSONObject(0).toString())
+                    .put("id", "owner-B").put("relation", "Spouse"))
+            getJSONArray("holdings").put(
+                JSONObject(getJSONArray("holdings").getJSONObject(0).toString())
+                    .put("id", "holding-B").put("ownerId", "owner-B")
+                    .remove("accountId").let {
+                        it.put("averageCostPerUnitMinor", "42")
+                    })
+            getJSONArray("ledgerEvents").put(
+                JSONObject(getJSONArray("ledgerEvents").getJSONObject(0).toString())
+                    .put("id", "event-B").put("holdingId", "holding-B")
+                    .put("ownerId", "owner-B"))
+        }.toString()
+        val ownersPlan = FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(withTwoOwners)
+        assertEquals(2, ownersPlan.rows.count { it.table == "ledger_event" })
+        assertEquals(listOf("123456789012345", "42"),
+            ownersPlan.rows.filter { it.table == "setting" &&
+                it.values.first().toString().startsWith("m24.frozen_average_cost_per_unit_minor.")
+            }.map { it.values.last().toString() })
         val plan = FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(exact)
         assertEquals("123456789012345", plan.rows.single { it.table == "setting" &&
             it.values.first() == "m24.frozen_average_cost_per_unit_minor.holding-A" }.values.last())
