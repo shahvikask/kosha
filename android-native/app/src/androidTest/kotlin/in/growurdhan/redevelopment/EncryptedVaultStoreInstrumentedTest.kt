@@ -434,6 +434,7 @@ class EncryptedVaultStoreInstrumentedTest {
                     .put("quantityScaled", "1234567890123")
                     .put("unitPriceMinor", "100")
                     .put("totalAmountMinor", "9007199254740993")
+                    .put("chargesMinor", "0")
                     .put("createdAt", "2026-10-17")))
             .put("goals", JSONArray().put(
                 JSONObject().put("id", "goal").put("ownerId", "owner")
