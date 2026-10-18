@@ -263,17 +263,17 @@ class EncryptedVaultStoreInstrumentedTest {
         }""".trimIndent()
         // Historical inner payloads with missing financial provenance must fail
         // closed, not silently acquire invented costs or timestamps.
-        val absentCharges = exact.replace(",\\\"chargesMinor\\\":\\\"0\\\"", "")
+        val absentCharges = exact.replace(",\"chargesMinor\":\"0\"", "")
         assertThrows(Exception::class.java) {
             FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(absentCharges)
         }
         assertThrows(Exception::class.java) {
             FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(
-                exact.replace(",\\\"exportedAt\\\":\\\"2026-10-16T00:00:00Z\\\"", ""))
+                exact.replace(",\"exportedAt\":\"2026-10-16T00:00:00Z\"", ""))
         }
         assertThrows(Exception::class.java) {
             FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(exact.replace(
-                "\\\"version\\\":2", "\\\"version\\\":1"))
+                "\"version\":2", "\"version\":1"))
         }
         val plan = FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(exact)
         assertEquals(8, plan.rows.size)
