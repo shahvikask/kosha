@@ -308,6 +308,21 @@ class EncryptedVaultStoreInstrumentedTest {
                 FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(augmented)
             }
         }
+        // These monetary fields belong to the actual frozen Holding contract.
+        // They are retained only in authenticated original JSON, not synthesized
+        // into events or represented as migrated canonical ledger amounts.
+        val knownFrozenFinancial = JSONObject(legacy).apply {
+            getJSONArray("holdings").getJSONObject(0)
+                .put("benchmarkPriceMinor", "123456")
+                .put("issuePriceMinor", "234567")
+                .put("monthlyEmiMinor", "345678")
+                .put("fmv31Jan2018Minor", "456789")
+        }.toString()
+        val frozenFieldsPlan = FrozenJsonV9Adapter
+            .planFromAuthenticatedPlaintext(knownFrozenFinancial)
+        assertEquals(8, frozenFieldsPlan.rows.size)
+        assertEquals(knownFrozenFinancial, frozenFieldsPlan.rows.last().values.last())
+        assertEquals(1, frozenFieldsPlan.rows.count { it.table == "ledger_event" })
         val opaqueNonFinancial = JSONObject(legacy).apply {
             getJSONArray("holdings").getJSONObject(0).put("opaqueMemo", "authenticated")
         }.toString()

@@ -76,7 +76,18 @@ internal object FrozenJsonV9Adapter {
     private val holdingFields = setOf("id", "ownerId", "accountId", "name",
         "category", "subCategory", "symbolOrFolio", "quantityScaled",
         "currentPriceMinor", "lastPriceUpdated", "priceSource", "isin",
-        "notes", "needsReview", "averageCostPerUnitMinor")
+        "notes", "needsReview", "averageCostPerUnitMinor",
+        // Frozen src/types.ts Holding fields: accepted as authenticated opaque
+        // original metadata, never silently converted into ledger events.
+        "dayChangePercent", "dayChangeMinor", "reviewReasons",
+        "benchmarkPriceMinor", "issuePriceMinor", "couponRatePercent",
+        "nextCouponDate", "maturityDate", "interestRatePercent",
+        "institutionName", "accountNumberMasked", "monthlyEmiMinor",
+        "emiStatus", "remainingEmiCount", "acquiredOn", "details",
+        "isPriceStale", "fmv31Jan2018Minor", "exposureNode", "l2Node",
+        "wrapper", "allocationSplit", "location", "tag", "tags",
+        "amc", "rta", "amfiCode", "advisor", "schemeType", "ucc",
+        "exchange", "dpName")
     private val eventFields = setOf("id", "holdingId", "holdingName", "ownerId",
         "eventType", "eventDate", "quantityScaled", "unitPriceMinor",
         "totalAmountMinor", "chargesMinor", "createdAt", "supersedesEventId",
