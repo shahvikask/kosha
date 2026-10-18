@@ -63,6 +63,9 @@ internal class RestoreRecoveryInspector(private val context: Context) {
             val liveKey = File(noBackup, "vault-key.v1")
             val liveDb = target
             val liveKeyPresent = exists(liveKey) || exists(File(liveKey.path + ".bak"))
+            // AtomicFile .new is a competing unfinished publication, not a
+            // verified live key. Preserve it and classify the state ambiguous.
+            val liveKeyNew = exists(File(liveKey.path + ".new"))
             val liveDbPresent = exists(liveDb)
             val reservation = liveDbPresent && regular(liveDb) && liveDb.length() == 0L
 
@@ -91,6 +94,7 @@ internal class RestoreRecoveryInspector(private val context: Context) {
                 dbArtifacts.any { !regular(it) || !candidateDbName.matches(it.name) } ||
                 keys.size > 1 || dbArtifacts.size > 1 ||
                 (liveDbPresent && !regular(liveDb)) ||
+                liveKeyNew ||
                 (liveKeyPresent && (!regular(liveKey) ||
                     exists(File(liveKey.path + ".bak"))))) {
                 return@exclusively Review(State.AMBIGUOUS, durableClaimPresent = true,

@@ -645,6 +645,17 @@ class EncryptedVaultStoreInstrumentedTest {
         assertEquals(RestoreRecoveryInspector.State.AMBIGUOUS, rejected.state)
         assertArrayEquals(switchedBytes, switched.readBytes())
 
+        // A pending AtomicFile key write must never be interpreted as a
+        // verified candidate/live publication, even with matching cipher rows.
+        val competingKey = interrupted()
+        val orphanNew = File(competingKey.noBackupFilesDir, "vault-key.v1.new")
+        orphanNew.writeBytes(byteArrayOf(5, 9, 7))
+        val preserved = orphanNew.readBytes()
+        val ambiguous = RestoreRecoveryInspector(competingKey).inspectForOwnerReview(
+            credentials, explicitOwnerApproval = true)
+        assertEquals(RestoreRecoveryInspector.State.AMBIGUOUS, ambiguous.state)
+        assertArrayEquals(preserved, orphanNew.readBytes())
+
         val changedRows = interrupted()
         val candidate = changedRows.getDatabasePath("growurdhan-v9.sqlcipher")
             .parentFile!!.listFiles()!!.single { it.name.startsWith(
