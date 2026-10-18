@@ -19,7 +19,8 @@ object RestoreV9Plan {
         val symbolOrFolio: String, val quantityScaled: String, val currentPriceMinor: String,
         val lastPriceUpdated: String, val priceSource: String,
         val isin: String? = null, val notes: String? = null,
-        val needsReview: Boolean? = null)
+        val needsReview: Boolean? = null,
+        val averageCostPerUnitMinor: String? = null)
     data class Event(val id: String, val holdingId: String, val holdingName: String,
         val ownerId: String, val eventType: String, val eventDate: String,
         val quantityScaled: String, val unitPriceMinor: String, val totalAmountMinor: String,
@@ -121,6 +122,13 @@ object RestoreV9Plan {
                 "notes" to h.notes,
                 "last_price_updated" to h.lastPriceUpdated,
                 "price_source" to h.priceSource, "created_at" to s.exportedAt)
+            if (h.averageCostPerUnitMinor != null) {
+                val sourceCost = money(h.averageCostPerUnitMinor)
+                // Opaque historic cost per unit, never a synthetic money event.
+                rows += row("setting", "key" to
+                    ("m24.frozen_average_cost_per_unit_minor." + h.id),
+                    "value" to sourceCost.toString())
+            }
         }
         for (e in s.events) {
             require(s.holdings.any { it.id == e.holdingId && it.name == e.holdingName }) {

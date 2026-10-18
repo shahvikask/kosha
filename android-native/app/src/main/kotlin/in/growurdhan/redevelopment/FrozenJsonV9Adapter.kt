@@ -125,7 +125,8 @@ internal object FrozenJsonV9Adapter {
                 lastPriceUpdated = string(h, "lastPriceUpdated"),
                 priceSource = string(h, "priceSource"),
                 isin = optional(h, "isin"), notes = optional(h, "notes"),
-                needsReview = bool(h, "needsReview"))
+                needsReview = bool(h, "needsReview"),
+                averageCostPerUnitMinor = decimal(h, "averageCostPerUnitMinor"))
         }
         val events = rows(json, "ledgerEvents") { e ->
             RestoreV9Plan.Event(id = string(e, "id"), holdingId = string(e, "holdingId"),

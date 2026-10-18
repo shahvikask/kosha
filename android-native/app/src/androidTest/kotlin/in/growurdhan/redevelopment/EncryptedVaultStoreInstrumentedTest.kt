@@ -248,7 +248,7 @@ class EncryptedVaultStoreInstrumentedTest {
             "name":"Example","category":"EQUITY","subCategory":"Large cap",
             "isin":"INE000TEST00","needsReview":true,"notes":"synthetic holding note",
             "symbolOrFolio":"TEST","quantityScaled":"1234567890123",
-            "currentPriceMinor":"9007199254740993","lastPriceUpdated":"2026-10-16",
+            "currentPriceMinor":"9007199254740993","averageCostPerUnitMinor":"123456789012345", "lastPriceUpdated":"2026-10-16",
             "priceSource":"Test only"}],
           "ledgerEvents":[{"id":"event-A","ownerId":"owner-A","holdingId":"holding-A",
             "holdingName":"Example","eventType":"BUY","eventDate":"2026-10-16",
@@ -295,14 +295,21 @@ class EncryptedVaultStoreInstrumentedTest {
         assertEquals(4,
             FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(explicitlyEmpty).rows.size)
         val legacyPlan = FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(legacy)
-        assertEquals(7, legacyPlan.rows.size)
+        assertEquals(8, legacyPlan.rows.size)
         assertEquals(legacy, legacyPlan.rows.last().values.last())
         assertThrows(Exception::class.java) {
             FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(legacy.replace(
                 "\"chargesMinor\":\"0\"", "\"chargesMinor\":null"))
         }
+        assertThrows(Exception::class.java) {
+            FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(exact.replace(
+                "\"averageCostPerUnitMinor\":\"123456789012345\"",
+                "\"averageCostPerUnitMinor\":\"90071992547409930\""))
+        }
         val plan = FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(exact)
-        assertEquals(8, plan.rows.size)
+        assertEquals("123456789012345", plan.rows.single { it.table == "setting" &&
+            it.values.first() == "m24.frozen_average_cost_per_unit_minor.holding-A" }.values.last())
+        assertEquals(9, plan.rows.size)
         assertEquals(exact, plan.rows.last().values.last())
         assertTrue(plan.rows.single { it.table == "vault_account" }.values
             .contains("ABCDE1234F"))
