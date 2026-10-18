@@ -58,13 +58,14 @@ internal object FrozenJsonV9Adapter {
         }
     }
 
-    private fun array(parent: JSONObject, k: String): JSONArray {
+    private fun array(parent: JSONObject, k: String, legacy: Boolean): JSONArray {
+        if (legacy && !parent.has(k)) return JSONArray()
         if (!parent.has(k) || parent.isNull(k)) bad()
         return parent.get(k) as? JSONArray ?: bad()
     }
 
-    private fun <T> rows(parent: JSONObject, key: String, mapper: (JSONObject) -> T): List<T> {
-        val a = array(parent, key)
+    private fun <T> rows(parent: JSONObject, key: String, legacy: Boolean = false, mapper: (JSONObject) -> T): List<T> {
+        val a = array(parent, key, legacy)
         if (a.length() > 250_000) bad()
         return List(a.length()) { i -> mapper(a.get(i) as? JSONObject ?: bad()) }
     }
@@ -73,9 +74,14 @@ internal object FrozenJsonV9Adapter {
         val encodedBytes = exactPlaintext.toByteArray(Charsets.UTF_8)
         require(encodedBytes.size in 1..MAX_JSON_BYTES) { "Invalid authenticated snapshot size" }
         val json = JSONObject(exactPlaintext)
-        require(string(json, "kind") == "GUDVAULT" && int(json, "version") == 2) {
+        val version = if (json.has("version")) int(json, "version") else 1
+        require(version in 1..2 &&
+            (version == 1 || string(json, "kind") == "GUDVAULT") &&
+            (!json.has("kind") || string(json, "kind") == "GUDVAULT")) {
             "Unknown frozen backup kind or version"
         }
+        // Frozen KOSHA1 defaults absent collections to empty, but source
+        // timestamp, identity, money and ownership remain mandatory.
         val login = json.get("account") as? JSONObject ?: bad()
         val record = RestoreV9Plan.Login(
             email = string(login, "email"), firstName = string(login, "firstName"),
@@ -100,14 +106,14 @@ internal object FrozenJsonV9Adapter {
                 panForStatements = optional(member, "panForStatements"),
                 dateOfBirth = optional(member, "dateOfBirth"))
         }
-        val accounts = rows(json, "accounts") { a ->
+        val accounts = rows(json, "accounts", version == 1) { a ->
             RestoreV9Plan.Account(id = string(a, "id"), ownerId = string(a, "ownerId"),
                 accountType = string(a, "accountType"), custodian = string(a, "custodian"),
                 identifierMasked = optional(a, "identifierMasked"),
                 dpId = optional(a, "dpId"), clientId = optional(a, "clientId"),
                 boId = optional(a, "boId"), nominee = optional(a, "nominee"))
         }
-        val holdings = rows(json, "holdings") { h ->
+        val holdings = rows(json, "holdings", version == 1) { h ->
             RestoreV9Plan.Holding(id = string(h, "id"), ownerId = string(h, "ownerId"),
                 accountId = optional(h, "accountId"), name = string(h, "name"),
                 category = string(h, "category"), subCategory = presentString(h, "subCategory"),
@@ -119,7 +125,7 @@ internal object FrozenJsonV9Adapter {
                 isin = optional(h, "isin"), notes = optional(h, "notes"),
                 needsReview = bool(h, "needsReview"))
         }
-        val events = rows(json, "ledgerEvents") { e ->
+        val events = rows(json, "ledgerEvents", version == 1) { e ->
             RestoreV9Plan.Event(id = string(e, "id"), holdingId = string(e, "holdingId"),
                 holdingName = string(e, "holdingName"), ownerId = string(e, "ownerId"),
                 eventType = string(e, "eventType"), eventDate = string(e, "eventDate"),
@@ -134,7 +140,7 @@ internal object FrozenJsonV9Adapter {
                 importBatchId = optional(e, "importBatchId"),
                 sourceRef = optional(e, "sourceRef"), notes = optional(e, "notes"))
         }
-        val goals = rows(json, "goals") { g ->
+        val goals = rows(json, "goals", version == 1) { g ->
             RestoreV9Plan.Goal(id = string(g, "id"), ownerId = optional(g, "ownerId"),
                 name = string(g, "name"), targetMinor = decimal(g, "targetMinor"),
                 targetDate = optional(g, "targetDate"), createdAt = string(g, "createdAt"),

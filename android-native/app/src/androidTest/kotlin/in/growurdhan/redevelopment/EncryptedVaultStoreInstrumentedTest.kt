@@ -275,6 +275,18 @@ class EncryptedVaultStoreInstrumentedTest {
             FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(exact.replace(
                 "\"version\":2", "\"version\":1"))
         }
+        // Frozen KOSHA1 v1 may omit kind/version and empty goal arrays.
+        // Valid explicit ownership, exportedAt and charges are never inferred.
+        val legacy = exact.replace("\"kind\":\"GUDVAULT\",", "")
+            .replace("\"version\":2,", "")
+            .replace(",\"goals\":[{\"id\":\"goal-A\",\"ownerId\":\"owner-A\",\"name\":\"Test goal\",\n            \"targetMinor\":\"100000\",\"createdAt\":\"2026-10-16\",\n            \"priority\":\"HIGH\"}]", "")
+        val legacyPlan = FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(legacy)
+        assertEquals(7, legacyPlan.rows.size)
+        assertEquals(legacy, legacyPlan.rows.last().values.last())
+        assertThrows(Exception::class.java) {
+            FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(legacy.replace(
+                "\"chargesMinor\":\"0\"", "\"chargesMinor\":null"))
+        }
         val plan = FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(exact)
         assertEquals(8, plan.rows.size)
         assertEquals(exact, plan.rows.last().values.last())
