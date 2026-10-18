@@ -67,3 +67,4 @@ An entry here is an owner decision only when it says so. Observations and Grok a
 
 | 2026-10-18 | D40 | IMPLEMENTED, CI PENDING | Orphaned AtomicFile `.bak` is forensic financial evidence; fresh-vault creation must fail closed on pending-backup or wrapped-key-backup residue. | Guard and Android test committed; manual recovery never auto-deletes claims. M24 NOT ACCEPTED. |
 | 2026-10-18 | D41 | IMPLEMENTED; NEW CI PENDING | Unfinished live Keystore `.new` is competing forensic evidence, not verified recovery. | RestoreRecoveryInspector marks AMBIGUOUS; test retains bytes; M24 run #39091378740 awaits terminal XML. M24 NOT ACCEPTED. |
+| 2026-10-18 | D42 | IMPLEMENTED, NEW CI PENDING | Missing authenticated historical transaction charges cannot safely be treated as zero; do not invent monetary costs. | Frozen KOSHA1 envelope fallbacks documented but native v1 migration remains unsupported without lossless timestamp and ownership proofs; M24 NOT ACCEPTED. |
