@@ -273,7 +273,7 @@ class EncryptedVaultStoreInstrumentedTest {
         }
         assertThrows(Exception::class.java) {
             FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(exact.replace(
-                "\"version\":2", "\"version\":1"))
+                "\"version\":2", "\"version\":3"))
         }
         // Frozen KOSHA1 v1 may omit kind/version and empty goal arrays.
         // Valid explicit ownership, exportedAt and charges are never inferred.
