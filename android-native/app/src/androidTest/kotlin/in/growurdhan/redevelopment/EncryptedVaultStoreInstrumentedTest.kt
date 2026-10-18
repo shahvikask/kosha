@@ -779,6 +779,22 @@ class EncryptedVaultStoreInstrumentedTest {
         assertFalse(stagedWithNew.getDatabasePath("growurdhan-v9.sqlcipher").exists())
     }
 
+    @Test fun orphanedAtomicBackupsCannotBeSilentlyReplacedByBlankVault() {
+        for (name in listOf("restore-pending.v1.kosha.bak", "vault-key.v1.bak")) {
+            val ctx = sandbox()
+            val orphan = File(ctx.noBackupFilesDir, name).apply {
+                writeBytes(byteArrayOf(11, 22, 33, 44))
+            }
+            val original = orphan.readBytes()
+            assertThrows(IllegalStateException::class.java) {
+                EncryptedVaultStore(ctx).createFresh(false).close()
+            }
+            assertArrayEquals(original, orphan.readBytes())
+            assertFalse(ctx.getDatabasePath("growurdhan-v9.sqlcipher").exists())
+            assertFalse(File(ctx.noBackupFilesDir, "vault-key.v1").exists())
+        }
+    }
+
     @Test fun genuineBinaryGcmStagingPublishesOnlyNewEncryptedVaultAndRejectsReplay() {
         val ctx = sandbox()
         val (archive, credentials) = newSyntheticEncryptedBackup(

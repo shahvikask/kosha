@@ -22,7 +22,9 @@ internal object RestoreArtifactGuard {
             ?: error("Missing protected vault directory")
         val claims = File(noBackup, "restore-claims")
         check(!File(noBackup, "restore-pending.v1.kosha.new").exists() &&
-            !File(noBackup, "vault-key.v1.new").exists()) {
+            !File(noBackup, "vault-key.v1.new").exists() &&
+            !File(noBackup, "restore-pending.v1.kosha.bak").exists() &&
+            !File(noBackup, "vault-key.v1.bak").exists()) {
             "Interrupted AtomicFile encrypted backup or key write; owner review required"
         }
 
