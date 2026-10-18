@@ -44,15 +44,14 @@ class MainActivity : ComponentActivity() {
                     unlocked = unlocked,
                     deviceMessage = deviceMessage,
                     onDeviceChallenge = { requestDeviceChallenge() },
-                    onEnroll = { input -> 
-                        if (!deviceVerified) false else {
+                    onEnroll = { input ->
+                        if (!deviceVerified) null else {
                             val atStart = lifecycleEpoch
-                            val success = withContext(Dispatchers.IO) {
-                                runCatching { accounts.enroll(input); true }.getOrDefault(false)
+                            val code = withContext(Dispatchers.IO) {
+                                runCatching { accounts.enroll(input) }.getOrNull()
                             }
                             unlocked = false
-                            deviceVerified = false
-                            success && lifecycleEpoch == atStart
+                            if (atStart == lifecycleEpoch && deviceVerified) code else null
                         }
                     },
                     onLogin = { email, password ->
@@ -84,6 +83,28 @@ class MainActivity : ComponentActivity() {
                             unlocked = false
                             deviceVerified = false
                             result && lifecycleEpoch == atStart
+                        }
+                    },
+                    onRecover = { email, code, q1, a1, q2, a2, newPass ->
+                        if (!deviceVerified) false else {
+                            val atStart = lifecycleEpoch
+                            val result = withContext(Dispatchers.IO) {
+                                runCatching {
+                                    accounts.recoverWithCode(email, code, q1, a1, q2, a2, newPass)
+                                    true
+                                }.getOrDefault(false)
+                            }
+                            lockCompletely()
+                            result && lifecycleEpoch == atStart
+                        }
+                    },
+                    onReplaceRecoveryCode = { email ->
+                        if (!deviceVerified || !unlocked) null else {
+                            val atStart = lifecycleEpoch
+                            val code = withContext(Dispatchers.IO) {
+                                runCatching { accounts.replaceRecoveryCode(email) }.getOrNull()
+                            }
+                            if (atStart == lifecycleEpoch && unlocked) code else null
                         }
                     },
                     onLock = { lockCompletely() }

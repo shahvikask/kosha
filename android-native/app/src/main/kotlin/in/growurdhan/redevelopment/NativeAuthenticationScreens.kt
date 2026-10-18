@@ -41,9 +41,11 @@ internal fun NativeAuthenticationScreen(
     unlocked: Boolean,
     deviceMessage: String,
     onDeviceChallenge: () -> Unit,
-    onEnroll: suspend (NativeCredentials.Enrollment) -> Boolean,
+    onEnroll: suspend (NativeCredentials.Enrollment) -> String?,
     onLogin: suspend (String, String) -> NativeAccountRepository.SignInResult,
     onRotation: suspend (String, String, String) -> Boolean,
+    onRecover: suspend (String, String, String, String, String, String, String) -> Boolean,
+    onReplaceRecoveryCode: suspend (String) -> String?,
     onLock: () -> Unit
 ) {
     var mode by remember { mutableStateOf("login") }
@@ -52,6 +54,8 @@ internal fun NativeAuthenticationScreen(
     var last by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var replacement by remember { mutableStateOf("") }
+    var recoveryCodeInput by remember { mutableStateOf("") }
+    var oneTimeRecoveryCode by remember { mutableStateOf("") }
     var q1 by remember { mutableStateOf("school") }
     var q2 by remember { mutableStateOf("pet") }
     var answer1 by remember { mutableStateOf("") }
@@ -65,6 +69,8 @@ internal fun NativeAuthenticationScreen(
             replacement = ""
             answer1 = ""
             answer2 = ""
+            recoveryCodeInput = ""
+            if (!deviceVerified) oneTimeRecoveryCode = ""
         }
     }
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { inset ->
@@ -80,9 +86,29 @@ internal fun NativeAuthenticationScreen(
                 style = MaterialTheme.typography.headlineMedium)
             Text("Your financial information remains on this device.",
                 style = MaterialTheme.typography.bodyMedium)
+            if (oneTimeRecoveryCode.isNotEmpty() && deviceVerified) {
+                Text("SAVE THIS RECOVERY CODE — shown once, not stored in plaintext.",
+                    style = MaterialTheme.typography.titleMedium)
+                Text(oneTimeRecoveryCode, style = MaterialTheme.typography.bodyLarge)
+                Text("Store offline. Recovery requires this code, both answers and device authentication.")
+                Button(onClick = {
+                    oneTimeRecoveryCode = ""
+                    onLock()
+                }) { Text("I have saved the recovery code") }
+            }
             if (unlocked) {
                 Text("Authentication completed. Portfolio screens are not enabled in this M25 increment.")
-                Button(onClick = onLock) { Text("Lock now") }
+                Button(enabled = !busy, onClick = {
+                    busy = true
+                    scope.launch {
+                        try {
+                            oneTimeRecoveryCode = onReplaceRecoveryCode(email).orEmpty()
+                            message = if (oneTimeRecoveryCode.isEmpty())
+                                "Code replacement denied" else ""
+                        } finally { busy = false }
+                    }
+                }) { Text("Replace saved recovery code") }
+                Button(onClick = { oneTimeRecoveryCode = ""; onLock() }) { Text("Lock now") }
             } else {
                 if (!deviceVerified) {
                     Text("Confirm your Android screen lock before creating or opening a vault.")
@@ -102,18 +128,25 @@ internal fun NativeAuthenticationScreen(
                     OutlinedTextField(last, { last = it }, label = { Text("Last name") },
                         singleLine = true, modifier = Modifier.fillMaxWidth(), enabled = !busy)
                 }
-                OutlinedTextField(password, { password = it },
-                    label = { Text(if (mode == "rotation") "Current password" else "Password") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    singleLine = true, modifier = Modifier.fillMaxWidth(), enabled = !busy)
-                if (mode == "rotation") {
+                if (mode != "recovery") {
+                    OutlinedTextField(password, { password = it },
+                        label = { Text(if (mode == "rotation") "Current password" else "Password") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true, modifier = Modifier.fillMaxWidth(), enabled = !busy)
+                }
+                if (mode == "recovery") {
+                    OutlinedTextField(recoveryCodeInput, { recoveryCodeInput = it },
+                        label = { Text("Offline recovery code") },
+                        modifier = Modifier.fillMaxWidth(), enabled = !busy)
+                }
+                if (mode == "rotation" || mode == "recovery") {
                     OutlinedTextField(replacement, { replacement = it },
                         label = { Text("New password") },
                         visualTransformation = PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth(), enabled = !busy)
                 }
-                if (mode == "register") {
-                    Text("Select two different recovery questions and provide private answers.")
+                if (mode == "register" || mode == "recovery") {
+                    Text("Select your original recovery questions and enter both private answers.")
                     QuestionPicker("First recovery question", q1, !busy) { q1 = it }
                     OutlinedTextField(answer1, { answer1 = it },
                         label = { Text("First answer") },
@@ -133,6 +166,11 @@ internal fun NativeAuthenticationScreen(
                     val emailValue = email
                     val pwValue = password
                     val newValue = replacement
+                    val codeValue = recoveryCodeInput
+                    val firstQuestion = q1
+                    val secondQuestion = q2
+                    val firstAnswer = answer1
+                    val secondAnswer = answer2
                     val input = NativeCredentials.Enrollment(email, first, last,
                         pwValue, q1, answer1, q2, answer2)
                     busy = true
@@ -141,9 +179,19 @@ internal fun NativeAuthenticationScreen(
                         try {
                             when (mode) {
                                 "register" -> {
-                                    val success = onEnroll(input)
-                                    message = if (success) "Account created. Verify device and sign in."
+                                    val code = onEnroll(input)
+                                    message = if (code != null) "Account created. Save the recovery code before leaving."
                                         else "Account could not be created. Existing vaults are never overwritten."
+                                    if (code != null) {
+                                        oneTimeRecoveryCode = code
+                                        mode = "login"
+                                    }
+                                }
+                                "recovery" -> {
+                                    val success = onRecover(emailValue, codeValue,
+                                        firstQuestion, firstAnswer, secondQuestion, secondAnswer, newValue)
+                                    message = if (success) "Password recovered. Verify device and sign in."
+                                        else "Recovery rejected. Vault data was preserved."
                                     if (success) mode = "login"
                                 }
                                 "rotation" -> {
@@ -167,6 +215,7 @@ internal fun NativeAuthenticationScreen(
                         } finally {
                             password = ""
                             replacement = ""
+                            recoveryCodeInput = ""
                             answer1 = ""
                             answer2 = ""
                             busy = false
@@ -176,6 +225,7 @@ internal fun NativeAuthenticationScreen(
                     Text(when (mode) {
                         "register" -> "Create private vault"
                         "rotation" -> "Change password"
+                        "recovery" -> "Recover password"
                         else -> "Unlock private vault"
                     })
                 }
@@ -192,7 +242,14 @@ internal fun NativeAuthenticationScreen(
                 }) {
                     Text(if (mode == "rotation") "Back to sign in" else "Change password")
                 }
-                Text("Forgot password? Recovery is not yet enabled. No vault will be reset or deleted.",
+                TextButton(enabled = !busy, onClick = {
+                    mode = if (mode == "recovery") "login" else "recovery"
+                    password = ""; replacement = ""; recoveryCodeInput = ""
+                    answer1 = ""; answer2 = ""; message = ""
+                }) {
+                    Text(if (mode == "recovery") "Back to sign in" else "Forgot password? Use offline recovery code")
+                }
+                Text("Accounts without a provisioned offline recovery code cannot be reset with answers alone.",
                     style = MaterialTheme.typography.bodySmall)
             }
         }

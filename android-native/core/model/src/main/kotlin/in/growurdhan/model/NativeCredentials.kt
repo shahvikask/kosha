@@ -69,13 +69,47 @@ object NativeCredentials {
         return changed.isAfter(now) || Duration.between(changed, now) >= Duration.ofDays(180)
     }
 
-    /** Old-password rotation only. Forgotten-password storage flow is a separate M25 gate. */
+
+    /** One-time 256-bit offline recovery capability; only a PBKDF2 verifier is persisted. */
+    data class RecoveryCapability(val code: String, val verifier: String)
+    fun issueRecoveryCapability(): RecoveryCapability {
+        val bytes = ByteArray(32).also(random::nextBytes)
+        return try {
+            val code = "GUD-" + Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+            val proof = hash(code)
+            RecoveryCapability(code, proof.packed())
+        } finally { bytes.fill(0) }
+    }
+
+    /** Account proof requires both the issued capability and two original answer hashes. */
+    fun recoverPassword(record: Account, email: String, code: String,
+        packedVerifier: String, question1: String, answer1: String,
+        question2: String, answer2: String, newPassword: String, changedAt: String): Account {
+        require(code.length <= 128 && email.length <= 254 &&
+            constantEquals(record.email, email.trim().lowercase(Locale.ROOT)) &&
+            code.startsWith("GUD-") &&
+            verifyPacked(code, packedVerifier) &&
+            verifyRecovery(record, question1, answer1, question2, answer2)) {
+            "Invalid recovery proof"
+        }
+        checkPasswordPolicy(newPassword)
+        Instant.parse(changedAt)
+        val replacement = hash(newPassword)
+        return record.copy(passwordSalt = replacement.salt, passwordHash = replacement.hash,
+            passwordIterations = replacement.iterations, passwordChangedAt = changedAt)
+    }
+
+    private fun checkPasswordPolicy(password: String) {
+        require(password.length in 8..4096 && password.any(Char::isUpperCase) &&
+            password.any(Char::isLowerCase) && password.any(Char::isDigit) &&
+            password.any { !it.isLetterOrDigit() }) { "Invalid new password" }
+    }
+
+    /** Old-password rotation only; recovery requires separate high-entropy capability. */
     fun changePassword(record: Account, newPassword: String, changedAt: String,
         verifiedOldPassword: String): Account {
         require(verifyPassword(record, record.email, verifiedOldPassword)) { "Invalid account credentials" }
-        require(newPassword.length in 8..4096 && newPassword.any(Char::isUpperCase) &&
-            newPassword.any(Char::isLowerCase) && newPassword.any(Char::isDigit) &&
-            newPassword.any { !it.isLetterOrDigit() }) { "Invalid new password" }
+        checkPasswordPolicy(newPassword)
         Instant.parse(changedAt)
         val replacement = hash(newPassword)
         return record.copy(passwordSalt = replacement.salt, passwordHash = replacement.hash,

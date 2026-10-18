@@ -65,6 +65,35 @@ class NativeCredentialsTest {
         assertFalse(s.allowed(a.email, 12L))
     }
 
+
+    @Test fun recoveryNeedsEntropyAndBothCorrectFrozenAnswers() {
+        val account = NativeCredentials.enroll(registration(), date)
+        val issued = NativeCredentials.issueRecoveryCapability()
+        assertTrue(issued.code.startsWith("GUD-"))
+        assertTrue(issued.code.length >= 40)
+        val changed = "2026-10-19T00:00:00Z"
+        assertThrows(IllegalArgumentException::class.java) {
+            NativeCredentials.recoverPassword(account, account.email, "bad",
+                issued.verifier, "school", "the first school", "pet", "my cat",
+                "NewStrong!345", changed)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            NativeCredentials.recoverPassword(account, account.email, issued.code,
+                issued.verifier, "school", "bad", "pet", "my cat", "NewStrong!345", changed)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            NativeCredentials.recoverPassword(account, "other@example.com", issued.code,
+                issued.verifier, "school", "the first school", "pet", "my cat",
+                "NewStrong!345", changed)
+        }
+        val updated = NativeCredentials.recoverPassword(account, account.email, issued.code,
+            issued.verifier, "school", "the first school", "pet", "my cat",
+            "NewStrong!345", changed)
+        assertTrue(NativeCredentials.verifyPassword(updated, updated.email, "NewStrong!345"))
+        assertFalse(NativeCredentials.verifyPassword(updated, updated.email, "Strong!Pass123"))
+        assertNotEquals(account.passwordSalt, updated.passwordSalt)
+    }
+
     @Test fun passwordExpiryIsExactly180DaysAndFailsClosedOnCorruptDate() {
         val a = NativeCredentials.enroll(registration(), date)
         val changed = java.time.Instant.parse(date)

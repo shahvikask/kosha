@@ -9,15 +9,60 @@ import java.util.UUID
 import net.zetetic.database.sqlcipher.SQLiteDatabase
 
 /** Explicit enrollment/login boundary. UI remains locked until a separate M25 UI flow is approved. */
-internal class NativeAccountRepository(context: Context) {
+internal class NativeAccountRepository(
+    context: Context, private val wallClockMillis: () -> Long = System::currentTimeMillis
+) {
+    companion object {
+        private const val THROTTLE_KEY = "m25.auth.failure_state"
+        private const val RECOVERY_KEY = "m25.auth.recovery_code_verifier"
+        private const val COOLDOWN_MILLIS = 30L * 60L * 1000L
+    }
+    private data class Throttle(val failures: Int, val lastSeen: Long, val blockedUntil: Long)
+    private fun readThrottle(db: SQLiteDatabase): Throttle {
+        val encoded = readSetting(db, THROTTLE_KEY) ?: return Throttle(0, 0, 0)
+        val parts = encoded.split(':')
+        require(parts.size == 3) { "Invalid encrypted throttle" }
+        val failures = parts[0].toIntOrNull()
+        val lastSeen = parts[1].toLongOrNull()
+        val blocked = parts[2].toLongOrNull()
+        require(failures != null && failures in 0..5 && lastSeen != null && lastSeen >= 0 &&
+            blocked != null && blocked >= 0) { "Invalid encrypted throttle" }
+        return Throttle(failures, lastSeen, blocked)
+    }
+    private fun readSetting(db: SQLiteDatabase, key: String): String? =
+        db.rawQuery("SELECT value FROM setting WHERE key=?", arrayOf(key)).use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0) else null
+        }
+    private fun writeSetting(db: SQLiteDatabase, key: String, value: String) {
+        db.execSQL("INSERT OR REPLACE INTO setting(key,value) VALUES(?,?)",
+            arrayOf<Any>(key, value))
+    }
+    private fun saveThrottle(db: SQLiteDatabase, state: Throttle) =
+        writeSetting(db, THROTTLE_KEY,
+            "${state.failures}:${state.lastSeen}:${state.blockedUntil}")
+    private fun admitted(previous: Throttle, now: Long): Throttle? {
+        if (now <= 0L || now < previous.lastSeen ||
+            (previous.blockedUntil > 0L && now < previous.blockedUntil)) return null
+        return if (previous.blockedUntil > 0L && now >= previous.blockedUntil)
+            Throttle(0, now, 0) else previous.copy(lastSeen = now)
+    }
+    private fun denied(previous: Throttle, now: Long): Throttle {
+        val count = (previous.failures + 1).coerceAtMost(5)
+        val until = if (count == 5) {
+            if (now > Long.MAX_VALUE - COOLDOWN_MILLIS) Long.MAX_VALUE
+            else now + COOLDOWN_MILLIS
+        } else 0L
+        return Throttle(count, now, until)
+    }
     enum class SignInResult { UNLOCKED, DENIED, ROTATION_REQUIRED }
     private val vault = EncryptedVaultStore(context)
-    private val session = NativeSession()
+    private var session = NativeSession()
 
     /** Called only after explicit creation consent; failed DB writes are preserved for recovery. */
-    fun enroll(input: NativeCredentials.Enrollment, createdAt: String = Instant.now().toString()) {
+    fun enroll(input: NativeCredentials.Enrollment, createdAt: String = Instant.now().toString()): String {
         val account = NativeCredentials.enroll(input, createdAt)
         val ownerId = UUID.randomUUID().toString()
+        val issued = NativeCredentials.issueRecoveryCapability()
         vault.createFresh(legacyVaultPresent = false).use { db ->
             db.beginTransaction()
             try {
@@ -33,56 +78,146 @@ internal class NativeAccountRepository(context: Context) {
                     "relation,is_primary,created_at) VALUES (?,?,?,?,?,?)", arrayOf<Any>(
                         ownerId, "INDIVIDUAL", "${account.firstName} ${account.lastName}",
                         "Self", 1, createdAt))
+                writeSetting(db, RECOVERY_KEY, issued.verifier)
                 db.setTransactionSuccessful()
             } finally { db.endTransaction() }
         }
         session.lock()
+        return issued.code
     }
 
     /** Never creates or resets a vault; wrong secrets grant no session. */
     fun login(email: String, password: String): Boolean =
         loginResult(email, password) == SignInResult.UNLOCKED
 
-    fun loginResult(email: String, password: String): SignInResult {
-        val record = try { vault.openExisting().use { db -> readOneAccount(db) } }
-            catch (_: Exception) { session.lock(); return SignInResult.DENIED }
-        if (record == null) { session.lock(); return SignInResult.DENIED }
-        if (!session.login(record, email, password, SystemClock.elapsedRealtime()))
-            return SignInResult.DENIED
-        if (NativeCredentials.passwordExpired(record, Instant.now())) {
+    /** Encrypted, transactionally persisted rate limit shared across login and recovery.
+     * Clock rollback fails closed. Device time acceleration cannot be completely defeated offline.
+     */
+    @Synchronized fun loginResult(email: String, password: String): SignInResult {
+        session.lock()
+        return try {
+            var account: NativeCredentials.Account? = null
+            var valid = false
+            vault.openExisting().use { db ->
+                db.beginTransaction()
+                try {
+                    val now = wallClockMillis()
+                    val prior = readThrottle(db)
+                    val state = admitted(prior, now)
+                    if (state != null) {
+                        account = readOneAccount(db)
+                        valid = account != null && NativeCredentials.verifyPassword(
+                            account!!, email, password)
+                        saveThrottle(db, if (valid) Throttle(0, now, 0)
+                            else denied(state, now))
+                    }
+                    db.setTransactionSuccessful()
+                } finally { db.endTransaction() }
+            }
+            if (!valid || account == null) SignInResult.DENIED
+            else if (NativeCredentials.passwordExpired(account!!, Instant.now()))
+                SignInResult.ROTATION_REQUIRED
+            else {
+                session = NativeSession()
+                if (session.login(account!!, email, password, SystemClock.elapsedRealtime()))
+                    SignInResult.UNLOCKED else SignInResult.DENIED
+            }
+        } catch (_: Exception) {
             session.lock()
-            return SignInResult.ROTATION_REQUIRED
+            SignInResult.DENIED
         }
-        return SignInResult.UNLOCKED
     }
 
     /** An old-password proof is required even after 180-day expiry.
      * Explicit OS-device proof must be enforced by the calling activity.
      */
-    fun rotatePassword(email: String, oldPassword: String, newPassword: String,
+    @Synchronized fun rotatePassword(email: String, oldPassword: String, newPassword: String,
         changedAt: String = Instant.now().toString()) {
         session.lock()
+        var success = false
         vault.openExisting().use { db ->
             db.beginTransaction()
             try {
-                val record = readOneAccount(db) ?: error("Missing native vault account")
-                require(NativeCredentials.verifyPassword(record, email, oldPassword)) {
-                    "Invalid account credentials"
-                }
-                val rotated = NativeCredentials.changePassword(
-                    record, newPassword, changedAt, oldPassword)
-                db.execSQL("UPDATE vault_account SET password_salt=?,password_hash=?," +
-                    "password_iterations=?,password_changed_at=? WHERE email=? AND password_hash=?",
-                    arrayOf<Any>(rotated.passwordSalt, rotated.passwordHash,
-                        rotated.passwordIterations, rotated.passwordChangedAt,
-                        record.email, record.passwordHash))
-                db.rawQuery("SELECT changes()", null).use { result ->
-                    require(result.moveToFirst() && result.getLong(0) == 1L) {
-                        "Password update not applied"
-                    }
+                val now = wallClockMillis()
+                val state = admitted(readThrottle(db), now)
+                if (state != null) {
+                    val record = readOneAccount(db)
+                    if (record != null && NativeCredentials.verifyPassword(
+                            record, email, oldPassword)) {
+                        val changed = NativeCredentials.changePassword(
+                            record, newPassword, changedAt, oldPassword)
+                        updatePassword(db, record, changed)
+                        saveThrottle(db, Throttle(0, now, 0))
+                        success = true
+                    } else saveThrottle(db, denied(state, now))
                 }
                 db.setTransactionSuccessful()
             } finally { db.endTransaction() }
+        }
+        require(success) { "Invalid account credentials or password" }
+    }
+
+    /** No reset using security questions alone. Absent provisioned code is a hard denial.
+     * Verification and single-use verifier consumption are one encrypted SQL transaction.
+     */
+    @Synchronized fun recoverWithCode(email: String, code: String,
+        q1Id: String, answer1: String, q2Id: String, answer2: String,
+        newPassword: String, changedAt: String = Instant.now().toString()) {
+        session.lock()
+        var success = false
+        vault.openExisting().use { db ->
+            db.beginTransaction()
+            try {
+                val now = wallClockMillis()
+                val state = admitted(readThrottle(db), now)
+                if (state != null) {
+                    val record = readOneAccount(db)
+                    val verifier = readSetting(db, RECOVERY_KEY)
+                    val changed = if (record == null || verifier == null) null
+                        else runCatching {
+                            NativeCredentials.recoverPassword(record, email, code, verifier,
+                                q1Id, answer1, q2Id, answer2, newPassword, changedAt)
+                        }.getOrNull()
+                    if (changed != null && record != null) {
+                        updatePassword(db, record, changed)
+                        db.execSQL("DELETE FROM setting WHERE key=?", arrayOf<Any>(RECOVERY_KEY))
+                        saveThrottle(db, Throttle(0, now, 0))
+                        success = true
+                    } else saveThrottle(db, denied(state, now))
+                }
+                db.setTransactionSuccessful()
+            } finally { db.endTransaction() }
+        }
+        require(success) { "Recovery proof rejected" }
+    }
+
+    /** One-time replacement must start from an already password-verified session. */
+    @Synchronized fun replaceRecoveryCode(email: String): String {
+        check(session.allowed(email.trim().lowercase(java.util.Locale.ROOT),
+            SystemClock.elapsedRealtime())) { "Account session is locked" }
+        val issued = NativeCredentials.issueRecoveryCapability()
+        vault.openExisting().use { db ->
+            db.beginTransaction()
+            try {
+                require(readOneAccount(db)?.email == email.trim().lowercase(java.util.Locale.ROOT))
+                writeSetting(db, RECOVERY_KEY, issued.verifier)
+                db.setTransactionSuccessful()
+            } finally { db.endTransaction() }
+        }
+        return issued.code
+    }
+
+    private fun updatePassword(db: SQLiteDatabase, old: NativeCredentials.Account,
+        replacement: NativeCredentials.Account) {
+        db.execSQL("UPDATE vault_account SET password_salt=?,password_hash=?," +
+            "password_iterations=?,password_changed_at=? WHERE email=? AND password_hash=?",
+            arrayOf<Any>(replacement.passwordSalt, replacement.passwordHash,
+                replacement.passwordIterations, replacement.passwordChangedAt,
+                old.email, old.passwordHash))
+        db.rawQuery("SELECT changes()", null).use { c ->
+            require(c.moveToFirst() && c.getLong(0) == 1L) {
+                "Password update not applied"
+            }
         }
     }
 
