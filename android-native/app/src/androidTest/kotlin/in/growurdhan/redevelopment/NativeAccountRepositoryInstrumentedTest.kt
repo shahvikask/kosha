@@ -24,6 +24,38 @@ class NativeAccountRepositoryInstrumentedTest {
         }
     }
 
+    @Test fun expiredNativePasswordRequiresTransactionalRotationAndReopen() {
+        val context = sandbox()
+        val input = NativeCredentials.Enrollment("rotating@example.org", "Owner", "One",
+            "Strong!Pass123", "school", "First School", "pet", "Cat")
+        val repo = NativeAccountRepository(context)
+        repo.enroll(input, "2020-01-01T00:00:00Z")
+        assertEquals(NativeAccountRepository.SignInResult.ROTATION_REQUIRED,
+            repo.loginResult(input.email, input.password))
+        assertThrows(IllegalStateException::class.java) {
+            repo.withUnlockedVault(input.email) { Unit }
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            repo.rotatePassword(input.email, "wrong", "NewStrong!345")
+        }
+        assertEquals(NativeAccountRepository.SignInResult.ROTATION_REQUIRED,
+            repo.loginResult(input.email, input.password))
+        repo.rotatePassword(input.email, input.password, "NewStrong!345")
+        assertFalse(repo.login(input.email, input.password))
+        assertTrue(repo.login(input.email, "NewStrong!345"))
+        repo.withUnlockedVault(input.email) { db ->
+            db.rawQuery("SELECT COUNT(*) FROM ledger_event", null).use {
+                assertTrue(it.moveToFirst())
+                assertEquals(0L, it.getLong(0))
+            }
+        }
+        repo.onBackground()
+        assertThrows(IllegalStateException::class.java) {
+            repo.withUnlockedVault(input.email) { Unit }
+        }
+        assertTrue(NativeAccountRepository(context).login(input.email, "NewStrong!345"))
+    }
+
     @Test fun encryptedRegistrationRequiresPasswordForActualNativeVaultAccess() {
         val ctx = sandbox()
         val input = NativeCredentials.Enrollment("primary@example.org", "Primary", "Owner",

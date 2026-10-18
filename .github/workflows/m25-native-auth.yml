@@ -46,10 +46,11 @@ jobs:
               "recoveryAnswerNormalisationAndTampering","weakPasswordsRepeatedQuestionsAndInvalidIdentityRejectBeforeCreation",
               "sessionLocksOnBackgroundAndIdleAndRejectsClockRollback",
               "fiveFailedLoginsFailClosedWithoutAutoUnlock",
-              "passwordChangeRequiresOldPasswordAndInvalidatesOldHash"}
+              "passwordChangeRequiresOldPasswordAndInvalidatesOldHash",
+              "passwordExpiryIsExactly180DaysAndFailsClosedOnCorruptDate"}
           assert expected.issubset({c.attrib.get("name") for c in m})
           assert len(d)==25, len(d)
-          print("M25_JVM_CREDENTIAL_CONFIRMED new=6 model_total=%d database_total=25 failures=0 errors=0 skipped=0"%len(m))
+          print("M25_JVM_CREDENTIAL_CONFIRMED new=7 model_total=%d database_total=25 failures=0 errors=0 skipped=0"%len(m))
           PY
       - name: Upload M25 JVM JUnit evidence
         if: always()
@@ -86,10 +87,12 @@ jobs:
           from xml.etree import ElementTree as ET
           reports=list(Path("android-native/app/build/outputs/androidTest-results").rglob("*.xml"))
           methods=[c for p in reports for c in ET.parse(p).getroot().findall(".//testcase")]
-          assert len(methods)==16, [c.attrib.get("name") for c in methods]
-          assert "encryptedRegistrationRequiresPasswordForActualNativeVaultAccess" in {c.attrib.get("name") for c in methods}
+          assert len(methods)==17, [c.attrib.get("name") for c in methods]
+          assert {"encryptedRegistrationRequiresPasswordForActualNativeVaultAccess",
+                  "expiredNativePasswordRequiresTransactionalRotationAndReopen"}.issubset(
+                  {c.attrib.get("name") for c in methods})
           assert not any(c.find("failure") is not None or c.find("error") is not None or c.find("skipped") is not None for c in methods)
-          print("M25_ANDROID_JUNIT_CONFIRMED total=16 new=1 failures=0 errors=0 skipped=0")
+          print("M25_ANDROID_JUNIT_CONFIRMED total=17 new=2 failures=0 errors=0 skipped=0")
           PY
       - name: Upload M25 Android JUnit
         if: always()

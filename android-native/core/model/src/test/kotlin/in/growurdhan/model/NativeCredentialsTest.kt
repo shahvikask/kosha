@@ -65,6 +65,15 @@ class NativeCredentialsTest {
         assertFalse(s.allowed(a.email, 12L))
     }
 
+    @Test fun passwordExpiryIsExactly180DaysAndFailsClosedOnCorruptDate() {
+        val a = NativeCredentials.enroll(registration(), date)
+        val changed = java.time.Instant.parse(date)
+        assertFalse(NativeCredentials.passwordExpired(a, changed.plusSeconds(179L * 86400)))
+        assertTrue(NativeCredentials.passwordExpired(a, changed.plusSeconds(180L * 86400)))
+        assertTrue(NativeCredentials.passwordExpired(a, changed.minusSeconds(1)))
+        assertTrue(NativeCredentials.passwordExpired(a.copy(passwordChangedAt = "not-a-date"), changed))
+    }
+
     @Test fun passwordChangeRequiresOldPasswordAndInvalidatesOldHash() {
         val a = NativeCredentials.enroll(registration(), date)
         assertThrows(IllegalArgumentException::class.java) {

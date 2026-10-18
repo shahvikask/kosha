@@ -3,6 +3,7 @@ package `in`.growurdhan.model
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.time.Instant
+import java.time.Duration
 import java.util.Base64
 import java.util.Locale
 import javax.crypto.SecretKeyFactory
@@ -60,6 +61,13 @@ object NativeCredentials {
         answer1.length <= 4096 && answer2.length <= 4096 &&
         verifyPacked(normalize(answer1), record.q1Hash) &&
         verifyPacked(normalize(answer2), record.q2Hash)
+
+    /** Frozen 180-day policy; invalid and future timestamps always require rotation. */
+    fun passwordExpired(record: Account, now: Instant): Boolean {
+        val changed = try { Instant.parse(record.passwordChangedAt) }
+            catch (_: Exception) { return true }
+        return changed.isAfter(now) || Duration.between(changed, now) >= Duration.ofDays(180)
+    }
 
     /** Old-password rotation only. Forgotten-password storage flow is a separate M25 gate. */
     fun changePassword(record: Account, newPassword: String, changedAt: String,

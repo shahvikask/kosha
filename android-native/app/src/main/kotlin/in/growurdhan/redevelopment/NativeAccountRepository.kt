@@ -10,6 +10,7 @@ import net.zetetic.database.sqlcipher.SQLiteDatabase
 
 /** Explicit enrollment/login boundary. UI remains locked until a separate M25 UI flow is approved. */
 internal class NativeAccountRepository(context: Context) {
+    enum class SignInResult { UNLOCKED, DENIED, ROTATION_REQUIRED }
     private val vault = EncryptedVaultStore(context)
     private val session = NativeSession()
 
@@ -38,16 +39,51 @@ internal class NativeAccountRepository(context: Context) {
         session.lock()
     }
 
-    /** Never creates or resets a vault; incorrect password grants no session. */
-    fun login(email: String, password: String): Boolean {
-        val record = try {
-            vault.openExisting().use { db -> readOneAccount(db) }
-        } catch (_: Exception) {
+    /** Never creates or resets a vault; wrong secrets grant no session. */
+    fun login(email: String, password: String): Boolean =
+        loginResult(email, password) == SignInResult.UNLOCKED
+
+    fun loginResult(email: String, password: String): SignInResult {
+        val record = try { vault.openExisting().use { db -> readOneAccount(db) } }
+            catch (_: Exception) { session.lock(); return SignInResult.DENIED }
+        if (record == null) { session.lock(); return SignInResult.DENIED }
+        if (!session.login(record, email, password, SystemClock.elapsedRealtime()))
+            return SignInResult.DENIED
+        if (NativeCredentials.passwordExpired(record, Instant.now())) {
             session.lock()
-            return false
+            return SignInResult.ROTATION_REQUIRED
         }
-        if (record == null) { session.lock(); return false }
-        return session.login(record, email, password, SystemClock.elapsedRealtime())
+        return SignInResult.UNLOCKED
+    }
+
+    /** An old-password proof is required even after 180-day expiry.
+     * Explicit OS-device proof must be enforced by the calling activity.
+     */
+    fun rotatePassword(email: String, oldPassword: String, newPassword: String,
+        changedAt: String = Instant.now().toString()) {
+        session.lock()
+        vault.openExisting().use { db ->
+            db.beginTransaction()
+            try {
+                val record = readOneAccount(db) ?: error("Missing native vault account")
+                require(NativeCredentials.verifyPassword(record, email, oldPassword)) {
+                    "Invalid account credentials"
+                }
+                val rotated = NativeCredentials.changePassword(
+                    record, newPassword, changedAt, oldPassword)
+                db.execSQL("UPDATE vault_account SET password_salt=?,password_hash=?," +
+                    "password_iterations=?,password_changed_at=? WHERE email=? AND password_hash=?",
+                    arrayOf<Any>(rotated.passwordSalt, rotated.passwordHash,
+                        rotated.passwordIterations, rotated.passwordChangedAt,
+                        record.email, record.passwordHash))
+                db.rawQuery("SELECT changes()", null).use { result ->
+                    require(result.moveToFirst() && result.getLong(0) == 1L) {
+                        "Password update not applied"
+                    }
+                }
+                db.setTransactionSuccessful()
+            } finally { db.endTransaction() }
+        }
     }
 
     fun <T> withUnlockedVault(email: String, action: (SQLiteDatabase) -> T): T {
