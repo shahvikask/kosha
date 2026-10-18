@@ -314,8 +314,8 @@ class EncryptedVaultStoreInstrumentedTest {
             getJSONArray("holdings").put(
                 JSONObject(getJSONArray("holdings").getJSONObject(0).toString())
                     .put("id", "holding-B").put("ownerId", "owner-B")
-                    .remove("accountId").let {
-                        it.put("averageCostPerUnitMinor", "42")
+                    .put("averageCostPerUnitMinor", "42").apply {
+                        remove("accountId")
                     })
             getJSONArray("ledgerEvents").put(
                 JSONObject(getJSONArray("ledgerEvents").getJSONObject(0).toString())
