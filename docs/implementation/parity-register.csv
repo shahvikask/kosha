@@ -56,3 +56,5 @@ E15,Supply-chain and AppSec,specification Section 6,,,NOT STARTED,M34
 E16,Play licensing fail-closed,specification Section 6,,,NOT STARTED,M33
 E17,Exact-SHA release pipeline,specification Section 6,,,NOT STARTED,M34
 E18,Privacy-first architecture,specification Section 6,,,NOT STARTED,M00/M34
+
+# 2026-10-18 M24 independent lossless KOSHA1 compatibility safeguard; M24 NOT ACCEPTED; source 2b306844a3cc925d06ce996ff2cc49a157410a80 untested; prior CI 39091378740 PASS 25 JVM 15 Android on acfb31f3705fd56a28f525f2020def1bb5fe6600; unknown financial field rejection authored, pending verification
