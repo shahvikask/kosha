@@ -16,7 +16,9 @@ object NativeCredentials {
     private val random = SecureRandom()
     data class Enrollment(val email: String, val firstName: String, val lastName: String,
         val password: String, val firstQuestion: String, val firstAnswer: String,
-        val secondQuestion: String, val secondAnswer: String)
+        val secondQuestion: String, val secondAnswer: String,
+        val registrationIdentity: NativeRegistrationProof.Identity? = null,
+        val termsConsent: NativeRegistrationProof.Consent? = null)
     data class Account(val email: String, val firstName: String, val lastName: String,
         val passwordSalt: String, val passwordHash: String, val passwordIterations: Int,
         val q1Id: String, val q1Hash: String, val q2Id: String, val q2Hash: String,
@@ -27,6 +29,10 @@ object NativeCredentials {
 
     fun enroll(input: Enrollment, createdAt: String): Account {
         Instant.parse(createdAt)
+        require(input.registrationIdentity != null && input.termsConsent != null) {
+            "Registration identity and current terms required"
+        }
+        NativeRegistrationProof.requireValid(input.registrationIdentity, input.termsConsent)
         val email = input.email.trim().lowercase(Locale.ROOT)
         require(email.length <= 254 && Regex("[^\\s@]+@[^\\s@]+\\.[^\\s@]+")
             .matches(email)) { "Invalid account registration" }
