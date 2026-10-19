@@ -57,22 +57,23 @@ internal fun NativeRestoreScreen(
             Text(if (staged) "Encrypted archive staged" else "Choose encrypted .kosha backup")
         }
         if (staged && deviceVerified) {
-            OutlinedTextField(email, { email = it; preview = null }, label = { Text("Original account email") })
-            OutlinedTextField(password, { password = it; preview = null }, label = { Text("Original account password") },
+            OutlinedTextField(email, { email = it; preview = null; confirmed = false }, label = { Text("Original account email") })
+            OutlinedTextField(password, { password = it; preview = null; confirmed = false }, label = { Text("Original account password") },
                 visualTransformation = PasswordVisualTransformation())
-            OutlinedTextField(pan, { pan = it; preview = null }, label = { Text("Original full PAN") })
-            OutlinedTextField(dob, { dob = it; preview = null }, label = { Text("Original date of birth") })
+            OutlinedTextField(pan, { pan = it; preview = null; confirmed = false }, label = { Text("Original full PAN") })
+            OutlinedTextField(dob, { dob = it; preview = null; confirmed = false }, label = { Text("Original date of birth") })
             Text("Use the original question identifiers (e.g. school, pet).")
-            OutlinedTextField(firstId, { firstId = it; preview = null }, label = { Text("First question ID") })
-            OutlinedTextField(firstAnswer, { firstAnswer = it; preview = null },
+            OutlinedTextField(firstId, { firstId = it; preview = null; confirmed = false }, label = { Text("First question ID") })
+            OutlinedTextField(firstAnswer, { firstAnswer = it; preview = null; confirmed = false },
                 label = { Text("First answer") }, visualTransformation = PasswordVisualTransformation())
-            OutlinedTextField(secondId, { secondId = it; preview = null }, label = { Text("Second question ID") })
-            OutlinedTextField(secondAnswer, { secondAnswer = it; preview = null },
+            OutlinedTextField(secondId, { secondId = it; preview = null; confirmed = false }, label = { Text("Second question ID") })
+            OutlinedTextField(secondAnswer, { secondAnswer = it; preview = null; confirmed = false },
                 label = { Text("Second answer") }, visualTransformation = PasswordVisualTransformation())
             Button(enabled = !busy, onClick = {
                 busy = true
                 scope.launch {
                     try {
+                        confirmed = false
                         preview = previewAction(proof())
                         message = if (preview == null) "Identity proof or archive rejected" else ""
                     } finally { busy = false }
@@ -84,7 +85,7 @@ internal fun NativeRestoreScreen(
                 androidx.compose.material3.Checkbox(checked = confirmed,
                     onCheckedChange = { confirmed = it })
                 Text("I approve creating a new encrypted vault from this exact verified archive.")
-                Button(enabled = confirmed && !busy, onClick = {
+                Button(enabled = confirmed && !busy && deviceVerified, onClick = {
                     busy = true
                     scope.launch {
                         try {
