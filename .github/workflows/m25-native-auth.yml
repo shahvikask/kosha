@@ -1,5 +1,5 @@
 name: GrowUrDhan M25 Native Account and Session
-# Exact-source M25 regression rerun after correcting Compose test imports (2026-10-19).
+# Exact-source M25 Keyguard/force-stop harness after shell error-redaction fix (2026-10-19).
 on:
   workflow_dispatch:
   push:
