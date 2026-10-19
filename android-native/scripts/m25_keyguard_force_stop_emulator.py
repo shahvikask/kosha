@@ -123,6 +123,8 @@ def main():
     try:
         adb("shell", "locksettings", "set-pin", pin)
         installed_pin = True
+        adb("shell", "input", "keyevent", "KEYCODE_WAKEUP")
+        adb("shell", "input", "keyevent", "KEYCODE_MENU")
         adb("shell", "am", "force-stop", PKG)
         adb("shell", "am", "start", "-n", ACTIVITY)
         wait_for(locked_screen, "initial locked UI")
