@@ -30,10 +30,16 @@ class MainActivity : ComponentActivity() {
     private var lifecycleEpoch = 0
     private var restoreActive by mutableStateOf(false)
     private var restoreStaged by mutableStateOf(false)
+    private var restorePickerPending = false
     private val restoreFlow by lazy { NativeRestoreFlow(applicationContext) }
     private val restorePicker = registerForActivityResult(OpenDocument()) { uri ->
-        if (uri == null || !restoreActive || !admission.valid()) return@registerForActivityResult
-        restoreStaged = runCatching { restoreFlow.stage(uri); true }.getOrDefault(false)
+        if (!restorePickerPending) return@registerForActivityResult
+        restorePickerPending = false
+        if (uri != null) restoreStaged = runCatching {
+            restoreFlow.stage(uri); true
+        }.getOrDefault(false)
+        // SAF returned from another Activity: require a completely new OS challenge.
+        lockCompletely(preserveStagedArchive = true)
     }
     private val admission = NativeDeviceAdmission()
 
@@ -74,8 +80,10 @@ class MainActivity : ComponentActivity() {
                             }
                         },
                         selectEncryptedFile = {
-                            if (admission.valid() && deviceVerified)
+                            if (admission.valid() && deviceVerified) {
+                                restorePickerPending = true
                                 restorePicker.launch(arrayOf("application/octet-stream", "application/json", "*/*"))
+                            }
                         },
                         onBack = { restoreActive = false; restoreStaged = false; lockCompletely() }
                     )
@@ -151,7 +159,6 @@ class MainActivity : ComponentActivity() {
                     onStartRestore = {
                         if (deviceVerified && admission.valid() && !unlocked) {
                             restoreActive = true
-                            restoreStaged = false
                         }
                     }
                 )
@@ -183,12 +190,13 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun lockCompletely(preservePendingChallenge: Boolean = false) {
+    private fun lockCompletely(preservePendingChallenge: Boolean = false,
+                               preserveStagedArchive: Boolean = false) {
         if (::accounts.isInitialized) accounts.lock()
         unlocked = false
         deviceVerified = false
         restoreActive = false
-        restoreStaged = false
+        if (!preserveStagedArchive && !restorePickerPending) restoreStaged = false
         if (!preservePendingChallenge) admission.cancel()
     }
 
@@ -200,7 +208,8 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         admission.onStop()
         lifecycleEpoch++
-        lockCompletely(preservePendingChallenge = true)
+        lockCompletely(preservePendingChallenge = true,
+            preserveStagedArchive = restorePickerPending || restoreStaged)
         if (::accounts.isInitialized) accounts.onBackground()
         super.onStop()
     }
