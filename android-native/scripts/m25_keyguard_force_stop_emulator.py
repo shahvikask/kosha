@@ -65,10 +65,18 @@ def keyguard_visible():
     return system_prompt and PKG not in focus.split("mCurrentFocus=")[-1].splitlines()[0]
 
 def find_and_tap(label):
-    def locate():
-        return matching(screen(), label)
-    node = wait_for(locate, "UI control " + label)[0]
-    tap(node)
+    # The long Compose registration form only exposes currently visible nodes.
+    # A keyboard may occlude the next field, so scroll to reach it.
+    for attempt in range(7):
+        nodes = matching(screen(), label)
+        if nodes:
+            tap(nodes[0])
+            return
+        if attempt < 6:
+            adb("shell", "input", "keyevent", "KEYCODE_BACK")
+            adb("shell", "input", "swipe", "520", "1750", "520", "650", "400")
+            time.sleep(0.5)
+    raise AssertionError("M25 OS gate failed: UI control " + label)
 
 def fill(label, value):
     # Synthetic values ONLY. Android input commands are captured, never printed.
