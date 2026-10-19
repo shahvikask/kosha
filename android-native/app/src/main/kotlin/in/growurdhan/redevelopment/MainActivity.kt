@@ -3,6 +3,8 @@ package `in`.growurdhan.redevelopment
 import android.app.Activity
 import android.app.KeyguardManager
 import android.os.Bundle
+import androidx.activity.result.contract.ActivityResultContracts.OpenDocument
+import `in`.growurdhan.database.RestoreIdentityGate
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -26,6 +28,13 @@ class MainActivity : ComponentActivity() {
     private var unlocked by mutableStateOf(false)
     private var deviceMessage by mutableStateOf("")
     private var lifecycleEpoch = 0
+    private var restoreActive by mutableStateOf(false)
+    private var restoreStaged by mutableStateOf(false)
+    private val restoreFlow by lazy { NativeRestoreFlow(applicationContext) }
+    private val restorePicker = registerForActivityResult(OpenDocument()) { uri ->
+        if (uri == null || !restoreActive || !admission.valid()) return@registerForActivityResult
+        restoreStaged = runCatching { restoreFlow.stage(uri); true }.getOrDefault(false)
+    }
     private val admission = NativeDeviceAdmission()
 
     private val osChallenge = registerForActivityResult(
@@ -41,7 +50,36 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             GudTheme {
-                NativeAuthenticationScreen(
+                if (restoreActive && deviceVerified) {
+                    NativeRestoreScreen(
+                        deviceVerified = deviceVerified,
+                        staged = restoreStaged,
+                        previewAction = { proof ->
+                            if (!admission.valid() || !deviceVerified) null
+                            else withContext(Dispatchers.IO) {
+                                runCatching { restoreFlow.preview(proof) }.getOrNull()
+                            }
+                        },
+                        publishAction = { proof, preview ->
+                            if (!admission.valid() || !deviceVerified || unlocked) false
+                            else {
+                                val start = lifecycleEpoch
+                                val ok = withContext(Dispatchers.IO) {
+                                    runCatching { restoreFlow.publish(proof, preview); true }
+                                        .getOrDefault(false)
+                                }
+                                lockCompletely()
+                                restoreActive = false
+                                ok && lifecycleEpoch == start + 0
+                            }
+                        },
+                        selectEncryptedFile = {
+                            if (admission.valid() && deviceVerified)
+                                restorePicker.launch(arrayOf("application/octet-stream", "application/json", "*/*"))
+                        },
+                        onBack = { restoreActive = false; restoreStaged = false; lockCompletely() }
+                    )
+                } else NativeAuthenticationScreen(
                     deviceVerified = deviceVerified,
                     unlocked = unlocked,
                     deviceMessage = deviceMessage,
@@ -109,7 +147,13 @@ class MainActivity : ComponentActivity() {
                             if (atStart == lifecycleEpoch && unlocked) code else null
                         }
                     },
-                    onLock = { lockCompletely() }
+                    onLock = { lockCompletely() },
+                    onStartRestore = {
+                        if (deviceVerified && admission.valid() && !unlocked) {
+                            restoreActive = true
+                            restoreStaged = false
+                        }
+                    }
                 )
             }
         }
@@ -143,6 +187,8 @@ class MainActivity : ComponentActivity() {
         if (::accounts.isInitialized) accounts.lock()
         unlocked = false
         deviceVerified = false
+        restoreActive = false
+        restoreStaged = false
         if (!preservePendingChallenge) admission.cancel()
     }
 
