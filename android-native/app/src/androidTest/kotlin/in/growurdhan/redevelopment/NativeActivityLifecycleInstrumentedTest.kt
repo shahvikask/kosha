@@ -38,4 +38,18 @@ class NativeActivityLifecycleInstrumentedTest {
             )
         }
     }
+    @Test fun activityRecreationDiscardsAuthenticationStateAndKeepsWindowSecure() {
+        compose.onNodeWithText("Verify this device").assertExists()
+        // A recreated Activity cannot inherit an in-process OS-admission proof.
+        compose.activityRule.scenario.recreate()
+        compose.waitForIdle()
+        compose.onNodeWithText("Verify this device").assertExists()
+        compose.onNodeWithText("Private vault unlocked").assertDoesNotExist()
+        compose.activityRule.scenario.onActivity { activity ->
+            assertTrue(
+                activity.window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0
+            )
+        }
+    }
+
 }
