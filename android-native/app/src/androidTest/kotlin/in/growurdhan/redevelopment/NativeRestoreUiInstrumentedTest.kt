@@ -40,7 +40,7 @@ class NativeRestoreUiInstrumentedTest {
                 NativeRestoreScreen(
                     deviceVerified = true, staged = true,
                     previewAction = {
-                        NativeRestoreFlow.Preview("synthetic-only", 1, 2, 3)
+                        NativeRestoreFlow.Preview("b".repeat(64), 1, 2, 3, "a".repeat(64), 4)
                     },
                     publishAction = { _, _ -> published++; true },
                     selectEncryptedFile = {}, onBack = {}
