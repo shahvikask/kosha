@@ -1,5 +1,5 @@
 name: GrowUrDhan M25 Native Account and Session
-# M25 exact-source emulator wake before initial locked UI security gate (2026-10-19).
+# M25 exact-source IME-aware Compose scroll regression gate (2026-10-19).
 on:
   workflow_dispatch:
   push:
