@@ -57,6 +57,32 @@ class NativeAccountRepositoryInstrumentedTest {
         assertTrue(repository(context).login(input.email, "NewStrong!345"))
     }
 
+    @Test fun backgroundRequiresFreshAdmissionAndPasswordBeforeVaultReopens() {
+        val ctx = sandbox()
+        val gate = admitted()
+        val repo = NativeAccountRepository(ctx, gate)
+        val input = NativeCredentials.Enrollment("resume@example.org", "Resume",
+            "Owner", "Strong!Pass123", "school", "School", "pet", "Cat")
+        repo.enroll(input)
+        assertTrue(repo.login(input.email, input.password))
+        repo.withUnlockedVault(input.email) { Unit }
+        gate.onStop()
+        repo.onBackground()
+        gate.onStart()
+        assertThrows(IllegalStateException::class.java) {
+            repo.withUnlockedVault(input.email) { Unit }
+        }
+        assertFalse(repo.login(input.email, input.password))
+        assertTrue(gate.begin())
+        assertTrue(gate.complete(true))
+        assertThrows(IllegalStateException::class.java) {
+            repo.withUnlockedVault(input.email) { Unit }
+        }
+        assertTrue(repo.login(input.email, input.password))
+        repo.withUnlockedVault(input.email) { Unit }
+        repo.onBackground()
+    }
+
     @Test fun interruptionRollsBackEncryptedPortfolioBoundaryWrite() {
         val ctx = sandbox()
         val gate = admitted()
