@@ -46,7 +46,8 @@ internal fun NativeAuthenticationScreen(
     onRotation: suspend (String, String, String) -> Boolean,
     onRecover: suspend (String, String, String, String, String, String, String) -> Boolean,
     onReplaceRecoveryCode: suspend (String) -> String?,
-    onLock: () -> Unit
+    onLock: () -> Unit,
+    onStartRestore: () -> Unit
 ) {
     var mode by remember { mutableStateOf("login") }
     var email by remember { mutableStateOf("") }
@@ -116,6 +117,9 @@ internal fun NativeAuthenticationScreen(
                     }
                 } else {
                     Text("Device verified. Enter your account credentials.")
+                }
+                OutlinedButton(onClick = onStartRestore, enabled = deviceVerified && !busy) {
+                    Text("Restore an encrypted backup on a new device")
                 }
                 if (deviceMessage.isNotEmpty()) Text(deviceMessage,
                     color = MaterialTheme.colorScheme.error)
