@@ -64,6 +64,47 @@ def keyguard_visible():
     focus = adb("shell", "dumpsys", "window", "windows")
     return system_prompt and PKG not in focus.split("mCurrentFocus=")[-1].splitlines()[0]
 
+def find_and_tap(label):
+    def locate():
+        return matching(screen(), label)
+    node = wait_for(locate, "UI control " + label)[0]
+    tap(node)
+
+def fill(label, value):
+    # Synthetic values ONLY. Android input commands are captured, never printed.
+    find_and_tap(label)
+    adb("shell", "input", "text", value)
+    adb("shell", "input", "keyevent", "KEYCODE_BACK")
+
+def finish_real_device_challenge(pin):
+    find_and_tap("Verify this device")
+    wait_for(keyguard_visible, "real system credential challenge before account operation")
+    adb("shell", "input", "text", pin)
+    adb("shell", "input", "keyevent", "KEYCODE_ENTER")
+    wait_for(lambda: matching(screen(), "Device verified. Enter your account credentials."),
+             "confirmed real device credential")
+
+def unlock_synthetic_vault(pin):
+    finish_real_device_challenge(pin)
+    find_and_tap("New account? Register")
+    fill("Email", "m25synthetic@example.org")
+    fill("First name", "Synthetic")
+    fill("Last name", "Owner")
+    fill("Password", "StrongPass123!x")
+    fill("First answer", "BlueSchool")
+    fill("Second answer", "BlueCat")
+    find_and_tap("Create private vault")
+    wait_for(lambda: matching(screen(), "I have saved the recovery code"),
+             "one-time synthetic recovery code presentation", seconds=65)
+    find_and_tap("I have saved the recovery code")
+    wait_for(locked_screen, "recovery code acknowledgement locks account")
+    finish_real_device_challenge(pin)
+    fill("Email", "m25synthetic@example.org")
+    fill("Password", "StrongPass123!x")
+    find_and_tap("Unlock private vault")
+    wait_for(lambda: matching(screen(), "Private vault unlocked"),
+             "synthetic SQLCipher vault unlocked", seconds=50)
+
 def main():
     apk = Path('app/build/outputs/apk/debug/app-debug.apk')
     assert apk.is_file(), 'M25 debug APK missing after instrumentation'
@@ -93,6 +134,13 @@ def main():
         adb("shell", "am", "start", "-n", ACTIVITY)
         wait_for(locked_screen, "force-stopped app must relaunch locked")
         print("M25_REAL_EMULATOR_FORCE_STOP_RELAUNCH_PASS")
+        unlock_synthetic_vault(pin)
+        adb("shell", "am", "force-stop", PKG)
+        assert not adb("shell", "sh", "-c", "pidof " + PKG + " || true").strip(), "unlocked app survived force-stop"
+        adb("shell", "am", "start", "-n", ACTIVITY)
+        wait_for(locked_screen, "formerly unlocked vault relaunch must be locked")
+        assert not matching(screen(), "Private vault unlocked")
+        print("M25_REAL_EMULATOR_UNLOCKED_VAULT_FORCE_STOP_PASS")
     finally:
         if installed_pin:
             adb("shell", "locksettings", "clear", "--old", pin)
