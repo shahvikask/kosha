@@ -1,0 +1,31 @@
+name: M25 Restore Targeted Compile
+on:
+  workflow_dispatch:
+  push:
+    branches: [GUD-Android-Redevelopment]
+    paths: [.github/workflows/m25-restore-compile.yml]
+permissions:
+  contents: read
+concurrency:
+  group: m25-restore-compile-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Exact source guard
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Kotlin app and Android test compilation only — no emulator
+        working-directory: android-native
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin --no-daemon --stacktrace
