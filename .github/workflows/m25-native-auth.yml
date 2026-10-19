@@ -88,7 +88,10 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 900
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          script: cd android-native && ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace
+          script: |
+            cd android-native
+            ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace
+            python3 scripts/m25_keyguard_force_stop_emulator.py
       - name: Confirm M25 Android plus M24 regression
         if: success()
         run: |
