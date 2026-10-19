@@ -45,7 +45,7 @@ def wait_for(predicate, label, seconds=35):
 
 def tap(node):
     import re
-    coords = list(map(int, re.findall(r"\\d+", node["bounds"])))
+    coords = list(map(int, re.findall("[0-9]+", node["bounds"])))
     assert len(coords) == 4
     adb("shell", "input", "tap", str((coords[0] + coords[2]) // 2),
         str((coords[1] + coords[3]) // 2))
