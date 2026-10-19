@@ -1,5 +1,5 @@
 name: M25 Restore Targeted Compile
-# Validate invalidated restore consent after editing authenticated identity.
+# Check synthetic strict restore-review archive and payload binding on exact source.
 # Recheck Compose test imports and restore callback at exact SHA.
 on:
   workflow_dispatch:
