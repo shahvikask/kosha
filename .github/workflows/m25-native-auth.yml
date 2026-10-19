@@ -1,5 +1,5 @@
 name: GrowUrDhan M25 Native Account and Session
-# Exact-source M25 Keyguard/force-stop harness with PIN keyboard dismissal handling (2026-10-19).
+# M25 exact-source authenticated synthetic SQLCipher vault force-stop emulator validation (2026-10-19).
 on:
   workflow_dispatch:
   push:
