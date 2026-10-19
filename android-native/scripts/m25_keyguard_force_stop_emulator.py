@@ -81,6 +81,11 @@ def main():
         tap(node)
         wait_for(keyguard_visible, "genuine Android Keyguard prompt")
         adb("shell", "input", "keyevent", "KEYCODE_BACK")
+        # Some API35 Keyguard layouts consume the first BACK to dismiss the PIN keyboard.
+        # Only issue a second BACK while the real system prompt remains present.
+        time.sleep(1)
+        if keyguard_visible():
+            adb("shell", "input", "keyevent", "KEYCODE_BACK")
         wait_for(locked_screen, "canceled credential must stay locked")
         print("M25_REAL_EMULATOR_KEYGUARD_CANCEL_PASS")
         adb("shell", "am", "force-stop", PKG)
