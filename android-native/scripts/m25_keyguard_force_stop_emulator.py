@@ -99,7 +99,7 @@ def unlock_synthetic_vault(pin):
     find_and_tap("I have saved the recovery code")
     wait_for(locked_screen, "recovery code acknowledgement locks account")
     finish_real_device_challenge(pin)
-    fill("Email", "m25synthetic@example.org")
+    # Compose keeps the entered email while recovering from code acknowledgement.
     fill("Password", "StrongPass123!x")
     find_and_tap("Unlock private vault")
     wait_for(lambda: matching(screen(), "Private vault unlocked"),
