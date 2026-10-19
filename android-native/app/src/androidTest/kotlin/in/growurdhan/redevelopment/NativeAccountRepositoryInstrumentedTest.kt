@@ -83,6 +83,42 @@ class NativeAccountRepositoryInstrumentedTest {
         repo.onBackground()
     }
 
+    @Test fun recreatedRepositoryRequiresFreshDeviceAndPasswordAfterSimulatedProcessDeath() {
+        val ctx = sandbox()
+        val input = NativeCredentials.Enrollment("restart@example.org", "Restart",
+            "Owner", "Strong!Pass123", "school", "School", "pet", "Cat")
+        val first = repository(ctx)
+        first.enroll(input)
+        assertTrue(first.login(input.email, input.password))
+        first.withUnlockedVault(input.email) { Unit }
+        first.onBackground()
+        // Dropping the first instance mimics process-owned session destruction;
+        // this is NOT a force-stop/kill of the Android process or hardware proof.
+        val freshGate = NativeDeviceAdmission()
+        freshGate.onStart()
+        val restarted = NativeAccountRepository(ctx, freshGate)
+        assertFalse(restarted.login(input.email, input.password))
+        assertThrows(IllegalStateException::class.java) {
+            restarted.withUnlockedVault(input.email) { Unit }
+        }
+        assertTrue(freshGate.begin())
+        assertFalse(freshGate.complete(false))
+        assertFalse(restarted.login(input.email, input.password))
+        assertTrue(freshGate.begin())
+        assertTrue(freshGate.complete(true))
+        assertThrows(IllegalStateException::class.java) {
+            restarted.withUnlockedVault(input.email) { Unit }
+        }
+        assertFalse(restarted.login(input.email, "incorrect"))
+        assertTrue(restarted.login(input.email, input.password))
+        restarted.withUnlockedVault(input.email) { db ->
+            db.rawQuery("SELECT COUNT(*) FROM vault_account", null).use {
+                assertTrue(it.moveToFirst())
+                assertEquals(1L, it.getLong(0))
+            }
+        }
+    }
+
     @Test fun interruptionRollsBackEncryptedPortfolioBoundaryWrite() {
         val ctx = sandbox()
         val gate = admitted()
