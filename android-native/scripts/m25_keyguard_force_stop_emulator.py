@@ -65,17 +65,20 @@ def keyguard_visible():
     return system_prompt and PKG not in focus.split("mCurrentFocus=")[-1].splitlines()[0]
 
 def find_and_tap(label):
-    # The long Compose registration form only exposes currently visible nodes.
-    # A keyboard may occlude the next field, so scroll to reach it.
-    for attempt in range(7):
+    # Compose text fields may be offscreen or hidden by the keyboard. Unlike a
+    # blind BACK (which may navigate away), only dismiss when IME is visible.
+    for attempt in range(9):
         nodes = matching(screen(), label)
         if nodes:
             tap(nodes[0])
             return
-        if attempt < 6:
-            adb("shell", "input", "keyevent", "KEYCODE_BACK")
-            adb("shell", "input", "swipe", "520", "1750", "520", "650", "400")
-            time.sleep(0.5)
+        if attempt < 8:
+            ime = adb("shell", "dumpsys", "input_method")
+            if "mInputShown=true" in ime or "mShowRequested=true" in ime:
+                adb("shell", "input", "keyevent", "KEYCODE_BACK")
+            # Scroll through the Compose Column; avoid dragging from nav bar.
+            adb("shell", "input", "swipe", "540", "1550", "540", "430", "420")
+            time.sleep(0.6)
     raise AssertionError("M25 OS gate failed: UI control " + label)
 
 def fill(label, value):
