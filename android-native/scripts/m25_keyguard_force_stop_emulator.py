@@ -12,8 +12,12 @@ PKG = "in.growurdhan.redevelopment"
 ACTIVITY = PKG + "/.MainActivity"
 
 def adb(*args, timeout=30):
-    return subprocess.run(["adb", *args], check=True, stdout=subprocess.PIPE,
-                          stderr=subprocess.PIPE, text=True, timeout=timeout).stdout
+    try:
+        return subprocess.run(["adb", *args], check=True, stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, text=True, timeout=timeout).stdout
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        # Do not print exception arguments: one command holds a temporary PIN.
+        raise AssertionError("M25 Android shell step failed (arguments redacted)") from None
 
 def screen():
     # UIAutomator reads the REAL Android foreground accessibility hierarchy.
@@ -75,7 +79,7 @@ def main():
         wait_for(locked_screen, "canceled credential must stay locked")
         print("M25_REAL_EMULATOR_KEYGUARD_CANCEL_PASS")
         adb("shell", "am", "force-stop", PKG)
-        assert not adb("shell", "pidof", PKG).strip(), "app survived force-stop"
+        assert not adb("shell", "sh", "-c", "pidof " + PKG + " || true").strip(), "app survived force-stop"
         adb("shell", "am", "start", "-n", ACTIVITY)
         wait_for(locked_screen, "force-stopped app must relaunch locked")
         print("M25_REAL_EMULATOR_FORCE_STOP_RELAUNCH_PASS")
