@@ -33,7 +33,8 @@ class NativeRecoveryCodeUiInstrumentedTest {
                     onRotation = { _, _, _ -> false },
                     onRecover = { _, _, _, _, _, _, _ -> false },
                     onReplaceRecoveryCode = { "GUD-SYNTHETIC-TEST-ONLY" },
-                    onLock = { locked = true; admitted = false; unlocked = false }
+                    onLock = { locked = true; admitted = false; unlocked = false },
+                    onStartRestore = {}
                 )
             }
         }
