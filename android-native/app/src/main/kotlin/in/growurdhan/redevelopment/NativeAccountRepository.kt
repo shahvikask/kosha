@@ -71,8 +71,29 @@ internal class NativeAccountRepository(
         }
     }
 
-    /** Called only after explicit creation consent; failed DB writes are preserved for recovery. */
-    fun enroll(input: NativeCredentials.Enrollment, createdAt: String = Instant.now().toString()): String {
+    /**
+     * Verified native enrollment with local terms evidence and confidential identity.
+     * Existing enroll API remains available to old call sites until the real terms
+     * dialog and legacy account migration are completed; do not mark P01 accepted.
+     */
+    fun enrollVerified(input: NativeCredentials.Enrollment,
+                       identity: `in`.growurdhan.model.NativeRegistrationProof.Identity,
+                       consent: `in`.growurdhan.model.NativeRegistrationProof.Consent,
+                       createdAt: String = Instant.now().toString()): String {
+        `in`.growurdhan.model.NativeRegistrationProof.requireValid(identity, consent)
+        return enrollImpl(input, createdAt, identity, consent)
+    }
+
+    /** Legacy entry kept stable while the versioned consent UX is migrated. */
+    fun enroll(input: NativeCredentials.Enrollment,
+               createdAt: String = Instant.now().toString()): String =
+        enrollImpl(input, createdAt, null, null)
+
+    private fun enrollImpl(
+        input: NativeCredentials.Enrollment, createdAt: String,
+        identity: `in`.growurdhan.model.NativeRegistrationProof.Identity?,
+        consent: `in`.growurdhan.model.NativeRegistrationProof.Consent?
+    ): String {
         ticket() // require explicit foreground device proof before any vault file is created
         val account = NativeCredentials.enroll(input, createdAt)
         val ownerId = UUID.randomUUID().toString()
@@ -96,6 +117,15 @@ internal class NativeAccountRepository(
                 // atomically even if Android backgrounds mid-creation. Aborting here
                 // leaves an unowned encrypted file and wrapped Keystore key that may
                 // not be silently deleted/recreated.
+                if (identity != null && consent != null) {
+                    val fullPan = identity.fullPan.trim().uppercase(Locale.ROOT)
+                    db.execSQL("UPDATE vault_account SET pan_masked=?,pan_for_statements=?,date_of_birth=? WHERE id=?",
+                        arrayOf(fullPan.take(5) + "****" + fullPan.last(), fullPan,
+                            identity.dob, "native-account"))
+                    writeSetting(db, "m25.terms.version", consent.version)
+                    writeSetting(db, "m25.terms.text_id", consent.textId)
+                    writeSetting(db, "m25.terms.accepted_at", consent.acceptedAt)
+                }
                 writeSetting(db, RECOVERY_KEY, issued.verifier)
                 db.setTransactionSuccessful()
             } finally { db.endTransaction() }
