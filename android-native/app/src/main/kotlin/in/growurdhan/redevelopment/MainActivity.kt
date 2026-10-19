@@ -4,7 +4,6 @@ import android.app.Activity
 import android.app.KeyguardManager
 import android.os.Bundle
 import androidx.activity.result.contract.ActivityResultContracts.OpenDocument
-import `in`.growurdhan.database.RestoreIdentityGate
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -47,6 +46,7 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.StartActivityForResult()) { result ->
         deviceVerified = admission.complete(result.resultCode == Activity.RESULT_OK)
         deviceMessage = if (deviceVerified) "" else "Device authentication was not completed"
+        if (deviceVerified && restoreStaged) restoreActive = true
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -69,14 +69,13 @@ class MainActivity : ComponentActivity() {
                         publishAction = { proof, preview ->
                             if (!admission.valid() || !deviceVerified || unlocked) false
                             else {
-                                val start = lifecycleEpoch
                                 val ok = withContext(Dispatchers.IO) {
                                     runCatching { restoreFlow.publish(proof, preview); true }
                                         .getOrDefault(false)
                                 }
                                 lockCompletely()
                                 restoreActive = false
-                                ok && lifecycleEpoch == start + 0
+                                ok
                             }
                         },
                         selectEncryptedFile = {
