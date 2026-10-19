@@ -31,3 +31,13 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew :core:model:test :core:database:test :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin --no-daemon --stacktrace
+
+      - name: Upload original JVM JUnit XML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m25-targeted-jvm-junit
+          path: |
+            android-native/core/model/build/test-results/test/TEST-*.xml
+            android-native/core/database/build/test-results/test/TEST-*.xml
+          if-no-files-found: warn
