@@ -1,5 +1,5 @@
 name: GrowUrDhan M25 Native Account and Session
-# Exact-source M25 regression run after recovery-code handoff isolation (2026-10-18).
+# Exact-source M25 regression rerun after correcting Compose test imports (2026-10-19).
 on:
   workflow_dispatch:
   push:
