@@ -1,5 +1,5 @@
 name: M25 Restore Targeted Compile
-# Recheck updated synthetic UI tests and restore callback at exact SHA.
+# Recheck Compose test imports and restore callback at exact SHA.
 on:
   workflow_dispatch:
   push:
