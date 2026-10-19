@@ -63,4 +63,26 @@ class NativeDeviceAdmissionTest {
         assertTrue(gate.complete(true))
         assertTrue(gate.valid())
     }
+    @Test fun canceledChallengeAfterBackgroundCannotReuseOldTicketOrAdmit() {
+        val gate = NativeDeviceAdmission()
+        gate.onStart()
+        assertTrue(gate.begin())
+        assertTrue(gate.complete(true))
+        val prior = gate.ticket()!!
+        gate.onStop()
+        gate.onStart()
+        assertFalse(gate.validTicket(prior))
+        assertTrue(gate.begin())
+        gate.onStop()
+        gate.onStart()
+        assertFalse(gate.complete(false))
+        assertFalse(gate.complete(true))
+        assertFalse(gate.valid())
+        assertNull(gate.ticket())
+        assertTrue(gate.begin())
+        assertTrue(gate.complete(true))
+        assertFalse(gate.validTicket(prior))
+        assertTrue(gate.valid())
+    }
+
 }
