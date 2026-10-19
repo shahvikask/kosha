@@ -167,7 +167,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requestDeviceChallenge() {
-        lockCompletely()
+        lockCompletely(preserveStagedArchive = restoreStaged)
         val guard = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
         if (!guard.isDeviceSecure) {
             deviceMessage = "Set an Android screen lock before accessing the vault"
