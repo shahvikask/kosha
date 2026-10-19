@@ -4,6 +4,7 @@ No financial fixtures, vault credentials, UI dumps or temporary PIN are logged.
 Requires a fresh disposable emulator and an installed debug app.
 """
 import secrets
+from pathlib import Path
 import subprocess
 import time
 import xml.etree.ElementTree as ET
@@ -64,6 +65,10 @@ def keyguard_visible():
     return system_prompt and PKG not in focus.split("mCurrentFocus=")[-1].splitlines()[0]
 
 def main():
+    apk = Path('app/build/outputs/apk/debug/app-debug.apk')
+    assert apk.is_file(), 'M25 debug APK missing after instrumentation'
+    # connectedAndroidTest may uninstall the target package during cleanup.
+    adb('install', '-r', str(apk), timeout=90)
     pin = str(secrets.randbelow(900000) + 100000)
     installed_pin = False
     try:
