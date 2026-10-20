@@ -84,4 +84,78 @@ class RestoredRowsVerifierInstrumentedTest {
             }
         }
     }
+    @Test fun omittedFinancialColumnMustRemainItsExactFrozenDefault() {
+        EncryptedVaultStore(isolated()).createFresh(false).use { db ->
+            db.execSQL("INSERT INTO entity(entity_id,entity_type,display_name,created_at) " +
+                "VALUES('family-a','INDIVIDUAL','Synthetic Owner','2025-01-01')")
+            // Projection purposefully omits defaults: is_active=1, relation='Self',
+            // is_primary=0, and nullable PAN/dob fields. All must be checked.
+            val plan = RestoreV9Plan.Plan(listOf(RestoreV9Plan.Row("entity",
+                listOf("entity_id", "entity_type", "display_name", "created_at"),
+                listOf("family-a", "INDIVIDUAL", "Synthetic Owner", "2025-01-01"))),
+                "e".repeat(64))
+            assertEquals(1, RestoredRowsVerifier.verifyExactRows(db, plan))
+            db.execSQL("UPDATE entity SET is_active=0 WHERE entity_id='family-a'")
+            assertThrows(IllegalArgumentException::class.java) {
+                RestoredRowsVerifier.verifyExactRows(db, plan)
+            }
+            db.execSQL("UPDATE entity SET is_active=1 WHERE entity_id='family-a'")
+            assertEquals(1, RestoredRowsVerifier.verifyExactRows(db, plan))
+            db.execSQL("UPDATE entity SET pan_masked='ABCDE****F' " +
+                "WHERE entity_id='family-a'")
+            assertThrows(IllegalArgumentException::class.java) {
+                RestoredRowsVerifier.verifyExactRows(db, plan)
+            }
+        }
+    }
+
+    @Test fun unprojectedCurrencyAndAccountDefaultsMustStayUnchanged() {
+        EncryptedVaultStore(isolated()).createFresh(false).use { db ->
+            db.execSQL("INSERT INTO entity(entity_id,entity_type,display_name,created_at) " +
+                "VALUES('family-a','INDIVIDUAL','Synthetic Owner','2025-01-01')")
+            db.execSQL("INSERT INTO account(account_id,entity_id,account_type,custodian," +
+                "created_at) VALUES('account-a','family-a','DEMAT','Synthetic','2025-01-01')")
+            val rows = listOf(
+                RestoreV9Plan.Row("entity",
+                    listOf("entity_id", "entity_type", "display_name", "created_at"),
+                    listOf("family-a", "INDIVIDUAL", "Synthetic Owner", "2025-01-01")),
+                RestoreV9Plan.Row("account",
+                    listOf("account_id", "entity_id", "account_type", "custodian", "created_at"),
+                    listOf("account-a", "family-a", "DEMAT", "Synthetic", "2025-01-01"))
+            )
+            val plan = RestoreV9Plan.Plan(rows, "f".repeat(64))
+            assertEquals(2, RestoredRowsVerifier.verifyExactRows(db, plan))
+            // The typed projected cells are unchanged; changing an omitted
+            // currency field must nevertheless block cross-device publication.
+            db.execSQL("UPDATE account SET base_currency='USD' " +
+                "WHERE account_id='account-a'")
+            assertThrows(IllegalArgumentException::class.java) {
+                RestoredRowsVerifier.verifyExactRows(db, plan)
+            }
+        }
+    }
+
+    @Test fun textValuedFmvIsComparedAsExactTextNotNumericApproximation() {
+        EncryptedVaultStore(isolated()).createFresh(false).use { db ->
+            db.execSQL("INSERT INTO instrument(instrument_id,name,category,sub_category," +
+                "created_at,fmv_31jan2018_minor) VALUES(?,?,?,?,?,?)",
+                arrayOf<Any>("instrument-a", "Synthetic SGB", "GOLD_SGB", "SGB",
+                    "2025-01-01", "10001234"))
+            val plan = RestoreV9Plan.Plan(listOf(RestoreV9Plan.Row(
+                "instrument",
+                listOf("instrument_id", "name", "category", "sub_category",
+                    "created_at", "fmv_31jan2018_minor"),
+                listOf("instrument-a", "Synthetic SGB", "GOLD_SGB", "SGB",
+                    "2025-01-01", "10001234"))), "1".repeat(64))
+            assertEquals(1, RestoredRowsVerifier.verifyExactRows(db, plan))
+            // Changing only the TEXT representation is not an acceptable
+            // normalization of the user's original financial source.
+            db.execSQL("UPDATE instrument SET fmv_31jan2018_minor='010001234' " +
+                "WHERE instrument_id='instrument-a'")
+            assertThrows(IllegalArgumentException::class.java) {
+                RestoredRowsVerifier.verifyExactRows(db, plan)
+            }
+        }
+    }
+
 }

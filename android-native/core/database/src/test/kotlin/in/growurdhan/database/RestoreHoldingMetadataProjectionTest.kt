@@ -71,7 +71,9 @@ class RestoreHoldingMetadataProjectionTest {
         assertEquals(metadata.tagsJson, column(holding, "tags_json"))
         assertEquals(metadata.location, column(holding, "location"))
         assertEquals(metadata.tag, column(holding, "tag"))
-        assertEquals(10001234L, column(instrument, "fmv_31jan2018_minor"))
+        // The frozen v9 FMV column has TEXT affinity, not INTEGER. Keep
+        // the original canonical decimal representation byte-for-byte.
+        assertEquals("10001234", column(instrument, "fmv_31jan2018_minor"))
         assertEquals(metadata.allocationSplitJson, column(instrument, "allocation_split"))
         assertEquals(metadata.dpName, column(instrument, "dp_name"))
         assertEquals(metadata.amfiCode, column(instrument, "amfi_code"))

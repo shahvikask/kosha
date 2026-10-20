@@ -143,7 +143,7 @@ object RestoreV9Plan {
                 "name" to h.name, "category" to h.category,
                 "sub_category" to h.subCategory, "symbol_or_folio" to h.symbolOrFolio,
                 "isin" to h.isin, "created_at" to s.exportedAt,
-                "fmv_31jan2018_minor" to m.fmv31Jan2018Minor?.let(::money),
+                "fmv_31jan2018_minor" to m.fmv31Jan2018Minor?.also { money(it) },
                 "exposure_node" to m.exposureNode, "l2_node" to m.l2Node,
                 "wrapper" to m.wrapper, "allocation_split" to m.allocationSplitJson,
                 "amc" to m.amc, "rta" to m.rta, "amfi_code" to m.amfiCode,
