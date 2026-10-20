@@ -29,7 +29,7 @@ class NativeRecoveryCodeUiInstrumentedTest {
                     deviceMessage = "",
                     onDeviceChallenge = { admitted = true },
                     onEnroll = { _, _, _ -> null },
-                    onLogin = { _, _, _ -> NativeAccountRepository.SignInResult.DENIED }
+                    onLogin = { _, _, _ -> NativeAccountRepository.SignInResult.DENIED },
                     onRotation = { _, _, _ -> false },
                     onRecover = { _, _, _, _, _, _, _ -> false },
                     onReplaceRecoveryCode = { "GUD-SYNTHETIC-TEST-ONLY" },

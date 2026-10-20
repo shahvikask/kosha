@@ -1,4 +1,5 @@
 name: GrowUrDhan native Kotlin-only diagnostic
+# Corrective run: retain the full Android-test source compile after fixing callback syntax.
 # 2026-10-20: rerun after fixing first three compiler diagnostics.
 
 # 2026-10-20: Pydantic 2 Rust extension has no approved Chaquopy Android wheel.
