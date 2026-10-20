@@ -631,4 +631,145 @@ class NativeBooksRepositoryInstrumentedTest {
         assertEquals("USER_OVERRIDE", books.read(input.email).holdings.single().priceSource)
     }
 
+    @Test fun olderManualPriceIsAuditedWithoutRewindingNewerValuation() {
+        val ctx = sandbox()
+        val (accounts, books) = create(ctx)
+        val owner = books.read(input.email).people.single().id
+        val h = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, null, "Synthetic dated market price", "EQUITY", "Other",
+            100_000_000L, 10_000L, "2024-01-01", true))
+        books.recordManualPrice(input.email, h, 20_000L, "2025-05-31")
+        books.recordManualPrice(input.email, h, 16_000L, "2025-03-31")
+        val current = books.read(input.email).holdings.single()
+        assertEquals(20_000L, current.marketPriceMinor)
+        assertEquals("USER_OVERRIDE", current.priceSource)
+        accounts.withUnlockedVault(input.email) { db ->
+            db.rawQuery("SELECT price_date,price_minor,source FROM price_observation " +
+                "ORDER BY price_date", null).use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals("2025-03-31", c.getString(0))
+                assertEquals(16_000L, c.getLong(1))
+                assertEquals("USER_OVERRIDE", c.getString(2))
+                assertTrue(c.moveToNext())
+                assertEquals("2025-05-31", c.getString(0))
+                assertEquals(20_000L, c.getLong(1))
+                assertFalse(c.moveToNext())
+            }
+        }
+        accounts.onBackground()
+        val reopened = NativeAccountRepository(ctx, gate())
+        assertTrue(reopened.login(input.email, input.password))
+        assertEquals(20_000L,
+            NativeBooksRepository(reopened).read(input.email)
+                .holdings.single().marketPriceMinor)
+    }
+
+    @Test fun importedCasPriceCannotOverrideOwnersSameDayManualPrice() {
+        val (accounts, books) = create(sandbox())
+        val owner = books.read(input.email).people.single().id
+        val h = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, null, "Synthetic reviewed CAS NAV", "EQUITY", "Other",
+            100_000_000L, 10_000L, "2024-01-01", true,
+            isin = "INE000000001"))
+        books.recordManualPrice(input.email, h, 18_000L, "2025-03-31")
+        val importer = NativeStatementImportRepository(accounts)
+        val bytes = csvSnapshot(qty = 100_000_000L)
+        val review = importer.inspect(input.email, bytes)
+        val receipt = importer.approve(input.email, "synthetic-cas.csv", bytes,
+            review, true)
+        assertEquals(0, receipt.adjustments)
+        assertEquals(18_000L, books.read(input.email).holdings.single().marketPriceMinor)
+        assertEquals("USER_OVERRIDE",
+            books.read(input.email).holdings.single().priceSource)
+        accounts.withUnlockedVault(input.email) { db ->
+            db.rawQuery("SELECT source,price_minor FROM price_observation " +
+                "ORDER BY source", null).use { c ->
+                val observations = mutableMapOf<String, Long>()
+                while (c.moveToNext()) observations[c.getString(0)] = c.getLong(1)
+                assertEquals(18_000L, observations["USER_OVERRIDE"])
+                assertEquals(12_500L, observations["CSV_STATEMENT"])
+            }
+        }
+    }
+
+    @Test fun earlierCasStatementAddsHistoricalPriceWithoutRewindingLaterOne() {
+        val (accounts, books) = create(sandbox())
+        val owner = books.read(input.email).people.single().id
+        books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, null, "Synthetic chronological instrument", "EQUITY", "Other",
+            100_000_000L, 10_000L, "2024-01-01", true,
+            isin = "INE000000001"))
+        val importer = NativeStatementImportRepository(accounts)
+        val latest = csvSnapshot(date = "2025-05-31", qty = 150_000_000L)
+        importer.approve(input.email, "later.csv", latest,
+            importer.inspect(input.email, latest), true)
+        assertEquals("CSV_STATEMENT",
+            books.read(input.email).holdings.single().priceSource)
+        val prior = csvSnapshot(date = "2025-03-31", qty = 125_000_000L)
+        val reviewed = importer.inspect(input.email, prior)
+        assertEquals(NativeStatementImportRepository.Action.HISTORICAL_ONLY,
+            reviewed.matched.single().action)
+        importer.approve(input.email, "earlier.csv", prior, reviewed, true)
+        val current = books.read(input.email).holdings.single()
+        assertEquals(12_500L, current.marketPriceMinor)
+        assertEquals(150_000_000L, current.quantityScaled)
+        accounts.withUnlockedVault(input.email) { db ->
+            db.rawQuery("SELECT price_date FROM price_observation " +
+                "ORDER BY price_date", null).use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals("2025-03-31", c.getString(0))
+                assertTrue(c.moveToNext())
+                assertEquals("2025-05-31", c.getString(0))
+                assertFalse(c.moveToNext())
+            }
+        }
+    }
+
+    @Test fun futureOrMalformedManualPriceCannotWriteAnyObservation() {
+        val (accounts, books) = create(sandbox())
+        val owner = books.read(input.email).people.single().id
+        val h = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, null, "Synthetic invalid price", "EQUITY", "Other",
+            100_000_000L, 10_000L, "2024-01-01", true))
+        for (badDay in listOf("2099-01-01", "2025-2-1", "not-a-date")) {
+            assertThrows(Exception::class.java) {
+                books.recordManualPrice(input.email, h, 14_000L, badDay)
+            }
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            books.recordManualPrice(input.email, h, -1L, "2025-02-01")
+        }
+        accounts.withUnlockedVault(input.email) { db ->
+            db.rawQuery("SELECT COUNT(*) FROM price_observation", null).use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals(0L, c.getLong(0))
+            }
+        }
+    }
+
+    @Test fun historicalXirrNeverLooksAheadToFuturePriceOrFutureTransaction() {
+        val (_, books) = create(sandbox())
+        val owner = books.read(input.email).people.single().id
+        val h = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, null, "Synthetic historic XIRR", "EQUITY", "Other",
+            0L, 10_000L, "2024-01-01", true))
+        books.appendUserEvent(input.email, NativeBooksRepository.NewEvent(
+            h, "BUY", "2024-01-01", 100_000_000L, 10_000L, 10_000L))
+        books.recordManualPrice(input.email, h, 20_000L, "2025-06-30")
+        assertNull(books.moneyWeightedReturn(input.email, h, "2025-01-01"))
+        // A later price cannot erase the earlier dated observation.
+        books.recordManualPrice(input.email, h, 11_000L, "2025-01-01")
+        val historical = books.moneyWeightedReturn(input.email, h, "2025-01-01")
+        assertNotNull(historical)
+        assertTrue(historical!! in 9.0..11.0)
+        books.appendUserEvent(input.email, NativeBooksRepository.NewEvent(
+            h, "BUY", "2025-03-01", 100_000_000L, 10_000L, 10_000L))
+        val stable = books.moneyWeightedReturn(input.email, h, "2025-01-01")
+        assertEquals(historical, stable)
+        assertEquals(20_000L, books.read(input.email).holdings.single().marketPriceMinor)
+        assertThrows(IllegalArgumentException::class.java) {
+            books.moneyWeightedReturn(input.email, h, "2099-01-01")
+        }
+    }
+
 }

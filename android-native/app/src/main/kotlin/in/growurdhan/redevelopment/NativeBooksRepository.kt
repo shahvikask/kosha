@@ -393,22 +393,52 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
      * investor cash flows yield N/A. Nothing is calculated or cached offline
      * without an admitted SQLCipher session. No price is fetched here.
      */
+    /**
+     * Historic XIRR cannot use a later NAV or future transaction. Select the
+     * latest price observation on/before asOf with same-day USER_OVERRIDE
+     * precedence; a current holding price is a fallback only when its own
+     * original date is no later than asOf. No online price is invented.
+     */
     fun moneyWeightedReturn(email: String, holdingId: String,
         asOf: String = LocalDate.now().toString()): Double? =
         accounts.withUnlockedVault(email) { db ->
             requireHoldingOwner(db, holdingId)
-            val info = db.rawQuery("SELECT i.category,h.current_price_minor," +
-                "h.needs_review,h.last_price_updated FROM holding h " +
-                "JOIN instrument i ON i.instrument_id=h.instrument_id " +
-                "WHERE h.holding_id=?", arrayOf(holdingId)).use { c ->
-                require(c.moveToFirst())
-                Triple(c.getString(0), c.getLong(1),
-                    c.getInt(2) == 1 || c.isNull(3))
+            val day = LocalDate.parse(asOf)
+            require(day.toString() == asOf && !day.isAfter(LocalDate.now())) {
+                "Cannot calculate a future or noncanonical historical return"
             }
-            if (info.third) null
+            val info = db.rawQuery("SELECT i.category,i.instrument_id," +
+                "h.current_price_minor,h.needs_review,h.last_price_updated " +
+                "FROM holding h JOIN instrument i ON i.instrument_id=h.instrument_id " +
+                "WHERE h.holding_id=?", arrayOf(holdingId)).use { cur ->
+                require(cur.moveToFirst())
+                listOf(
+                    cur.getString(0), cur.getString(1), cur.getLong(2).toString(),
+                    cur.getInt(3).toString(),
+                    if (cur.isNull(4)) "" else cur.getString(4))
+            }
+            if (info[3] == "1") return@withUnlockedVault null
+            val observed = db.rawQuery(
+                "SELECT price_minor FROM price_observation " +
+                    "WHERE instrument_id=? AND price_date<=? " +
+                    "ORDER BY price_date DESC, " +
+                    "CASE WHEN source='USER_OVERRIDE' THEN 1 ELSE 0 END DESC," +
+                    "ingested_at DESC LIMIT 1",
+                arrayOf(info[1], asOf)).use { cur ->
+                if (cur.moveToFirst()) cur.getLong(0) else null
+            }
+            val currentDate = info[4].takeIf { it.isNotEmpty() }?.let {
+                if (it.length == 10) LocalDate.parse(it)
+                else Instant.parse(it).atZone(java.time.ZoneOffset.UTC).toLocalDate()
+            }
+            val fallback = if (currentDate != null && !currentDate.isAfter(day))
+                info[2].toLong() else null
+            val priced = observed ?: fallback
+            if (priced == null || priced < 0L) null
             else NativeMoneyWeightedReturn.forHolding(
-                readRawEvents(db, holdingId), info.first, info.second,
-                LocalDate.parse(asOf))
+                readRawEvents(db, holdingId).filter {
+                    !LocalDate.parse(it.date).isAfter(day)
+                }, info[0], priced, day)
         }
 
     fun history(email: String, holdingId: String): List<EventRow> =
@@ -673,13 +703,8 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
         requireHoldingOwner(db, holdingId)
         val instrument = db.rawQuery("SELECT instrument_id FROM holding WHERE holding_id=?",
             arrayOf(holdingId)).use { c -> check(c.moveToFirst()); c.getString(0) }
-        val timestamp = now()
-        db.execSQL("INSERT INTO price_observation(instrument_id,price_date,basis,price_minor," +
-            "source,ingested_at) VALUES(?,?,?,?,?,?)", arrayOf<Any>(
-            instrument, day.toString(), "MANUAL", priceMinor, "USER_OVERRIDE", timestamp))
-        db.execSQL("UPDATE holding SET current_price_minor=?,last_price_updated=?," +
-            "price_source='USER_OVERRIDE' WHERE holding_id=?",
-            arrayOf<Any>(priceMinor, day.toString(), holdingId))
+        NativeDatedPriceRecorder.record(db, holdingId, instrument,
+            day.toString(), priceMinor, "USER_OVERRIDE", now())
     }
 
     companion object {

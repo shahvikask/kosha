@@ -323,11 +323,26 @@ internal class NativeStatementImportRepository(
             val sourceByIdentity = snapshot.positions.associateBy {
                 it.isin to it.folio
             }
+            // A single dated statement must not offer contradictory NAVs for
+            // the same instrument through separate family holding records.
+            val byInstrument = current.matched.groupBy { it.instrumentId }
+            require(byInstrument.values.all { group ->
+                group.map { it.unitPriceMinor }.distinct().size == 1
+            }) { "Contradictory instrument prices in the same source document" }
+            val observedInBatch = HashSet<String>()
             for (row in current.matched) {
                 val source = requireNotNull(
                     sourceByIdentity[row.sourceIsin to row.sourceFolio]) {
                     "Reviewed source instrument identity disappeared"
                 }
+                // Save the original statement day's NAV/close without
+                // overwriting a newer observation or an owner's same-day price.
+                // One instrument/date/source gets one immutable observation
+                // even if its financial owner maintains two holdings.
+                NativeDatedPriceRecorder.record(db, row.holdingId,
+                    row.instrumentId, snapshot.date, row.unitPriceMinor,
+                    if (sourceKind == "CAS_PDF") "CAS_PDF" else "CSV_STATEMENT",
+                    at, persistObservation = observedInBatch.add(row.instrumentId))
                 db.execSQL("INSERT INTO statement_position(import_batch_id,holding_id," +
                     "statement_date,quantity_scaled,unit_price_minor,isin,folio," +
                     "current_value_minor) VALUES(?,?,?,?,?,?,?,?)", arrayOf<Any?>(
@@ -351,21 +366,8 @@ internal class NativeStatementImportRepository(
                     // Mark provenance explicitly. Do not synthesize cost from CSV NAV.
                     db.execSQL("INSERT INTO setting(key,value) VALUES(?,?)",
                         arrayOf<Any>("native.ledger.cost_source.$eventId", "UNKNOWN"))
-                    db.execSQL("UPDATE holding SET needs_review=1," +
-                        "current_price_minor=?,last_price_updated=?," +
-                        "price_source=? WHERE holding_id=? " +
-                        "AND (last_price_updated IS NULL OR last_price_updated<=?)",
-                        arrayOf<Any>(row.unitPriceMinor, snapshot.date,
-                            if (sourceKind == "CAS_PDF") "CAS_PDF" else "CSV_STATEMENT",
-                            row.holdingId, snapshot.date))
-                } else if (row.action == Action.NO_DIFFERENCE) {
-                    db.execSQL("UPDATE holding SET current_price_minor=?," +
-                        "last_price_updated=?,price_source=? " +
-                        "WHERE holding_id=? AND " +
-                        "(last_price_updated IS NULL OR last_price_updated<=?)",
-                        arrayOf<Any>(row.unitPriceMinor, snapshot.date,
-                            if (sourceKind == "CAS_PDF") "CAS_PDF" else "CSV_STATEMENT",
-                            row.holdingId, snapshot.date))
+                    db.execSQL("UPDATE holding SET needs_review=1 WHERE holding_id=?",
+                        arrayOf<Any>(row.holdingId))
                 }
             }
             Receipt(false, batch, current.matched.size, changed)
