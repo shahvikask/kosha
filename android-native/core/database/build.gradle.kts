@@ -13,6 +13,9 @@ tasks.test {
 }
 
 dependencies {
+    // Authoritative native integer FIFO must validate legacy quantities before
+    // SQLCipher projection; no separate/guessing backup reconciliation engine.
+    implementation(project(":core:model"))
     testImplementation(libs.junit)
     testImplementation(libs.sqlite.jdbc)
 }

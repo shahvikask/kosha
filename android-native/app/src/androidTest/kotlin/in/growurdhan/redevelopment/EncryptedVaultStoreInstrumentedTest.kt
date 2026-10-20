@@ -628,6 +628,32 @@ class EncryptedVaultStoreInstrumentedTest {
         return envelope to credentials
     }
 
+    @Test fun authenticatedStoredBalanceMismatchRefusesBothBackupEnvelopesBeforeClaim() {
+        for (modern in listOf(true, false)) {
+            val ctx = sandbox()
+            val (archive, credentials) = newSyntheticEncryptedBackup(
+                modern, "parity@example.invalid", "synthetic-not-a-secret") { body ->
+                // GCM-authenticated financial data is internally inconsistent:
+                // native FIFO will derive exactly 1234567890123 units, but
+                // frozen stored holding reports a different positive quantity.
+                body.getJSONArray("holdings").getJSONObject(0)
+                    .put("quantityScaled", "1234567890124")
+            }
+            LockedRestoreStaging(ctx).stageEncryptedArchiveOnce(archive)
+            val staged = File(ctx.noBackupFilesDir, "restore-pending.v1.kosha")
+            val originalStaged = staged.readBytes()
+            assertThrows(Exception::class.java) {
+                ApprovedNewVaultRestore(ctx).restoreFromStagedNewVault(
+                    credentials, explicitOwnerApproval = true,
+                    termsConsent = verifiedConsent)
+            }
+            assertArrayEquals(originalStaged, staged.readBytes())
+            assertFalse(ctx.getDatabasePath("growurdhan-v9.sqlcipher").exists())
+            assertFalse(File(ctx.noBackupFilesDir, "vault-key.v1").exists())
+            assertFalse(File(ctx.noBackupFilesDir, "restore-claims").exists())
+        }
+    }
+
     @Test fun authenticatedCorrectionForkOrCycleRefusesRestoreBeforeReplayClaim() {
         // Real synthetically-encrypted ORIGINAL binary and legacy envelopes.
         // The cross-row correction graph is invalid even though passwords,

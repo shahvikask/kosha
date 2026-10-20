@@ -96,6 +96,9 @@ object RestoreV9Plan {
                 it.totalAmountMinor, it.chargesMinor, it.supersedesEventId) }
         )
         RestoreLedgerPreflight.validate(graph)
+        // A real source can have events yet an irreconcilable stored position.
+        // Do not publish an apparently valid but financially changed holding.
+        RestorePositionParity.requireReconciled(s)
         val rows = ArrayList<Row>()
         rows += row("vault_account", "id" to "legacy-authenticated-account", "email" to l.email,
             "first_name" to l.firstName, "last_name" to l.lastName,
