@@ -1055,6 +1055,77 @@ class EncryptedVaultStoreInstrumentedTest {
         assertFalse(stagedWithNew.getDatabasePath("growurdhan-v9.sqlcipher").exists())
     }
 
+    @Test fun stagedLegacyArchiveInspectionNeverRecoversBackupOrDropsNewEvidence() {
+        val (archive, credentials) = newSyntheticEncryptedBackup(
+            true, "evidence@example.invalid", "synthetic-evidence-password")
+        val ctx = sandbox()
+        val staging = LockedRestoreStaging(ctx)
+        staging.stageEncryptedArchiveOnce(archive)
+        val original = File(ctx.noBackupFilesDir, "restore-pending.v1.kosha")
+        val backup = File(original.path + ".bak")
+        val backupBytes = archive.reversedArray()
+        backup.writeBytes(backupBytes)
+        assertThrows(IllegalArgumentException::class.java) {
+            staging.inspect(credentials.email, credentials.password)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            staging.previewAuthenticatedV9(credentials)
+        }
+        assertArrayEquals(archive, original.readBytes())
+        assertArrayEquals(backupBytes, backup.readBytes())
+        assertFalse(File(ctx.noBackupFilesDir, "restore-claims").exists())
+        assertFalse(ctx.getDatabasePath("growurdhan-v9.sqlcipher").exists())
+    }
+
+    @Test fun competingVaultLifecycleOwnerCannotStageAnotherEncryptedArchive() {
+        val ctx = sandbox()
+        val (archive, _) = newSyntheticEncryptedBackup(
+            true, "racing@example.invalid", "synthetic-staging-lock")
+        val first = LockedRestoreStaging(ctx)
+        val second = LockedRestoreStaging(ctx)
+        VaultLifecycleLock.exclusively(ctx) {
+            assertThrows(IllegalStateException::class.java) {
+                second.stageEncryptedArchiveOnce(archive)
+            }
+            assertFalse(File(ctx.noBackupFilesDir,
+                "restore-pending.v1.kosha").exists())
+        }
+        val receipt = first.stageEncryptedArchiveOnce(archive)
+        assertEquals(archive.size, receipt.byteCount)
+        assertArrayEquals(archive, File(ctx.noBackupFilesDir,
+            "restore-pending.v1.kosha").readBytes())
+    }
+
+    @Test fun danglingSymlinkCannotBecomeAnAtomicRestoreStagingDestination() {
+        val ctx = sandbox()
+        val (archive, _) = newSyntheticEncryptedBackup(
+            true, "symlink@example.invalid", "synthetic-staging-password")
+        val staged = File(ctx.noBackupFilesDir, "restore-pending.v1.kosha")
+        val outside = File(ctx.noBackupFilesDir, "never-created-symlink-target")
+        Files.createSymbolicLink(staged.toPath(), outside.toPath())
+        assertThrows(IllegalStateException::class.java) {
+            LockedRestoreStaging(ctx).stageEncryptedArchiveOnce(archive)
+        }
+        assertTrue(Files.isSymbolicLink(staged.toPath()))
+        assertFalse(outside.exists())
+        assertFalse(File(ctx.noBackupFilesDir, "restore-claims").exists())
+        assertFalse(ctx.getDatabasePath("growurdhan-v9.sqlcipher").exists())
+    }
+
+    @Test fun malformedLegacyOuterUtf8IsRefusedBeforeQuarantine() {
+        val ctx = sandbox()
+        val prefix = "{\"magic\":\"KOSHA1\",\"cipherB64\":\"AAAAAAAAAAAAAAAA\",\"comment\":\""
+            .toByteArray(Charsets.UTF_8)
+        val outer = prefix + byteArrayOf(0xC3.toByte(), 0x28) +
+            "\"}".toByteArray(Charsets.UTF_8)
+        assertTrue(outer.size >= 56)
+        assertThrows(IllegalArgumentException::class.java) {
+            LockedRestoreStaging(ctx).stageEncryptedArchiveOnce(outer)
+        }
+        assertFalse(File(ctx.noBackupFilesDir, "restore-pending.v1.kosha").exists())
+        assertFalse(File(ctx.noBackupFilesDir, "restore-claims").exists())
+    }
+
     @Test fun orphanedAtomicBackupsCannotBeSilentlyReplacedByBlankVault() {
         for (name in listOf("restore-pending.v1.kosha.bak", "vault-key.v1.bak")) {
             val ctx = sandbox()

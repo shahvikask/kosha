@@ -6,6 +6,11 @@ import `in`.growurdhan.database.LegacyBackupEnvelopeReader
 import `in`.growurdhan.database.RestoreIdentityGate
 import `in`.growurdhan.database.RestoreV9Plan
 import java.io.ByteArrayOutputStream
+import java.nio.file.Files
+import java.nio.file.LinkOption
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
+import java.nio.charset.StandardCharsets
 import java.io.File
 import java.security.MessageDigest
 import org.json.JSONObject
@@ -18,10 +23,23 @@ import org.json.JSONObject
  * Final identity (PAN/DOB/answers), replay policy and verified atomic ledger
  * application are intentionally NOT exposed here; M24/M25 gates remain OPEN.
  */
-internal class LockedRestoreStaging(context: Context) {
+internal class LockedRestoreStaging(private val context: Context) {
     private val staged = AtomicFile(File(context.noBackupFilesDir, "restore-pending.v1.kosha"))
     private val magic = "GUDVLT01".toByteArray(Charsets.US_ASCII)
     private val maxBytes = 64 * 1024 * 1024
+
+    /**
+     * Legacy KOSHA1's outer JSON is not encrypted, but its cipherB64 still
+     * authenticates through GCM. Reject malformed UTF-8 BEFORE JSON parsing:
+     * a replacement character could alter envelope metadata or identifiers.
+     */
+    private fun legacyOuter(bytes: ByteArray): JSONObject {
+        val text = StandardCharsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+            .decode(ByteBuffer.wrap(bytes)).toString()
+        return JSONObject(text)
+    }
 
     private fun requireNoUnfinishedAtomicWrite() {
         // Android AtomicFile.openRead can delete a dangling .new file.
@@ -42,20 +60,27 @@ internal class LockedRestoreStaging(context: Context) {
     )
 
     @Synchronized
-    fun stageEncryptedArchiveOnce(envelope: ByteArray): QuarantineReceipt {
+    fun stageEncryptedArchiveOnce(envelope: ByteArray): QuarantineReceipt =
+        VaultLifecycleLock.exclusively(context) {
         require(envelope.size in 56..maxBytes) { "Unsupported or oversized encrypted archive" }
         val binary = envelope.copyOfRange(0, 8).contentEquals(magic)
         if (!binary) {
             // Unlocked JSON must never enter the restore quarantine.
-            val outer = try { JSONObject(String(envelope, Charsets.UTF_8)) }
+            val outer = try { legacyOuter(envelope) }
                 catch (_: Exception) { throw IllegalArgumentException("Unsupported backup envelope") }
             require(outer.optString("magic") == "KOSHA1" &&
                 outer.has("cipherB64")) { "Unencrypted or unknown backup refused" }
         }
-        check(!staged.baseFile.exists() &&
-            !File(staged.baseFile.path + ".bak").exists() &&
-            !File(staged.baseFile.path + ".new").exists()) {
-            "A restore is already staged; explicit review is required"
+        val base = staged.baseFile.toPath()
+        val dir = base.parent ?: error("Missing private restore directory")
+        check(Files.isDirectory(dir, LinkOption.NOFOLLOW_LINKS) &&
+            !Files.isSymbolicLink(dir)) { "Unsafe restore staging directory" }
+        check(!Files.exists(base, LinkOption.NOFOLLOW_LINKS) &&
+            !Files.exists(dir.resolve(staged.baseFile.name + ".bak"),
+                LinkOption.NOFOLLOW_LINKS) &&
+            !Files.exists(dir.resolve(staged.baseFile.name + ".new"),
+                LinkOption.NOFOLLOW_LINKS)) {
+            "An encrypted restore or unfinished AtomicFile is already staged"
         }
         val out = staged.startWrite()
         try {
@@ -65,7 +90,13 @@ internal class LockedRestoreStaging(context: Context) {
             staged.failWrite(out)
             throw failure
         }
-        return QuarantineReceipt(sha256(envelope), envelope.size)
+        // Verify the committed AtomicFile matches the exact bytes supplied,
+        // without invoking openRead()/implicit .bak repair. A mismatch leaves
+        // the protected artifact for explicit owner forensic review.
+        check(StableStagedArchiveReader.read(base).contentEquals(envelope)) {
+            "Staged encrypted archive differs from the approved input"
+        }
+        QuarantineReceipt(sha256(envelope), envelope.size)
     }
 
     /**
@@ -76,29 +107,15 @@ internal class LockedRestoreStaging(context: Context) {
     @Synchronized
     fun inspect(email: String, password: String): Inspection {
         requireNoUnfinishedAtomicWrite()
-        check(staged.baseFile.exists() ||
-            File(staged.baseFile.path + ".bak").exists()) { "No pending encrypted restore" }
-        // AtomicFile may recover a .bak file even if baseFile is short or
-        // absent. Limit the read itself rather than trusting baseFile.length().
-        requireNoUnfinishedAtomicWrite()
-        val bytes = staged.openRead().use { source ->
-            val out = ByteArrayOutputStream()
-            val buffer = ByteArray(8192)
-            var total = 0
-            while (true) {
-                val n = source.read(buffer)
-                if (n < 0) break
-                total += n
-                require(total <= maxBytes) { "Oversized staged restore" }
-                out.write(buffer, 0, n)
-            }
-            require(total >= 56) { "Truncated staged restore" }
-            out.toByteArray()
-        }
+        check(staged.baseFile.isFile) { "No canonical staged encrypted restore" }
+        // Read the original archive without AtomicFile.openRead(): that API
+        // can reconcile a .bak and change forensic evidence during inspection.
+        // A partial .new/.bak is never silently repaired or consumed.
+        val bytes = StableStagedArchiveReader.read(staged.baseFile.toPath())
         val plain = if (bytes.copyOfRange(0, 8).contentEquals(magic)) {
             LegacyBackupEnvelopeReader.decodeGUDVLT01(bytes, email, password)
         } else {
-            val outer = JSONObject(String(bytes, Charsets.UTF_8))
+            val outer = legacyOuter(bytes)
             val blob = LegacyBackupEnvelopeReader.Kosha1(
                 outer.getString("magic"),
                 legacyKdf(outer), legacyRounds(outer), outer.getString("saltB64"),
@@ -171,19 +188,7 @@ internal class LockedRestoreStaging(context: Context) {
     ): Inspection {
         val inspection = inspect(credentials.email, credentials.password)
         require(inspection.ownersConsistent) { "Restore ownership invalid" }
-        val bytes = staged.openRead().use { source ->
-            val out = ByteArrayOutputStream()
-            val buffer = ByteArray(8192)
-            var total = 0
-            while (true) {
-                val count = source.read(buffer)
-                if (count < 0) break
-                total += count
-                require(total <= maxBytes) { "Oversized staged restore" }
-                out.write(buffer, 0, count)
-            }
-            out.toByteArray()
-        }
+        val bytes = StableStagedArchiveReader.read(staged.baseFile.toPath())
         // Restore review must bind to the exact archive inspected earlier.
         // A second instance or filesystem actor could otherwise replace the
         // atomic file between inspect() and recovery credential verification.
@@ -195,7 +200,7 @@ internal class LockedRestoreStaging(context: Context) {
             LegacyBackupEnvelopeReader.decodeGUDVLT01(
                 bytes, credentials.email, credentials.password)
         } else {
-            val outer = JSONObject(String(bytes, Charsets.UTF_8))
+            val outer = legacyOuter(bytes)
             LegacyBackupEnvelopeReader.decodeKOSHA1(
                 LegacyBackupEnvelopeReader.Kosha1(
                     outer.getString("magic"),
@@ -237,25 +242,12 @@ internal class LockedRestoreStaging(context: Context) {
     ): RestoreV9Plan.Plan {
         val proof = inspectWithRecoveryProof(credentials)
         check(proof.ownersConsistent) { "Restore owner references are invalid" }
-        requireNoUnfinishedAtomicWrite()
-        val bytes = staged.openRead().use { input ->
-            val out = ByteArrayOutputStream()
-            val buffer = ByteArray(8192)
-            var total = 0
-            while (true) {
-                val count = input.read(buffer)
-                if (count < 0) break
-                total += count
-                require(total <= maxBytes) { "Oversized staged restore" }
-                out.write(buffer, 0, count)
-            }
-            out.toByteArray()
-        }
+        val bytes = StableStagedArchiveReader.read(staged.baseFile.toPath())
         require(sha256(bytes) == proof.sha256) { "Staged restore changed after identity proof" }
         val plain = if (bytes.size >= 8 && bytes.copyOfRange(0, 8).contentEquals(magic)) {
             LegacyBackupEnvelopeReader.decodeGUDVLT01(bytes, credentials.email, credentials.password)
         } else {
-            val outer = JSONObject(String(bytes, Charsets.UTF_8))
+            val outer = legacyOuter(bytes)
             LegacyBackupEnvelopeReader.decodeKOSHA1(
                 LegacyBackupEnvelopeReader.Kosha1(
                     outer.getString("magic"),
