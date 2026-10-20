@@ -1,4 +1,5 @@
 name: M25 Restore Targeted Compile
+# 2026-10-20: owner-authorized exact-SHA source validation cycle (no emulator).
 # Scoped compile and JVM: NativeAccountRepository.enrollVerified transaction.
 # Check synthetic strict restore-review archive and payload binding on exact source.
 # Recheck Compose test imports and restore callback at exact SHA.
