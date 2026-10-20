@@ -59,32 +59,12 @@ internal class NativeCasPdfEngine(private val context: Context) {
             val response = Python.getInstance().getModule("cas_android")
                 .callAttr("parse_b64", encoded, password, displayName).toString()
             val document = JSONObject(response)
-            require(document.optBoolean("ok", false)) {
-                // The renderer must not reveal exception traces, PDF contents or PAN.
-                "Frozen CAS parser rejected the PDF or password"
-            }
-            require(document.optBoolean("complete", false)) {
-                "CAS totals incomplete; manual reconciliation required"
-            }
-            require(BigDecimal(document.optString("delta", "999999")).abs() <
-                BigDecimal.ONE) { "Statement and parsed totals differ" }
-            val issuer = document.optString("fileType")
-            require(issuer in setOf("CAMS", "KFINTECH", "NSDL", "CDSL", "NPS")) {
-                "Unknown statement issuer"
-            }
-            val date = LocalDate.parse(document.getString("periodTo")).toString()
-            require(!LocalDate.parse(date).isAfter(LocalDate.now()))
-            val pan = document.optString("investorPan").trim()
-                .uppercase(java.util.Locale.ROOT)
-            require(pan.matches(Regex("[A-Z]{5}[0-9]{4}[A-Z]")) &&
-                pan == confirmed) {
-                "Parser-reported PAN does not match separately confirmed owner PAN"
-            }
-            require(document.optInt("skippedNilHoldings", 0) == 0) {
-                "CAS omitted nil/closed records; explicit history review required"
-            }
+            // Verify the REAL frozen sidecar's full response contract
+            // independently before interpreting any source holdings.
+            val verified = NativeCasOutputReviewGate.verify(document, confirmed)
+            val date = verified.date
+            val pan = verified.pan
             val rows = document.getJSONArray("holdings")
-            require(rows.length() in 1..10000) { "Empty or oversized CAS holdings" }
             val positions = (0 until rows.length()).map { index ->
                 val holding = rows.getJSONObject(index)
                 val isin = holding.optString("isin", "").trim()
@@ -105,7 +85,7 @@ internal class NativeCasPdfEngine(private val context: Context) {
                 "Ambiguous issuer position identity; manual mapping required"
             }
             return Parsed(NativeStatementCsv.Snapshot(sha, pdf.size, pan, date, positions),
-                issuer, positions.size, document.optJSONArray("warnings")?.length() ?: 0)
+                verified.issuer, positions.size, verified.warnings)
         } finally {
             // PDF/password are owned by the UI lifecycle, never written to disk here.
         }

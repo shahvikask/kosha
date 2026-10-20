@@ -3,6 +3,8 @@ package `in`.growurdhan.redevelopment
 import `in`.growurdhan.model.NativePortfolioMath
 import `in`.growurdhan.model.NativeStatementCsv
 import java.security.MessageDigest
+import java.nio.ByteBuffer
+import android.database.Cursor
 import java.time.Instant
 import java.util.UUID
 import net.zetetic.database.sqlcipher.SQLiteDatabase
@@ -25,7 +27,7 @@ internal class NativeStatementImportRepository(
         val sourceIsin: String, val sourceFolio: String,
         val quantityScaled: Long, val storedQuantityScaled: Long,
         val unitPriceMinor: Long, val currentValueMinor: Long?,
-        val action: Action
+        val action: Action, val stateFingerprint: String
     ) {
         val delta: Long get() = Math.subtractExact(quantityScaled, storedQuantityScaled)
     }
@@ -76,6 +78,53 @@ internal class NativeStatementImportRepository(
 
     private fun SQLiteDatabase.exists(sql: String, vararg args: String): Boolean =
         rawQuery(sql, args).use { it.moveToFirst() }
+
+    /**
+     * Bound the two-step owner approval to the COMPLETE SQLCipher financial
+     * state, not merely to net units. A fee/dividend, corrected cost basis,
+     * change in ledger provenance, holding metadata/price, or intervening
+     * statement changes the token even if the unit quantity stays identical.
+     * Never persist, log or return the underlying PAN or financial rows.
+     */
+    private fun fingerprintHoldingState(db: SQLiteDatabase, holdingId: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        fun bytes(value: ByteArray) {
+            digest.update(ByteBuffer.allocate(4).putInt(value.size).array())
+            digest.update(value)
+        }
+        fun rows(sql: String) {
+            bytes(sql.toByteArray(Charsets.UTF_8))
+            db.rawQuery(sql, arrayOf(holdingId)).use { cursor ->
+                bytes(ByteBuffer.allocate(4).putInt(cursor.columnCount).array())
+                while (cursor.moveToNext()) {
+                    digest.update(0x72.toByte())
+                    for (i in 0 until cursor.columnCount) {
+                        val type = cursor.getType(i)
+                        digest.update(type.toByte())
+                        when (type) {
+                            Cursor.FIELD_TYPE_NULL -> Unit
+                            Cursor.FIELD_TYPE_INTEGER -> bytes(
+                                ByteBuffer.allocate(8).putLong(cursor.getLong(i)).array())
+                            Cursor.FIELD_TYPE_STRING -> bytes(
+                                cursor.getString(i).toByteArray(Charsets.UTF_8))
+                            Cursor.FIELD_TYPE_BLOB -> bytes(cursor.getBlob(i))
+                            else -> error("Unexpected floating financial value in vault")
+                        }
+                    }
+                }
+            }
+        }
+        rows("SELECT h.*,i.* FROM holding h JOIN instrument i " +
+            "ON i.instrument_id=h.instrument_id WHERE h.holding_id=?")
+        rows("SELECT * FROM ledger_event WHERE holding_id=? " +
+            "ORDER BY trade_date,ledger_event_id")
+        rows("SELECT s.key,s.value FROM setting s JOIN ledger_event l " +
+            "ON s.key=('native.ledger.cost_source.' || l.ledger_event_id) " +
+            "WHERE l.holding_id=? ORDER BY s.key")
+        rows("SELECT * FROM statement_position WHERE holding_id=? " +
+            "ORDER BY statement_date,import_batch_id")
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
 
     private fun foldPosition(db: SQLiteDatabase, holdingId: String,
         ownerId: String, category: String,
@@ -190,7 +239,8 @@ internal class NativeStatementImportRepository(
             MatchedPosition(holding, owner, info[2], requireNotNull(info[3]),
                 requireNotNull(info[4]), category, source.isin, source.folio,
                 source.quantityScaled,
-                prior, source.unitPriceMinor, source.currentValueMinor, action)
+                prior, source.unitPriceMinor, source.currentValueMinor, action,
+                fingerprintHoldingState(db, holding))
         }
         require(rows.map { it.holdingId }.distinct().size == rows.size) {
             "One statement may not refer to a holding more than once"
@@ -201,7 +251,8 @@ internal class NativeStatementImportRepository(
                     it.instrumentId, it.category, it.sourceIsin, it.sourceFolio,
                     it.storedQuantityScaled.toString(), it.quantityScaled.toString(),
                     it.unitPriceMinor.toString(),
-                    it.currentValueMinor?.toString().orEmpty(), it.action.name)
+                    it.currentValueMinor?.toString().orEmpty(), it.action.name,
+                    it.stateFingerprint)
                     .joinToString(":")
             })
         return Review(snapshot.sha256, snapshot.date, rows, decision, false)

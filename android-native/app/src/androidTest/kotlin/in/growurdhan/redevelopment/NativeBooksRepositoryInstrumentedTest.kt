@@ -584,4 +584,51 @@ class NativeBooksRepositoryInstrumentedTest {
                 input.email, investing, "2025-01-01"))
     }
 
+    @Test fun unchangedQuantityButNewDividendInvalidatesReviewedImport() {
+        val (accounts, books) = create(sandbox())
+        val owner = books.read(input.email).people.single().id
+        val holding = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, null, "Synthetic dividend security", "EQUITY", "Other",
+            100_000_000L, 10_000L, "2024-01-01", true,
+            isin = "INE000000001"))
+        val bytes = csvSnapshot(qty = 150_000_000L)
+        val importer = NativeStatementImportRepository(accounts)
+        val initial = importer.inspect(input.email, bytes)
+        val expectedQuantity = books.read(input.email).holdings.single().quantityScaled
+        books.appendUserEvent(input.email, NativeBooksRepository.NewEvent(
+            holding, "DIVIDEND", "2025-02-01", 0L, 0L, 500L))
+        assertEquals(expectedQuantity, books.read(input.email).holdings.single().quantityScaled)
+        val after = importer.inspect(input.email, bytes)
+        assertNotEquals(initial.decisionSha256, after.decisionSha256)
+        assertThrows(IllegalArgumentException::class.java) {
+            importer.approve(input.email, "reviewed-before-dividend.csv",
+                bytes, initial, true)
+        }
+        assertEquals(0, books.read(input.email).imports.size)
+        assertEquals(2, books.history(input.email, holding).size)
+        val receipt = importer.approve(input.email, "reviewed-after-dividend.csv",
+            bytes, after, true)
+        assertEquals(1, receipt.adjustments)
+    }
+
+    @Test fun changedRecordedPriceWithoutUnitChangeInvalidatesStatementApproval() {
+        val (accounts, books) = create(sandbox())
+        val owner = books.read(input.email).people.single().id
+        val holding = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, null, "Synthetic price security", "EQUITY", "Other",
+            100_000_000L, 10_000L, "2024-01-01", true,
+            isin = "INE000000001"))
+        val importer = NativeStatementImportRepository(accounts)
+        val bytes = csvSnapshot(qty = 150_000_000L)
+        val reviewed = importer.inspect(input.email, bytes)
+        books.recordManualPrice(input.email, holding, 16_000L, "2025-04-01")
+        assertNotEquals(reviewed.decisionSha256,
+            importer.inspect(input.email, bytes).decisionSha256)
+        assertThrows(IllegalArgumentException::class.java) {
+            importer.approve(input.email, "old-review.csv", bytes, reviewed, true)
+        }
+        assertEquals(0, books.read(input.email).imports.size)
+        assertEquals("USER_OVERRIDE", books.read(input.email).holdings.single().priceSource)
+    }
+
 }
