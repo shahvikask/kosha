@@ -110,8 +110,7 @@ object NativePortfolioMath {
                 "SPLIT" -> {
                     val den = e.unitPriceMinor
                     if (qty <= 0L || den <= 0L) { errors += "Invalid split: ${e.id}"; continue }
-                    for (lot in lots) {
-                        lot.original = mulDiv(lot.original, qty, den)
+                    // A split without any surviving units has no underlying position\n                    // to split. Otherwise a forged/orphan corporate action can\n                    // silently pass a zero-balance restore and be displayed as valid.\n                    if (lots.none { it.quantity > 0L }) {\n                        errors += "Split without an open position: ${e.id}"\n                        continue\n                    }\n                    for (lot in lots) {\n                        lot.original = mulDiv(lot.original, qty, den)
                         lot.quantity = mulDiv(lot.quantity, qty, den)
                     }
                 }

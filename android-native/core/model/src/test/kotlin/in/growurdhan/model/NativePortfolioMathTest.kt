@@ -88,4 +88,25 @@ class NativePortfolioMathTest {
         assertEquals(19_999L, result.disposals.sumOf { it.gainMinor ?: 0L })
     }
 
+    @Test fun orphanSplitIsAnErrorEvenWhenFinalQuantityWouldBeZero() {
+        val onlySplit = NativePortfolioMath.fold(
+            listOf(event("orphan-split", "SPLIT", "2024-01-01", 2L, 1L)), "EQUITY")
+        assertEquals(0L, onlySplit.quantityScaled)
+        assertTrue(onlySplit.errors.any { it.contains("Split without an open position") })
+
+        val afterSale = NativePortfolioMath.fold(listOf(
+            event("buy", "BUY", "2024-01-01", 100_000_000L),
+            event("sell", "SELL", "2024-03-01", 100_000_000L),
+            event("orphan-split", "SPLIT", "2024-04-01", 2L, 1L)), "EQUITY")
+        assertTrue(afterSale.errors.any { it.contains("Split without an open position") })
+    }
+
+    @Test fun splitOfLivePositionRemainsValid() {
+        val result = NativePortfolioMath.fold(listOf(
+            event("buy", "BUY", "2024-01-01", 100_000_000L),
+            event("split", "SPLIT", "2024-02-01", 3L, 2L)), "EQUITY")
+        assertTrue(result.errors.isEmpty())
+        assertEquals(150_000_000L, result.quantityScaled)
+    }
+
 }

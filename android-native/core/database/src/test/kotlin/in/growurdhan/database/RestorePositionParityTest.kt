@@ -82,4 +82,20 @@ class RestorePositionParityTest {
         }
         RestorePositionParity.requireReconciled(snapshot("0"))
     }
+    @Test fun authenticatedOrphanSplitFailsEvenIfStoredZeroMatchesNativeZero() {
+        assertThrows(IllegalArgumentException::class.java) {
+            RestoreV9Plan.project(snapshot("0",
+                event("orphan-split", "SPLIT", "2", "2024-04-01", "1")))
+        }
+    }
+
+    @Test fun authenticatedSplitAfterCompleteSaleFailsWithoutInventingPosition() {
+        assertThrows(IllegalArgumentException::class.java) {
+            RestoreV9Plan.project(snapshot("0",
+                event("buy", "BUY", "100000000"),
+                event("sell", "SELL", "100000000", "2024-02-01"),
+                event("orphan-split", "SPLIT", "2", "2024-04-01", "1")))
+        }
+    }
+
 }
