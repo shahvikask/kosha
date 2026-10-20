@@ -3,6 +3,7 @@ package `in`.growurdhan.redevelopment
 import androidx.test.platform.app.InstrumentationRegistry
 import `in`.growurdhan.database.LegacyBackupEnvelopeWriter
 import android.net.Uri
+import java.io.ByteArrayInputStream
 import java.time.Instant
 import org.junit.Assert.*
 import org.junit.Test
@@ -37,6 +38,35 @@ class NativeSafBackupWriterInstrumentedTest {
         assertTrue(name.startsWith("GrowUrDhan-Native-20261020T102030Z-"))
         assertTrue(name.endsWith(".kosha"))
         assertFalse(name.contains("synthetic"))
+    }
+
+    @Test fun encryptedReadbackRejectsSameLengthCorruptionTruncationAndSuffix() {
+        val source = ByteArray(100_031) { ((it * 97 + 19) % 251).toByte() }
+        val target = writer()
+        target.verifyEncryptedReadback(ByteArrayInputStream(source.copyOf()), source)
+        val sameSizeTampered = source.copyOf().also {
+            it[it.size / 2] = (it[it.size / 2].toInt() xor 0x40).toByte()
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            target.verifyEncryptedReadback(ByteArrayInputStream(sameSizeTampered), source)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            target.verifyEncryptedReadback(ByteArrayInputStream(source.copyOfRange(
+                0, source.size - 1)), source)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            target.verifyEncryptedReadback(ByteArrayInputStream(source + 0x7f.toByte()), source)
+        }
+    }
+
+    @Test fun encryptedReadbackCannotMistakeProviderEmptyResponseForSuccess() {
+        val encrypted = LegacyBackupEnvelopeWriter.encryptAuthenticatedJson(
+            """{"kind":"GUDVAULT","version":2,"account":{"email":"synthetic@example.invalid"},"familyMembers":[],"holdings":[],"ledgerEvents":[]}""",
+            account, password)
+        assertThrows(IllegalArgumentException::class.java) {
+            writer().verifyEncryptedReadback(ByteArrayInputStream(byteArrayOf()), encrypted)
+        }
+        writer().verifyEncryptedReadback(ByteArrayInputStream(encrypted), encrypted)
     }
 
     @Test fun wrongPasswordAndUnapprovedOrUnpermittedDestinationFailBeforeAnyWrite() {

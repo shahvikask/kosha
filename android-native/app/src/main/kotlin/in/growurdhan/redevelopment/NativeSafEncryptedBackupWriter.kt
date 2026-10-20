@@ -6,6 +6,8 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import `in`.growurdhan.database.LegacyBackupEnvelopeReader
 import java.io.FileOutputStream
+import java.io.InputStream
+import java.security.MessageDigest
 import java.security.SecureRandom
 import java.time.Instant
 import java.time.ZoneOffset
@@ -83,6 +85,47 @@ internal class NativeSafEncryptedBackupWriter(private val context: Context) {
             if (cur.moveToFirst() && !cur.isNull(0)) cur.getLong(0) else -1L
         } ?: -1L
 
+    /**
+     * A SAF provider can misreport COLUMN_SIZE, acknowledge an unwritten fsync,
+     * or change data during rename. Require byte-for-byte SHA-256 equality
+     * while reading the stored encrypted object, bounded by source length.
+     * Reject providers without readback support. No plaintext is read from SAF.
+     */
+    internal fun verifyEncryptedReadback(source: InputStream, expected: ByteArray) {
+        require(expected.isNotEmpty() && expected.size <= 64 * 1024 * 1024)
+        val reference = MessageDigest.getInstance("SHA-256").digest(expected)
+        val actual = MessageDigest.getInstance("SHA-256")
+        var total = 0L
+        val buffer = ByteArray(8192)
+        source.use { input ->
+            while (true) {
+                val n = input.read(buffer)
+                if (n < 0) break
+                require(n > 0) { "Backup provider read stalled" }
+                total = Math.addExact(total, n.toLong())
+                require(total <= expected.size.toLong()) {
+                    "Encrypted backup provider returned additional bytes"
+                }
+                actual.update(buffer, 0, n)
+            }
+        }
+        require(total == expected.size.toLong() &&
+            MessageDigest.isEqual(reference, actual.digest())) {
+            "Encrypted SAF backup is different from authenticated source"
+        }
+    }
+
+    private fun verifyStoredArchive(resolver: ContentResolver, uri: Uri,
+        expected: ByteArray) {
+        require(exactSize(resolver, uri) == expected.size.toLong()) {
+            "Encrypted provider reported unexpected backup size"
+        }
+        val input = requireNotNull(resolver.openInputStream(uri)) {
+            "Provider refused encrypted backup verification read"
+        }
+        verifyEncryptedReadback(input, expected)
+    }
+
     private fun childEntries(tree: Uri): List<Entry> {
         val document = DocumentsContract.buildChildDocumentsUriUsingTree(
             tree, DocumentsContract.getTreeDocumentId(tree))
@@ -125,16 +168,12 @@ internal class NativeSafEncryptedBackupWriter(private val context: Context) {
                 out.fd.sync()
             }
         } ?: error("Cannot open encrypted backup destination")
-        require(exactSize(resolver, pending) == encryptedArchive.size.toLong()) {
-            "Encrypted pending backup length mismatch"
-        }
+        verifyStoredArchive(resolver, pending, encryptedArchive)
         val final = requireNotNull(
             DocumentsContract.renameDocument(resolver, pending, name)) {
             "Provider does not support verified backup rename"
         }
-        require(exactSize(resolver, final) == encryptedArchive.size.toLong()) {
-            "Final encrypted backup length mismatch"
-        }
+        verifyStoredArchive(resolver, final, encryptedArchive)
         var completed = true
         var retained = 0
         if (approvePruning) {
