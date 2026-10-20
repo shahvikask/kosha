@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import `in`.growurdhan.designsystem.GUDBrandLockup
 import `in`.growurdhan.model.NativeAssetTaxonomy
 import `in`.growurdhan.model.NativeInterestPayoutPlanner
+import `in`.growurdhan.model.NativeTaxLotTrace
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -138,6 +139,7 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                                 (if (m.isPrimary) " (Primary)" else "") +
                                 (m.maskedPan?.let { " • $it" } ?: ""))
                         }
+                        NativeEmergencyDossierCard(data)
                         PersonForm(active, busy) { form ->
                             persist { books.createPerson(email, form) }
                         }
@@ -294,6 +296,14 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                         Text("Original PDF bytes are not represented by these fingerprint records.")
                     }
                     "Settings" -> {
+                        NativeAmfiNavCard(email, books) {
+                            scope.launch {
+                                try { refresh() } catch (_: Exception) {
+                                    error = "Cannot refresh encrypted NAV display"
+                                }
+                            }
+                        }
+                        NativeGmailOptInCard(email, books, data.people)
                         NativePrivateDiagnosticsSettings(email, diagnostics)
                     }
                     "Records" -> {
@@ -306,6 +316,9 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                             })
                         Text("Statement adjustments cannot be created as manual buys or sells.",
                             style = MaterialTheme.typography.bodySmall)
+                        NativeTaxWorkpaperCard(email, books, data.holdings.filter {
+                            ownerFilter.isEmpty() || it.personId == ownerFilter
+                        })
                         NativeInterestPayoutForm(email, payouts, data.holdings.filter {
                             (it.category == "FIXED_INCOME" || it.category == "GOLD_SGB") &&
                                 (ownerFilter.isEmpty() || it.personId == ownerFilter)

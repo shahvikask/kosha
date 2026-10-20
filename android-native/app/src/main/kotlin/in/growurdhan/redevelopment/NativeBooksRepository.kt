@@ -4,6 +4,7 @@ import `in`.growurdhan.model.NativeAssetTaxonomy
 import `in`.growurdhan.model.NativePortfolioMath
 import `in`.growurdhan.model.NativeEmiPlanner
 import `in`.growurdhan.model.NativeMoneyWeightedReturn
+import `in`.growurdhan.model.NativeTaxLotTrace
 import java.math.BigDecimal
 import java.math.BigInteger
 import java.time.Instant
@@ -451,6 +452,21 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
                 }, info[0], priced, day)
         }
 
+    /** Review-only parcel facts; never a statutory tax estimate. */
+    fun taxWorkpaper(email: String, holdingId: String,
+        assessmentYear: String): NativeTaxLotTrace.Workpaper =
+        accounts.withUnlockedVault(email) { db ->
+            requireHoldingOwner(db, holdingId)
+            val category = db.rawQuery("SELECT i.category FROM holding h " +
+                "JOIN instrument i ON h.instrument_id=i.instrument_id " +
+                "WHERE h.holding_id=?", arrayOf(holdingId)).use { cur ->
+                require(cur.moveToFirst())
+                cur.getString(0)
+            }
+            NativeTaxLotTrace.trace(readRawEvents(db, holdingId), category,
+                assessmentYear)
+        }
+
     fun history(email: String, holdingId: String): List<EventRow> =
         accounts.withUnlockedVault(email) { db ->
             requireHoldingOwner(db, holdingId)
@@ -716,6 +732,27 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
         NativeDatedPriceRecorder.record(db, holdingId, instrument,
             day.toString(), priceMinor, "USER_OVERRIDE", now())
     }
+
+    /** Official AMFI NAV only; no automatic NSE/BSE prices or guessed ISINs. */
+    fun refreshAmfiNav(email: String): NativeAmfiNavRepository.Receipt =
+        NativeAmfiNavRepository(accounts).refresh(email)
+
+    /** Consent bookkeeping only. Google sign-in and Gmail API remain unconnected. */
+    fun setMemberGmailOptIn(email: String, personId: String,
+        approved: Boolean) =
+        NativeGmailSyncLedger(accounts).setMemberOptIn(email, personId, approved)
+
+    fun gmailConsentStates(email: String): Map<String, Boolean> =
+        accounts.withUnlockedVault(email) { db ->
+            val result = linkedMapOf<String, Boolean>()
+            db.rawQuery("SELECT entity_id,gmail_sync FROM entity " +
+                "WHERE is_active=1", null).use { cur ->
+                while (cur.moveToNext()) {
+                    result[cur.getString(0)] = cur.getInt(1) == 1
+                }
+            }
+            result
+        }
 
     companion object {
         /** Decimal input is converted once to exact scaled integers; never via Double. */

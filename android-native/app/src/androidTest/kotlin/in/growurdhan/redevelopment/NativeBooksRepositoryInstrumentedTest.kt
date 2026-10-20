@@ -794,4 +794,79 @@ class NativeBooksRepositoryInstrumentedTest {
         assertNull(books.moneyWeightedReturn(input.email, second, "2025-01-01"))
     }
 
+    @Test fun officialAmfiNavPersistsOnlyMatchingMutualFundAndRetainsManualOverride() {
+        val (accounts, books) = create(sandbox())
+        val owner = books.read(input.email).people.single().id
+        val fund = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, null, "Synthetic NAV holding", "MUTUAL_FUND", "Equity fund",
+            100_000_000L, 10_000L, "2024-01-01", true,
+            isin = "INF000000001"))
+        val feed = ("Scheme Code;ISIN Growth;ISIN Reinvestment;Scheme Name;" +
+            "Net Asset Value;Date\n" +
+            "101101;INF000000001;;Synthetic mutual fund;12.3456;19-Oct-2026\n")
+            .toByteArray(Charsets.UTF_8)
+        val parsed = NativeAmfiNavCatalog.parse(feed,
+            java.time.LocalDate.parse("2026-10-20"))
+        val receipt = NativeAmfiNavRepository(accounts)
+            .applyVerifiedCatalog(input.email, parsed)
+        assertEquals(1, receipt.matched)
+        assertEquals(1, receipt.displayedPriceChanged)
+        assertEquals("AMFI_OFFICIAL", books.read(input.email).holdings.single().priceSource)
+        assertEquals(123_456L, books.read(input.email).holdings.single().marketPriceMinor)
+        books.recordManualPrice(input.email, fund, 130_000L, "2026-10-19")
+        val second = NativeAmfiNavRepository(accounts)
+            .applyVerifiedCatalog(input.email, parsed)
+        assertEquals(0, second.displayedPriceChanged)
+        val saved = books.read(input.email).holdings.single()
+        assertEquals(130_000L, saved.marketPriceMinor)
+        assertEquals("USER_OVERRIDE", saved.priceSource)
+    }
+
+    @Test fun gmailJournalWaitsForOwnerApprovedCasAndNeverAdvancesMissingCursor() {
+        val (accounts, books) = create(sandbox())
+        val owner = books.read(input.email).people.single().id
+        books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, null, "Synthetic Gmail holding", "EQUITY", "Other",
+            100_000_000L, 10_000L, "2024-01-01", true,
+            isin = "INE000000001"))
+        val journal = NativeGmailSyncLedger(accounts)
+        val bytes = csvSnapshot()
+        val sha = java.security.MessageDigest.getInstance("SHA-256").digest(bytes)
+            .joinToString("") { "%02x".format(it) }
+        val message = NativeGmailSyncLedger.MessageKey(
+            "one@example.invalid", "message123", "attach456", sha)
+        assertThrows(IllegalArgumentException::class.java) {
+            journal.alreadySeen(input.email, owner, message)
+        }
+        journal.setMemberOptIn(input.email, owner, true)
+        assertFalse(journal.alreadySeen(input.email, owner, message))
+        assertThrows(IllegalArgumentException::class.java) {
+            journal.markReconciled(input.email, owner, message)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            journal.advanceCompleteCursor(input.email, owner,
+                "one@example.invalid", "1000", true, listOf(message))
+        }
+        assertNull(journal.currentCursor(input.email, owner, "one@example.invalid"))
+        val importer = NativeStatementImportRepository(accounts)
+        val review = importer.inspect(input.email, bytes)
+        importer.approve(input.email, "synthetic.csv", bytes, review, true)
+        assertTrue(journal.markReconciled(input.email, owner, message).added)
+        assertFalse(journal.markReconciled(input.email, owner, message).added)
+        journal.advanceCompleteCursor(input.email, owner,
+            "one@example.invalid", "1000", true, listOf(message))
+        assertEquals("1000", journal.currentCursor(
+            input.email, owner, "one@example.invalid"))
+        assertThrows(IllegalArgumentException::class.java) {
+            journal.advanceCompleteCursor(input.email, owner,
+                "one@example.invalid", "999", true, listOf(message))
+        }
+        assertFalse(journal.alreadySeen(input.email, owner, message.copy(
+            gmailAddress = "two@example.invalid")))
+        journal.setMemberOptIn(input.email, owner, false)
+        assertThrows(IllegalArgumentException::class.java) {
+            journal.currentCursor(input.email, owner, "one@example.invalid")
+        }
+    }
+
 }
