@@ -655,6 +655,56 @@ class EncryptedVaultStoreInstrumentedTest {
         }
     }
 
+    @Test fun previewAndRecoveryProofRejectAmbiguousAuthenticatedAccountBeforeClaim() {
+        for (modern in listOf(true, false)) {
+            val ctx = sandbox()
+            val (archive, credentials) = newSyntheticEncryptedBackup(
+                modern, "preview@example.invalid", "Synthetic!2026",
+                mutateAuthenticatedText = { raw ->
+                    // A validly GCM-signed archive can contain two account keys;
+                    // preview must not show one value while plan rejects another.
+                    require(raw.endsWith("}"))
+                    raw.dropLast(1) + ",\"account\":{\"email\":\"intruder@example.invalid\"}}"
+                })
+            LockedRestoreStaging(ctx).stageEncryptedArchiveOnce(archive)
+            val staged = File(ctx.noBackupFilesDir, "restore-pending.v1.kosha")
+            val original = staged.readBytes()
+            assertThrows(IllegalArgumentException::class.java) {
+                LockedRestoreStaging(ctx).inspect(credentials.email, credentials.password)
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                LockedRestoreStaging(ctx).inspectWithRecoveryProof(credentials)
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                LockedRestoreStaging(ctx).previewAuthenticatedV9(credentials)
+            }
+            assertArrayEquals(original, staged.readBytes())
+            assertFalse(File(ctx.noBackupFilesDir, "restore-claims").exists())
+            assertFalse(ctx.getDatabasePath("growurdhan-v9.sqlcipher").exists())
+        }
+    }
+
+    @Test fun kosha1OuterDuplicateCipherOrKdfRejectedBeforeStaging() {
+        val (realLegacy, _) = newSyntheticEncryptedBackup(
+            false, "outer@example.invalid", "Synthetic!2026")
+        val wire = String(realLegacy, Charsets.UTF_8)
+        require(wire.endsWith("}"))
+        for (duplicate in listOf(
+            ",\"cipherB64\":\"AAAA\"}",
+            ",\"\\u006bdf\":\"PBKDF2-SHA1\"}",
+            ",\"iterations\":100000}"
+        )) {
+            val ctx = sandbox()
+            val ambiguous = (wire.dropLast(1) + duplicate)
+                .toByteArray(Charsets.UTF_8)
+            assertThrows(IllegalArgumentException::class.java) {
+                LockedRestoreStaging(ctx).stageEncryptedArchiveOnce(ambiguous)
+            }
+            assertFalse(File(ctx.noBackupFilesDir, "restore-pending.v1.kosha").exists())
+            assertFalse(File(ctx.noBackupFilesDir, "restore-claims").exists())
+        }
+    }
+
     @Test fun duplicateAuthenticatedFinancialKeysRejectBothLegacyEnvelopeTypesBeforeClaim() {
         // The synthetic payload has a VALID GCM tag and exactly the original
         // email/password credentials. A lenient JSON parser would keep only

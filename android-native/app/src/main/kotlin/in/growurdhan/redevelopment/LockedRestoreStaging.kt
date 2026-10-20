@@ -38,7 +38,21 @@ internal class LockedRestoreStaging(private val context: Context) {
             .onMalformedInput(CodingErrorAction.REPORT)
             .onUnmappableCharacter(CodingErrorAction.REPORT)
             .decode(ByteBuffer.wrap(bytes)).toString()
+        // Unlike org.json, reject duplicate envelope keys (including
+        // equivalent Unicode escapes) and non-JSON syntax BEFORE staging.
+        // Otherwise a verifier might inspect different KDF/cipher parameters
+        // from those subsequently used for authentication.
+        AuthenticatedJsonStructure.requireUnambiguous(text)
         return JSONObject(text)
+    }
+
+    private fun authenticatedBody(plaintext: String): JSONObject {
+        // The preview, recovery proof, and final SQLCipher plan must ALL see
+        // the same unambiguous GCM-authenticated object. Do not show or accept
+        // any owner/financial facts through Android's lenient JSONObject
+        // parser before strict lexical admission succeeds.
+        AuthenticatedJsonStructure.requireUnambiguous(plaintext)
+        return JSONObject(plaintext)
     }
 
     private fun requireNoUnfinishedAtomicWrite() {
@@ -128,7 +142,7 @@ internal class LockedRestoreStaging(private val context: Context) {
             )
             LegacyBackupEnvelopeReader.decodeKOSHA1(blob, password)
         }
-        val body = JSONObject(plain)
+        val body = authenticatedBody(plain)
         // The frozen v2 exporter writes kind=GUDVAULT. The older KOSHA1
         // decryptor accepts an account without a kind field and supplies kind
         // itself during unpackLegacyJson; rejecting all kind-less blobs here
@@ -213,7 +227,7 @@ internal class LockedRestoreStaging(private val context: Context) {
                     outer.getString("ivB64"), outer.getString("cipherB64")
                 ), credentials.password)
         }
-        val account = JSONObject(plain).getJSONObject("account")
+        val account = authenticatedBody(plain).getJSONObject("account")
         RestoreIdentityGate.verifyForNewDevice(
             RestoreIdentityGate.Account(
                 account.getString("email"),
