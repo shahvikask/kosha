@@ -1171,4 +1171,21 @@ class EncryptedVaultStoreInstrumentedTest {
     }
 
 
+    @Test fun migrationWitnessRejectsHistoricRowidRekeyEvenWithIdenticalCellValues() {
+        val ctx = sandbox()
+        EncryptedVaultStore(ctx).createFresh(false).use { db ->
+            db.execSQL("INSERT INTO setting(key,value) VALUES('witness-stable','opaque')")
+            val witness = HistoricalMigrationWitness.capture(db)
+            // The content is byte-identical, but the original physical row
+            // was removed and replaced with a different row identity.
+            val before = scalar(db, "SELECT rowid FROM setting WHERE key='witness-stable'")
+            db.execSQL("DELETE FROM setting WHERE key='witness-stable'")
+            db.execSQL("INSERT INTO setting(rowid,key,value) VALUES(?,?,?)",
+                arrayOf<Any>(before + 50L, "witness-stable", "opaque"))
+            assertThrows(IllegalArgumentException::class.java) {
+                witness.verifyUnmodified(db)
+            }
+        }
+    }
+
 }

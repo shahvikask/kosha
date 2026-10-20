@@ -18,6 +18,7 @@ internal class HistoricalMigrationWitness private constructor(
     private data class TableWitness(
         val name: String,
         val existingColumns: List<String>,
+        val originalColumnDeclarations: List<String>,
         val rows: Long,
         val hash: ByteArray
     )
@@ -40,7 +41,7 @@ internal class HistoricalMigrationWitness private constructor(
             var count = 0L
             // Rowid-stable scan: the frozen migration scripts do not rebuild
             // tables, VACUUM, or rewrite historic records.
-            val select = "SELECT " + fields.joinToString(",") { sqlName(it) } +
+            val select = "SELECT rowid," + fields.joinToString(",") { sqlName(it) } +
                 " FROM " + sqlName(table) +
                 (if (table == "vault_meta") " WHERE key <> 'schema_version'" else "") +
                 " ORDER BY rowid"
@@ -48,16 +49,20 @@ internal class HistoricalMigrationWitness private constructor(
                 while (cur.moveToNext()) {
                     count = Math.addExact(count, 1L)
                     digest.update(0x52.toByte()) // row boundary
+                    // Preserve the actual original row identity as well as
+                    // ordered values. Identical rows must not mask a rebuild.
+                    feed(digest, ByteBuffer.allocate(8).putLong(cur.getLong(0)).array())
                     for (i in fields.indices) {
-                        val type = cur.getType(i)
+                        val index = i + 1
+                        val type = cur.getType(index)
                         digest.update(type.toByte())
                         when (type) {
                             0 -> Unit // NULL
                             1 -> feed(digest, ByteBuffer.allocate(8)
-                                .putLong(cur.getLong(i)).array()) // INTEGER
-                            3 -> feed(digest, cur.getString(i)
+                                .putLong(cur.getLong(index)).array()) // INTEGER
+                            3 -> feed(digest, cur.getString(index)
                                 .toByteArray(Charsets.UTF_8)) // TEXT
-                            4 -> feed(digest, cur.getBlob(i)) // BLOB
+                            4 -> feed(digest, cur.getBlob(index)) // BLOB
                             else -> error("Unexpected floating-point/unknown legacy value type")
                         }
                     }
@@ -75,12 +80,19 @@ internal class HistoricalMigrationWitness private constructor(
             for (table in tables) {
                 sqlName(table)
                 val cols = mutableListOf<String>()
+                val declarations = mutableListOf<String>()
                 db.rawQuery("PRAGMA table_info(" + sqlName(table) + ")", null).use { cur ->
-                    while (cur.moveToNext()) cols += cur.getString(1)
+                    while (cur.moveToNext()) {
+                        cols += cur.getString(1)
+                        declarations += listOf(cur.getString(1),
+                            cur.getString(2), cur.getInt(3).toString(),
+                            if (cur.isNull(4)) "<NULL>" else cur.getString(4),
+                            cur.getInt(5).toString()).joinToString("\\u0000")
+                    }
                 }
                 require(cols.isNotEmpty()) { "Historic table has no columns" }
                 val (rows, digest) = measure(db, table, cols)
-                originals += TableWitness(table, cols, rows, digest)
+                originals += TableWitness(table, cols, declarations, rows, digest)
             }
             return HistoricalMigrationWitness(originals)
         }
@@ -89,10 +101,22 @@ internal class HistoricalMigrationWitness private constructor(
     fun verifyUnmodified(db: SQLiteDatabase) {
         for (old in originals) {
             val currentCols = mutableListOf<String>()
+            val currentDeclarations = mutableListOf<String>()
             db.rawQuery("PRAGMA table_info(" + sqlName(old.name) + ")", null).use { cur ->
-                while (cur.moveToNext()) currentCols += cur.getString(1)
+                while (cur.moveToNext()) {
+                    currentCols += cur.getString(1)
+                    currentDeclarations += listOf(cur.getString(1),
+                        cur.getString(2), cur.getInt(3).toString(),
+                        if (cur.isNull(4)) "<NULL>" else cur.getString(4),
+                        cur.getInt(5).toString()).joinToString("\\u0000")
+                }
             }
-            require(currentCols.containsAll(old.existingColumns)) {
+            require(currentCols.containsAll(old.existingColumns) &&
+                old.existingColumns.indices.all { index ->
+                    val currentIndex = currentCols.indexOf(old.existingColumns[index])
+                    currentIndex >= 0 &&
+                        currentDeclarations[currentIndex] == old.originalColumnDeclarations[index]
+                }) {
                 "Historic table/column disappeared during migration: ${old.name}"
             }
             val (currentRows, currentHash) = measure(db, old.name, old.existingColumns)
