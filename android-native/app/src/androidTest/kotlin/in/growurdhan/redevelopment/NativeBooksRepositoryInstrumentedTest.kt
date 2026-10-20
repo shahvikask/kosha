@@ -772,4 +772,26 @@ class NativeBooksRepositoryInstrumentedTest {
         }
     }
 
+    @Test fun sharedInstrumentCannotLeakAnotherHoldingsManualPriceIntoXirr() {
+        val (accounts, books) = create(sandbox())
+        val owner = books.read(input.email).people.single().id
+        val first = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, null, "First synthetic custody", "EQUITY", "Other",
+            0L, 10_000L, "2024-01-01", true))
+        val second = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, null, "Second synthetic custody", "EQUITY", "Other",
+            0L, 10_000L, "2024-01-01", true))
+        // Historical/merged native files may deliberately reuse an instrument
+        // across two owner-specific custody holdings.
+        accounts.withUnlockedVault(input.email) { db ->
+            db.execSQL("UPDATE holding SET instrument_id=" +
+                "(SELECT instrument_id FROM holding WHERE holding_id=?) " +
+                "WHERE holding_id=?", arrayOf<Any>(first, second))
+        }
+        books.appendUserEvent(input.email, NativeBooksRepository.NewEvent(
+            second, "BUY", "2024-01-01", 100_000_000L, 10_000L, 10_000L))
+        books.recordManualPrice(input.email, first, 20_000L, "2025-01-01")
+        assertNull(books.moneyWeightedReturn(input.email, second, "2025-01-01"))
+    }
+
 }

@@ -418,6 +418,16 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
                     if (cur.isNull(4)) "" else cur.getString(4))
             }
             if (info[3] == "1") return@withUnlockedVault null
+            // price_observation is keyed by instrument, not holding. Shared
+            // instruments can have differing manual member-specific prices.
+            // Do not borrow another holding's NAV for this owner's XIRR.
+            val ambiguousPriceScope = db.rawQuery(
+                "SELECT COUNT(*) FROM holding WHERE instrument_id=?",
+                arrayOf(info[1])).use { cur ->
+                require(cur.moveToFirst())
+                cur.getLong(0) != 1L
+            }
+            if (ambiguousPriceScope) return@withUnlockedVault null
             val observed = db.rawQuery(
                 "SELECT price_minor FROM price_observation " +
                     "WHERE instrument_id=? AND price_date<=? " +
