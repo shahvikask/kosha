@@ -16,7 +16,7 @@ object NativeRegistrationProof {
             "Registration identity invalid"
         }
         val birth = runCatching { LocalDate.parse(identity.dob) }.getOrNull()
-        require(birth != null && !birth.isAfter(LocalDate.now())) {
+        require(birth != null && !birth.isAfter(LocalDate.now().minusYears(18))) {
             "Registration identity invalid"
         }
         require(consent.scrolledToEnd && consent.version == TERMS_VERSION &&

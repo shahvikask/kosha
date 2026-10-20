@@ -14,6 +14,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import `in`.growurdhan.designsystem.GudTheme
 import `in`.growurdhan.model.NativeCredentials
+import `in`.growurdhan.model.NativeRegistrationProof
 import `in`.growurdhan.model.NativeDeviceAdmission
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -23,6 +24,9 @@ import kotlinx.coroutines.withContext
  */
 class MainActivity : ComponentActivity() {
     private lateinit var accounts: NativeAccountRepository
+    private lateinit var books: NativeBooksRepository
+    private var booksOpen by mutableStateOf(false)
+    private var activeEmail by mutableStateOf("")
     private var deviceVerified by mutableStateOf(false)
     private var unlocked by mutableStateOf(false)
     private var deviceMessage by mutableStateOf("")
@@ -53,6 +57,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         accounts = NativeAccountRepository(applicationContext, admission)
+        books = NativeBooksRepository(accounts)
         enableEdgeToEdge()
         setContent {
             GudTheme {
@@ -86,16 +91,20 @@ class MainActivity : ComponentActivity() {
                         },
                         onBack = { restoreActive = false; restoreStaged = false; lockCompletely() }
                     )
+                } else if (booksOpen && unlocked && deviceVerified) {
+                    NativeBooksScreen(email = activeEmail, books = books,
+                        onLock = { lockCompletely() },
+                        onReplaceRecovery = { booksOpen = false })
                 } else NativeAuthenticationScreen(
                     deviceVerified = deviceVerified,
                     unlocked = unlocked,
                     deviceMessage = deviceMessage,
                     onDeviceChallenge = { requestDeviceChallenge() },
-                    onEnroll = { input ->
+                    onEnroll = { input, identity, consent ->
                         if (!deviceVerified || !admission.valid()) null else {
                             val atStart = lifecycleEpoch
                             val code = withContext(Dispatchers.IO) {
-                                runCatching { accounts.enroll(input) }.getOrNull()
+                                runCatching { accounts.enrollVerified(input, identity, consent) }.getOrNull()
                             }
                             unlocked = false
                             if (atStart == lifecycleEpoch && deviceVerified) code else null
@@ -113,6 +122,8 @@ class MainActivity : ComponentActivity() {
                                 NativeAccountRepository.SignInResult.DENIED
                             } else {
                                 unlocked = result == NativeAccountRepository.SignInResult.UNLOCKED
+                                activeEmail = if (unlocked) email.trim().lowercase(java.util.Locale.ROOT) else ""
+                                booksOpen = false
                                 result
                             }
                         }
@@ -155,6 +166,8 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                     onLock = { lockCompletely() },
+                    onOpenBooks = { if (unlocked && admission.valid() && activeEmail.isNotEmpty()) booksOpen = true },
+                    onDeclineTerms = { lockCompletely(); finish() },
                     onStartRestore = {
                         if (deviceVerified && admission.valid() && !unlocked) {
                             restoreActive = true
@@ -193,6 +206,8 @@ class MainActivity : ComponentActivity() {
                                preserveStagedArchive: Boolean = false) {
         if (::accounts.isInitialized) accounts.lock()
         unlocked = false
+        booksOpen = false
+        activeEmail = ""
         deviceVerified = false
         restoreActive = false
         if (!preserveStagedArchive && !restorePickerPending) restoreStaged = false

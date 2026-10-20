@@ -1,5 +1,6 @@
 package `in`.growurdhan.model
 
+import java.time.LocalDate
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
@@ -19,7 +20,7 @@ class NativeRegistrationProofTest {
                 NativeRegistrationProof.requireValid(identity.copy(fullPan = wrong), approved)
             }
         }
-        for (dob in listOf("", "invalid", "3000-01-01")) {
+        for (dob in listOf("", "invalid", "3000-01-01", LocalDate.now().minusYears(17).toString())) {
             assertThrows(IllegalArgumentException::class.java) {
                 NativeRegistrationProof.requireValid(identity.copy(dob = dob), approved)
             }

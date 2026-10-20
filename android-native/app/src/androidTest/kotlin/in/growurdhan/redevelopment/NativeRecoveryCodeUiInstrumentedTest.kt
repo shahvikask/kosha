@@ -28,12 +28,14 @@ class NativeRecoveryCodeUiInstrumentedTest {
                     unlocked = unlocked,
                     deviceMessage = "",
                     onDeviceChallenge = { admitted = true },
-                    onEnroll = { null },
+                    onEnroll = { _, _, _ -> null },
                     onLogin = { _, _ -> NativeAccountRepository.SignInResult.DENIED },
                     onRotation = { _, _, _ -> false },
                     onRecover = { _, _, _, _, _, _, _ -> false },
                     onReplaceRecoveryCode = { "GUD-SYNTHETIC-TEST-ONLY" },
                     onLock = { locked = true; admitted = false; unlocked = false },
+                    onOpenBooks = {},
+                    onDeclineTerms = {},
                     onStartRestore = {}
                 )
             }

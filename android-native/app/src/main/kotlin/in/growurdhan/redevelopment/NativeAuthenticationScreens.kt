@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import `in`.growurdhan.designsystem.GUDBrandLockup
 import `in`.growurdhan.designsystem.GUDLockedBanner
 import `in`.growurdhan.model.NativeCredentials
+import `in`.growurdhan.model.NativeRegistrationProof
 import kotlinx.coroutines.launch
 
 /** Never rememberSaveable secrets: Android saved-instance-state cannot contain passwords. */
@@ -41,18 +42,23 @@ internal fun NativeAuthenticationScreen(
     unlocked: Boolean,
     deviceMessage: String,
     onDeviceChallenge: () -> Unit,
-    onEnroll: suspend (NativeCredentials.Enrollment) -> String?,
+    onEnroll: suspend (NativeCredentials.Enrollment, NativeRegistrationProof.Identity, NativeRegistrationProof.Consent) -> String?,
     onLogin: suspend (String, String) -> NativeAccountRepository.SignInResult,
     onRotation: suspend (String, String, String) -> Boolean,
     onRecover: suspend (String, String, String, String, String, String, String) -> Boolean,
     onReplaceRecoveryCode: suspend (String) -> String?,
     onLock: () -> Unit,
+    onOpenBooks: () -> Unit,
+    onDeclineTerms: () -> Unit,
     onStartRestore: () -> Unit
 ) {
     var mode by remember { mutableStateOf("login") }
     var email by remember { mutableStateOf("") }
     var first by remember { mutableStateOf("") }
     var last by remember { mutableStateOf("") }
+    var pan by remember { mutableStateOf("") }
+    var dob by remember { mutableStateOf("") }
+    var acceptedAt by remember { mutableStateOf<String?>(null) }
     var password by remember { mutableStateOf("") }
     var replacement by remember { mutableStateOf("") }
     var recoveryCodeInput by remember { mutableStateOf("") }
@@ -97,7 +103,8 @@ internal fun NativeAuthenticationScreen(
                     onLock()
                 }) { Text("I have saved the recovery code") }
             } else if (unlocked) {
-                Text("Authentication completed. Portfolio screens are not enabled in this M25 increment.")
+                Text("Account verified. Financial books remain on this device.")
+                Button(onClick = onOpenBooks, enabled = !busy) { Text("Open private family books") }
                 Button(enabled = !busy, onClick = {
                     busy = true
                     scope.launch {
@@ -130,6 +137,10 @@ internal fun NativeAuthenticationScreen(
                         singleLine = true, modifier = Modifier.fillMaxWidth(), enabled = !busy)
                     OutlinedTextField(last, { last = it }, label = { Text("Last name") },
                         singleLine = true, modifier = Modifier.fillMaxWidth(), enabled = !busy)
+                    OutlinedTextField(pan, { pan = it }, label = { Text("PAN (stored encrypted)") },
+                        singleLine = true, modifier = Modifier.fillMaxWidth(), enabled = !busy)
+                    OutlinedTextField(dob, { dob = it }, label = { Text("Date of birth (YYYY-MM-DD)") },
+                        singleLine = true, modifier = Modifier.fillMaxWidth(), enabled = !busy)
                 }
                 if (mode != "recovery") {
                     OutlinedTextField(password, { password = it },
@@ -161,6 +172,14 @@ internal fun NativeAuthenticationScreen(
                         visualTransformation = PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth(), enabled = !busy)
                 }
+                if (mode == "register") {
+                    NativeTermsGate(acceptedAt, !busy,
+                        onAccept = { acceptedAt = it },
+                        onDecline = {
+                            acceptedAt = null
+                            onDeclineTerms()
+                        })
+                }
                 if (message.isNotBlank()) {
                     Text(message, color = MaterialTheme.colorScheme.error)
                 }
@@ -182,10 +201,17 @@ internal fun NativeAuthenticationScreen(
                         try {
                             when (mode) {
                                 "register" -> {
-                                    val code = onEnroll(input)
+                                    val consentTime = acceptedAt
+                                    val code = if (consentTime == null) null else onEnroll(
+                                        input,
+                                        NativeRegistrationProof.Identity(pan, dob),
+                                        NativeRegistrationProof.Consent(
+                                            NativeFrozenTerms.VERSION, NativeFrozenTerms.TEXT_ID,
+                                            consentTime, scrolledToEnd = true))
                                     message = if (code != null) "Account created. Save the recovery code before leaving."
-                                        else "Registration was interrupted or denied. A vault may already exist: verify this device, sign in with your password, then replace the recovery code. Existing vaults are never overwritten."
+                                        else "Registration denied or current Terms not accepted. If a vault already exists, sign in and replace the offline recovery code. Existing books are preserved."
                                     if (code != null) {
+                                        pan = ""; dob = ""; acceptedAt = null
                                         oneTimeRecoveryCode = code
                                         mode = "login"
                                     }
@@ -234,7 +260,7 @@ internal fun NativeAuthenticationScreen(
                 }
                 TextButton(enabled = !busy, onClick = {
                     mode = if (mode == "register") "login" else "register"
-                    password = ""; replacement = ""; answer1 = ""; answer2 = ""; message = ""
+                    password = ""; replacement = ""; answer1 = ""; answer2 = ""; acceptedAt = null; message = ""
                 }) {
                     Text(if (mode == "register") "Already registered? Sign in"
                          else "New account? Register")
