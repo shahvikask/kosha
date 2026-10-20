@@ -1281,4 +1281,73 @@ class EncryptedVaultStoreInstrumentedTest {
         }
     }
 
+    @Test fun historicalMigrationPreservesPreexistingViewsTriggersAndIndexes() {
+        val ctx = sandbox()
+        val store = EncryptedVaultStore(ctx)
+        store.createFresh(false).use { db ->
+            db.execSQL("CREATE VIEW owner_saved_view AS " +
+                "SELECT key,value FROM setting WHERE key LIKE 'legacy.%'")
+            db.execSQL("CREATE INDEX ix_owner_saved_setting_value ON setting(value)")
+            db.execSQL("CREATE TRIGGER tg_owner_saved_setting BEFORE INSERT ON setting " +
+                "WHEN NEW.key='legacy.blocked' BEGIN " +
+                "SELECT RAISE(ABORT,'historical rule'); END")
+            db.execSQL("INSERT INTO setting(key,value) VALUES('legacy.untouched','original')")
+            db.execSQL("PRAGMA user_version=8")
+            db.execSQL("UPDATE vault_meta SET value='8' WHERE key='schema_version'")
+        }
+        store.openExisting().use { db ->
+            assertEquals(9L, scalar(db, "PRAGMA user_version"))
+            for ((kind, name) in listOf(
+                "view" to "owner_saved_view",
+                "index" to "ix_owner_saved_setting_value",
+                "trigger" to "tg_owner_saved_setting"
+            )) {
+                db.rawQuery("SELECT sql FROM sqlite_master WHERE type=? AND name=?",
+                    arrayOf(kind, name)).use { cursor ->
+                    assertTrue("Original schema definition disappeared", cursor.moveToFirst())
+                    assertFalse(cursor.getString(0).isNullOrBlank())
+                }
+            }
+            assertEquals(1L, scalar(db,
+                "SELECT count(*) FROM owner_saved_view WHERE value='original'"))
+            assertThrows(Exception::class.java) {
+                db.execSQL("INSERT INTO setting(key,value) " +
+                    "VALUES('legacy.blocked','should be refused')")
+            }
+        }
+    }
+
+    @Test fun migrationWitnessRejectsDroppedOriginalIndexEvenWhenAllRowsMatch() {
+        EncryptedVaultStore(sandbox()).createFresh(false).use { db ->
+            val witness = HistoricalMigrationWitness.capture(db)
+            db.execSQL("ALTER TABLE entity ADD COLUMN approved_extension TEXT")
+            db.execSQL("CREATE INDEX ix_new_after_witness ON setting(value)")
+            // An additive field or newly created index is allowed.
+            witness.verifyUnmodified(db)
+            db.execSQL("DROP INDEX ix_holding__entity")
+            assertThrows(IllegalArgumentException::class.java) {
+                witness.verifyUnmodified(db)
+            }
+        }
+    }
+
+    @Test fun migrationWitnessRejectsChangedOriginalTriggerAndViewDefinitions() {
+        EncryptedVaultStore(sandbox()).createFresh(false).use { db ->
+            db.execSQL("CREATE VIEW legacy_readonly_projection AS SELECT key,value FROM setting")
+            val witness = HistoricalMigrationWitness.capture(db)
+            db.execSQL("DROP VIEW legacy_readonly_projection")
+            db.execSQL("CREATE VIEW legacy_readonly_projection AS SELECT key FROM setting")
+            assertThrows(IllegalArgumentException::class.java) {
+                witness.verifyUnmodified(db)
+            }
+        }
+        EncryptedVaultStore(sandbox()).createFresh(false).use { db ->
+            val witness = HistoricalMigrationWitness.capture(db)
+            db.execSQL("DROP TRIGGER tg_ledger_event__no_delete")
+            assertThrows(IllegalArgumentException::class.java) {
+                witness.verifyUnmodified(db)
+            }
+        }
+    }
+
 }

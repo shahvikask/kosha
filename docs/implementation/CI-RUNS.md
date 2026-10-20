@@ -665,3 +665,7 @@ Starting SHA `50e85ad3a04e930d4daca19cc0c05f2789bf25db`; authored P03/P04/P05 cr
 
 ## 2026-10-20 — Historical quantity/FIFO parity source batch, NO CI
 Parent `d9aca28b551952badea3a751a1c1563e22676dcf`. Source-only: RestorePositionParity, shared native FIFO model dependency, authenticated restore plan validation, authored JVM/Android negative tests. **No GitHub Actions workflow, Gradle, build, JVM test, emulator, instrumentation or regression run authorized or executed.** No current SHA CI verdict or JUnit artifacts. Historic combined run #39345963722 FAIL on `357c46bac1325f33c12e1e066f6723e15d43327a`. P01–P34 remains NOT ACCEPTED.
+
+
+## 2026-10-20 — P04 schema-object migration preservation, SOURCE ONLY
+Starting `1ad11ecf70c588ea20fb42c32fc92f214f32ac8d`. Added historical SQLCipher witness for original indexes, views, triggers, implicit indexes and foreign-key contracts, plus synthetic Android positive/negative instrumentation sources. No compiler, Gradle, tests, emulator, regression, device or GitHub Actions execution under owner's explicit prohibition. `[skip ci]` commit intended. Prior workflow #39345963722 FAILED on old SHA `357c46bac1325f33c12e1e066f6723e15d43327a`; no current-SHA validation. P01–P34 NOT SOURCE COMPLETE / NOT ACCEPTED.

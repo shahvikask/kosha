@@ -13,14 +13,22 @@ import net.zetetic.database.sqlcipher.SQLiteDatabase
  * Never logs data, creates an unencrypted shadow, or silently repairs a mismatch.
  */
 internal class HistoricalMigrationWitness private constructor(
-    private val originals: List<TableWitness>
+    private val originals: List<TableWitness>,
+    private val originalObjects: List<SchemaObject>
 ) {
     private data class TableWitness(
         val name: String,
         val existingColumns: List<String>,
         val originalColumnDeclarations: List<String>,
+        val foreignKeys: List<String>,
         val rows: Long,
         val hash: ByteArray
+    )
+    // SQL objects may be added by later versions, but NONE of the original
+    // index/trigger/view definitions may disappear or be silently replaced.
+    private data class SchemaObject(
+        val type: String, val name: String, val tableName: String,
+        val sql: String?
     )
     companion object {
         private val identifier = Regex("[A-Za-z_][A-Za-z_0-9]*")
@@ -70,6 +78,39 @@ internal class HistoricalMigrationWitness private constructor(
             }
             return count to digest.digest()
         }
+        private fun foreignKeys(db: SQLiteDatabase, table: String): List<String> {
+            val keys = mutableListOf<String>()
+            db.rawQuery("PRAGMA foreign_key_list(" + sqlName(table) + ")", null).use { c ->
+                while (c.moveToNext()) {
+                    // Preserve the full source FK contract, including every
+                    // referenced table/column and ON UPDATE/DELETE behavior.
+                    keys += (0 until c.columnCount).joinToString("\u0000") { i ->
+                        if (c.isNull(i)) "<NULL>" else c.getString(i)
+                    }
+                }
+            }
+            return keys.sorted()
+        }
+
+        private fun schemaObjects(db: SQLiteDatabase): List<SchemaObject> {
+            val objects = mutableListOf<SchemaObject>()
+            db.rawQuery("SELECT type,name,tbl_name,sql FROM sqlite_master " +
+                "WHERE type IN ('index','trigger','view') ORDER BY type,name",
+                null).use { c ->
+                while (c.moveToNext()) {
+                    val type = c.getString(0)
+                    val name = c.getString(1)
+                    val table = c.getString(2)
+                    // Names/DDL are historic schema evidence. Capture even
+                    // SQLite's implicit (SQL NULL) uniqueness indexes.
+                    require(type in setOf("index","trigger","view"))
+                    objects += SchemaObject(type, name, table,
+                        if (c.isNull(3)) null else c.getString(3))
+                }
+            }
+            return objects
+        }
+
         fun capture(db: SQLiteDatabase): HistoricalMigrationWitness {
             val originals = mutableListOf<TableWitness>()
             val tables = mutableListOf<String>()
@@ -92,14 +133,22 @@ internal class HistoricalMigrationWitness private constructor(
                 }
                 require(cols.isNotEmpty()) { "Historic table has no columns" }
                 val (rows, digest) = measure(db, table, cols)
-                originals += TableWitness(table, cols, declarations, rows, digest)
+                originals += TableWitness(table, cols, declarations,
+                    foreignKeys(db, table), rows, digest)
             }
-            return HistoricalMigrationWitness(originals)
+            return HistoricalMigrationWitness(originals, schemaObjects(db))
         }
     }
 
     fun verifyUnmodified(db: SQLiteDatabase) {
+        val currentObjects = schemaObjects(db).associateBy { it.type to it.name }
+        require(originalObjects.all { old ->
+            currentObjects[old.type to old.name] == old
+        }) { "Historical index, trigger or view was removed or rewritten" }
         for (old in originals) {
+            require(foreignKeys(db, old.name) == old.foreignKeys) {
+                "Historic foreign-key contract changed during migration: ${old.name}"
+            }
             val currentCols = mutableListOf<String>()
             val currentDeclarations = mutableListOf<String>()
             db.rawQuery("PRAGMA table_info(" + sqlName(old.name) + ")", null).use { cur ->
