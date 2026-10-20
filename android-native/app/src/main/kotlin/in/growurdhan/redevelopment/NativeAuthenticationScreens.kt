@@ -43,7 +43,7 @@ internal fun NativeAuthenticationScreen(
     deviceMessage: String,
     onDeviceChallenge: () -> Unit,
     onEnroll: suspend (NativeCredentials.Enrollment, NativeRegistrationProof.Identity, NativeRegistrationProof.Consent) -> String?,
-    onLogin: suspend (String, String) -> NativeAccountRepository.SignInResult,
+    onLogin: suspend (String, String, NativeRegistrationProof.Consent?) -> NativeAccountRepository.SignInResult,
     onRotation: suspend (String, String, String) -> Boolean,
     onRecover: suspend (String, String, String, String, String, String, String) -> Boolean,
     onReplaceRecoveryCode: suspend (String) -> String?,
@@ -59,6 +59,7 @@ internal fun NativeAuthenticationScreen(
     var pan by remember { mutableStateOf("") }
     var dob by remember { mutableStateOf("") }
     var acceptedAt by remember { mutableStateOf<String?>(null) }
+    var needsLoginConsent by remember { mutableStateOf(false) }
     var password by remember { mutableStateOf("") }
     var replacement by remember { mutableStateOf("") }
     var recoveryCodeInput by remember { mutableStateOf("") }
@@ -172,7 +173,7 @@ internal fun NativeAuthenticationScreen(
                         visualTransformation = PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth(), enabled = !busy)
                 }
-                if (mode == "register") {
+                if (mode == "register" || (mode == "login" && needsLoginConsent)) {
                     NativeTermsGate(acceptedAt, !busy,
                         onAccept = { acceptedAt = it },
                         onDecline = {
@@ -230,8 +231,22 @@ internal fun NativeAuthenticationScreen(
                                     if (success) mode = "login"
                                 }
                                 else -> {
-                                    message = when (onLogin(emailValue, pwValue)) {
-                                        NativeAccountRepository.SignInResult.UNLOCKED -> ""
+                                    val consent = if (needsLoginConsent && acceptedAt != null) {
+                                        NativeRegistrationProof.Consent(
+                                            NativeFrozenTerms.VERSION, NativeFrozenTerms.TEXT_ID,
+                                            acceptedAt!!, scrolledToEnd = true)
+                                    } else null
+                                    message = when (onLogin(emailValue, pwValue, consent)) {
+                                        NativeAccountRepository.SignInResult.UNLOCKED -> {
+                                            needsLoginConsent = false
+                                            acceptedAt = null
+                                            ""
+                                        }
+                                        NativeAccountRepository.SignInResult.TERMS_REQUIRED -> {
+                                            needsLoginConsent = true
+                                            acceptedAt = null
+                                            "Read the full current Terms to continue. Your existing vault is preserved."
+                                        }
                                         NativeAccountRepository.SignInResult.ROTATION_REQUIRED ->
                                             "Password expired. Change it using your current password."
                                         NativeAccountRepository.SignInResult.DENIED ->
@@ -260,7 +275,7 @@ internal fun NativeAuthenticationScreen(
                 }
                 TextButton(enabled = !busy, onClick = {
                     mode = if (mode == "register") "login" else "register"
-                    password = ""; replacement = ""; answer1 = ""; answer2 = ""; acceptedAt = null; message = ""
+                    password = ""; replacement = ""; answer1 = ""; answer2 = ""; acceptedAt = null; needsLoginConsent = false; message = ""
                 }) {
                     Text(if (mode == "register") "Already registered? Sign in"
                          else "New account? Register")

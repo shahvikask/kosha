@@ -105,6 +105,7 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository, onLo
                         OutlinedButton(onClick = { tab = label }) { Text(label) }
                     }
                 }
+                OutlinedButton(onClick = { tab = "Documents" }) { Text("Documents and imports") }
                 if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
                 when (tab) {
                     "Home" -> {
@@ -129,6 +130,9 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository, onLo
                         PersonForm(active, busy) { form ->
                             persist { books.createPerson(email, form) }
                         }
+                        PersonEditForm(active, busy,
+                            update = { id, form -> persist { books.updatePerson(email, id, form) } },
+                            archive = { id -> persist { books.archivePerson(email, id) } })
                     }
                     "Accounts" -> {
                         Text("Custody accounts", style = MaterialTheme.typography.titleLarge)
@@ -141,6 +145,12 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository, onLo
                         CustodyForm(active, busy) { form ->
                             persist { books.createCustody(email, form) }
                         }
+                        CustodyEditForm(data.custody.filter { ownerFilter.isEmpty() ||
+                            it.personId == ownerFilter }, busy,
+                            update = { id, form -> persist { books.updateCustody(email, id, form) } },
+                            close = { a -> persist {
+                                books.closeCustody(email, a.personId, a.id, LocalDate.now().toString())
+                            } })
                     }
                     "Goals" -> {
                         Text("Family goals", style = MaterialTheme.typography.titleLarge)
@@ -153,6 +163,12 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository, onLo
                         GoalForm(active, busy) { id, name, minor, day, priority ->
                             persist { books.createGoal(email, id, name, minor, day, priority) }
                         }
+                        GoalEditForm(data.goals.filter { ownerFilter.isEmpty() ||
+                            it.personId == ownerFilter || it.personId == null }, busy,
+                            update = { goal, name, amount, day, priority -> persist {
+                                books.updateGoal(email, goal.id, goal.personId, name, amount, day, priority)
+                            } },
+                            remove = { id -> persist { books.removeUnlinkedGoal(email, id) } })
                     }
                     "Holdings" -> {
                         Text("Holdings", style = MaterialTheme.typography.titleLarge)
@@ -172,6 +188,7 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository, onLo
                                 else "Recorded FIFO cost: ₹${NativeBooksRepository.formatMinor(h.knownCostMinor, 4)}")
                             Text("Manual/last price: ₹${NativeBooksRepository.formatMinor(h.marketPriceMinor, 4)} " +
                                 "as of ${h.priceDate ?: "unknown"} (${h.priceSource ?: "no source"})")
+                            if (h.archived) Text("Archived (history retained)")
                             if (h.needsReview) Text("Reconciliation review needed",
                                 color = MaterialTheme.colorScheme.error)
                             OutlinedButton(onClick = {
@@ -199,6 +216,33 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository, onLo
                         HoldingForm(active, data.custody, busy) { form ->
                             persist { books.createHolding(email, form) }
                         }
+                        HoldingEditForm(list, data.custody, data.goals, busy,
+                            update = { id, account, notes, details, location -> persist {
+                                books.updateHoldingMetadata(email, id, account, notes, details, location)
+                            } },
+                            assign = { id, goal -> persist { books.assignGoal(email, id, goal) } },
+                            archive = { id, value -> persist { books.setHoldingArchived(email, id, value) } })
+                    }
+                    "Documents" -> {
+                        Text("Statement and import history", style = MaterialTheme.typography.titleLarge)
+                        Text("Records below are read from the encrypted database, not from an email server.")
+                        if (data.imports.isEmpty()) Text("No statement imports recorded.")
+                        data.imports.forEach { batch ->
+                            HorizontalDivider()
+                            Text("${batch.filename} • ${batch.documentKind}",
+                                style = MaterialTheme.typography.titleMedium)
+                            Text("Statement date: ${batch.statementDate ?: "not provided"}")
+                            Text("Approved new rows: ${batch.newRows} • duplicates: ${batch.duplicateRows}" +
+                                " • conflicts: ${batch.conflicts}")
+                            Text("Imported ${batch.committedAt}")
+                        }
+                        if (data.documents.isEmpty()) Text("No source-document fingerprints recorded.")
+                        data.documents.forEach { document ->
+                            Text("${document.filename} • ${document.kind} • ${document.byteLength} bytes")
+                            Text("Source SHA-256 ${document.sha256.take(16)}…",
+                                style = MaterialTheme.typography.bodySmall)
+                        }
+                        Text("Original PDF bytes are not represented by these fingerprint records.")
                     }
                     "Records" -> {
                         Text("Money events and manual prices", style = MaterialTheme.typography.titleLarge)
@@ -210,6 +254,17 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository, onLo
                             })
                         Text("Statement adjustments cannot be created as manual buys or sells.",
                             style = MaterialTheme.typography.bodySmall)
+                        NativeEmiForm(data.holdings.filter {
+                            it.category == "LIABILITY" &&
+                                (ownerFilter.isEmpty() || it.personId == ownerFilter)
+                        }, busy,
+                            onSettings = { id, status, monthly, next, remaining ->
+                                persist { books.updateEmiSchedule(email, id, status,
+                                    monthly, next, remaining) }
+                            },
+                            onCatchUp = { id, asOf ->
+                                persist { books.catchUpEmi(email, id, asOf) }
+                            })
                     }
                 }
             }
@@ -283,6 +338,9 @@ private fun CustodyForm(people: List<NativeBooksRepository.Person>, busy: Boolea
     var type by remember { mutableStateOf("FOLIO") }
     var masked by remember { mutableStateOf("") }
     var nominee by remember { mutableStateOf("") }
+    var dpId by remember { mutableStateOf("") }
+    var clientId by remember { mutableStateOf("") }
+    var boId by remember { mutableStateOf("") }
     Text("Link custody account", style = MaterialTheme.typography.titleMedium)
     Choice("Account owner", people.map { it.id to it.name }, owner, !busy) { owner = it }
     Choice("Custody type", listOf("DEMAT", "FOLIO", "BANK", "OTHER", "NPS", "BROKER")
@@ -293,10 +351,17 @@ private fun CustodyForm(people: List<NativeBooksRepository.Person>, busy: Boolea
         modifier = Modifier.fillMaxWidth())
     OutlinedTextField(nominee, { nominee = it }, label = { Text("Nominee (optional)") },
         modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(dpId, { dpId = it }, label = { Text("DP ID (encrypted)") },
+        modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(clientId, { clientId = it }, label = { Text("Client ID (encrypted)") },
+        modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(boId, { boId = it }, label = { Text("BO ID (encrypted)") },
+        modifier = Modifier.fillMaxWidth())
     Button(enabled = !busy && owner.isNotBlank() && custodian.isNotBlank(), onClick = {
         save(NativeBooksRepository.NewCustody(owner, type, custodian,
-            masked.ifBlank { null }, nominee = nominee.ifBlank { null }))
-        custodian = ""; masked = ""; nominee = ""
+            masked.ifBlank { null }, dpId.ifBlank { null }, clientId.ifBlank { null },
+            boId.ifBlank { null }, nominee.ifBlank { null }))
+        custodian = ""; masked = ""; nominee = ""; dpId = ""; clientId = ""; boId = ""
     }) { Text("Save account") }
 }
 
@@ -343,6 +408,18 @@ private fun HoldingForm(people: List<NativeBooksRepository.Person>,
     var knownCost by remember { mutableStateOf("Known") }
     var date by remember { mutableStateOf(LocalDate.now().toString()) }
     var notes by remember { mutableStateOf("") }
+    var isin by remember { mutableStateOf("") }
+    var openingPrice by remember { mutableStateOf("") }
+    var institution by remember { mutableStateOf("") }
+    var accountMasked by remember { mutableStateOf("") }
+    var maturity by remember { mutableStateOf("") }
+    var couponBps by remember { mutableStateOf("") }
+    var interestBps by remember { mutableStateOf("") }
+    var emiMinor by remember { mutableStateOf("") }
+    var emiState by remember { mutableStateOf("") }
+    var emiCount by remember { mutableStateOf("") }
+    var location by remember { mutableStateOf("") }
+    var specialistJson by remember { mutableStateOf("") }
     Text("New holding — review fields before saving", style = MaterialTheme.typography.titleMedium)
     Choice("Owner", people.map { it.id to it.name }, owner, !busy) { owner = it; account = "" }
     Choice("Custody account", listOf("" to "No custody account") +
@@ -366,14 +443,63 @@ private fun HoldingForm(people: List<NativeBooksRepository.Person>,
     Choice("Opening cost", listOf("Known" to "Known", "Unknown" to "Unknown"), knownCost,
         !busy) { knownCost = it }
     OutlinedTextField(notes, { notes = it }, label = { Text("Notes") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(isin, { isin = it }, label = { Text("ISIN (optional, 12 characters)") },
+        modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(openingPrice, { openingPrice = it },
+        label = { Text("Opening cost per unit ₹ (optional; distinct from current price)") },
+        modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(institution, { institution = it }, label = { Text("Institution / issuer") },
+        modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(accountMasked, { accountMasked = it },
+        label = { Text("Masked account reference (if relevant)") },
+        modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(maturity, { maturity = it }, label = { Text("Maturity YYYY-MM-DD") },
+        modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(couponBps, { couponBps = it }, label = { Text("Coupon rate in basis points") },
+        modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(interestBps, { interestBps = it },
+        label = { Text("Interest rate in basis points") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(emiMinor, { emiMinor = it }, label = { Text("Monthly EMI ₹") },
+        modifier = Modifier.fillMaxWidth())
+    Choice("EMI status", listOf("" to "Not applicable") +
+        listOf("PAYING", "PAUSED", "STOPPED").map { it to it }, emiState, !busy) {
+        emiState = it
+    }
+    OutlinedTextField(emiCount, { emiCount = it },
+        label = { Text("Remaining installments") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(location, { location = it }, label = { Text("Property/location") },
+        modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(specialistJson, { specialistJson = it },
+        label = { Text("Additional specialist details JSON") }, modifier = Modifier.fillMaxWidth())
     Button(enabled = !busy && owner.isNotBlank() && name.isNotBlank(), onClick = {
         val qty = runCatching { NativeBooksRepository.parseMinor(quantity, 8) }.getOrNull()
         val minor = runCatching { NativeBooksRepository.parseMinor(price, 4) }.getOrNull()
-        if (qty != null && minor != null) {
+        val opened = if (openingPrice.isBlank()) minor else runCatching {
+            NativeBooksRepository.parseMinor(openingPrice, 4)
+        }.getOrNull()
+        val emi = if (emiMinor.isBlank()) null else runCatching {
+            NativeBooksRepository.parseMinor(emiMinor, 4)
+        }.getOrNull()
+        val coupon = couponBps.toIntOrNull()
+        val interest = interestBps.toIntOrNull()
+        val count = emiCount.toIntOrNull()
+        if (qty != null && minor != null && opened != null &&
+            (emiMinor.isBlank() || emi != null) &&
+            (couponBps.isBlank() || coupon != null) &&
+            (interestBps.isBlank() || interest != null) &&
+            (emiCount.isBlank() || count != null)) {
             save(NativeBooksRepository.NewHolding(owner, account.ifBlank { null }, name,
                 category, sub, qty, minor, date, knownCost == "Known",
-                notes = notes.ifBlank { null }))
-            name = ""; notes = ""; quantity = "0"; price = "0"
+                isin = isin.ifBlank { null }, notes = notes.ifBlank { null },
+                detailsJson = specialistJson.ifBlank { null },
+                openingUnitPriceMinor = opened,
+                institutionName = institution.ifBlank { null },
+                accountNumberMasked = accountMasked.ifBlank { null },
+                maturityDate = maturity.ifBlank { null },
+                couponRateBps = coupon, interestRateBps = interest,
+                monthlyEmiMinor = emi, emiStatus = emiState.ifBlank { null },
+                remainingEmiCount = count, location = location.ifBlank { null }))
+            name = ""; notes = ""; quantity = "0"; price = "0"; openingPrice = ""
         }
     }) { Text("Review and save holding") }
 }
@@ -390,10 +516,11 @@ private fun EventForm(holdings: List<NativeBooksRepository.Holding>, busy: Boole
     var amount by remember { mutableStateOf("0") }
     var charges by remember { mutableStateOf("0") }
     var note by remember { mutableStateOf("") }
+    var correctionId by remember { mutableStateOf("") }
     Choice("Holding", holdings.map { it.id to "${it.name} • ${it.personName}" },
         holding, !busy) { holding = it }
     Choice("Event kind", listOf("BUY", "SELL", "DIVIDEND", "INTEREST", "BONUS", "SPLIT",
-        "REPAYMENT", "OPENING_BALANCE", "VALUATION_UPDATE").map { it to it }, kind,
+        "REPAYMENT", "OPENING_BALANCE", "VALUATION_UPDATE", "CORRECTION").map { it to it }, kind,
         !busy) { kind = it }
     OutlinedTextField(day, { day = it }, label = { Text("Trade date YYYY-MM-DD") },
         modifier = Modifier.fillMaxWidth())
@@ -408,7 +535,14 @@ private fun EventForm(holdings: List<NativeBooksRepository.Holding>, busy: Boole
         modifier = Modifier.fillMaxWidth())
     OutlinedTextField(note, { note = it }, label = { Text("Source or notes") },
         modifier = Modifier.fillMaxWidth())
-    Button(enabled = !busy && holding.isNotBlank(), onClick = {
+    if (kind == "CORRECTION") {
+        OutlinedTextField(correctionId, { correctionId = it },
+            label = { Text("Exact superseded event ID (from audit history)") },
+            modifier = Modifier.fillMaxWidth())
+        Text("A correction is a new immutable event. It inherits the original event kind.")
+    }
+    Button(enabled = !busy && holding.isNotBlank() &&
+        (kind != "CORRECTION" || correctionId.isNotBlank()), onClick = {
         val q = runCatching {
             if (kind == "SPLIT") units.toLong() else NativeBooksRepository.parseMinor(units, 8)
         }.getOrNull()
@@ -420,6 +554,7 @@ private fun EventForm(holdings: List<NativeBooksRepository.Holding>, busy: Boole
         val fee = runCatching { NativeBooksRepository.parseMinor(charges, 4) }.getOrNull()
         if (q != null && p != null && m != null && fee != null) {
             add(NativeBooksRepository.NewEvent(holding, kind, day, q, p, m, fee,
+                supersedes = if (kind == "CORRECTION") correctionId.trim() else null,
                 notes = note.ifBlank { null }))
             note = ""
         }
@@ -430,4 +565,192 @@ private fun EventForm(holdings: List<NativeBooksRepository.Holding>, busy: Boole
         val p = runCatching { NativeBooksRepository.parseMinor(unitPrice, 4) }.getOrNull()
         if (p != null) price(holding, p, day)
     }) { Text("Save manual price and source date") }
+}
+
+
+@Composable
+private fun PersonEditForm(people: List<NativeBooksRepository.Person>, busy: Boolean,
+    update: (String, NativeBooksRepository.NewPerson) -> Unit, archive: (String) -> Unit) {
+    var id by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf("") }
+    var dob by remember { mutableStateOf("") }
+    val selected = people.firstOrNull { it.id == id }
+    Text("Edit / archive member", style = MaterialTheme.typography.titleMedium)
+    Choice("Member to edit", people.map { it.id to it.name }, id, !busy) {
+        id = it
+        name = people.firstOrNull { p -> p.id == it }?.name.orEmpty()
+        dob = ""
+    }
+    if (selected != null) {
+        OutlinedTextField(name, { name = it }, label = { Text("Display name") },
+            modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(dob, { dob = it },
+            label = { Text("Correct DOB (optional YYYY-MM-DD)") },
+            modifier = Modifier.fillMaxWidth())
+        Button(enabled = !busy && name.isNotBlank(), onClick = {
+            update(id, NativeBooksRepository.NewPerson(name, selected.relation,
+                selected.kind, dob.ifBlank { null }))
+        }) { Text("Save member details") }
+        if (!selected.isPrimary) {
+            OutlinedButton(enabled = !busy, onClick = { archive(id); id = "" }) {
+                Text("Archive only if unlinked")
+            }
+        }
+    }
+}
+
+@Composable
+private fun CustodyEditForm(accounts: List<NativeBooksRepository.Custody>, busy: Boolean,
+    update: (String, NativeBooksRepository.NewCustody) -> Unit,
+    close: (NativeBooksRepository.Custody) -> Unit) {
+    var id by remember { mutableStateOf("") }
+    var custodian by remember { mutableStateOf("") }
+    var nominee by remember { mutableStateOf("") }
+    val chosen = accounts.firstOrNull { it.id == id }
+    Text("Edit / close custody account", style = MaterialTheme.typography.titleMedium)
+    Choice("Custody record", accounts.map { it.id to "${it.custodian} • ${it.type}" },
+        id, !busy) {
+        id = it
+        custodian = accounts.firstOrNull { a -> a.id == it }?.custodian.orEmpty()
+        nominee = ""
+    }
+    if (chosen != null) {
+        OutlinedTextField(custodian, { custodian = it }, label = { Text("Custodian") },
+            modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(nominee, { nominee = it }, label = { Text("Updated nominee (optional)") },
+            modifier = Modifier.fillMaxWidth())
+        Button(enabled = !busy && custodian.isNotBlank(), onClick = {
+            update(id, NativeBooksRepository.NewCustody(chosen.personId, chosen.type,
+                custodian, nominee = nominee.ifBlank { null }))
+        }) { Text("Save custody details") }
+        OutlinedButton(enabled = !busy, onClick = { close(chosen); id = "" }) {
+            Text("Close only if no open units")
+        }
+    }
+}
+
+@Composable
+private fun GoalEditForm(goals: List<NativeBooksRepository.Goal>, busy: Boolean,
+    update: (NativeBooksRepository.Goal, String, Long, String, String) -> Unit,
+    remove: (String) -> Unit) {
+    var id by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf("") }
+    var target by remember { mutableStateOf("") }
+    var day by remember { mutableStateOf("") }
+    var priority by remember { mutableStateOf("MEDIUM") }
+    val goal = goals.firstOrNull { it.id == id }
+    Text("Edit / remove goal", style = MaterialTheme.typography.titleMedium)
+    Choice("Goal", goals.map { it.id to it.name }, id, !busy) {
+        id = it
+        val g = goals.firstOrNull { item -> item.id == it }
+        name = g?.name.orEmpty()
+        target = g?.targetMinor?.let { amount -> NativeBooksRepository.formatMinor(amount, 4) }.orEmpty()
+        day = g?.targetDate.orEmpty()
+        priority = g?.priority ?: "MEDIUM"
+    }
+    if (goal != null) {
+        OutlinedTextField(name, { name = it }, label = { Text("Goal") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(target, { target = it }, label = { Text("Target ₹") },
+            modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(day, { day = it }, label = { Text("Target date YYYY-MM-DD") },
+            modifier = Modifier.fillMaxWidth())
+        Choice("Priority", listOf("LOW", "MEDIUM", "HIGH").map { it to it },
+            priority, !busy) { priority = it }
+        Button(enabled = !busy && name.isNotBlank(), onClick = {
+            val minor = runCatching { NativeBooksRepository.parseMinor(target, 4) }.getOrNull()
+            if (minor != null) update(goal, name, minor, day, priority)
+        }) { Text("Save goal corrections") }
+        OutlinedButton(enabled = !busy, onClick = { remove(id); id = "" }) {
+            Text("Remove unlinked goal")
+        }
+    }
+}
+
+@Composable
+private fun HoldingEditForm(holdings: List<NativeBooksRepository.Holding>,
+    accounts: List<NativeBooksRepository.Custody>, goals: List<NativeBooksRepository.Goal>,
+    busy: Boolean, update: (String, String?, String?, String?, String?) -> Unit,
+    assign: (String, String?) -> Unit, archive: (String, Boolean) -> Unit) {
+    var id by remember { mutableStateOf("") }
+    var account by remember { mutableStateOf("") }
+    var notes by remember { mutableStateOf("") }
+    var specialistJson by remember { mutableStateOf("") }
+    var location by remember { mutableStateOf("") }
+    var goalId by remember { mutableStateOf("") }
+    val holding = holdings.firstOrNull { it.id == id }
+    Text("Holding details / status", style = MaterialTheme.typography.titleMedium)
+    Choice("Holding to edit", holdings.map { it.id to it.name }, id, !busy) {
+        id = it
+        account = holdings.firstOrNull { h -> h.id == it }?.accountId.orEmpty()
+        notes = holdings.firstOrNull { h -> h.id == it }?.notes.orEmpty()
+        specialistJson = ""
+        location = ""
+        goalId = ""
+    }
+    if (holding != null) {
+        Choice("Custody", listOf("" to "No account") + accounts.filter {
+            it.personId == holding.personId }.map { it.id to it.custodian },
+            account, !busy) { account = it }
+        OutlinedTextField(notes, { notes = it }, label = { Text("Notes") },
+            modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(location, { location = it }, label = { Text("Property/location (optional)") },
+            modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(specialistJson, { specialistJson = it },
+            label = { Text("Specialist metadata JSON (leave empty to preserve)") },
+            modifier = Modifier.fillMaxWidth())
+        Button(enabled = !busy, onClick = {
+            update(id, account.ifBlank { null }, notes.ifBlank { null },
+                specialistJson.ifBlank { null }, location.ifBlank { null })
+        }) { Text("Save non-ledger metadata") }
+        Choice("Linked goal", listOf("" to "No linked goal") +
+            goals.filter { it.personId == null || it.personId == holding.personId }
+                .map { it.id to it.name }, goalId, !busy) { goalId = it }
+        Button(enabled = !busy, onClick = { assign(id, goalId.ifBlank { null }) }) {
+            Text("Set linked goal")
+        }
+        OutlinedButton(enabled = !busy, onClick = {
+            archive(id, !holding.archived)
+            id = ""
+        }) { Text(if (holding.archived) "Reopen archived holding" else "Archive only if quantity is zero") }
+    }
+}
+
+/** The owner explicitly reviews the loan status and due date before posting EMIs. */
+@Composable
+private fun NativeEmiForm(holdings: List<NativeBooksRepository.Holding>, busy: Boolean,
+    onSettings: (String, String, Long, String?, Int) -> Unit,
+    onCatchUp: (String, String) -> Unit) {
+    if (holdings.isEmpty()) return
+    var holdingId by remember { mutableStateOf("") }
+    var status by remember { mutableStateOf("PAYING") }
+    var monthly by remember { mutableStateOf("") }
+    var nextDue by remember { mutableStateOf("") }
+    var remaining by remember { mutableStateOf("") }
+    var asOf by remember { mutableStateOf(LocalDate.now().toString()) }
+    HorizontalDivider()
+    Text("Loan repayments and EMI catch-up", style = MaterialTheme.typography.titleMedium)
+    Text("Repayment events reduce recorded outstanding. The app does not invent interest.")
+    Choice("Liability", holdings.map { it.id to it.name }, holdingId, !busy) {
+        holdingId = it
+    }
+    Choice("Payment state", listOf("PAYING", "PAUSED", "STOPPED").map { it to it },
+        status, !busy) { status = it }
+    OutlinedTextField(monthly, { monthly = it }, label = { Text("EMI amount ₹") },
+        modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(nextDue, { nextDue = it },
+        label = { Text("Next due date YYYY-MM-DD") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(remaining, { remaining = it },
+        label = { Text("Installments remaining") }, modifier = Modifier.fillMaxWidth())
+    Button(enabled = !busy && holdingId.isNotEmpty(), onClick = {
+        val minor = runCatching { NativeBooksRepository.parseMinor(monthly, 4) }.getOrNull()
+        val count = remaining.toIntOrNull()
+        if (minor != null && count != null) {
+            onSettings(holdingId, status, minor, nextDue.ifBlank { null }, count)
+        }
+    }) { Text("Save reviewed EMI schedule") }
+    OutlinedTextField(asOf, { asOf = it },
+        label = { Text("Catch up through YYYY-MM-DD") }, modifier = Modifier.fillMaxWidth())
+    Button(enabled = !busy && holdingId.isNotEmpty(), onClick = {
+        onCatchUp(holdingId, asOf)
+    }) { Text("Post only unpaid due installments") }
 }

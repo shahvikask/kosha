@@ -2,6 +2,7 @@ package `in`.growurdhan.redevelopment
 
 import `in`.growurdhan.model.NativeAssetTaxonomy
 import `in`.growurdhan.model.NativePortfolioMath
+import `in`.growurdhan.model.NativeEmiPlanner
 import java.math.BigDecimal
 import java.math.BigInteger
 import java.time.Instant
@@ -30,8 +31,14 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
     data class EventRow(val id: String, val holdingId: String, val ownerId: String,
         val kind: String, val date: String, val quantityScaled: Long, val unitPriceMinor: Long,
         val amountMinor: Long, val chargesMinor: Long, val supersedes: String?, val notes: String?)
+    data class ImportBatch(val id: String, val filename: String, val documentKind: String,
+        val statementDate: String?, val newRows: Int, val duplicateRows: Int,
+        val conflicts: Int, val committedAt: String)
+    data class OriginalDocument(val id: String, val batchId: String, val filename: String,
+        val kind: String, val sha256: String, val byteLength: Long, val importedAt: String)
     data class Snapshot(val people: List<Person>, val custody: List<Custody>,
-        val goals: List<Goal>, val holdings: List<Holding>)
+        val goals: List<Goal>, val holdings: List<Holding>,
+        val imports: List<ImportBatch>, val documents: List<OriginalDocument>)
 
     data class NewPerson(val name: String, val relation: String,
         val kind: String = "INDIVIDUAL", val dob: String? = null,
@@ -43,7 +50,12 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
         val name: String, val category: String, val subcategory: String,
         val quantityScaled: Long, val priceMinor: Long, val date: String,
         val knownOpeningCost: Boolean, val isin: String? = null,
-        val notes: String? = null, val detailsJson: String? = null)
+        val notes: String? = null, val detailsJson: String? = null,
+        val openingUnitPriceMinor: Long? = null, val institutionName: String? = null,
+        val accountNumberMasked: String? = null, val maturityDate: String? = null,
+        val couponRateBps: Int? = null, val interestRateBps: Int? = null,
+        val monthlyEmiMinor: Long? = null, val emiStatus: String? = null,
+        val remainingEmiCount: Int? = null, val location: String? = null)
     data class NewEvent(val holdingId: String, val kind: String, val date: String,
         val quantityScaled: Long, val unitPriceMinor: Long, val amountMinor: Long,
         val chargesMinor: Long = 0L, val supersedes: String? = null,
@@ -126,10 +138,29 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
                     if (c.isNull(10)) null else c.getString(10),
                     fold.knownCostMinor, fold.hasUnknownCost,
                     c.getInt(11) == 1 || fold.errors.isNotEmpty(),
-                    false, if (c.isNull(12)) null else c.getString(12))
+                    db.rawQuery("SELECT value FROM setting WHERE key=?",
+                        arrayOf("native.holding.archived.$id")).use { archived ->
+                            archived.moveToFirst() && archived.getString(0) == "1"
+                        }, if (c.isNull(12)) null else c.getString(12))
             }
         }
-        Snapshot(people, custody, goals, holdings)
+        val imports = mutableListOf<ImportBatch>()
+        db.rawQuery("SELECT import_batch_id,source_filename,document_kind,statement_date," +
+            "rows_new,rows_duplicate,rows_conflict,committed_at FROM import_batch " +
+            "ORDER BY committed_at DESC", null).use { c ->
+            while (c.moveToNext()) imports += ImportBatch(c.getString(0), c.getString(1),
+                c.getString(2), if (c.isNull(3)) null else c.getString(3),
+                c.getInt(4), c.getInt(5), c.getInt(6), c.getString(7))
+        }
+        val documents = mutableListOf<OriginalDocument>()
+        db.rawQuery("SELECT source_document_id,import_batch_id,original_filename," +
+            "document_kind,sha256,byte_length,imported_at FROM source_document " +
+            "ORDER BY imported_at DESC", null).use { c ->
+            while (c.moveToNext()) documents += OriginalDocument(c.getString(0),
+                c.getString(1), c.getString(2), c.getString(3),
+                c.getString(4), c.getLong(5), c.getString(6))
+        }
+        Snapshot(people, custody, goals, holdings, imports, documents)
     }
 
     fun createPerson(email: String, form: NewPerson): String =
@@ -219,6 +250,18 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
                 "Negative opening quantity or price"
             }
             val acquired = date(form.date)
+            val acquisitionUnit = form.openingUnitPriceMinor ?: form.priceMinor
+            require(acquisitionUnit >= 0L) { "Opening cost cannot be negative" }
+            val maturity = optionalDate(form.maturityDate)
+            if (maturity != null) require(maturity >= acquired) { "Maturity predates acquisition" }
+            form.couponRateBps?.let { require(it in 0..10000) }
+            form.interestRateBps?.let { require(it in 0..10000) }
+            form.monthlyEmiMinor?.let { require(it >= 0L) }
+            form.emiStatus?.let { require(it in setOf("PAYING", "PAUSED", "STOPPED")) }
+            form.remainingEmiCount?.let { require(it >= 0) }
+            form.accountNumberMasked?.let { require('*' in it && it.length <= 100) }
+            form.isin?.let { require(it.matches(Regex("[A-Z0-9]{12}"))) }
+            form.location?.let { require(it.length <= 1024) }
             val name = clean(form.name, 240)
             form.detailsJson?.let {
                 require(it.length <= 32768)
@@ -230,18 +273,27 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
             db.execSQL("INSERT INTO instrument(instrument_id,name,category,sub_category,isin," +
                 "is_user_created,created_at) VALUES(?,?,?,?,?,1,?)",
                 arrayOf<Any?>(instrument, name, form.category, form.subcategory,
-                    form.isin?.takeIf { it.matches(Regex("[A-Z0-9]{12}")) }, timestamp))
+                    form.isin, timestamp))
             db.execSQL("INSERT INTO holding(holding_id,instrument_id,entity_id,account_id," +
                 "current_price_minor,last_price_updated,price_source,acquired_on,notes,details_json," +
-                "created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)", arrayOf<Any?>(
-                holding, instrument, form.personId, form.accountId, form.priceMinor,
-                acquired, "USER_ENTRY", acquired, form.notes?.take(2048),
-                form.detailsJson, timestamp))
+                "institution_name,account_number_masked,maturity_date,coupon_rate_bps," +
+                "interest_rate_bps,monthly_emi_minor,emi_status,remaining_emi_count," +
+                "location,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                arrayOf<Any?>(
+                    holding, instrument, form.personId, form.accountId, form.priceMinor,
+                    acquired, "USER_ENTRY", acquired, form.notes?.take(2048),
+                    form.detailsJson, form.institutionName?.let { clean(it) },
+                    form.accountNumberMasked, maturity, form.couponRateBps,
+                    form.interestRateBps, form.monthlyEmiMinor, form.emiStatus,
+                    form.remainingEmiCount, form.location, timestamp))
             if (form.quantityScaled > 0L) {
-                insertEvent(db, form.personId, form.accountId, holding, name,
+                val openingId = insertEvent(db, form.personId, form.accountId, holding, name,
                     NewEvent(holding, "OPENING_BALANCE", acquired, form.quantityScaled,
-                        if (form.knownOpeningCost) form.priceMinor else 0L,
+                        if (form.knownOpeningCost) acquisitionUnit else 0L,
                         0L, notes = if (form.knownOpeningCost) null else "Opening cost unknown"))
+                db.execSQL("INSERT INTO setting(key,value) VALUES(?,?)",
+                    arrayOf<Any>("native.ledger.cost_source.$openingId",
+                        if (form.knownOpeningCost) "KNOWN" else "UNKNOWN"))
             }
             holding
         }
@@ -252,6 +304,10 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
                 "Statement snapshots require a verified import-review transaction"
             }
             val (owner, custody) = requireHoldingOwner(db, form.holdingId)
+            require(!db.exists("SELECT 1 FROM setting WHERE key=? AND value='1'",
+                "native.holding.archived.${form.holdingId}")) {
+                "Reopen a closed holding before entering new money events"
+            }
             val name = db.rawQuery("SELECT i.name FROM instrument i " +
                 "JOIN holding h ON i.instrument_id=h.instrument_id WHERE h.holding_id=?",
                 arrayOf(form.holdingId)).use { c ->
@@ -269,7 +325,8 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
         }
 
     private fun insertEvent(db: SQLiteDatabase, owner: String, custody: String?,
-        holding: String, holdingName: String, form: NewEvent): String {
+        holding: String, holdingName: String, form: NewEvent,
+        sourceRef: String? = null): String {
         require(form.kind in NativePortfolioMath.eventTypes)
         require(form.chargesMinor >= 0L && form.unitPriceMinor >= 0L) { "Negative charges/price" }
         val settled = date(form.date)
@@ -288,11 +345,11 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
         val id = newId()
         db.execSQL("INSERT INTO ledger_event(ledger_event_id,entity_id,holding_id,holding_name," +
             "account_id,event_type,trade_date,quantity_scaled,unit_price_minor," +
-            "total_amount_minor,charges_minor,supersedes_event_id,notes,entered_at,entered_by)" +
-            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", arrayOf<Any?>(
+            "total_amount_minor,charges_minor,supersedes_event_id,notes,entered_at,entered_by,source_ref)" +
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", arrayOf<Any?>(
             id, owner, holding, holdingName, custody, form.kind, settled,
             form.quantityScaled, form.unitPriceMinor, form.amountMinor,
-            form.chargesMinor, form.supersedes, form.notes?.take(2048), now(), "owner"))
+            form.chargesMinor, form.supersedes, form.notes?.take(2048), now(), "owner", sourceRef))
         return id
     }
 
@@ -306,14 +363,24 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
                 val kind = c.getString(3)
                 val price = c.getLong(6)
                 val note = if (c.isNull(10)) "" else c.getString(10)
+                val provenance = db.rawQuery("SELECT value FROM setting WHERE key=?",
+                    arrayOf("native.ledger.cost_source.${c.getString(0)}")).use { p ->
+                    if (p.moveToFirst()) p.getString(0) else null
+                }
                 rows += NativePortfolioMath.Event(c.getString(0), c.getString(1),
                     c.getString(2), kind, c.getString(4), c.getLong(5), price,
                     c.getLong(7), c.getLong(8),
                     if (c.isNull(9)) null else c.getString(9),
-                    // Original imports sometimes omit cost. Preserve unknown, never fabricate.
-                    !(kind in setOf("OPENING_BALANCE", "SNAPSHOT_ADJUSTMENT") &&
-                        price == 0L && c.getLong(7) == 0L &&
-                        note.contains("unknown", ignoreCase = true)))
+                    // Explicit SQLCipher provenance distinguishes true zero cost from unknown.
+                    // For historical files without provenance, an absent price/amount
+                    // or documented unknown-cost note is conservatively unknown.
+                    when (provenance) {
+                        "KNOWN" -> true
+                        "UNKNOWN" -> false
+                        else -> !(kind in setOf("OPENING_BALANCE", "SNAPSHOT_ADJUSTMENT") &&
+                            ((price == 0L && c.getLong(7) == 0L) ||
+                                note.contains("unknown", ignoreCase = true)))
+                    })
             }
         }
         return rows
@@ -334,6 +401,242 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
                     if (c.isNull(9)) null else c.getString(9))
             }
             rows
+        }
+
+    /**
+     * Edit profile facts in-place; immutable historical ledger ownership is never reassigned.
+     * A primary Self can change profile details but cannot become a different legal entity.
+     */
+    fun updatePerson(email: String, personId: String, form: NewPerson) =
+        accounts.withUnlockedVault(email) { db ->
+            requirePerson(db, personId)
+            val original = db.rawQuery("SELECT entity_type,relation,is_primary FROM entity WHERE entity_id=?",
+                arrayOf(personId)).use { c ->
+                check(c.moveToFirst())
+                Triple(c.getString(0), c.getString(1), c.getInt(2) == 1)
+            }
+            val isPrimary = original.third
+            if (form.kind != original.first || form.relation != original.second) {
+                for (table in listOf("holding", "ledger_event", "account", "goal", "liability")) {
+                    require(!db.exists("SELECT 1 FROM $table WHERE entity_id=?", personId)) {
+                        "Legal ownership/classification cannot change with linked records"
+                    }
+                }
+            }
+            if (isPrimary) require(form.relation == "Self" && form.kind == "INDIVIDUAL") {
+                "Primary identity cannot be reclassified"
+            } else require(form.relation in setOf("Spouse", "Parent", "Child", "HUF", "Joint"))
+            require(form.kind in setOf("INDIVIDUAL", "HUF", "PROPRIETORSHIP",
+                "PRIVATE_TRUST", "PARTNERSHIP_FIRM"))
+            if (form.kind == "HUF") require(form.relation == "HUF")
+            val birth = optionalDate(form.dob)
+            if (form.guardianId != null) {
+                require(form.guardianId != personId) { "A member cannot be their own guardian" }
+                requirePerson(db, form.guardianId)
+            }
+            if (form.relation == "Child" && birth != null &&
+                LocalDate.parse(birth).isAfter(LocalDate.now().minusYears(18))) {
+                require(form.guardianId != null) { "A minor must have an active guardian" }
+            }
+            val pan = form.panForStatements?.trim()?.uppercase(java.util.Locale.ROOT)
+                ?.takeIf { it.isNotEmpty() }
+            if (pan != null) require(Regex("[A-Z]{5}[0-9]{4}[A-Z]").matches(pan))
+            val masked = pan?.let { it.take(5) + "****" + it.last() }
+            // Null identity input intentionally means retain stored PAN/DOB, not erase it.
+            db.execSQL("UPDATE entity SET display_name=?,relation=?,entity_type=?," +
+                "guardian_id=COALESCE(?,guardian_id),date_of_birth=COALESCE(?,date_of_birth)," +
+                "pan_masked=COALESCE(?,pan_masked)," +
+                "pan_for_statements=COALESCE(?,pan_for_statements) WHERE entity_id=?",
+                arrayOf<Any?>(clean(form.name), form.relation, form.kind,
+                    form.guardianId, birth, masked, pan, personId))
+        }
+
+    /** Custody details may be changed, never the legal owner of an existing account. */
+    fun updateCustody(email: String, accountId: String, form: NewCustody) =
+        accounts.withUnlockedVault(email) { db ->
+            requireCustody(db, form.personId, accountId)
+            require(form.type in setOf("DEMAT", "FOLIO", "BANK", "OTHER", "NPS", "BROKER"))
+            val originalType = db.rawQuery("SELECT account_type FROM account WHERE account_id=?",
+                arrayOf(accountId)).use { c -> check(c.moveToFirst()); c.getString(0) }
+            if (form.type != originalType) require(!db.exists(
+                "SELECT 1 FROM holding WHERE account_id=?", accountId)) {
+                "Cannot reclassify a custody account linked to holdings"
+            }
+            val visible = form.identifierMasked?.takeIf { it.isNotBlank() }?.also {
+                require(it.length <= 80 && '*' in it) { "Visible account ID must be masked" }
+            }
+            db.execSQL("UPDATE account SET custodian=?,account_type=?," +
+                "identifier_masked=COALESCE(?,identifier_masked)," +
+                "dp_id=COALESCE(?,dp_id),client_id=COALESCE(?,client_id)," +
+                "bo_id=COALESCE(?,bo_id),nominee=COALESCE(?,nominee) WHERE account_id=?",
+                arrayOf<Any?>(clean(form.custodian), form.type, visible,
+                    form.dpId?.take(100), form.clientId?.take(100), form.boId?.take(100),
+                    form.nominee?.take(128), accountId))
+        }
+
+    /** Closing is a dated operation, not deletion of history or a financial transaction. */
+    fun closeCustody(email: String, personId: String, accountId: String, closedOn: String) =
+        accounts.withUnlockedVault(email) { db ->
+            requireCustody(db, personId, accountId)
+            val day = date(closedOn)
+            val attached = mutableListOf<Pair<String, String>>()
+            db.rawQuery("SELECT h.holding_id,i.category FROM holding h JOIN instrument i " +
+                "ON h.instrument_id=i.instrument_id WHERE h.account_id=? AND h.entity_id=?",
+                arrayOf(accountId, personId)).use { c ->
+                while (c.moveToNext()) attached += c.getString(0) to c.getString(1)
+            }
+            for ((holding, kind) in attached) {
+                val position = NativePortfolioMath.fold(readRawEvents(db, holding), kind)
+                require(position.errors.isEmpty() && position.quantityScaled == 0L) {
+                    "Close or transfer existing holdings before closing custody"
+                }
+            }
+            db.execSQL("UPDATE account SET closed_on=? WHERE account_id=?",
+                arrayOf<Any>(day, accountId))
+        }
+
+    fun updateGoal(email: String, goalId: String, personId: String?,
+        name: String, targetMinor: Long, targetDate: String, priority: String) =
+        accounts.withUnlockedVault(email) { db ->
+            if (personId != null) requirePerson(db, personId)
+            require(targetMinor > 0L && priority in setOf("LOW", "MEDIUM", "HIGH"))
+            val originalOwner = db.rawQuery("SELECT entity_id FROM goal WHERE goal_id=?",
+                arrayOf(goalId)).use { c ->
+                require(c.moveToFirst()) { "Unknown goal" }
+                if (c.isNull(0)) null else c.getString(0)
+            }
+            require(originalOwner == personId) { "Goal reassignment requires separate review" }
+            db.execSQL("UPDATE goal SET name=?,target_minor=?,target_date=?,priority=? " +
+                "WHERE goal_id=?", arrayOf<Any>(clean(name), targetMinor,
+                    date(targetDate), priority, goalId))
+        }
+
+    fun removeUnlinkedGoal(email: String, goalId: String) =
+        accounts.withUnlockedVault(email) { db ->
+            require(db.exists("SELECT 1 FROM goal WHERE goal_id=?", goalId)) { "Unknown goal" }
+            require(!db.exists("SELECT 1 FROM holding WHERE tag=?", goalId)) {
+                "Cannot remove a goal linked to a holding"
+            }
+            db.execSQL("DELETE FROM goal WHERE goal_id=?", arrayOf<Any>(goalId))
+        }
+
+    /**
+     * Metadata/account changes are not an edit to historical purchases, dates or costs.
+     * All original specialist fields remain in details_json unless explicitly replaced.
+     */
+    fun updateHoldingMetadata(email: String, holdingId: String, accountId: String?,
+        notes: String?, detailsJson: String?, location: String?) =
+        accounts.withUnlockedVault(email) { db ->
+            val (owner, _) = requireHoldingOwner(db, holdingId)
+            requireCustody(db, owner, accountId)
+            require(notes == null || notes.length <= 2048)
+            require(location == null || location.length <= 1024)
+            if (detailsJson != null) {
+                require(detailsJson.length <= 32768)
+                org.json.JSONObject(detailsJson)
+            }
+            db.execSQL("UPDATE holding SET account_id=?,notes=COALESCE(?,notes)," +
+                "details_json=COALESCE(?,details_json),location=COALESCE(?,location) " +
+                "WHERE holding_id=?", arrayOf<Any?>(
+                    accountId, notes, detailsJson, location, holdingId))
+        }
+
+    /** Only an owner-consistent goal can tag a holding; its original ledger is untouched. */
+    fun assignGoal(email: String, holdingId: String, goalId: String?) =
+        accounts.withUnlockedVault(email) { db ->
+            val (owner, _) = requireHoldingOwner(db, holdingId)
+            if (goalId != null) require(db.exists(
+                "SELECT 1 FROM goal WHERE goal_id=? AND (entity_id=? OR entity_id IS NULL)",
+                goalId, owner)) { "Goal does not belong to this member/household" }
+            db.execSQL("UPDATE holding SET tag=? WHERE holding_id=?",
+                arrayOf<Any?>(goalId, holdingId))
+        }
+
+    /** Archive is stored in the encrypted native setting ledger; no schema-v9 mutation. */
+    fun setHoldingArchived(email: String, holdingId: String, archived: Boolean) =
+        accounts.withUnlockedVault(email) { db ->
+            requireHoldingOwner(db, holdingId)
+            if (archived) {
+                val category = db.rawQuery("SELECT i.category FROM instrument i " +
+                    "JOIN holding h ON h.instrument_id=i.instrument_id WHERE h.holding_id=?",
+                    arrayOf(holdingId)).use { c -> check(c.moveToFirst()); c.getString(0) }
+                val position = NativePortfolioMath.fold(readRawEvents(db, holdingId), category)
+                require(position.errors.isEmpty() && position.quantityScaled == 0L) {
+                    "Cannot archive an open or unreconciled holding"
+                }
+            }
+            db.execSQL("INSERT OR REPLACE INTO setting(key,value) VALUES(?,?)",
+                arrayOf<Any>("native.holding.archived.$holdingId", if (archived) "1" else "0"))
+        }
+
+    /**
+     * Idempotent offline loan catch-up matching frozen EMI policy. Authenticated
+     * repayment events and the next-due cursor commit in the SAME SQLCipher transaction.
+     * If any due day already has a ledger repayment, reconcile manually; never double post.
+     */
+    fun catchUpEmi(email: String, holdingId: String, asOf: String): NativeEmiPlanner.Plan? =
+        accounts.withUnlockedVault(email) { db ->
+            val (owner, custody) = requireHoldingOwner(db, holdingId)
+            val loan = db.rawQuery("SELECT i.category,i.name,h.emi_status,h.monthly_emi_minor," +
+                "h.next_coupon_date,h.remaining_emi_count,h.current_price_minor " +
+                "FROM holding h JOIN instrument i ON h.instrument_id=i.instrument_id " +
+                "WHERE h.holding_id=?", arrayOf(holdingId)).use { c ->
+                check(c.moveToFirst())
+                val status = if (c.isNull(2)) null else c.getString(2)
+                val emi = if (c.isNull(3)) 0L else c.getLong(3)
+                val next = if (c.isNull(4)) null else c.getString(4)
+                Pair(c.getString(1), NativeEmiPlanner.Loan(owner, holdingId,
+                    c.getString(0), status ?: if (emi > 0L && next != null) "PAYING" else null,
+                    emi, next, if (c.isNull(5)) 0 else c.getInt(5), c.getLong(6)))
+            }
+            require(!db.exists("SELECT 1 FROM setting WHERE key=? AND value='1'",
+                "native.holding.archived.$holdingId")) { "Archived holding cannot accrue repayments" }
+            val posted = mutableSetOf<String>()
+            db.rawQuery("SELECT trade_date FROM ledger_event WHERE holding_id=? " +
+                "AND entity_id=? AND event_type='REPAYMENT'",
+                arrayOf(holdingId, owner)).use { c ->
+                while (c.moveToNext()) posted.add(c.getString(0))
+            }
+            val asOfDate = date(asOf)
+            require(!LocalDate.parse(asOfDate).isAfter(LocalDate.now())) {
+                "Cannot post installments due in the future"
+            }
+            val plan = NativeEmiPlanner.plan(loan.second, asOfDate, posted)
+                ?: return@withUnlockedVault null
+            for (payment in plan.payments) {
+                insertEvent(db, owner, custody, holdingId, loan.first,
+                    NewEvent(holdingId, "REPAYMENT", payment.dueDate, 0L,
+                        payment.amountMinor, payment.amountMinor,
+                        notes = "Monthly EMI (automatic)"),
+                    sourceRef = "native.emi.v1")
+            }
+            db.execSQL("UPDATE holding SET current_price_minor=?,next_coupon_date=?," +
+                "remaining_emi_count=?,emi_status=?,last_price_updated=?,price_source=? " +
+                "WHERE holding_id=?", arrayOf<Any?>(plan.outstandingMinor,
+                    plan.nextDueDate, plan.remainingCount, plan.status, now(),
+                    "EMI catch-up", holdingId))
+            plan
+        }
+
+    /** Explicit repayment state; no events are added merely by pausing/resuming. */
+    fun updateEmiSchedule(email: String, holdingId: String, status: String,
+        monthlyMinor: Long, nextDue: String?, remaining: Int) =
+        accounts.withUnlockedVault(email) { db ->
+            requireHoldingOwner(db, holdingId)
+            require(status in setOf("PAYING", "PAUSED", "STOPPED"))
+            require(monthlyMinor >= 0L && remaining in 0..3600)
+            if (status == "PAYING") {
+                require(monthlyMinor > 0L && remaining > 0 && nextDue != null)
+            }
+            val category = db.rawQuery("SELECT i.category FROM instrument i " +
+                "JOIN holding h ON i.instrument_id=h.instrument_id " +
+                "WHERE h.holding_id=?", arrayOf(holdingId)).use { c ->
+                check(c.moveToFirst()); c.getString(0)
+            }
+            require(category == "LIABILITY")
+            db.execSQL("UPDATE holding SET emi_status=?,monthly_emi_minor=?," +
+                "next_coupon_date=?,remaining_emi_count=? WHERE holding_id=?",
+                arrayOf<Any?>(status, monthlyMinor, optionalDate(nextDue), remaining, holdingId))
         }
 
     /** Manual dated close/NAV only, preserving source and rejecting future data. */

@@ -42,6 +42,7 @@ internal fun NativeRestoreScreen(
     var secondId by remember { mutableStateOf("pet") }
     var secondAnswer by remember { mutableStateOf("") }
     var confirmed by remember { mutableStateOf(false) }
+    var termsAcceptedAt by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var preview by remember { mutableStateOf<NativeRestoreFlow.Preview?>(null) }
     var message by remember { mutableStateOf("") }
@@ -80,12 +81,14 @@ internal fun NativeRestoreScreen(
                 }
             }) { Text("Verify identity and preview") }
             preview?.let { p ->
+                NativeTermsGate(termsAcceptedAt, deviceVerified && !busy,
+                    onAccept = { termsAcceptedAt = it }, onDecline = onBack)
                 Text("Verified archive: family members ${p.members}, holdings ${p.holdings}, money events ${p.ledger}.")
                 Text("Only restore to a completely empty vault. This cannot merge with existing data.")
                 androidx.compose.material3.Checkbox(checked = confirmed,
                     onCheckedChange = { confirmed = it })
                 Text("I approve creating a new encrypted vault from this exact verified archive.")
-                Button(enabled = confirmed && !busy && deviceVerified, onClick = {
+                Button(enabled = confirmed && termsAcceptedAt != null && !busy && deviceVerified, onClick = {
                     busy = true
                     scope.launch {
                         try {

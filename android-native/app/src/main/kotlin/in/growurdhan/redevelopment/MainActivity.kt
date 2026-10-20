@@ -110,12 +110,12 @@ class MainActivity : ComponentActivity() {
                             if (atStart == lifecycleEpoch && deviceVerified) code else null
                         }
                     },
-                    onLogin = { email, password ->
+                    onLogin = { email, password, consent ->
                         if (!deviceVerified || !admission.valid()) NativeAccountRepository.SignInResult.DENIED
                         else {
                             val atStart = lifecycleEpoch
                             val result = withContext(Dispatchers.IO) {
-                                accounts.loginResult(email, password)
+                                accounts.loginResult(email, password, consent)
                             }
                             if (atStart != lifecycleEpoch || !deviceVerified) {
                                 accounts.lock()

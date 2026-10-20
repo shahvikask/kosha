@@ -6,6 +6,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import `in`.growurdhan.model.NativeCredentials
 import `in`.growurdhan.model.NativeDeviceAdmission
+import `in`.growurdhan.model.NativeRegistrationProof
+import java.time.Instant
 import java.io.File
 import java.util.UUID
 import org.junit.Assert.*
@@ -37,6 +39,15 @@ class NativeAccountRepositoryInstrumentedTest {
         clock: () -> Long = System::currentTimeMillis): NativeAccountRepository =
         NativeAccountRepository(ctx, admitted(), clock)
 
+    private fun verifiedEnroll(repository: NativeAccountRepository,
+        input: NativeCredentials.Enrollment,
+        at: String = Instant.now().toString()): String =
+        repository.enrollVerified(input,
+            NativeRegistrationProof.Identity("ABCDE1234F", "1990-06-12"),
+            NativeRegistrationProof.Consent(
+                NativeRegistrationProof.TERMS_VERSION,
+                NativeRegistrationProof.TERMS_TEXT_ID, at, true), at)
+
     @Test fun interruptedRegistrationCodeCanBeSafelyReplacedAfterFreshAuthentication() {
         val context = sandbox()
         val input = NativeCredentials.Enrollment("delivery@example.org", "Delivery",
@@ -44,7 +55,7 @@ class NativeAccountRepositoryInstrumentedTest {
         val first = repository(context)
         // Simulate the Activity losing its response after the encrypted enrollment
         // committed: no plaintext code is written to persistent storage.
-        first.enroll(input)
+        verifiedEnroll(first, input)
         first.onBackground()
         val restarted = repository(context)
         assertTrue(restarted.login(input.email, input.password))
@@ -63,7 +74,7 @@ class NativeAccountRepositoryInstrumentedTest {
         val repo = NativeAccountRepository(ctx, gate)
         val input = NativeCredentials.Enrollment("resume@example.org", "Resume",
             "Owner", "Strong!Pass123", "school", "School", "pet", "Cat")
-        repo.enroll(input)
+        verifiedEnroll(repo, input)
         assertTrue(repo.login(input.email, input.password))
         repo.withUnlockedVault(input.email) { Unit }
         gate.onStop()
@@ -88,7 +99,7 @@ class NativeAccountRepositoryInstrumentedTest {
         val input = NativeCredentials.Enrollment("restart@example.org", "Restart",
             "Owner", "Strong!Pass123", "school", "School", "pet", "Cat")
         val first = repository(ctx)
-        first.enroll(input)
+        verifiedEnroll(first, input)
         assertTrue(first.login(input.email, input.password))
         first.withUnlockedVault(input.email) { Unit }
         first.onBackground()
@@ -125,7 +136,7 @@ class NativeAccountRepositoryInstrumentedTest {
         val secure = NativeAccountRepository(ctx, gate)
         val input = NativeCredentials.Enrollment("interrupted@example.org", "Interrupted",
             "Owner", "Strong!Pass123", "school", "School", "pet", "Cat")
-        secure.enroll(input)
+        verifiedEnroll(secure, input)
         assertTrue(secure.login(input.email, input.password))
         assertThrows(IllegalStateException::class.java) {
             secure.withUnlockedVault(input.email) { db ->
@@ -159,11 +170,11 @@ class NativeAccountRepositoryInstrumentedTest {
         val gate = NativeDeviceAdmission()
         gate.onStart()
         val secure = NativeAccountRepository(context, gate)
-        assertThrows(IllegalStateException::class.java) { secure.enroll(input) }
+        assertThrows(IllegalStateException::class.java) { verifiedEnroll(secure, input) }
         assertFalse(secure.login(input.email, input.password))
         assertTrue(gate.begin())
         assertTrue(gate.complete(true))
-        secure.enroll(input)
+        verifiedEnroll(secure, input)
         assertTrue(secure.login(input.email, input.password))
         gate.onStop()
         assertThrows(IllegalStateException::class.java) {
@@ -188,7 +199,7 @@ class NativeAccountRepositoryInstrumentedTest {
         val input = NativeCredentials.Enrollment("revoked@example.org", "Revoked", "Owner",
             "Strong!Pass123", "school", "First School", "pet", "My Cat")
         val primary = repository(context)
-        primary.enroll(input)
+        verifiedEnroll(primary, input)
         assertTrue(primary.login(input.email, input.password))
         primary.withUnlockedVault(input.email) { db ->
             db.rawQuery("SELECT COUNT(*) FROM ledger_event", null).use {
@@ -218,7 +229,7 @@ class NativeAccountRepositoryInstrumentedTest {
         val input = NativeCredentials.Enrollment("legacy@example.org", "Legacy", "Owner",
             "Strong!Pass123", "school", "First School", "pet", "My Cat")
         val repository = repository(context)
-        repository.enroll(input)
+        verifiedEnroll(repository, input)
         assertTrue(repository.login(input.email, input.password))
         repository.withUnlockedVault(input.email) { db ->
             db.execSQL("DELETE FROM setting WHERE key='m25.auth.recovery_code_verifier'")
@@ -243,7 +254,7 @@ class NativeAccountRepositoryInstrumentedTest {
         val input = NativeCredentials.Enrollment("recovery@example.org", "Recovery", "Owner",
             "Strong!Pass123", "school", "School Name", "pet", "Cat")
         val repo = repository(ctx)
-        val code = repo.enroll(input)
+        val code = verifiedEnroll(repo, input)
         assertTrue(code.startsWith("GUD-"))
         assertThrows(IllegalArgumentException::class.java) {
             repo.recoverWithCode(input.email, "bad", "school", "School Name",
@@ -295,7 +306,7 @@ class NativeAccountRepositoryInstrumentedTest {
         val input = NativeCredentials.Enrollment("throttled@example.org", "Throttled", "Owner",
             "Strong!Pass123", "school", "School Name", "pet", "Cat")
         val first = repository(ctx, clock)
-        val code = first.enroll(input)
+        val code = verifiedEnroll(first, input)
         repeat(4) { assertFalse(first.login(input.email, "bad-password")) }
         assertThrows(IllegalArgumentException::class.java) {
             first.recoverWithCode(input.email, "wrong", "school", "School Name",
@@ -325,7 +336,7 @@ class NativeAccountRepositoryInstrumentedTest {
         val input = NativeCredentials.Enrollment("rotating@example.org", "Owner", "One",
             "Strong!Pass123", "school", "First School", "pet", "Cat")
         val repo = repository(context)
-        repo.enroll(input, "2020-01-01T00:00:00Z")
+        verifiedEnroll(repo, input, "2020-01-01T00:00:00Z")
         assertEquals(NativeAccountRepository.SignInResult.ROTATION_REQUIRED,
             repo.loginResult(input.email, input.password))
         assertThrows(IllegalStateException::class.java) {
@@ -358,10 +369,10 @@ class NativeAccountRepositoryInstrumentedTest {
             "Strong!Pass123", "school", "School Name", "pet", "Cat")
         val service = repository(ctx)
         assertThrows(IllegalArgumentException::class.java) {
-            service.enroll(input.copy(password = "weak"), "2026-10-18T00:00:00Z")
+            verifiedEnroll(service, input.copy(password = "weak"), "2026-10-18T00:00:00Z")
         }
         assertFalse(ctx.getDatabasePath("growurdhan-v9.sqlcipher").exists())
-        service.enroll(input, "2026-10-18T00:00:00Z")
+        verifiedEnroll(service, input, "2026-10-18T00:00:00Z")
         assertThrows(IllegalStateException::class.java) {
             service.withUnlockedVault(input.email) { Unit }
         }
@@ -384,7 +395,7 @@ class NativeAccountRepositoryInstrumentedTest {
         }
         val reopened = repository(ctx)
         assertTrue(reopened.login(input.email, input.password))
-        assertThrows(IllegalStateException::class.java) { reopened.enroll(input) }
+        assertThrows(IllegalStateException::class.java) { verifiedEnroll(reopened, input) }
         reopened.withUnlockedVault(input.email) { db ->
             db.rawQuery("SELECT password_hash FROM vault_account", null).use {
                 assertTrue(it.moveToFirst())

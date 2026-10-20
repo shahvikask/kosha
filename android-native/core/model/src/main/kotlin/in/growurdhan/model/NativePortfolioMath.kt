@@ -138,6 +138,7 @@ object NativePortfolioMath {
                     if (remaining == 0L) { errors += "Sale has no quantity: ${e.id}"; continue }
                     val totalSold = remaining
                     var matched = 0L
+                    var feesAllocated = 0L
                     for (lot in lots) {
                         if (remaining == 0L) break
                         val take = minOf(remaining, lot.quantity)
@@ -149,7 +150,12 @@ object NativePortfolioMath {
                         matched += take
                         // Allocate sale charges by units, not by display-rounded rupees.
                         val gross = mulDiv(take, e.unitPriceMinor, QTY_SCALE)
-                        val fees = mulDiv(e.chargesMinor, take, totalSold)
+                        // The final matched parcel gets the integer rounding remainder.
+                        // No paise/ten-thousandth is silently lost across multiple lots.
+                        val fees = if (remaining == 0L)
+                            Math.subtractExact(e.chargesMinor, feesAllocated)
+                        else mulDiv(e.chargesMinor, take, totalSold)
+                        feesAllocated = sum(feesAllocated, fees)
                         val proceeds = Math.subtractExact(gross, fees)
                         disposals += Disposal(e.id, lot.id, lot.date, e.date, take, costPart,
                             proceeds, costPart?.let { Math.subtractExact(proceeds, it) },

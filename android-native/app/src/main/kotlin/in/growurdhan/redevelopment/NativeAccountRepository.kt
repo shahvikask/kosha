@@ -58,7 +58,7 @@ internal class NativeAccountRepository(
         } else 0L
         return Throttle(count, now, until)
     }
-    enum class SignInResult { UNLOCKED, DENIED, ROTATION_REQUIRED }
+    enum class SignInResult { UNLOCKED, DENIED, ROTATION_REQUIRED, TERMS_REQUIRED }
     private val vault = EncryptedVaultStore(context)
     private var session = NativeSession()
     // Bound to the exact encrypted account credential version at successful login.
@@ -71,11 +71,7 @@ internal class NativeAccountRepository(
         }
     }
 
-    /**
-     * Verified native enrollment with local terms evidence and confidential identity.
-     * Existing enroll API remains available to old call sites until the real terms
-     * dialog and legacy account migration are completed; do not mark P01 accepted.
-     */
+    /** Device-admitted enrollment requires independent identity and scroll-reviewed terms proof. */
     fun enrollVerified(input: NativeCredentials.Enrollment,
                        identity: `in`.growurdhan.model.NativeRegistrationProof.Identity,
                        consent: `in`.growurdhan.model.NativeRegistrationProof.Consent,
@@ -84,15 +80,16 @@ internal class NativeAccountRepository(
         return enrollImpl(input, createdAt, identity, consent)
     }
 
-    /** Legacy entry kept stable while the versioned consent UX is migrated. */
+    /** Retained for binary/source compatibility only. This entry point must never create a vault. */
+    @Deprecated("Unversioned enrollment is forbidden. Use enrollVerified with consent and PAN/DOB.")
     fun enroll(input: NativeCredentials.Enrollment,
                createdAt: String = Instant.now().toString()): String =
-        enrollImpl(input, createdAt, null, null)
+        throw IllegalStateException("Unversioned enrollment is disabled")
 
     private fun enrollImpl(
         input: NativeCredentials.Enrollment, createdAt: String,
-        identity: `in`.growurdhan.model.NativeRegistrationProof.Identity?,
-        consent: `in`.growurdhan.model.NativeRegistrationProof.Consent?
+        identity: `in`.growurdhan.model.NativeRegistrationProof.Identity,
+        consent: `in`.growurdhan.model.NativeRegistrationProof.Consent
     ): String {
         ticket() // require explicit foreground device proof before any vault file is created
         val account = NativeCredentials.enroll(input, createdAt)
@@ -117,15 +114,15 @@ internal class NativeAccountRepository(
                 // atomically even if Android backgrounds mid-creation. Aborting here
                 // leaves an unowned encrypted file and wrapped Keystore key that may
                 // not be silently deleted/recreated.
-                if (identity != null && consent != null) {
-                    val fullPan = identity.fullPan.trim().uppercase(Locale.ROOT)
-                    db.execSQL("UPDATE vault_account SET pan_masked=?,pan_for_statements=?,date_of_birth=? WHERE id=?",
-                        arrayOf(fullPan.take(5) + "****" + fullPan.last(), fullPan,
-                            identity.dob, "native-account"))
-                    writeSetting(db, "m25.terms.version", consent.version)
-                    writeSetting(db, "m25.terms.text_id", consent.textId)
-                    writeSetting(db, "m25.terms.accepted_at", consent.acceptedAt)
-                }
+                val fullPan = identity.fullPan.trim().uppercase(Locale.ROOT)
+                val maskedPan = fullPan.take(5) + "****" + fullPan.last()
+                db.execSQL("UPDATE vault_account SET pan_masked=?,pan_for_statements=?,date_of_birth=? WHERE id=?",
+                    arrayOf<Any>(maskedPan, fullPan, identity.dob, "native-account"))
+                db.execSQL("UPDATE entity SET pan_masked=?,pan_for_statements=?,date_of_birth=? WHERE entity_id=?",
+                    arrayOf<Any>(maskedPan, fullPan, identity.dob, ownerId))
+                writeSetting(db, "m25.terms.version", consent.version)
+                writeSetting(db, "m25.terms.text_id", consent.textId)
+                writeSetting(db, "m25.terms.accepted_at", consent.acceptedAt)
                 writeSetting(db, RECOVERY_KEY, issued.verifier)
                 db.setTransactionSuccessful()
             } finally { db.endTransaction() }
@@ -141,12 +138,14 @@ internal class NativeAccountRepository(
     /** Encrypted, transactionally persisted rate limit shared across login and recovery.
      * Clock rollback fails closed. Device time acceleration cannot be completely defeated offline.
      */
-    @Synchronized fun loginResult(email: String, password: String): SignInResult {
+    @Synchronized fun loginResult(email: String, password: String,
+        consent: `in`.growurdhan.model.NativeRegistrationProof.Consent? = null): SignInResult {
         lock()
         return try {
             val admissionTicket = ticket()
             var account: NativeCredentials.Account? = null
             var valid = false
+            var termsRequired = false
             vault.openExisting().use { db ->
                 db.beginTransaction()
                 try {
@@ -159,6 +158,24 @@ internal class NativeAccountRepository(
                             account!!, email, password)
                         saveThrottle(db, if (valid) Throttle(0, now, 0)
                             else denied(state, now))
+                        if (valid) {
+                            val accepted = readSetting(db, "m25.terms.version") ==
+                                `in`.growurdhan.model.NativeRegistrationProof.TERMS_VERSION &&
+                                readSetting(db, "m25.terms.text_id") ==
+                                `in`.growurdhan.model.NativeRegistrationProof.TERMS_TEXT_ID &&
+                                readSetting(db, "m25.terms.accepted_at")
+                                    ?.let { runCatching { Instant.parse(it) }.isSuccess } == true
+                            if (!accepted) {
+                                if (consent == null) termsRequired = true
+                                else {
+                                    `in`.growurdhan.model.NativeRegistrationProof
+                                        .requireValidConsent(consent)
+                                    writeSetting(db, "m25.terms.version", consent.version)
+                                    writeSetting(db, "m25.terms.text_id", consent.textId)
+                                    writeSetting(db, "m25.terms.accepted_at", consent.acceptedAt)
+                                }
+                            }
+                        }
                     }
                     requireTicket(admissionTicket)
                     db.setTransactionSuccessful()
@@ -166,6 +183,7 @@ internal class NativeAccountRepository(
             }
             requireTicket(admissionTicket)
             if (!valid || account == null) SignInResult.DENIED
+            else if (termsRequired) SignInResult.TERMS_REQUIRED
             else if (NativeCredentials.passwordExpired(account!!, Instant.now()))
                 SignInResult.ROTATION_REQUIRED
             else {

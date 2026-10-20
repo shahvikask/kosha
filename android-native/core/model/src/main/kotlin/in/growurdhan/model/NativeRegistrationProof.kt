@@ -11,6 +11,14 @@ object NativeRegistrationProof {
     data class Consent(val version: String, val textId: String,
                        val acceptedAt: String, val scrolledToEnd: Boolean)
 
+    fun requireValidConsent(consent: Consent) {
+        require(consent.scrolledToEnd && consent.version == TERMS_VERSION &&
+            consent.textId == TERMS_TEXT_ID &&
+            runCatching { java.time.Instant.parse(consent.acceptedAt) }.isSuccess) {
+            "Current versioned terms acceptance required"
+        }
+    }
+
     fun requireValid(identity: Identity, consent: Consent) {
         require(Regex("[A-Z]{5}[0-9]{4}[A-Z]").matches(identity.fullPan.trim().uppercase())) {
             "Registration identity invalid"
@@ -19,10 +27,6 @@ object NativeRegistrationProof {
         require(birth != null && !birth.isAfter(LocalDate.now().minusYears(18))) {
             "Registration identity invalid"
         }
-        require(consent.scrolledToEnd && consent.version == TERMS_VERSION &&
-            consent.textId == TERMS_TEXT_ID &&
-            runCatching { java.time.Instant.parse(consent.acceptedAt) }.isSuccess) {
-            "Current terms acceptance required"
-        }
+        requireValidConsent(consent)
     }
 }

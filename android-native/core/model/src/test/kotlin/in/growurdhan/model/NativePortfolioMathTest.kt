@@ -74,4 +74,18 @@ class NativePortfolioMathTest {
             fail("Cross-owner fold must not be allowed")
         } catch (_: IllegalArgumentException) { }
     }
+    @Test fun multipleFifoLotsAllocateEveryScaledMinorOfSaleCharges() {
+        val cases = listOf(
+            event("lot-1", "BUY", "2024-01-01", 100_000_000L, 10_000L),
+            event("lot-2", "BUY", "2024-02-01", 100_000_000L, 10_000L),
+            event("dispose", "SELL", "2025-03-01", 200_000_000L, 20_000L,
+                charges = 1L)
+        )
+        val result = NativePortfolioMath.fold(cases, "EQUITY")
+        assertEquals(0L, result.quantityScaled)
+        assertEquals(2, result.disposals.size)
+        assertEquals(39_999L, result.disposals.sumOf { it.proceedsMinor })
+        assertEquals(19_999L, result.disposals.sumOf { it.gainMinor ?: 0L })
+    }
+
 }
