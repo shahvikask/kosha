@@ -740,7 +740,7 @@ class EncryptedVaultStoreInstrumentedTest {
             assertEquals(first, second)
             if (expected == RestoreRecoveryInspector.State.VERIFIED_CANDIDATE ||
                 expected == RestoreRecoveryInspector.State.VERIFIED_LIVE) {
-                assertEquals(9, first.verifiedRows)
+                assertEquals(12, first.verifiedRows)
                 assertTrue(first.durableClaimPresent)
             }
             val after = snapshot()
@@ -849,6 +849,33 @@ class EncryptedVaultStoreInstrumentedTest {
                 credentials, explicitOwnerApproval = true)
         }
         assertArrayEquals(tamperedBytes, candidate.readBytes())
+
+        // New-device consent was not in the source archive, but must
+        // remain independently valid after an interrupted publication.
+        val tamperedConsent = interrupted()
+        val termsCandidate = tamperedConsent.getDatabasePath("growurdhan-v9.sqlcipher")
+            .parentFile!!.listFiles()!!.single { it.name.startsWith(
+                "growurdhan-v9.sqlcipher.restore-") }
+        val termsKeyFile = tamperedConsent.noBackupFilesDir.listFiles()!!.single {
+            it.name.startsWith("vault-key.v1.restore-")
+        }
+        val termsKey = KeystoreWrappedVaultKey(tamperedConsent, termsKeyFile.name)
+            .unwrapExisting()
+        try {
+            SQLiteDatabase.openDatabase(termsCandidate.absolutePath, termsKey, null,
+                SQLiteDatabase.OPEN_READWRITE,
+                DatabaseErrorHandler { _, _ -> throw IllegalStateException("Synthetic tamper") },
+                null).use { db ->
+                db.execSQL("UPDATE setting SET value='STALE-TERMS' " +
+                    "WHERE key='m25.terms.text_id'")
+            }
+        } finally { termsKey.fill(0) }
+        val tamperedCandidateBytes = termsCandidate.readBytes()
+        assertThrows(Exception::class.java) {
+            RestoreRecoveryInspector(tamperedConsent).inspectForOwnerReview(
+                credentials, explicitOwnerApproval = true)
+        }
+        assertArrayEquals(tamperedCandidateBytes, termsCandidate.readBytes())
 
         val corrupted = interrupted()
         val encrypted = corrupted.getDatabasePath("growurdhan-v9.sqlcipher")

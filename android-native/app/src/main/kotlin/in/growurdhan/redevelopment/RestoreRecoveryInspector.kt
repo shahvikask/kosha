@@ -149,6 +149,7 @@ internal class RestoreRecoveryInspector(private val context: Context) {
             }
             val databaseBefore = fingerprint(selected)
             val keyBefore = fingerprint(keyFile)
+            var verifiedRowCount = 0
             val key = KeystoreWrappedVaultKey(context, wrappedKeyName).unwrapExisting()
             try {
                 System.loadLibrary("sqlcipher")
@@ -158,7 +159,7 @@ internal class RestoreRecoveryInspector(private val context: Context) {
                 SQLiteDatabase.openDatabase(selected.absolutePath, key, null,
                     SQLiteDatabase.OPEN_READONLY, preserve, null).use { db ->
                     db.execSQL("PRAGMA query_only=ON")
-                    verifyEncryptedRows(db, plan)
+                    verifiedRowCount = verifyEncryptedRows(db, plan)
                 }
             } finally {
                 key.fill(0)
@@ -177,11 +178,11 @@ internal class RestoreRecoveryInspector(private val context: Context) {
                         "Forensic inspection created an unexpected sidecar"
                     }
             }
-            Review(state, plan.rows.size, true, reservation)
+            Review(state, verifiedRowCount, true, reservation)
         }
     }
 
-    private fun verifyEncryptedRows(db: SQLiteDatabase, plan: RestoreV9Plan.Plan) {
+    private fun verifyEncryptedRows(db: SQLiteDatabase, plan: RestoreV9Plan.Plan): Int {
         fun scalar(query: String): String = db.rawQuery(query, null).use { cur ->
             require(cur.moveToFirst() && !cur.isNull(0))
             val value = cur.getString(0)
@@ -212,12 +213,14 @@ internal class RestoreRecoveryInspector(private val context: Context) {
             }
         }
 
-        // Compare EVERY projected typed value, not only table counts or the
-        // original JSON SHA. This catches missing/misassociated custody and
-        // financial metadata even if the candidate has the right row counts.
-        require(plan.rows.all { it.table in tables })
+        // The publisher intentionally stores three NEW-device terms rows.
+        // The authenticated archive cannot contain them. Reconstruct the
+        // EXACT publication plan from validated candidate consent before
+        // comparing every financial row and source fingerprint.
+        val publishedPlan = NativeRestoreTermsRows.projectForensicCandidate(plan, db)
+        require(publishedPlan.rows.all { it.table in tables })
         for (table in tables) {
-            val expected = plan.rows.filter { it.table == table }
+            val expected = publishedPlan.rows.filter { it.table == table }
             val columns = expected.firstOrNull()?.columns
             if (columns == null) {
                 require(scalar("SELECT COUNT(*) FROM $table") == "0") {
@@ -248,6 +251,7 @@ internal class RestoreRecoveryInspector(private val context: Context) {
             }
             require(counts.isEmpty()) { "Authenticated restored row missing" }
         }
+        return publishedPlan.rows.size
     }
 
     private fun exists(file: File) = Files.exists(file.toPath(), LinkOption.NOFOLLOW_LINKS)

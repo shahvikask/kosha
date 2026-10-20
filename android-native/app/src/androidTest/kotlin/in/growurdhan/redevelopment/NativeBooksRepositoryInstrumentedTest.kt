@@ -555,4 +555,33 @@ class NativeBooksRepositoryInstrumentedTest {
         assertEquals(25_000_000L, books.read(input.email).holdings.single().quantityScaled)
     }
 
+    @Test fun recordedMoneyWeightedReturnDoesNotCountSyntheticStatementOpening() {
+        val context = sandbox()
+        val (accounts, books) = create(context)
+        val owner = books.read(input.email).people.single().id
+        val withoutBuys = books.createHolding(input.email,
+            NativeBooksRepository.NewHolding(owner, null,
+                "Statement only holding", "EQUITY", "Other",
+                100_000_000L, 10_000L, "2024-01-01", true))
+        assertNull(books.moneyWeightedReturn(input.email, withoutBuys, "2025-01-01"))
+
+        val investing = books.createHolding(input.email,
+            NativeBooksRepository.NewHolding(owner, null,
+                "Transaction based holding", "EQUITY", "Other",
+                0L, 10_000L, "2024-01-01", true))
+        books.appendUserEvent(input.email, NativeBooksRepository.NewEvent(
+            investing, "BUY", "2024-01-01",
+            100_000_000L, 10_000L, 10_000L))
+        books.recordManualPrice(input.email, investing, 11_000L, "2025-01-01")
+        val expected = books.moneyWeightedReturn(input.email, investing, "2025-01-01")
+        assertNotNull(expected)
+        assertTrue(expected!! > 9.0 && expected < 11.0)
+        accounts.onBackground()
+        val reopened = NativeAccountRepository(context, gate())
+        assertTrue(reopened.login(input.email, input.password))
+        assertEquals(expected,
+            NativeBooksRepository(reopened).moneyWeightedReturn(
+                input.email, investing, "2025-01-01"))
+    }
+
 }

@@ -3,6 +3,7 @@ package `in`.growurdhan.redevelopment
 import `in`.growurdhan.model.NativeAssetTaxonomy
 import `in`.growurdhan.model.NativePortfolioMath
 import `in`.growurdhan.model.NativeEmiPlanner
+import `in`.growurdhan.model.NativeMoneyWeightedReturn
 import java.math.BigDecimal
 import java.math.BigInteger
 import java.time.Instant
@@ -385,6 +386,30 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
         }
         return rows
     }
+
+    /**
+     * Read-only XIRR from authenticated events and last recorded unit price.
+     * Unknown invested, invalid FIFO, unreconciled holdings, or no actual
+     * investor cash flows yield N/A. Nothing is calculated or cached offline
+     * without an admitted SQLCipher session. No price is fetched here.
+     */
+    fun moneyWeightedReturn(email: String, holdingId: String,
+        asOf: String = LocalDate.now().toString()): Double? =
+        accounts.withUnlockedVault(email) { db ->
+            requireHoldingOwner(db, holdingId)
+            val info = db.rawQuery("SELECT i.category,h.current_price_minor," +
+                "h.needs_review,h.last_price_updated FROM holding h " +
+                "JOIN instrument i ON i.instrument_id=h.instrument_id " +
+                "WHERE h.holding_id=?", arrayOf(holdingId)).use { c ->
+                require(c.moveToFirst())
+                Triple(c.getString(0), c.getLong(1),
+                    c.getInt(2) == 1 || c.isNull(3))
+            }
+            if (info.third) null
+            else NativeMoneyWeightedReturn.forHolding(
+                readRawEvents(db, holdingId), info.first, info.second,
+                LocalDate.parse(asOf))
+        }
 
     fun history(email: String, holdingId: String): List<EventRow> =
         accounts.withUnlockedVault(email) { db ->

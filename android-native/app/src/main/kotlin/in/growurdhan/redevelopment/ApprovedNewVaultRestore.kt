@@ -79,24 +79,9 @@ internal class ApprovedNewVaultRestore(
             // original owner/ledger proofs precede a durable replay claim.
             val authenticatedPlan = LockedRestoreStaging(context)
                 .previewAuthenticatedV9(credentials)
-            // Preserve the authenticated original JSON as the final row.
-            // Local consent is NEW evidence for this new device, not a rewritten
-            // claim about what the historical archive's user consent contained.
-            val consentRows = listOf(
-                "m25.terms.version" to consent.version,
-                "m25.terms.text_id" to consent.textId,
-                "m25.terms.accepted_at" to consent.acceptedAt
-            ).map { (key, value) ->
-                RestoreV9Plan.Row("setting", listOf("key", "value"), listOf(key, value))
-            }
-            val originalRows = authenticatedPlan.rows
-            require(originalRows.last().table == "setting" &&
-                originalRows.last().values.firstOrNull() ==
-                    "m24.authenticated_frozen_original_json") {
-                "Authenticated source fingerprint row missing"
-            }
-            val plan = authenticatedPlan.copy(
-                rows = originalRows.dropLast(1) + consentRows + originalRows.last())
+            // Shared with read-only forensic recovery; no drift in candidate
+            // expectations after an interrupted key/database publication.
+            val plan = NativeRestoreTermsRows.append(authenticatedPlan, consent)
             val sourceFingerprint = plan.originalJsonSha256
             require(plan.rows.isNotEmpty()) { "Missing authenticated restore rows" }
 

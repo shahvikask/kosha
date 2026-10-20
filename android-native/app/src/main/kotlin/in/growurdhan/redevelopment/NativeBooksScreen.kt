@@ -58,6 +58,7 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
     var search by remember { mutableStateOf("") }
     var historyId by remember { mutableStateOf("") }
     var history by remember { mutableStateOf<List<NativeBooksRepository.EventRow>>(emptyList()) }
+    var xirrResults by remember { mutableStateOf<Map<String, Double?>>(emptyMap()) }
 
     suspend fun refresh() {
         val fresh = withContext(Dispatchers.IO) { books.read(email) }
@@ -77,6 +78,7 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
         }
     }
     LaunchedEffect(email) {
+        xirrResults = emptyMap()
         try { refresh() } catch (_: Exception) {
             error = "Unable to open encrypted books. Lock and verify this device again."
         }
@@ -207,6 +209,28 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                                     } finally { busy = false }
                                 }
                             }) { Text("View audit history") }
+                            OutlinedButton(enabled = !busy, onClick = {
+                                busy = true
+                                scope.launch {
+                                    try {
+                                        val result = withContext(Dispatchers.IO) {
+                                            books.moneyWeightedReturn(email, h.id)
+                                        }
+                                        xirrResults = xirrResults + (h.id to result)
+                                    } catch (_: Exception) {
+                                        error = "Money-weighted return unavailable. " +
+                                            "Review the ledger and recorded price."
+                                    } finally { busy = false }
+                                }
+                            }) { Text("Calculate money-weighted return (XIRR)") }
+                            if (h.id in xirrResults) {
+                                val computed = xirrResults[h.id]
+                                Text(if (computed == null) "XIRR: N/A — insufficient " +
+                                    "verified cash flows, basis or current price"
+                                else "XIRR: " + String.format(
+                                    java.util.Locale.ROOT, "%.2f%%", computed) +
+                                    " (recorded last price, not a live quote)")
+                            }
                         }
                         if (historyId.isNotEmpty()) {
                             Text("Append-only event history", style = MaterialTheme.typography.titleMedium)
