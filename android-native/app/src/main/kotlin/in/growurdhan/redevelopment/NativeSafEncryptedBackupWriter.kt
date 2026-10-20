@@ -12,7 +12,6 @@ import java.security.SecureRandom
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
-import org.json.JSONObject
 
 /**
  * Genuine Android SAF encrypted ARCHIVE WRITER, not a native financial
@@ -45,27 +44,67 @@ internal class NativeSafEncryptedBackupWriter(private val context: Context) {
                 "-" + random + ".kosha"
         }
 
-        /** Never prune another application/user's file or unverified names. */
-        fun obsolete(entries: List<Entry>, keep: Int = KEEP_LAST): List<Entry> {
+        /**
+         * Retain the newly published, read-back-verified file regardless of
+         * provider mtime. Some SAF providers return 0/unknown for LAST_MODIFIED;
+         * never let this cause deletion of the only newly verified backup.
+         * For test/backward compatibility, null protectedId computes a dry-run
+         * legacy candidate list but production MUST supply a protected ID.
+         */
+        fun obsolete(entries: List<Entry>, keep: Int = KEEP_LAST,
+            protectedId: String? = null): List<Entry> {
             require(keep in 1..100)
-            return entries.filter { ownFile.matches(it.name) }
-                .sortedWith(compareByDescending<Entry> { it.lastModified }
-                    .thenByDescending { it.name })
-                .drop(keep)
+            val own = entries.filter { ownFile.matches(it.name) }
+            require(own.map { it.id }.distinct().size == own.size &&
+                own.map { it.name }.distinct().size == own.size) {
+                "Backup provider returned duplicate backup identity"
+            }
+            if (protectedId != null) {
+                require(own.count { it.id == protectedId } == 1) {
+                    "Verified new backup missing from SAF directory listing"
+                }
+            }
+            val retained = own.filterNot { it.id == protectedId }
+                // Our cryptographically random-suffixed filenames contain
+                // a UTC timestamp. Prefer that stable creation order: external
+                // SAF LAST_MODIFIED is optional, may be zero or backdated.
+                .sortedWith(compareByDescending<Entry> { it.name }
+                    .thenByDescending { it.lastModified })
+                .take(if (protectedId == null) keep else keep - 1)
+                .map { it.id }.toSet() +
+                listOfNotNull(protectedId).toSet()
+            return own.filterNot { it.id in retained }
         }
     }
 
-    private fun validateEncryptedArchive(bytes: ByteArray, email: String,
+    /**
+     * Prove genuine backup restoration compatibility BEFORE touching a SAF
+     * provider. A plausible JSON object with a matching kind/version but
+     * omitted financial rows is NOT a recoverable backup.
+     */
+    internal fun validateEncryptedArchive(bytes: ByteArray, email: String,
         password: String) {
         require(bytes.size in 56..(64 * 1024 * 1024))
-        val json = LegacyBackupEnvelopeReader.decodeGUDVLT01(
+        val plaintext = LegacyBackupEnvelopeReader.decodeGUDVLT01(
             bytes, email, password)
-        val document = JSONObject(json)
-        require(document.getString("kind") == "GUDVAULT" &&
-            document.getInt("version") == 2 &&
-            document.has("holdings") && document.has("ledgerEvents") &&
-            document.has("familyMembers") && document.has("account")) {
-            "Not an authenticated frozen full-financial backup"
+        val plan = FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(plaintext)
+        // The encrypted envelope binds the password to the supplied email,
+        // but the JSON account identity also needs to match. A separately
+        // crafted archive for another account must never masquerade as the
+        // currently admitted household's restorable export.
+        val account = plan.rows.single { it.table == "vault_account" }
+        val index = account.columns.indexOf("email")
+        require(index >= 0 &&
+            (account.values[index] as? String)?.trim()
+                ?.lowercase(java.util.Locale.ROOT) ==
+            email.trim().lowercase(java.util.Locale.ROOT)) {
+            "Authenticated backup account differs from export owner"
+        }
+        // The same strict historical ledger/ownership/projection rules as
+        // restore apply before touching the external SAF document provider.
+        require(plan.rows.isNotEmpty() && plan.originalJsonSha256.matches(
+            Regex("[0-9a-f]{64}"))) {
+            "Backup cannot be reconstructed into a frozen-v2 financial vault"
         }
     }
 
@@ -175,19 +214,24 @@ internal class NativeSafEncryptedBackupWriter(private val context: Context) {
         }
         verifyStoredArchive(resolver, final, encryptedArchive)
         var completed = true
-        var retained = 0
+        val finalId = DocumentsContract.getDocumentId(final)
+        val entries = childEntries(tree)
         if (approvePruning) {
-            val entries = childEntries(tree)
-            for (extra in obsolete(entries)) {
+            // Enumerate and pin the just-verified final document FIRST. If
+            // provider identity is ambiguous/missing, refuse all deletion.
+            val toDelete = obsolete(entries, protectedId = finalId)
+            for (extra in toDelete) {
                 val uri = DocumentsContract.buildDocumentUriUsingTree(tree, extra.id)
                 if (!runCatching {
                     DocumentsContract.deleteDocument(resolver, uri)
                 }.getOrDefault(false)) completed = false
             }
-            retained = childEntries(tree).count { ownFile.matches(it.name) }
-        } else {
-            retained = childEntries(tree).count { ownFile.matches(it.name) }
         }
+        // Owner receives a receipt only after final document still reads
+        // back byte-exact. Pruning failure leaves all undeleted evidence.
+        verifyStoredArchive(resolver, final, encryptedArchive)
+        val retained = childEntries(tree).count { ownFile.matches(it.name) }
+        require(retained >= 1) { "Verified encrypted backup vanished after retention" }
         return Receipt(final, encryptedArchive.size, retained, completed)
     }
 }
