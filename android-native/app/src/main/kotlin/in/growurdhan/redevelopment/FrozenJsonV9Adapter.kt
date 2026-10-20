@@ -152,6 +152,10 @@ internal object FrozenJsonV9Adapter {
     fun planFromAuthenticatedPlaintext(exactPlaintext: String): RestoreV9Plan.Plan {
         val encodedBytes = exactPlaintext.toByteArray(Charsets.UTF_8)
         require(encodedBytes.size in 1..MAX_JSON_BYTES) { "Invalid authenticated snapshot size" }
+        // org.json is permissive: duplicated ledgerEvents/holdings keys or
+        // malformed JSON syntax must never be silently collapsed on restore.
+        // Check the exact GCM-authenticated text without rewriting a byte.
+        AuthenticatedJsonStructure.requireUnambiguous(exactPlaintext)
         val json = JSONObject(exactPlaintext)
         val version = if (json.has("version")) int(json, "version") else 1
         require(version in 1..2 &&

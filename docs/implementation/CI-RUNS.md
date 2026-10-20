@@ -689,3 +689,7 @@ Starting `1ad11ecf70c588ea20fb42c32fc92f214f32ac8d`. Added historical SQLCipher 
 
 ## 2026-10-20 — Native restore TOCTOU and key-custody source batch (UNTESTED)
 Starting SHA `24d67ec9b0a8fab029da37d2951f400a6354c8ce`. Added shared NOFOLLOW new-device vault target guard, locked post-SAF staging recheck, safe fresh/restore admission, non-mutating bounded wrapped-key reads and eight Android positive/negative test sources. **ALL SOURCE AUTHORED, NOT COMPILED OR EXECUTED.** No workflow dispatch, JVM, Gradle, build, instrumented/emulator/physical-device run or CI credit use. Existing prior combined run #39345963722 FAILED on old `357c46bac1325f33c12e1e066f6723e15d43327a`. Current milestone not accepted.
+
+
+## 2026-10-20 — Authenticated legacy JSON structural hardening (source only)
+Starting SHA `82cf03c0efbab16e1c5edcf1f83d10d5744f6432`. Added strict ambiguity/duplicate-key JSON lexical admission before original GCM-authenticated backup projection; authored positive/negative Android instrumentation sources including re-encrypted duplicate-ledgerEvents cases for GUDVLT01 and KOSHA1. **No Gradle, JVM, compile, instrumentation, emulator, regression, CI or device testing executed or authorized.** No new tested SHA or JUnit evidence; prior combined run #39345963722 FAILED on older SHA `357c46bac1325f33c12e1e066f6723e15d43327a`. P01–P34 incomplete, no parity upgrade.

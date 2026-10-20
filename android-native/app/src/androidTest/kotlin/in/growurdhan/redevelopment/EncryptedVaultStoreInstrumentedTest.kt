@@ -529,6 +529,7 @@ class EncryptedVaultStoreInstrumentedTest {
      */
     private fun newSyntheticEncryptedBackup(
         modern: Boolean, email: String, password: String,
+        mutateAuthenticatedText: (String) -> String = { it },
         mutateAuthenticatedSnapshot: (JSONObject) -> Unit = {}
     ): Pair<ByteArray, RestoreIdentityGate.Credentials> {
         val random = SecureRandom()
@@ -597,7 +598,7 @@ class EncryptedVaultStoreInstrumentedTest {
                     .put("createdAt", "2026-10-17")))
             .put("unknownOpaque", JSONObject().put("untouched", true))
             .also(mutateAuthenticatedSnapshot)
-            .toString()
+            .toString().let(mutateAuthenticatedText)
         val salt = ByteArray(16).also(random::nextBytes)
         val nonce = ByteArray(12).also(random::nextBytes)
         val material = if (modern) {
@@ -651,6 +652,33 @@ class EncryptedVaultStoreInstrumentedTest {
             assertFalse(ctx.getDatabasePath("growurdhan-v9.sqlcipher").exists())
             assertFalse(File(ctx.noBackupFilesDir, "vault-key.v1").exists())
             assertFalse(File(ctx.noBackupFilesDir, "restore-claims").exists())
+        }
+    }
+
+    @Test fun duplicateAuthenticatedFinancialKeysRejectBothLegacyEnvelopeTypesBeforeClaim() {
+        // The synthetic payload has a VALID GCM tag and exactly the original
+        // email/password credentials. A lenient JSON parser would keep only
+        // the last ledgerEvents value and silently discard the purchase.
+        for (modern in listOf(true, false)) {
+            val context = sandbox()
+            val (archive, proof) = newSyntheticEncryptedBackup(
+                modern, "duplicate@example.invalid", "Synthetic-only!2026",
+                mutateAuthenticatedText = { raw ->
+                    require(raw.endsWith("}"))
+                    raw.dropLast(1) + ",\"ledgerEvents\":[]}"
+                })
+            LockedRestoreStaging(context).stageEncryptedArchiveOnce(archive)
+            val pending = File(context.noBackupFilesDir, "restore-pending.v1.kosha")
+            val retained = pending.readBytes()
+            assertThrows(IllegalArgumentException::class.java) {
+                ApprovedNewVaultRestore(context).restoreFromStagedNewVault(
+                    proof, explicitOwnerApproval = true,
+                    termsConsent = verifiedConsent)
+            }
+            assertArrayEquals(retained, pending.readBytes())
+            assertFalse(context.getDatabasePath("growurdhan-v9.sqlcipher").exists())
+            assertFalse(File(context.noBackupFilesDir, "restore-claims").exists())
+            assertFalse(File(context.noBackupFilesDir, "vault-key.v1").exists())
         }
     }
 
