@@ -3,6 +3,8 @@ package `in`.growurdhan.redevelopment
 import `in`.growurdhan.database.RestoreV9Plan
 import org.json.JSONArray
 import org.json.JSONObject
+import java.math.BigDecimal
+import java.time.LocalDate
 
 /**
  * Strict adapter from the EXACT GCM-authenticated plaintext string to a v9 row plan.
@@ -42,6 +44,46 @@ internal object FrozenJsonV9Adapter {
         if (v !is String || !v.matches(Regex("-?(0|[1-9][0-9]*)")) ||
             v.length > 20 || v.toLongOrNull() == null) bad()
         return v
+    }
+
+    private fun optionalMoney(o: JSONObject, field: String): String? =
+        if (!o.has(field) || o.isNull(field)) null else decimal(o, field)
+
+    private fun optionalDate(o: JSONObject, field: String): String? =
+        optional(o, field)?.also {
+            require(LocalDate.parse(it).toString() == it) {
+                "Non-canonical restored date"
+            }
+        }
+
+    private fun jsonObject(o: JSONObject, field: String): String? {
+        if (!o.has(field) || o.isNull(field)) return null
+        val value = o.get(field) as? JSONObject ?: bad()
+        val raw = value.toString()
+        require(raw.length <= 32768) { "Restored metadata too large" }
+        return raw
+    }
+
+    private fun jsonArray(o: JSONObject, field: String): String? {
+        if (!o.has(field) || o.isNull(field)) return null
+        val value = o.get(field) as? JSONArray ?: bad()
+        val raw = value.toString()
+        require(raw.length <= 32768) { "Restored metadata too large" }
+        return raw
+    }
+
+    private fun percentBps(o: JSONObject, field: String): Long? {
+        if (!o.has(field) || o.isNull(field)) return null
+        val value = o.get(field)
+        require(value is Number) { "Percentage must be a JSON number" }
+        val exact = runCatching {
+            BigDecimal(value.toString()).movePointRight(2)
+                .toBigIntegerExact().longValueExact()
+        }.getOrElse { bad() }
+        require(exact in 0..100_000) {
+            "Cannot losslessly represent original interest rate in basis points"
+        }
+        return exact
     }
 
     private fun bool(o: JSONObject, k: String): Boolean? {
@@ -165,7 +207,34 @@ internal object FrozenJsonV9Adapter {
                 priceSource = string(h, "priceSource"),
                 isin = optional(h, "isin"), notes = optional(h, "notes"),
                 needsReview = bool(h, "needsReview"),
-                averageCostPerUnitMinor = decimal(h, "averageCostPerUnitMinor"))
+                averageCostPerUnitMinor = decimal(h, "averageCostPerUnitMinor"),
+                metadata = RestoreV9Plan.HoldingMetadata(
+                    benchmarkPriceMinor = optionalMoney(h, "benchmarkPriceMinor"),
+                    issuePriceMinor = optionalMoney(h, "issuePriceMinor"),
+                    couponRateBps = percentBps(h, "couponRatePercent"),
+                    interestRateBps = percentBps(h, "interestRatePercent"),
+                    nextCouponDate = optionalDate(h, "nextCouponDate"),
+                    maturityDate = optionalDate(h, "maturityDate"),
+                    institutionName = optional(h, "institutionName"),
+                    accountNumberMasked = optional(h, "accountNumberMasked"),
+                    monthlyEmiMinor = optionalMoney(h, "monthlyEmiMinor"),
+                    emiStatus = optional(h, "emiStatus"),
+                    remainingEmiCount = if (h.has("remainingEmiCount") &&
+                        !h.isNull("remainingEmiCount")) int(h, "remainingEmiCount").toLong()
+                        else null,
+                    acquiredOn = optionalDate(h, "acquiredOn"),
+                    detailsJson = jsonObject(h, "details"),
+                    reviewReasonsJson = jsonArray(h, "reviewReasons"),
+                    tagsJson = jsonArray(h, "tags"),
+                    location = optional(h, "location"), tag = optional(h, "tag"),
+                    fmv31Jan2018Minor = optionalMoney(h, "fmv31Jan2018Minor"),
+                    exposureNode = optional(h, "exposureNode"),
+                    l2Node = optional(h, "l2Node"), wrapper = optional(h, "wrapper"),
+                    allocationSplitJson = jsonArray(h, "allocationSplit"),
+                    amc = optional(h, "amc"), rta = optional(h, "rta"),
+                    amfiCode = optional(h, "amfiCode"), advisor = optional(h, "advisor"),
+                    schemeType = optional(h, "schemeType"), ucc = optional(h, "ucc"),
+                    exchange = optional(h, "exchange"), dpName = optional(h, "dpName")))
         }
         val events = rows(json, "ledgerEvents") { e ->
             rejectUnknownFinancialFields(e, eventFields)

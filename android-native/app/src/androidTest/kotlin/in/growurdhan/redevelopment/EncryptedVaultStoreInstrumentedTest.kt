@@ -266,6 +266,52 @@ class EncryptedVaultStoreInstrumentedTest {
             "priority":"HIGH"}],
           "unknownOpaque":{"nested":[true,"untouched"]}
         }""".trimIndent()
+        // This uses the real frozen Holding/HoldingDetails JSON field names.
+        // It proves conversion to native v9 columns without manufacturing an
+        // investment event or silently dropping specialist attributes.
+        val metadataFixture = JSONObject(exact).apply {
+            getJSONArray("holdings").getJSONObject(0).apply {
+                put("benchmarkPriceMinor", "9007199254740993")
+                put("issuePriceMinor", "31190000")
+                put("couponRatePercent", 2.5)
+                put("interestRatePercent", 8.25)
+                put("monthlyEmiMinor", "500000")
+                put("emiStatus", "PAUSED")
+                put("remainingEmiCount", 18)
+                put("acquiredOn", "2024-01-01")
+                put("maturityDate", "2031-01-01")
+                put("reviewReasons", JSONArray().put("needs-original"))
+                put("details", JSONObject().put("compounding", "ANNUAL"))
+                put("tags", JSONArray().put("family"))
+                put("fmv31Jan2018Minor", "10001234")
+                put("amfiCode", "124567")
+                put("allocationSplit", JSONArray().put(
+                    JSONObject().put("exposure", "Gold").put("percent", 100)))
+            }
+        }.toString()
+        val metadataPlan = FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(metadataFixture)
+        fun restoredValue(table: String, field: String): Any? {
+            val row = metadataPlan.rows.single { it.table == table }
+            return row.values[row.columns.indexOf(field).also { require(it >= 0) }]
+        }
+        assertEquals(250L, restoredValue("holding", "coupon_rate_bps"))
+        assertEquals(825L, restoredValue("holding", "interest_rate_bps"))
+        assertEquals(500000L, restoredValue("holding", "monthly_emi_minor"))
+        assertEquals(18L, restoredValue("holding", "remaining_emi_count"))
+        assertEquals("PAUSED", restoredValue("holding", "emi_status"))
+        assertEquals("2031-01-01", restoredValue("holding", "maturity_date"))
+        assertEquals(9007199254740993L, restoredValue("holding", "benchmark_price_minor"))
+        assertEquals(10001234L, restoredValue("instrument", "fmv_31jan2018_minor"))
+        assertEquals("124567", restoredValue("instrument", "amfi_code"))
+        assertTrue((restoredValue("holding", "details_json") as String).contains("ANNUAL"))
+        assertEquals(1, metadataPlan.rows.count { it.table == "ledger_event" })
+        assertEquals(metadataFixture, metadataPlan.rows.last().values.last())
+        val invalidRate = JSONObject(metadataFixture).apply {
+            getJSONArray("holdings").getJSONObject(0).put("couponRatePercent", 2.555)
+        }.toString()
+        assertThrows(Exception::class.java) {
+            FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(invalidRate)
+        }
         // Historical inner payloads with missing financial provenance must fail
         // closed, not silently acquire invented costs or timestamps.
         val absentCharges = exact.replace(",\"chargesMinor\":\"0\"", "")

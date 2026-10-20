@@ -595,3 +595,6 @@ Starting exact branch `GUD-Android-Redevelopment@176a09b0f86458d305ac680a702c1eb
 ## 2026-10-19 — Source-only follow-up, no CI
 
 The P01–P34 batch beginning at `7fbf19f5f70e488946ed66f793812b2673f06dee` added strict restore-consent insertion checks, encrypted migration BLOB/NULL-preservation fixture, owner/custody/source-digest-bound dry-run FIFO statement approval, and explicitly user-attested PAN confirmation on the Chaquopy PDF screen. Sources and test fixtures **AUTHORED NOT EXECUTED**; no CI, build, Android instrumentation, emulator, physical-device, or regression validation performed or authorized. No new tested SHA, JUnit artifact, or CI result. Prior combined run #39345963722 remains FAILURE for old SHA `357c46bac1325f33c12e1e066f6723e15d43327a`. P01–P34 NOT COMPLETE/NOT ACCEPTED.
+
+## 2026-10-19 — Native restore holding metadata source-only checkpoint
+Starting 80d5ebc65249ad6e1d4524798d8b2ecc7f238528. Production and test sources authored, NOT RUN. JVM/Gradle/Android compile/emulator/regression/GitHub Actions: NOT RUN. No validated SHA or JUnit artifacts. P01–P34 NOT SOURCE COMPLETE and NOT ACCEPTED. Earlier run 39345963722 FAILURE applies only to tested SHA 357c46bac1325f33c12e1e066f6723e15d43327a.

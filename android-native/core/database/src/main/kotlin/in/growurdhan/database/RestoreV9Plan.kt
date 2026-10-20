@@ -15,13 +15,32 @@ object RestoreV9Plan {
         val custodian: String, val identifierMasked: String? = null,
         val dpId: String? = null, val clientId: String? = null,
         val boId: String? = null, val nominee: String? = null)
+    /** Restorable source metadata; null means absent in original authenticated source. */
+    data class HoldingMetadata(
+        val benchmarkPriceMinor: String? = null, val issuePriceMinor: String? = null,
+        val couponRateBps: Long? = null, val interestRateBps: Long? = null,
+        val nextCouponDate: String? = null, val maturityDate: String? = null,
+        val institutionName: String? = null, val accountNumberMasked: String? = null,
+        val monthlyEmiMinor: String? = null, val emiStatus: String? = null,
+        val remainingEmiCount: Long? = null, val acquiredOn: String? = null,
+        val detailsJson: String? = null, val reviewReasonsJson: String? = null,
+        val tagsJson: String? = null, val location: String? = null,
+        val tag: String? = null, val fmv31Jan2018Minor: String? = null,
+        val exposureNode: String? = null, val l2Node: String? = null,
+        val wrapper: String? = null, val allocationSplitJson: String? = null,
+        val amc: String? = null, val rta: String? = null,
+        val amfiCode: String? = null, val advisor: String? = null,
+        val schemeType: String? = null, val ucc: String? = null,
+        val exchange: String? = null, val dpName: String? = null
+    )
     data class Holding(val id: String, val ownerId: String, val accountId: String?,
         val name: String, val category: String, val subCategory: String,
         val symbolOrFolio: String, val quantityScaled: String, val currentPriceMinor: String,
         val lastPriceUpdated: String, val priceSource: String,
         val isin: String? = null, val notes: String? = null,
         val needsReview: Boolean? = null,
-        val averageCostPerUnitMinor: String? = null)
+        val averageCostPerUnitMinor: String? = null,
+        val metadata: HoldingMetadata = HoldingMetadata())
     data class Event(val id: String, val holdingId: String, val holdingName: String,
         val ownerId: String, val eventType: String, val eventDate: String,
         val quantityScaled: String, val unitPriceMinor: String, val totalAmountMinor: String,
@@ -112,13 +131,36 @@ object RestoreV9Plan {
             required(h.lastPriceUpdated)
             required(h.priceSource)
             val instrument = "legacy-instrument:" + h.id
+            val m = h.metadata
+            require(m.remainingEmiCount == null || m.remainingEmiCount in 0..3600)
+            require(m.couponRateBps == null || m.couponRateBps in 0..100_000)
+            require(m.interestRateBps == null || m.interestRateBps in 0..100_000)
+            require(m.emiStatus == null || m.emiStatus in setOf("PAYING", "PAUSED", "STOPPED"))
             rows += row("instrument", "instrument_id" to instrument,
                 "name" to h.name, "category" to h.category,
                 "sub_category" to h.subCategory, "symbol_or_folio" to h.symbolOrFolio,
-                "isin" to h.isin, "created_at" to s.exportedAt)
+                "isin" to h.isin, "created_at" to s.exportedAt,
+                "fmv_31jan2018_minor" to m.fmv31Jan2018Minor?.let(::money),
+                "exposure_node" to m.exposureNode, "l2_node" to m.l2Node,
+                "wrapper" to m.wrapper, "allocation_split" to m.allocationSplitJson,
+                "amc" to m.amc, "rta" to m.rta, "amfi_code" to m.amfiCode,
+                "advisor" to m.advisor, "scheme_type" to m.schemeType,
+                "ucc" to m.ucc, "exchange" to m.exchange, "dp_name" to m.dpName)
             rows += row("holding", "holding_id" to h.id, "instrument_id" to instrument,
                 "entity_id" to h.ownerId, "account_id" to h.accountId,
                 "current_price_minor" to money(h.currentPriceMinor),
+                "benchmark_price_minor" to m.benchmarkPriceMinor?.let(::money),
+                "issue_price_minor" to m.issuePriceMinor?.let(::money),
+                "coupon_rate_bps" to m.couponRateBps,
+                "interest_rate_bps" to m.interestRateBps,
+                "next_coupon_date" to m.nextCouponDate, "maturity_date" to m.maturityDate,
+                "institution_name" to m.institutionName,
+                "account_number_masked" to m.accountNumberMasked,
+                "monthly_emi_minor" to m.monthlyEmiMinor?.let(::money),
+                "emi_status" to m.emiStatus, "remaining_emi_count" to m.remainingEmiCount,
+                "acquired_on" to m.acquiredOn, "details_json" to m.detailsJson,
+                "review_reasons" to m.reviewReasonsJson, "tags_json" to m.tagsJson,
+                "location" to m.location, "tag" to m.tag,
                 "needs_review" to (if (h.needsReview == true) 1L else 0L),
                 "notes" to h.notes,
                 "last_price_updated" to h.lastPriceUpdated,
