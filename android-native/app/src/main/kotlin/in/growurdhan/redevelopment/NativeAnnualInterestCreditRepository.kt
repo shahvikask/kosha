@@ -100,8 +100,8 @@ internal class NativeAnnualInterestCreditRepository(
                 require(day.isBefore(fyStart)) {
                     "In-year ledger activity needs detailed passbook accrual"
                 }
-                val provenance = if (cur.isNull(8)) "" else cur.getString(8)
-                require(provenance != source) { "Already credited this FY" }
+                val sourceReference = if (cur.isNull(8)) "" else cur.getString(8)
+                require(sourceReference != source) { "Already credited this FY" }
                 require(!(kind == "INTEREST" && day == input.financialYearEnd)) {
                     "Conflicting manual interest already exists on the FY credit day"
                 }

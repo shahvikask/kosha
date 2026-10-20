@@ -67,7 +67,7 @@ internal class NativeStatementImportRepository(
             it.ownerPan == snapshot.ownerPan &&
                 it.date == snapshot.date &&
                 it.quantityScaled >= 0L && it.unitPriceMinor >= 0L &&
-                (it.currentValueMinor == null || it.currentValueMinor >= 0L) &&
+                (it.currentValueMinor?.let { value -> value >= 0L } ?: true) &&
                 (it.isin.isNotEmpty() || it.folio.isNotEmpty()) &&
                 (it.isin.isEmpty() || it.isin.matches(Regex("[A-Z0-9]{12}"))) &&
                 it.folio.length <= 120 && it.folio.none { c -> c.isISOControl() }
