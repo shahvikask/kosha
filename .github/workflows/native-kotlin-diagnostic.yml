@@ -1,0 +1,51 @@
+name: GrowUrDhan native Kotlin-only diagnostic
+
+# 2026-10-20: Pydantic 2 Rust extension has no approved Chaquopy Android wheel.
+# This deliberately DOES NOT certify a packageable app or CAS PDF runtime.
+# The original strict M25 packaging run must be independently green later.
+on:
+  workflow_dispatch:
+  push:
+    branches: [GUD-Android-Redevelopment]
+    paths:
+      - .github/workflows/native-kotlin-diagnostic.yml
+
+permissions:
+  contents: read
+concurrency:
+  group: native-kotlin-diagnostic-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  diagnose-kotlin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Exact source revision
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          echo "KOTLIN_ONLY_SOURCE_SHA=$GITHUB_SHA"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Kotlin and JVM source validation (Python wheel packaging EXCLUDED)
+        working-directory: android-native
+        run: |
+          chmod +x gradlew
+          ./gradlew :core:model:test :core:database:test :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin \
+            -x :app:installDebugPythonRequirements --no-daemon --stacktrace
+      - name: Publish original JVM XML for this exact SHA
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-kotlin-diagnostic-junit-xml
+          path: |
+            android-native/core/model/build/test-results/test/TEST-*.xml
+            android-native/core/database/build/test-results/test/TEST-*.xml
+          if-no-files-found: warn
