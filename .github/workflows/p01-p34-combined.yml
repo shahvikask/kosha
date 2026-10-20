@@ -1,0 +1,198 @@
+name: GrowUrDhan P01-P34 Single Milestone CI
+
+# Exact-SHA, one-scope gate: a partial or older milestone can never count as a P01-P34 pass.
+on:
+  workflow_dispatch:
+  push:
+    branches: [GUD-Android-Redevelopment]
+    paths:
+      - .github/workflows/p01-p34-combined.yml
+permissions:
+  contents: read
+concurrency:
+  group: p01-p34-combined-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  coverage:
+    name: P01-P34 authoritative source and test readiness
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Restrict branch and verify exact source SHA
+        shell: bash
+        run: |
+          test "$GITHUB_REF" = "refs/heads/GUD-Android-Redevelopment"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          echo "TESTED_SOURCE_SHA=$GITHUB_SHA"
+      - name: Check every P01-P34 source/test mapping and publish gaps
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import csv
+          import json
+          import re
+          import os
+          from pathlib import Path
+
+          root = Path.cwd()
+          spec = (root / 'docs/GROK-FULL-NATIVE-REDEVELOPMENT-SPEC.md').read_text(encoding='utf-8')
+          expected = [f'P{i:02d}' for i in range(1, 35)]
+          in_spec = set(re.findall(r'^\|\s*\*\*(P\d{2})\*\*\s*\|', spec, re.M))
+          with (root / 'docs/implementation/parity-register.csv').open(encoding='utf-8', newline='') as stream:
+              records = list(csv.DictReader(stream))
+          findings = []
+          for parity_id in expected:
+              matching = [r for r in records if r.get('id', '').strip() == parity_id]
+              issues = []
+              if parity_id not in in_spec:
+                  issues.append('missing authoritative specification entry')
+              if len(matching) != 1:
+                  issues.append(f'expected one parity-register row; found {len(matching)}')
+              if matching:
+                  record = matching[0]
+                  for field in ('native_source', 'tests'):
+                      paths = [p.strip() for p in (record.get(field) or '').split(';') if p.strip()]
+                      if not paths:
+                          issues.append(f'no {field} mapping')
+                      for path in paths:
+                          if not path.startswith('android-native/') or not (root / path).is_file():
+                              issues.append(f'{field} unavailable: {path}')
+                  stage = (record.get('status') or '').strip()
+                  if not re.match(r'^SOURCE COMPLETE(?:\b|\s)', stage, re.I):
+                      issues.append(f'source readiness not attested (status={stage[:85]!r})')
+              findings.append({'parity_id': parity_id, 'ready': not issues, 'issues': issues})
+
+          report = {'source_sha': os.environ['GITHUB_SHA'], 'scope': 'P01-P34',
+                    'ready_count': sum(item['ready'] for item in findings),
+                    'required_count': len(expected), 'requirements': findings}
+          Path('p01-p34-readiness.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
+          for item in findings:
+              if item['issues']:
+                  print(f"::error title={item['parity_id']} incomplete::{'; '.join(item['issues'])}")
+          print(f"P01_P34_READINESS={report['ready_count']}/{report['required_count']}")
+          if report['ready_count'] != len(expected):
+              raise SystemExit('FAIL CLOSED: P01-P34 is not a source-complete milestone; no full-parity pass can be claimed')
+          PY
+      - name: Upload all 34 readiness results, including failure evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p01-p34-parity-readiness
+          path: p01-p34-readiness.json
+          if-no-files-found: error
+          retention-days: 14
+
+  native-jvm:
+    name: Exact-SHA existing native unit tests and Android Kotlin compile
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Restrict branch and verify exact source SHA
+        run: |
+          test "$GITHUB_REF" = "refs/heads/GUD-Android-Redevelopment"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          echo "TESTED_SOURCE_SHA=$GITHUB_SHA"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Run all existing native JVM tests and compile Android sources
+        working-directory: android-native
+        run: |
+          chmod +x gradlew
+          ./gradlew :core:model:test :core:database:test :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin --no-daemon --stacktrace
+      - name: Verify both original JVM XML suites, without failure or skip
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          counts = {}
+          for module in ('model', 'database'):
+              files = list(Path(f'android-native/core/{module}/build/test-results/test').rglob('TEST-*.xml'))
+              assert files, f'Missing original JUnit XML: {module}'
+              cases = [case for path in files for case in ET.parse(path).getroot().findall('.//testcase')]
+              assert cases, f'No JVM tests executed in {module}'
+              bad = [case.attrib.get('name') for case in cases if any(case.find(t) is not None for t in ('failure','error','skipped'))]
+              assert not bad, f'{module}: failed, errored or skipped tests: {bad}'
+              counts[module] = len(cases)
+          print(f"EXACT_SHA_NATIVE_JVM_PASS model={counts['model']} database={counts['database']}")
+          PY
+      - name: Upload original JVM JUnit XML, including failure evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p01-p34-existing-native-jvm-xml
+          path: |
+            android-native/core/model/build/test-results/test/TEST-*.xml
+            android-native/core/database/build/test-results/test/TEST-*.xml
+          if-no-files-found: warn
+          retention-days: 14
+
+  full-android-regression:
+    name: Run full Android regression only after all 34 source gates pass
+    needs: [coverage, native-jvm]
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify exact source
+        run: |
+          test "$GITHUB_REF" = "refs/heads/GUD-Android-Redevelopment"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Configure KVM
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; else echo '::warning::KVM unavailable'; fi
+      - name: Run all Android instrumented tests and the existing OS-Keyguard probe
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 2048M
+          heap-size: 512M
+          force-avd-creation: true
+          disable-animations: true
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: cd android-native && chmod +x gradlew && ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace && python3 scripts/m25_keyguard_force_stop_emulator.py
+      - name: Verify original instrumentation XML with no skips/failures
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          paths = list(Path('android-native/app/build/outputs/androidTest-results').rglob('*.xml'))
+          assert paths, 'Missing Android instrumentation XML'
+          cases = [t for p in paths for t in ET.parse(p).getroot().findall('.//testcase')]
+          assert cases, 'No Android tests executed'
+          bad = [c.attrib.get('name') for c in cases if any(c.find(k) is not None for k in ('failure','error','skipped'))]
+          assert not bad, f'Android failed/errored/skipped: {bad}'
+          print(f'ANDROID_INSTRUMENTATION_EXECUTED={len(cases)}')
+          PY
+      - name: Upload original Android JUnit XML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p01-p34-android-regression-xml
+          path: android-native/app/build/outputs/androidTest-results/connected/**/*.xml
+          if-no-files-found: warn
+          retention-days: 14
