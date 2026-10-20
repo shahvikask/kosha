@@ -1,0 +1,155 @@
+name: GrowUrDhan strict Android Python-wheel build
+# Owner-authorized exact-SHA strict packaging; no release/publishing.
+on:
+  workflow_dispatch:
+  push:
+    branches: [GUD-Android-Redevelopment]
+    paths: [.github/workflows/native-strict-android-wheel.yml]
+permissions:
+  contents: read
+concurrency:
+  group: strict-android-wheels-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  trusted-wheels:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Exact SHA
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,x86_64-linux-android
+      - name: Pinned official Android wheel tool
+        run: python -m pip install --disable-pip-version-check 'cibuildwheel==3.4.0'
+      - uses: actions/checkout@v4
+        with:
+          repository: pydantic/pydantic-core
+          ref: 52b821dfc304b061b3c2d528f91011229d25f0a1
+          path: upstream/pydantic-core
+          persist-credentials: false
+      - name: Build pydantic-core 2.41.5 Rust wheels
+        env:
+          CIBW_BUILD: cp313-*
+          CIBW_ARCHS_ANDROID: arm64_v8a x86_64
+          CIBW_BUILD_FRONTEND: build
+          ANDROID_API_LEVEL: '26'
+        run: |
+          set -euo pipefail
+          test "$(git -C upstream/pydantic-core rev-parse HEAD)" = 52b821dfc304b061b3c2d528f91011229d25f0a1
+          python -m cibuildwheel upstream/pydantic-core --platform android --output-dir android-native/app/python-wheels
+      - uses: actions/checkout@v4
+        with:
+          repository: pypdfium2-team/pypdfium2
+          ref: 21f85e273036f3bade4f67d896e1d05927e5f4b1
+          path: upstream/pypdfium2
+          persist-credentials: false
+      - name: Build missing PDFium x86_64 emulator wheel
+        env:
+          CIBW_BUILD: cp313-*
+          CIBW_ARCHS_ANDROID: x86_64
+          CIBW_BUILD_FRONTEND: build
+          ANDROID_API_LEVEL: '26'
+        run: |
+          set -euo pipefail
+          test "$(git -C upstream/pypdfium2 rev-parse HEAD)" = 21f85e273036f3bade4f67d896e1d05927e5f4b1
+          python -m cibuildwheel upstream/pypdfium2 --platform android --output-dir android-native/app/python-wheels
+      - name: Fetch official PDFium Android ARM64 wheel
+        run: |
+          python -m pip download --no-deps --only-binary=:all: \
+            --platform android_23_arm64_v8a --python-version 3.13 \
+            --implementation py --abi none --dest android-native/app/python-wheels \
+            'pypdfium2==5.14.0'
+      - name: Audit source versions, ABIs, native payloads and hashes
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from hashlib import sha256
+          from zipfile import ZipFile
+          import re
+          root=Path("android-native/app/python-wheels")
+          wheels=sorted(root.glob("*.whl"))
+          for package,version in (("pydantic_core","2.41.5"),("pypdfium2","5.14.0")):
+              for abi in ("arm64_v8a","x86_64"):
+                  found=[p for p in wheels if p.name.lower().startswith(f"{package}-{version}-") and re.search(r"android_\d+_"+abi+r"\.whl$",p.name)]
+                  assert len(found)==1, f"Missing/duplicate {package} {version} {abi}: {found}"
+                  with ZipFile(found[0]) as archive:
+                      names=archive.namelist()
+                      assert any(".dist-info/WHEEL" in n for n in names)
+                      assert any(".so" in n for n in names), f"Missing native payload in {found[0]}"
+          manifest="\n".join(f"{sha256(p.read_bytes()).hexdigest()}  {p.name}" for p in wheels)+"\n"
+          (root/"SHA256SUMS").write_text(manifest)
+          print("TRUSTED_WHEELS_BOTH_ABIS=4")
+          print(manifest)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: source-pinned-android-python-wheels
+          path: android-native/app/python-wheels/
+          if-no-files-found: warn
+          retention-days: 7
+
+  strict-apks:
+    needs: trusted-wheels
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Exact source
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: source-pinned-android-python-wheels
+          path: android-native/app/python-wheels
+      - name: Strict full Android app and instrumentation APK build
+        working-directory: android-native
+        run: |
+          set -euo pipefail
+          (cd app/python-wheels && sha256sum --check SHA256SUMS)
+          chmod +x gradlew
+          ./gradlew :core:model:test :core:database:test :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --stacktrace
+      - name: Verify APK binaries contain Rust/PDFium
+        working-directory: android-native
+        run: |
+          set -euo pipefail
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          test -s app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          unzip -Z1 app/build/outputs/apk/debug/app-debug.apk > apk-entries.txt
+          grep -E 'pydantic_core|_pydantic_core' apk-entries.txt
+          grep -E 'pypdfium2|pdfium' apk-entries.txt
+          sha256sum app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: exact-sha-strict-android-build-evidence
+          path: |
+            android-native/core/model/build/test-results/test/TEST-*.xml
+            android-native/core/database/build/test-results/test/TEST-*.xml
+            android-native/app/build/outputs/apk/debug/*.apk
+            android-native/app/build/outputs/apk/androidTest/debug/*.apk
+            android-native/apk-entries.txt
+          if-no-files-found: warn
+          retention-days: 7

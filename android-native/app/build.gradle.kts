@@ -77,10 +77,18 @@ dependencies {
  */
 chaquopy {
     defaultConfig {
-        version = "3.11"
+        // CPython 3.13 uses official Android wheel tags (PEP 738).
+        // Keep Pydantic 2: the unmodified frozen CAS parser requires it.
+        version = "3.13"
         pip {
-            install("pydantic>=2.3,<3")
-            install("pypdfium2>=5,<7")
+            // CI builds native Rust + PDFium wheels from pinned upstream source.
+            // Fail strictly if those wheels are missing: no ABI substitution.
+            options("--find-links", project.layout.projectDirectory.dir(
+                "python-wheels").asFile.absolutePath)
+            options("--only-binary", "pydantic-core,pypdfium2")
+            install("pydantic==2.12.5")
+            install("pydantic-core==2.41.5")
+            install("pypdfium2==5.14.0")
             install("python-dateutil>=2.8.2,<3")
             install("click>=8,<10")
             install("colorama>=0.4.6,<1")
