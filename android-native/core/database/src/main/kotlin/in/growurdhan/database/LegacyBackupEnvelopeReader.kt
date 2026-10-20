@@ -3,6 +3,7 @@ package `in`.growurdhan.database
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.charset.StandardCharsets
+import java.nio.charset.CodingErrorAction
 import java.util.Locale
 import javax.crypto.Cipher
 import javax.crypto.SecretKeyFactory
@@ -74,8 +75,17 @@ object LegacyBackupEnvelopeReader {
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(rawKey, "AES"),
                 GCMParameterSpec(128, nonce))
-            // GCM checks authentication before returning any plaintext.
-            return String(cipher.doFinal(encrypted), StandardCharsets.UTF_8)
+            // GCM checks authentication before yielding plaintext, but a
+            // successfully authenticated byte sequence need not be valid
+            // UTF-8 JSON. Never substitute U+FFFD and silently alter financial
+            // identifiers, values, or the source JSON digest.
+            val plain = cipher.doFinal(encrypted)
+            try {
+                val decoder = StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                return decoder.decode(ByteBuffer.wrap(plain)).toString()
+            } finally { plain.fill(0) }
         } finally { rawKey.fill(0) }
     }
 }

@@ -19,7 +19,8 @@ class LegacyBackupEnvelopeReaderTest {
     private val iv = ByteArray(12) { (it + 1).toByte() }
     private val password = "local-only-test-password"
 
-    private fun encrypt(material: String): ByteArray {
+    private fun encrypt(material: String,
+        plaintext: ByteArray = json.toByteArray(StandardCharsets.UTF_8)): ByteArray {
         val spec = PBEKeySpec(material.toCharArray(), salt, 600_000, 256)
         val key = try {
             SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
@@ -29,7 +30,7 @@ class LegacyBackupEnvelopeReaderTest {
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"),
                 GCMParameterSpec(128, iv))
-            return cipher.doFinal(json.toByteArray(StandardCharsets.UTF_8))
+            return cipher.doFinal(plaintext)
         } finally { key.fill(0) }
     }
 
@@ -46,8 +47,10 @@ class LegacyBackupEnvelopeReaderTest {
         } finally { raw.fill(0) }
     }
 
-    private fun modern(): ByteArray {
-        val blob = encrypt("GrowUrDhan\nm24@example.invalid\n" + password)
+    private fun modern(plaintext: ByteArray =
+        json.toByteArray(StandardCharsets.UTF_8)): ByteArray {
+        val blob = encrypt("GrowUrDhan\nm24@example.invalid\n" + password,
+            plaintext)
         return ByteBuffer.allocate(40 + blob.size).order(ByteOrder.BIG_ENDIAN)
             .put("GUDVLT01".toByteArray(StandardCharsets.US_ASCII))
             .putInt(600_000).put(salt).put(iv).put(blob).array()
@@ -133,6 +136,24 @@ class LegacyBackupEnvelopeReaderTest {
         assertThrows(IllegalArgumentException::class.java) {
             RestoreLedgerPreflight.validate(complete.copy(
                 events = complete.events.map { it.copy(supersedesEventId = "event-A") }))
+        }
+    }
+
+    @Test fun authenticatedMalformedUtf8NeverBecomesChangedRestoredJson() {
+        // A valid AES-GCM tag alone does not make its plaintext valid JSON.
+        // Replacement characters would change the immutable source fingerprint.
+        val invalidUtf8 = byteArrayOf(0x7B, 0x22, 0xC3.toByte(), 0x28, 0x22, 0x7D)
+        assertThrows(java.nio.charset.CharacterCodingException::class.java) {
+            LegacyBackupEnvelopeReader.decodeGUDVLT01(
+                modern(invalidUtf8), "m24@example.invalid", password)
+        }
+        val b64 = Base64.getEncoder()
+        val legacyInvalid = LegacyBackupEnvelopeReader.Kosha1(
+            "KOSHA1", "PBKDF2-SHA256", 600_000,
+            b64.encodeToString(salt), b64.encodeToString(iv),
+            b64.encodeToString(encrypt(password, invalidUtf8)))
+        assertThrows(java.nio.charset.CharacterCodingException::class.java) {
+            LegacyBackupEnvelopeReader.decodeKOSHA1(legacyInvalid, password)
         }
     }
 

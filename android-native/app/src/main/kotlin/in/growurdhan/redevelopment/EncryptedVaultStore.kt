@@ -3,6 +3,7 @@ package `in`.growurdhan.redevelopment
 import android.content.Context
 import java.io.File
 import `in`.growurdhan.database.SchemaV9Catalog
+import `in`.growurdhan.database.LegacyMigrationColumnContract
 import net.zetetic.database.DatabaseErrorHandler
 import net.zetetic.database.sqlcipher.SQLiteDatabase
 
@@ -170,20 +171,20 @@ internal class EncryptedVaultStore(private val context: Context) {
     }
 
     private fun alreadyHasColumn(db: SQLiteDatabase, sql: String): Boolean {
-        val m = Regex("""ALTER TABLE ([a-z_]+) ADD COLUMN ([a-z_]+) ([A-Z]+).*""",
-            RegexOption.IGNORE_CASE).matchEntire(sql.trim().removeSuffix(";"))
-            ?: error("Unexpected migration DDL")
-        val table = m.groupValues[1]
-        val column = m.groupValues[2]
-        val type = m.groupValues[3]
-        db.rawQuery("PRAGMA table_info('$table')", null).use { cursor ->
+        val original = LegacyMigrationColumnContract.parse(sql)
+        // Names only originate in the checked-in frozen SQL asset, never a
+        // statement or external user input. Recheck before interpolating.
+        require(Regex("[a-z_]+").matches(original.table) &&
+            Regex("[a-z_]+").matches(original.column))
+        db.rawQuery("PRAGMA table_info('${original.table}')", null).use { cursor ->
             while (cursor.moveToNext()) {
-                if (cursor.getString(1) == column) {
-                    require(cursor.getString(2).uppercase() == type.uppercase()) {
-                        "Incompatible prior migration field $table.$column"
-                    }
-                    return true
-                }
+                if (cursor.getString(1) != original.column) continue
+                LegacyMigrationColumnContract.requireMatches(original,
+                    LegacyMigrationColumnContract.Observed(
+                        cursor.getString(2), cursor.getInt(3) == 1,
+                        if (cursor.isNull(4)) null else cursor.getString(4),
+                        cursor.getInt(5)))
+                return true
             }
         }
         return false
