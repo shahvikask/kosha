@@ -1090,4 +1090,39 @@ class EncryptedVaultStoreInstrumentedTest {
         assertFalse(File(ctx.noBackupFilesDir, "restore-claims").exists())
     }
 
+    @Test fun encryptedV8MigrationPreservesUnknownBlobNullAndIntegerCellsWithoutShadowDb() {
+        val ctx = sandbox()
+        val store = EncryptedVaultStore(ctx)
+        val opaque = byteArrayOf(0, 1, 2, 127, 0, -1, 31)
+        store.createFresh(false).use { db ->
+            db.execSQL("ALTER TABLE setting ADD COLUMN historical_opaque BLOB")
+            db.execSQL("INSERT INTO setting(key,value,historical_opaque) VALUES(?,?,?)",
+                arrayOf<Any>("unknown.historical.field", "zero 000 \\u20B9", opaque))
+            db.execSQL("INSERT INTO setting(key,value,historical_opaque) VALUES(?,?,?)",
+                arrayOf<Any?>("unknown.null.cell", "retained", null))
+            db.execSQL("INSERT INTO entity(entity_id,entity_type,display_name,created_at) " +
+                "VALUES('legacy-owner','INDIVIDUAL','Owner','2025-01-01')")
+            db.execSQL("PRAGMA user_version=8")
+            db.execSQL("UPDATE vault_meta SET value='8' WHERE key='schema_version'")
+        }
+        store.openExisting().use { db ->
+            assertEquals(9L, scalar(db, "PRAGMA user_version"))
+            db.rawQuery("SELECT value,historical_opaque FROM setting WHERE key=?",
+                arrayOf("unknown.historical.field")).use { cur ->
+                assertTrue(cur.moveToFirst())
+                assertEquals("zero 000 \\u20B9", cur.getString(0))
+                assertArrayEquals(opaque, cur.getBlob(1))
+            }
+            db.rawQuery("SELECT value,historical_opaque FROM setting WHERE key=?",
+                arrayOf("unknown.null.cell")).use { cur ->
+                assertTrue(cur.moveToFirst())
+                assertEquals("retained", cur.getString(0))
+                assertTrue(cur.isNull(1))
+            }
+            assertEquals(1L, scalar(db,
+                "SELECT count(*) FROM entity WHERE entity_id='legacy-owner'"))
+        }
+    }
+
+
 }

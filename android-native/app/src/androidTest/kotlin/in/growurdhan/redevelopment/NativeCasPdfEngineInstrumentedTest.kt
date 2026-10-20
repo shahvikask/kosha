@@ -17,21 +17,31 @@ class NativeCasPdfEngineInstrumentedTest {
 
     @Test fun arbitraryBytesNeverReachPythonPdfParser() {
         assertThrows(IllegalArgumentException::class.java) {
-            engine.parse("not-a-pdf".toByteArray(), "", "bad.pdf")
+            engine.parse("not-a-pdf".toByteArray(), "", "bad.pdf", "ABCDE1234F")
         }
         assertThrows(IllegalArgumentException::class.java) {
-            engine.parse(ByteArray(32), "", "bad.pdf")
+            engine.parse(ByteArray(32), "", "bad.pdf", "ABCDE1234F")
         }
     }
 
     @Test fun tooLargeOrMissingPdfNameIsRejectedBeforePasswordHandling() {
         assertThrows(IllegalArgumentException::class.java) {
-            engine.parse(ByteArray(16 * 1024 * 1024 + 1), "", "large.pdf")
+            engine.parse(ByteArray(16 * 1024 * 1024 + 1), "", "large.pdf", "ABCDE1234F")
         }
         assertThrows(IllegalArgumentException::class.java) {
-            engine.parse(("%PDF-" + "x".repeat(40)).toByteArray(), "", "")
+            engine.parse(("%PDF-" + "x".repeat(40)).toByteArray(), "", "", "ABCDE1234F")
         }
     }
+    @Test fun explicitFullPanIsRequiredBeforePythonIsInvoked() {
+        val fakePdf = ("%PDF-" + "synthetic-not-a-real-cas".repeat(2)).toByteArray()
+        assertThrows(IllegalArgumentException::class.java) {
+            engine.parse(fakePdf, "different-password", "synthetic.pdf", "")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            engine.parse(fakePdf, "different-password", "synthetic.pdf", "INVALIDPAN")
+        }
+    }
+
     @Test fun packagedFrozenCasparserAndPdfiumActuallyLoadOnAndroid() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         if (!Python.isStarted()) Python.start(AndroidPlatform(context))

@@ -511,4 +511,48 @@ class NativeBooksRepositoryInstrumentedTest {
         assertEquals(0, books.read(input.email).imports.size)
     }
 
+    @Test fun changedCustodyMappingAfterPreviewCannotCommitStaleStatement() {
+        val (accounts, books) = create(sandbox())
+        val owner = books.read(input.email).people.single().id
+        val holdingId = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, null, "Synthetic portfolio security", "EQUITY", "Other",
+            100_000_000L, 10_000L, "2024-01-01", true,
+            isin = "INE000000001"))
+        val importer = NativeStatementImportRepository(accounts)
+        val bytes = csvSnapshot()
+        val reviewed = importer.inspect(input.email, bytes)
+        val newCustody = books.createCustody(input.email,
+            NativeBooksRepository.NewCustody(owner, "DEMAT", "Owned demat"))
+        books.updateHoldingMetadata(input.email, holdingId, newCustody,
+            null, null, null)
+        assertThrows(IllegalArgumentException::class.java) {
+            importer.approve(input.email, "snapshot.csv", bytes, reviewed, true)
+        }
+        assertEquals(0, books.read(input.email).imports.size)
+        assertEquals(1, books.history(input.email, holdingId).size)
+    }
+
+    @Test fun unsafeLedgerHistoryCannotBeHealedByImportingAReducedSnapshot() {
+        val (accounts, books) = create(sandbox())
+        val owner = books.read(input.email).people.single().id
+        val holding = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, null, "Original source of units", "EQUITY", "Other",
+            100_000_000L, 10_000L, "2024-01-01", true,
+            isin = "INE000000001"))
+        val importer = NativeStatementImportRepository(accounts)
+        // Valid, explicitly recorded sale first, so the source snapshot can
+        // reduce only the surviving quantity. A negative signed difference
+        // must never appear as a taxable SELL.
+        books.appendUserEvent(input.email, NativeBooksRepository.NewEvent(
+            holding, "SELL", "2025-01-31", 50_000_000L, 10_000L, 5_000L))
+        val pdfBytes = csvSnapshot(qty = 25_000_000L)
+        val plan = importer.inspect(input.email, pdfBytes)
+        assertEquals(-25_000_000L, plan.matched.single().delta)
+        importer.approve(input.email, "ledger-snapshot.csv", pdfBytes, plan, true)
+        val events = books.history(input.email, holding)
+        assertEquals(3, events.size)
+        assertEquals("SNAPSHOT_ADJUSTMENT", events.last().kind)
+        assertEquals(25_000_000L, books.read(input.email).holdings.single().quantityScaled)
+    }
+
 }

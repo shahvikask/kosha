@@ -35,9 +35,25 @@ object RestoreV9InsertTransaction {
         require(providedConsent.isEmpty() ||
             (providedConsent.size == 3 &&
                 providedConsent.map { it.values.firstOrNull() }.toSet() == consentKeys &&
-                providedConsent.all { it.values.getOrNull(1) is String &&
-                    (it.values[1] as String).isNotBlank() })) {
+                providedConsent.all {
+                    it.columns == listOf("key", "value") &&
+                        it.values.size == 2 && it.values[1] is String
+                })) {
             "Incomplete or duplicated restore Terms consent"
+        }
+        if (providedConsent.isNotEmpty()) {
+            val evidence = providedConsent.associate {
+                it.values[0] as String to (it.values[1] as String)
+            }
+            // Independently defend the storage boundary against fabricated
+            // or stale terms rows even if a caller bypasses the UI publisher.
+            require(evidence["m25.terms.version"] == "2026-10-06" &&
+                evidence["m25.terms.text_id"] == "GUD-TOS-2026-10-06-v4" &&
+                runCatching {
+                    java.time.Instant.parse(evidence.getValue("m25.terms.accepted_at"))
+                }.isSuccess) {
+                "Non-current or malformed restore Terms consent"
+            }
         }
         require(plan.rows.first().table == "vault_account" &&
             plan.rows.count { it.table == "vault_account" } == 1 &&

@@ -37,12 +37,21 @@ internal class NativeCasPdfEngine(private val context: Context) {
 
     /** Must run off main thread; never log returned JSON, PDF, PAN or password. */
     @Synchronized
-    fun parse(pdf: ByteArray, password: String, displayName: String): Parsed {
+    fun parse(pdf: ByteArray, password: String, displayName: String,
+        ownerConfirmedPan: String): Parsed {
         require(pdf.size in 32..(16 * 1024 * 1024)) { "PDF size not supported" }
         require(pdf.take(5).toByteArray().contentEquals("%PDF-".toByteArray())) {
             "Not a PDF file"
         }
         require(displayName.isNotBlank() && displayName.length <= 240)
+        // The frozen sidecar can infer investorPan from the PDF password
+        // if the issuer omitted PAN. Never silently treat that guess as an
+        // independently printed identity: require a SEPARATE owner-attested
+        // full PAN, later matched exactly to the encrypted family record.
+        val confirmed = ownerConfirmedPan.trim().uppercase(java.util.Locale.ROOT)
+        require(confirmed.matches(Regex("[A-Z]{5}[0-9]{4}[A-Z]"))) {
+            "Explicit owner PAN confirmation required"
+        }
         val sha = digest(pdf)
         try {
             if (!Python.isStarted()) Python.start(AndroidPlatform(context.applicationContext))
@@ -67,8 +76,9 @@ internal class NativeCasPdfEngine(private val context: Context) {
             require(!LocalDate.parse(date).isAfter(LocalDate.now()))
             val pan = document.optString("investorPan").trim()
                 .uppercase(java.util.Locale.ROOT)
-            require(pan.matches(Regex("[A-Z]{5}[0-9]{4}[A-Z]"))) {
-                "PDF provides no exact owner PAN"
+            require(pan.matches(Regex("[A-Z]{5}[0-9]{4}[A-Z]")) &&
+                pan == confirmed) {
+                "Parser-reported PAN does not match separately confirmed owner PAN"
             }
             require(document.optInt("skippedNilHoldings", 0) == 0) {
                 "CAS omitted nil/closed records; explicit history review required"

@@ -45,29 +45,80 @@ internal class NativeStatementImportRepository(
             .digest(value.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
 
+    /**
+     * Independent last-line input guard. Neither the CSV parser nor Chaquopy
+     * may bypass these source/owner/date/scale invariants by calling the
+     * SQLCipher approval boundary with a fabricated Snapshot object.
+     */
+    private fun requireBoundSnapshot(snapshot: NativeStatementCsv.Snapshot,
+        sourceBytes: ByteArray) {
+        require(snapshot.bytes == sourceBytes.size &&
+            snapshot.sha256.matches(Regex("[0-9a-f]{64}")) &&
+            snapshot.sha256 == sha(sourceBytes)) { "Source digest or length mismatch" }
+        val date = java.time.LocalDate.parse(snapshot.date)
+        require(!date.isAfter(java.time.LocalDate.now())) {
+            "Future-dated statement rejected"
+        }
+        require(snapshot.ownerPan.matches(Regex("[A-Z]{5}[0-9]{4}[A-Z]")) &&
+            snapshot.positions.isNotEmpty() && snapshot.positions.size <= 10000)
+        require(snapshot.positions.all {
+            it.ownerPan == snapshot.ownerPan &&
+                it.date == snapshot.date &&
+                it.quantityScaled >= 0L && it.unitPriceMinor >= 0L &&
+                (it.currentValueMinor == null || it.currentValueMinor >= 0L) &&
+                (it.isin.isNotEmpty() || it.folio.isNotEmpty()) &&
+                (it.isin.isEmpty() || it.isin.matches(Regex("[A-Z0-9]{12}"))) &&
+                it.folio.length <= 120 && it.folio.none { c -> c.isISOControl() }
+        }) { "Unsupported or mixed statement position" }
+        require(snapshot.positions.map { it.isin to it.folio }.distinct().size ==
+            snapshot.positions.size) { "Duplicate source instrument" }
+    }
+
     private fun SQLiteDatabase.exists(sql: String, vararg args: String): Boolean =
         rawQuery(sql, args).use { it.moveToFirst() }
 
-    private fun position(db: SQLiteDatabase, holdingId: String, ownerId: String,
-                         category: String): Long {
+    private fun foldPosition(db: SQLiteDatabase, holdingId: String,
+        ownerId: String, category: String,
+        proposal: NativePortfolioMath.Event? = null): NativePortfolioMath.Fold {
         val events = mutableListOf<NativePortfolioMath.Event>()
         db.rawQuery("SELECT ledger_event_id,entity_id,event_type,trade_date," +
             "quantity_scaled,unit_price_minor,total_amount_minor,charges_minor," +
-            "supersedes_event_id FROM ledger_event WHERE holding_id=?",
+            "supersedes_event_id,notes FROM ledger_event WHERE holding_id=?",
             arrayOf(holdingId)).use { c ->
             while (c.moveToNext()) {
                 require(c.getString(1) == ownerId) { "Cross-owner statement/ledger collision" }
-                events += NativePortfolioMath.Event(
-                    id = c.getString(0), ownerId = ownerId, holdingId = holdingId,
-                    kind = c.getString(2), date = c.getString(3),
-                    quantityScaled = c.getLong(4), unitPriceMinor = c.getLong(5),
-                    totalAmountMinor = c.getLong(6), chargesMinor = c.getLong(7),
-                    supersedes = if (c.isNull(8)) null else c.getString(8))
+                val eventId = c.getString(0)
+                val kind = c.getString(2)
+                val price = c.getLong(5)
+                val amount = c.getLong(6)
+                val note = if (c.isNull(9)) "" else c.getString(9)
+                val provenance = db.rawQuery("SELECT value FROM setting WHERE key=?",
+                    arrayOf("native.ledger.cost_source.$eventId")).use { cur ->
+                    if (cur.moveToFirst()) cur.getString(0) else null
+                }
+                val known = when (provenance) {
+                    "KNOWN" -> true
+                    "UNKNOWN" -> false
+                    else -> !(kind in setOf("OPENING_BALANCE", "SNAPSHOT_ADJUSTMENT") &&
+                        ((price == 0L && amount == 0L) ||
+                            note.contains("unknown", ignoreCase = true)))
+                }
+                events += NativePortfolioMath.Event(eventId, ownerId, holdingId,
+                    kind, c.getString(3), c.getLong(4), price, amount,
+                    c.getLong(7), if (c.isNull(8)) null else c.getString(8),
+                    knownCost = known)
             }
         }
+        if (proposal != null) {
+            require(proposal.ownerId == ownerId && proposal.holdingId == holdingId &&
+                proposal.kind == "SNAPSHOT_ADJUSTMENT")
+            events += proposal
+        }
         val result = NativePortfolioMath.fold(events, category)
-        require(result.errors.isEmpty()) { "Reconciliation requires valid ledger history" }
-        return result.quantityScaled
+        require(result.errors.isEmpty()) {
+            "Snapshot would damage FIFO lot or ledger integrity"
+        }
+        return result
     }
 
     private fun reviewInTransaction(db: SQLiteDatabase,
@@ -101,7 +152,7 @@ internal class NativeStatementImportRepository(
             val holding = requireNotNull(info[0])
             val owner = requireNotNull(info[1])
             val category = requireNotNull(info[5])
-            val prior = position(db, holding, owner, category)
+            val prior = foldPosition(db, holding, owner, category).quantityScaled
             var previousStatement: String? = null
             db.rawQuery("SELECT MAX(statement_date) FROM statement_position " +
                 "WHERE holding_id=?", arrayOf(holding)).use { c ->
@@ -122,6 +173,20 @@ internal class NativeStatementImportRepository(
             val action = if (historical) Action.HISTORICAL_ONLY
                 else if (prior == source.quantityScaled) Action.NO_DIFFERENCE
                 else Action.APPLY_SNAPSHOT
+            if (action == Action.APPLY_SNAPSHOT) {
+                // A registrar reduction is not a sale. Dry-run the signed
+                // adjustment against ALL original immutable events at the
+                // exact statement date; refuse negative lots or bad FIFO.
+                val delta = Math.subtractExact(source.quantityScaled, prior)
+                val proposal = NativePortfolioMath.Event(
+                    "source-preview-adjustment", owner, holding,
+                    "SNAPSHOT_ADJUSTMENT", source.date, delta, 0L, 0L,
+                    knownCost = false)
+                val projected = foldPosition(db, holding, owner, category, proposal)
+                require(projected.quantityScaled == source.quantityScaled) {
+                    "Snapshot cannot be reconciled without losing ledger history"
+                }
+            }
             MatchedPosition(holding, owner, info[2], requireNotNull(info[3]),
                 requireNotNull(info[4]), category, source.isin, source.folio,
                 source.quantityScaled,
@@ -132,7 +197,12 @@ internal class NativeStatementImportRepository(
         }
         val decision = hash(snapshot.sha256 + "|" + snapshot.date + "|" +
             rows.joinToString("|") {
-                "${it.holdingId}:${it.storedQuantityScaled}:${it.quantityScaled}:${it.action}"
+                listOf(it.holdingId, it.ownerId, it.accountId.orEmpty(),
+                    it.instrumentId, it.category, it.sourceIsin, it.sourceFolio,
+                    it.storedQuantityScaled.toString(), it.quantityScaled.toString(),
+                    it.unitPriceMinor.toString(),
+                    it.currentValueMinor?.toString().orEmpty(), it.action.name)
+                    .joinToString(":")
             })
         return Review(snapshot.sha256, snapshot.date, rows, decision, false)
     }
@@ -143,12 +213,7 @@ internal class NativeStatementImportRepository(
 
     fun inspectSnapshot(email: String, snapshot: NativeStatementCsv.Snapshot,
         originalBytes: ByteArray): Review {
-        require(snapshot.bytes == originalBytes.size && snapshot.sha256 == sha(originalBytes)) {
-            "Parser preview is not bound to source bytes"
-        }
-        require(snapshot.positions.isNotEmpty() &&
-            snapshot.positions.all { it.ownerPan == snapshot.ownerPan &&
-                it.date == snapshot.date })
+        requireBoundSnapshot(snapshot, originalBytes)
         return accounts.withUnlockedVault(email) { db ->
             reviewInTransaction(db, snapshot)
         }
@@ -174,13 +239,7 @@ internal class NativeStatementImportRepository(
         previouslyReviewed: Review, explicitOwnerApproval: Boolean): Receipt {
         require(explicitOwnerApproval) { "Import requires explicit reviewed approval" }
         require(sourceKind in setOf("CSV_SNAPSHOT", "CAS_PDF"))
-        require(snapshot.sha256 == sha(sourceBytes) &&
-            snapshot.bytes == sourceBytes.size &&
-            snapshot.ownerPan.matches(Regex("[A-Z]{5}[0-9]{4}[A-Z]")) &&
-            snapshot.positions.isNotEmpty() &&
-            snapshot.positions.all {
-                it.ownerPan == snapshot.ownerPan && it.date == snapshot.date
-            }) { "Parser source is not bound to authenticated source bytes" }
+        requireBoundSnapshot(snapshot, sourceBytes)
         require(snapshot.sha256 == previouslyReviewed.sourceSha256) {
             "Statement bytes changed after preview"
         }
@@ -195,6 +254,8 @@ internal class NativeStatementImportRepository(
                 current.decisionSha256 == previouslyReviewed.decisionSha256) {
                 "Ledger or identity changed after statement review"
             }
+            // Position preview was re-evaluated in this very SQLCipher
+            // transaction, so a stale holding/correction cannot commit.
             val batch = UUID.randomUUID().toString()
             val at = Instant.now().toString()
             val changed = current.matched.count { it.action == Action.APPLY_SNAPSHOT }

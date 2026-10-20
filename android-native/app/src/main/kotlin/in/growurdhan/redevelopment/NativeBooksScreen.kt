@@ -876,12 +876,14 @@ private fun NativeCasPdfCard(email: String, imports: NativeStatementImportReposi
     choose: () -> Unit, discard: () -> Unit, onCommitted: () -> Unit) {
     val scope = rememberCoroutineScope()
     var password by remember { mutableStateOf("") }
+    var confirmedPan by remember { mutableStateOf("") }
     var reviewed by remember { mutableStateOf<NativeStatementImportRepository.Review?>(null) }
     var parsed by remember { mutableStateOf<NativeCasPdfEngine.Parsed?>(null) }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("") }
     LaunchedEffect(pdf) {
         password = ""
+        confirmedPan = ""
         reviewed = null
         parsed = null
         message = ""
@@ -897,15 +899,22 @@ private fun NativeCasPdfCard(email: String, imports: NativeStatementImportReposi
         OutlinedTextField(password, { password = it }, label = { Text("Statement PDF password") },
             visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
             modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(confirmedPan, { confirmedPan = it },
+            label = { Text("Confirm full owner PAN separately from PDF password") },
+            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+            modifier = Modifier.fillMaxWidth())
+        Text("The frozen parser may infer a PAN from the PDF password. " +
+            "Confirm the actual statement owner against your encrypted family records; " +
+            "this is owner attestation, not independent issuer verification.")
         OutlinedButton(enabled = !busy, onClick = {
-            reviewed = null; parsed = null; password = ""; discard()
+            reviewed = null; parsed = null; password = ""; confirmedPan = ""; discard()
         }) { Text("Discard PDF and password") }
         Button(enabled = !busy, onClick = {
             busy = true; message = ""; reviewed = null; parsed = null
             scope.launch {
                 try {
                     val result = withContext(Dispatchers.IO) {
-                        engine.parse(pdf, password, filename)
+                        engine.parse(pdf, password, filename, confirmedPan)
                     }
                     val review = withContext(Dispatchers.IO) {
                         imports.inspectSnapshot(email, result.snapshot, pdf)
@@ -939,7 +948,7 @@ private fun NativeCasPdfCard(email: String, imports: NativeStatementImportReposi
                         try {
                             // Reparse at approval; stale altered bytes cannot be committed.
                             val fresh = withContext(Dispatchers.IO) {
-                                engine.parse(pdf, password, filename)
+                                engine.parse(pdf, password, filename, confirmedPan)
                             }
                             val receipt = withContext(Dispatchers.IO) {
                                 imports.approveSnapshot(email, filename, pdf,
@@ -948,7 +957,7 @@ private fun NativeCasPdfCard(email: String, imports: NativeStatementImportReposi
                             message = if (receipt.duplicate) "Already imported."
                                 else "Approved ${receipt.positions} CAS positions; " +
                                     "${receipt.adjustments} reconciled quantity changes."
-                            reviewed = null; parsed = null; password = ""; discard()
+                            reviewed = null; parsed = null; password = ""; confirmedPan = ""; discard()
                             onCommitted()
                         } catch (_: Exception) {
                             message = "Import refused: source or ledger changed, " +
