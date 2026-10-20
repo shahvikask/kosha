@@ -66,16 +66,34 @@ object NativePortfolioMath {
         require(events.all { it.ownerId == events.firstOrNull()?.ownerId &&
             it.holdingId == events.firstOrNull()?.holdingId }) { "Cross-owner/holding event" }
         val byId = events.associateBy { it.id }
-        val superseded = events.mapNotNull { e ->
+        val superseded = HashSet<String>()
+        for (e in events) {
             if (e.kind == "CORRECTION") {
                 val old = byId[e.supersedes]
                 require(old != null && old.id != e.id) { "Correction target missing" }
                 require(old.ownerId == e.ownerId && old.holdingId == e.holdingId) {
                     "Foreign-owner correction"
                 }
+                require(superseded.add(old.id)) {
+                    "Competing correction replacements of one ledger event"
+                }
             } else require(e.supersedes == null) { "Invalid supersession" }
-            e.supersedes
-        }.toSet()
+        }
+        // Validate ALL correction lineages, including closed cycles whose
+        // events would otherwise all disappear from the active set before
+        // sort/fold. Iterative memoization is linear in event count.
+        val verifiedLineage = HashSet<String>()
+        for (origin in events) {
+            if (origin.kind != "CORRECTION" || origin.id in verifiedLineage) continue
+            var cursor = origin
+            val walking = HashSet<String>()
+            while (cursor.kind == "CORRECTION" && cursor.id !in verifiedLineage) {
+                require(walking.add(cursor.id)) { "Correction cycle" }
+                cursor = byId[cursor.supersedes]
+                    ?: error("Orphaned correction reference")
+            }
+            verifiedLineage.addAll(walking)
+        }
         fun kind(e: Event): String {
             var target = e
             val seen = mutableSetOf<String>()
@@ -110,8 +128,32 @@ object NativePortfolioMath {
                 "SPLIT" -> {
                     val den = e.unitPriceMinor
                     if (qty <= 0L || den <= 0L) { errors += "Invalid split: ${e.id}"; continue }
-                    // A split without any surviving units has no underlying position\n                    // to split. Otherwise a forged/orphan corporate action can\n                    // silently pass a zero-balance restore and be displayed as valid.\n                    if (lots.none { it.quantity > 0L }) {\n                        errors += "Split without an open position: ${e.id}"\n                        continue\n                    }\n                    for (lot in lots) {\n                        lot.original = mulDiv(lot.original, qty, den)
-                        lot.quantity = mulDiv(lot.quantity, qty, den)
+                    // A split without any surviving units has no underlying position
+                    // to split. Otherwise a forged/orphan corporate action can
+                    // silently pass a zero-balance restore and be displayed as valid.
+                    if (lots.none { it.quantity > 0L }) {
+                        errors += "Split without an open position: ${e.id}"
+                        continue
+                    }
+                    // Scaled quantities have eight decimals. A corporate
+                    // action that would create an unrepresentable fraction
+                    // cannot be silently rounded or truncated in a financial
+                    // ledger. Compute all replacements first, atomically.
+                    val replacements = lots.map { lot ->
+                        fun exact(value: Long): Long {
+                            val numerator = BigInteger.valueOf(value)
+                                .multiply(BigInteger.valueOf(qty))
+                            val divisor = BigInteger.valueOf(den)
+                            require(numerator.remainder(divisor) == BigInteger.ZERO) {
+                                "Split requires more than eight quantity decimals"
+                            }
+                            return numerator.divide(divisor).longValueExact()
+                        }
+                        exact(lot.original) to exact(lot.quantity)
+                    }
+                    for ((index, lot) in lots.withIndex()) {
+                        lot.original = replacements[index].first
+                        lot.quantity = replacements[index].second
                     }
                 }
                 "SNAPSHOT_ADJUSTMENT" -> if (qty > 0L) {

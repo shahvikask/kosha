@@ -770,6 +770,39 @@ class EncryptedVaultStoreInstrumentedTest {
         }
     }
 
+    @Test fun authenticatedFractionalSplitRefusesBothLegacyBackupFormatsBeforeClaim() {
+        for (modern in listOf(true, false)) {
+            val ctx = sandbox()
+            val (archive, credentials) = newSyntheticEncryptedBackup(
+                modern, "fractional@example.invalid", "Synthetic!2026"
+            ) { json ->
+                // The original 1_234_567_890_123 native quantity quanta
+                // cannot be multiplied by 3/2 without losing half a quantum.
+                // The encrypted file and its GCM tag remain authentic.
+                val events = json.getJSONArray("ledgerEvents")
+                events.put(JSONObject(events.getJSONObject(0).toString())
+                    .put("id", "three-for-two")
+                    .put("eventType", "SPLIT")
+                    .put("eventDate", "2026-10-18")
+                    .put("quantityScaled", "3")
+                    .put("unitPriceMinor", "2")
+                    .put("totalAmountMinor", "0"))
+            }
+            LockedRestoreStaging(ctx).stageEncryptedArchiveOnce(archive)
+            val pending = File(ctx.noBackupFilesDir, "restore-pending.v1.kosha")
+            val original = pending.readBytes()
+            assertThrows(IllegalArgumentException::class.java) {
+                ApprovedNewVaultRestore(ctx).restoreFromStagedNewVault(
+                    credentials, explicitOwnerApproval = true,
+                    termsConsent = verifiedConsent)
+            }
+            assertArrayEquals(original, pending.readBytes())
+            assertFalse(File(ctx.noBackupFilesDir, "restore-claims").exists())
+            assertFalse(ctx.getDatabasePath("growurdhan-v9.sqlcipher").exists())
+            assertFalse(File(ctx.noBackupFilesDir, "vault-key.v1").exists())
+        }
+    }
+
     @Test fun orphanedRestoreClaimsAndCandidatesBlockAnyNewVaultWithoutDeletingEvidence() {
         val (archive, credentials) = newSyntheticEncryptedBackup(
             true, "recovery@example.invalid", "synthetic-recovery-password")

@@ -109,4 +109,62 @@ class NativePortfolioMathTest {
         assertEquals(150_000_000L, result.quantityScaled)
     }
 
+    @Test fun competingCorrectionsCannotDoubleCountReplacementLots() {
+        val original = event("buy", "BUY", "2024-01-01", 100_000_000L)
+        val first = event("first-correction", "CORRECTION", "2024-01-02",
+            200_000_000L, supersedes = "buy")
+        val second = event("second-correction", "CORRECTION", "2024-01-03",
+            300_000_000L, supersedes = "buy")
+        assertThrows(IllegalArgumentException::class.java) {
+            NativePortfolioMath.fold(listOf(original, first, second), "EQUITY")
+        }
+    }
+
+    @Test fun fractionalSplitBeyondEightQuantityDecimalsMustFailWithoutTruncation() {
+        val first = event("tiny-buy", "BUY", "2024-01-01",
+            1L, 10_000L)
+        // Three-for-two would create 1.5 native quantity units:
+        // each native integer quantum represents 0.00000001 securities.
+        val split = event("fractional-split", "SPLIT",
+            "2024-02-01", 3L, 2L)
+        assertThrows(IllegalArgumentException::class.java) {
+            NativePortfolioMath.fold(listOf(first, split), "EQUITY")
+        }
+    }
+
+    @Test fun exactSplitChangesUnitsButDoesNotFabricateMoneyOrBasis() {
+        val events = listOf(
+            event("buy-a", "BUY", "2024-01-01", 200_000_000L, 17_500L),
+            event("three-for-two", "SPLIT", "2024-04-01", 3L, 2L))
+        val folded = NativePortfolioMath.fold(events, "EQUITY")
+        assertTrue(folded.errors.isEmpty())
+        assertEquals(300_000_000L, folded.quantityScaled)
+        assertEquals(35_000L, folded.knownCostMinor)
+        assertEquals(1, folded.openLots.size)
+        assertEquals(300_000_000L, folded.openLots.single().originalQuantityScaled)
+    }
+
+    @Test fun closedCorrectionCycleCannotDisappearAsAnEmptyValidPortfolio() {
+        val a = event("correction-a", "CORRECTION", "2024-01-01",
+            100_000_000L, supersedes = "correction-b")
+        val b = event("correction-b", "CORRECTION", "2024-01-02",
+            200_000_000L, supersedes = "correction-a")
+        assertThrows(IllegalArgumentException::class.java) {
+            NativePortfolioMath.fold(listOf(a, b), "EQUITY")
+        }
+    }
+
+    @Test fun validMultistepCorrectionChainFoldsOnlyLatestEconomicRecord() {
+        val events = listOf(
+            event("buy", "BUY", "2024-01-01", 100_000_000L),
+            event("correction-a", "CORRECTION", "2024-02-01",
+                200_000_000L, supersedes = "buy"),
+            event("correction-b", "CORRECTION", "2024-03-01",
+                300_000_000L, supersedes = "correction-a"))
+        val folded = NativePortfolioMath.fold(events, "EQUITY")
+        assertTrue(folded.errors.isEmpty())
+        assertEquals(300_000_000L, folded.quantityScaled)
+        assertEquals(1, folded.openLots.size)
+    }
+
 }

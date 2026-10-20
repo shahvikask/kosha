@@ -98,4 +98,20 @@ class RestorePositionParityTest {
         }
     }
 
+    @Test fun authenticatedUnrepresentableFractionalSplitCannotLosePositionQuanta() {
+        assertThrows(IllegalArgumentException::class.java) {
+            RestoreV9Plan.project(snapshot("1",
+                event("tiny-buy", "BUY", "1", "2024-01-01"),
+                event("split", "SPLIT", "3", "2024-02-01", "2")))
+        }
+    }
+
+    @Test fun authenticatedExactSplitPreservesNativePositionAndCost() {
+        val projected = RestoreV9Plan.project(snapshot("150000000",
+            event("buy", "BUY", "100000000", "2024-01-01"),
+            event("split", "SPLIT", "3", "2024-02-01", "2")))
+        assertEquals(2, projected.rows.count { it.table == "ledger_event" })
+        assertEquals(1, projected.rows.count { it.table == "holding" })
+    }
+
 }

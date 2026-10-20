@@ -717,3 +717,8 @@ Starting SHA `65097edc53c0889c9687c2a8d2e7ea9ab7ea068c`. Source-only changes: au
 
 ### 2026-10-20 — Additional price-history scope guard (SOURCE ONLY)
 After the P24/P27 dated-price source batch, read-only static audit identified a shared-instrument privacy/economic ambiguity: `price_observation` is instrument-scoped, but multiple holdings may share that instrument while having different owner-entered manual prices. `NativeBooksRepository.moneyWeightedReturn` now returns N/A instead of borrowing a manual price from a different holding whenever the instrument belongs to more than one holding. Authored encrypted Android negative test with two distinct holdings sharing an instrument and an owner price on only one. SOURCE AUTHORED, NOT BUILT, NOT RUN, NOT ACCEPTED. Full holding-specific dated quote design and official price providers remain OPEN; P01–P34 remains indivisible and unaccepted, CI still deferred.
+
+
+## 2026-10-20 — FIFO / restore preflight source-only batch
+
+Started on `f37b38ffcb56646207caf2706ff69cb2fd7913b0`. Corrected orphan SPLIT guard previously commented out by literal escaped newlines; forbids fractional eight-decimal unit truncation, competing corrections and closed correction cycles; authored native FIFO, restore projection and encrypted backup negative/positive tests. Also corrected one comment escape in restore publisher. Static source review only. Tests, compile, build, device, regression and GitHub Actions **NOT RUN** as explicitly required. Prior combined P01–P34 workflow #39345963722 failed on older tested SHA `357c46bac1325f33c12e1e066f6723e15d43327a`. NO current-SHA gate or artifact exists; P01–P34 NOT ACCEPTED.

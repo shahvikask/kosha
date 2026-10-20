@@ -115,7 +115,8 @@ internal class ApprovedNewVaultRestore(
             // The envelope is linked first. A crash in between leaves an
             // orphan live envelope, which blocks blank vault recreation.
             // The cipher is atomically published second via an exclusive
-            // zero-byte reservation, never over an existing vault.\n            // Any failure leaves
+            // zero-byte reservation, never over an existing vault.
+            // Any failure leaves
             // the journal, pending archive and artifacts intact for review.
             at(Boundary.BEFORE_KEY_PUBLICATION)
             EncryptedRestorePublisher.publishReservedAtomic(
