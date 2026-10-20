@@ -36,6 +36,10 @@ internal class NativeStatementImportRepository(
     data class Receipt(val duplicate: Boolean, val batchId: String?,
         val positions: Int, val adjustments: Int)
 
+    private fun sha(bytes: ByteArray): String =
+        MessageDigest.getInstance("SHA-256").digest(bytes)
+            .joinToString("") { "%02x".format(it) }
+
     private fun hash(value: String): String =
         MessageDigest.getInstance("SHA-256")
             .digest(value.toByteArray(Charsets.UTF_8))
@@ -134,8 +138,17 @@ internal class NativeStatementImportRepository(
     }
 
     /** No statement bytes or PAN are stored during preview. */
-    fun inspect(email: String, sourceBytes: ByteArray): Review {
-        val snapshot = NativeStatementCsv.parse(sourceBytes)
+    fun inspect(email: String, sourceBytes: ByteArray): Review =
+        inspectSnapshot(email, NativeStatementCsv.parse(sourceBytes), sourceBytes)
+
+    fun inspectSnapshot(email: String, snapshot: NativeStatementCsv.Snapshot,
+        originalBytes: ByteArray): Review {
+        require(snapshot.bytes == originalBytes.size && snapshot.sha256 == sha(originalBytes)) {
+            "Parser preview is not bound to source bytes"
+        }
+        require(snapshot.positions.isNotEmpty() &&
+            snapshot.positions.all { it.ownerPan == snapshot.ownerPan &&
+                it.date == snapshot.date })
         return accounts.withUnlockedVault(email) { db ->
             reviewInTransaction(db, snapshot)
         }
@@ -147,9 +160,27 @@ internal class NativeStatementImportRepository(
      * invalidates the preview; nothing is partially imported.
      */
     fun approve(email: String, originalFilename: String, sourceBytes: ByteArray,
+        previouslyReviewed: Review, explicitOwnerApproval: Boolean): Receipt =
+        approveSnapshot(email, originalFilename, sourceBytes,
+            NativeStatementCsv.parse(sourceBytes), "CSV_SNAPSHOT", previouslyReviewed,
+            explicitOwnerApproval)
+
+    /**
+     * Used only with a genuine frozen parser result freshly recomputed from the
+     * same in-memory PDF at approval. No consumer can pass an invented trade.
+     */
+    fun approveSnapshot(email: String, originalFilename: String, sourceBytes: ByteArray,
+        snapshot: NativeStatementCsv.Snapshot, sourceKind: String,
         previouslyReviewed: Review, explicitOwnerApproval: Boolean): Receipt {
         require(explicitOwnerApproval) { "Import requires explicit reviewed approval" }
-        val snapshot = NativeStatementCsv.parse(sourceBytes)
+        require(sourceKind in setOf("CSV_SNAPSHOT", "CAS_PDF"))
+        require(snapshot.sha256 == sha(sourceBytes) &&
+            snapshot.bytes == sourceBytes.size &&
+            snapshot.ownerPan.matches(Regex("[A-Z]{5}[0-9]{4}[A-Z]")) &&
+            snapshot.positions.isNotEmpty() &&
+            snapshot.positions.all {
+                it.ownerPan == snapshot.ownerPan && it.date == snapshot.date
+            }) { "Parser source is not bound to authenticated source bytes" }
         require(snapshot.sha256 == previouslyReviewed.sourceSha256) {
             "Statement bytes changed after preview"
         }
@@ -170,12 +201,12 @@ internal class NativeStatementImportRepository(
             db.execSQL("INSERT INTO import_batch(import_batch_id,source_filename," +
                 "document_kind,sha256,statement_date,rows_new,rows_duplicate,rows_conflict," +
                 "committed_at) VALUES(?,?,?,?,?,?,?,?,?)", arrayOf<Any>(
-                batch, originalFilename, "CSV_SNAPSHOT", snapshot.sha256, snapshot.date,
+                batch, originalFilename, sourceKind, snapshot.sha256, snapshot.date,
                 current.matched.size, 0, 0, at))
             db.execSQL("INSERT INTO source_document(source_document_id,import_batch_id," +
                 "original_filename,document_kind,sha256,byte_length,imported_at) " +
                 "VALUES(?,?,?,?,?,?,?)", arrayOf<Any>(
-                UUID.randomUUID().toString(), batch, originalFilename, "CSV_SNAPSHOT",
+                UUID.randomUUID().toString(), batch, originalFilename, sourceKind,
                 snapshot.sha256, snapshot.bytes, at))
             val sourceByIdentity = snapshot.positions.associateBy {
                 it.isin to it.folio
@@ -202,7 +233,7 @@ internal class NativeStatementImportRepository(
                         arrayOf<Any?>(
                             eventId, row.ownerId, row.holdingId, row.name, row.accountId,
                             snapshot.date, delta, batch,
-                            "csv-snapshot:" + snapshot.sha256,
+                            "statement-snapshot:" + snapshot.sha256,
                             "Owner-approved source snapshot; acquisition cost not evidenced",
                             at, "statement-import"))
                     // Mark provenance explicitly. Do not synthesize cost from CSV NAV.
@@ -210,16 +241,18 @@ internal class NativeStatementImportRepository(
                         arrayOf<Any>("native.ledger.cost_source.$eventId", "UNKNOWN"))
                     db.execSQL("UPDATE holding SET needs_review=1," +
                         "current_price_minor=?,last_price_updated=?," +
-                        "price_source='CSV_STATEMENT' WHERE holding_id=? " +
+                        "price_source=? WHERE holding_id=? " +
                         "AND (last_price_updated IS NULL OR last_price_updated<=?)",
                         arrayOf<Any>(row.unitPriceMinor, snapshot.date,
+                            if (sourceKind == "CAS_PDF") "CAS_PDF" else "CSV_STATEMENT",
                             row.holdingId, snapshot.date))
                 } else if (row.action == Action.NO_DIFFERENCE) {
                     db.execSQL("UPDATE holding SET current_price_minor=?," +
-                        "last_price_updated=?,price_source='CSV_STATEMENT' " +
+                        "last_price_updated=?,price_source=? " +
                         "WHERE holding_id=? AND " +
                         "(last_price_updated IS NULL OR last_price_updated<=?)",
                         arrayOf<Any>(row.unitPriceMinor, snapshot.date,
+                            if (sourceKind == "CAS_PDF") "CAS_PDF" else "CSV_STATEMENT",
                             row.holdingId, snapshot.date))
                 }
             }

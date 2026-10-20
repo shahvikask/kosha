@@ -9,6 +9,8 @@ import `in`.growurdhan.model.NativeDeviceAdmission
 import `in`.growurdhan.model.NativeRegistrationProof
 import java.io.File
 import java.util.UUID
+import java.security.MessageDigest
+import `in`.growurdhan.model.NativeStatementCsv
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -450,6 +452,63 @@ class NativeBooksRepositoryInstrumentedTest {
         assertEquals(150_000_000L, books.read(input.email).holdings.single().quantityScaled)
         assertEquals(2, books.read(input.email).imports.size)
         assertEquals(2, books.history(input.email, h).size)
+    }
+
+    @Test fun pdfSnapshotAdapterRetainsSourceDigestAndOwnerReviewInsideSqlcipher() {
+        val (accounts, books) = create(sandbox())
+        val owner = books.read(input.email).people.single().id
+        val h = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, null, "Synthetic source matching", "EQUITY", "Other",
+            100_000_000L, 10_000L, "2024-01-01", true,
+            isin = "INE000000001"))
+        // Synthetic snapshot only: exercises transactional PDF-source contract,
+        // NOT the actual Chaquopy/PDF parser. Never claim CAS parser passed.
+        val pdf = ("%PDF-" + "synthetic-fingerprint-only").toByteArray()
+        val sha = MessageDigest.getInstance("SHA-256").digest(pdf)
+            .joinToString("") { "%02x".format(it) }
+        val source = NativeStatementCsv.Snapshot(
+            sha, pdf.size, "ABCDE1234F", "2025-03-31",
+            listOf(NativeStatementCsv.Position("ABCDE1234F", "2025-03-31",
+                "INE000000001", "", 150_000_000L, 11_000L, 16500L)))
+        val importer = NativeStatementImportRepository(accounts)
+        val plan = importer.inspectSnapshot(input.email, source, pdf)
+        assertEquals(1, plan.matched.size)
+        assertThrows(IllegalArgumentException::class.java) {
+            importer.inspectSnapshot(input.email, source, pdf + byteArrayOf(1))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            importer.approveSnapshot(input.email, "example.pdf", pdf + byteArrayOf(1),
+                source, "CAS_PDF", plan, true)
+        }
+        assertEquals(0, books.read(input.email).imports.size)
+        val receipt = importer.approveSnapshot(input.email, "example.pdf", pdf,
+            source, "CAS_PDF", plan, true)
+        assertFalse(receipt.duplicate)
+        assertEquals(1, receipt.adjustments)
+        assertEquals("CAS_PDF", books.read(input.email).imports.single().documentKind)
+        assertEquals(2, books.history(input.email, h).size)
+        assertEquals("SNAPSHOT_ADJUSTMENT", books.history(input.email, h).last().kind)
+        assertTrue(importer.inspectSnapshot(input.email, source, pdf).duplicate)
+    }
+
+    @Test fun pdfSnapshotApprovalRefusesWrongEncryptedFamilyIdentity() {
+        val (accounts, books) = create(sandbox())
+        val owner = books.read(input.email).people.single().id
+        books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, null, "Synthetic ISIN", "EQUITY", "Other", 0L, 0L,
+            "2024-01-01", false, isin = "INE000000001"))
+        val pdf = "%PDF-synthetic-only-not-a-real-pdf".toByteArray()
+        val sha = MessageDigest.getInstance("SHA-256").digest(pdf)
+            .joinToString("") { "%02x".format(it) }
+        val position = NativeStatementCsv.Position("PQRST1234F", "2025-03-31",
+            "INE000000001", "", 100_000_000L, 10_000L, null)
+        val proposed = NativeStatementCsv.Snapshot(sha, pdf.size, position.ownerPan,
+            position.date, listOf(position))
+        assertThrows(IllegalArgumentException::class.java) {
+            NativeStatementImportRepository(accounts)
+                .inspectSnapshot(input.email, proposed, pdf)
+        }
+        assertEquals(0, books.read(input.email).imports.size)
     }
 
 }

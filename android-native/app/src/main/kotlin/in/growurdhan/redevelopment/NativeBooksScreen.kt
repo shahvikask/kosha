@@ -42,8 +42,11 @@ import java.time.LocalDate
  */
 @Composable
 internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
-    imports: NativeStatementImportRepository, pendingCsv: ByteArray?,
-    pendingCsvFilename: String, onSelectCsv: () -> Unit, onDiscardCsv: () -> Unit,
+    imports: NativeStatementImportRepository, casPdf: NativeCasPdfEngine,
+    pendingPdf: ByteArray?, pendingPdfFilename: String,
+    onSelectPdf: () -> Unit, onDiscardPdf: () -> Unit,
+    pendingCsv: ByteArray?, pendingCsvFilename: String,
+    onSelectCsv: () -> Unit, onDiscardCsv: () -> Unit,
     onLock: () -> Unit, onReplaceRecovery: () -> Unit) {
     val scope = rememberCoroutineScope()
     var snapshot by remember { mutableStateOf<NativeBooksRepository.Snapshot?>(null) }
@@ -226,6 +229,14 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                             archive = { id, value -> persist { books.setHoldingArchived(email, id, value) } })
                     }
                     "Documents" -> {
+                        NativeCasPdfCard(email, imports, casPdf, pendingPdf,
+                            pendingPdfFilename, onSelectPdf, onDiscardPdf) {
+                            scope.launch {
+                                try { refresh() } catch (_: Exception) {
+                                    error = "Cannot refresh encrypted document history"
+                                }
+                            }
+                        }
                         NativeCsvImportCard(email, imports, pendingCsv, pendingCsvFilename,
                             onSelectCsv, onDiscardCsv) {
                             scope.launch {
@@ -851,4 +862,102 @@ private fun NativeCsvImportCard(email: String,
         }
     }
     if (message.isNotEmpty()) Text(message)
+}
+
+
+/**
+ * PDF parsing runs ONLY on-device through Chaquopy's frozen CAS entry.
+ * Password and parsed positions live in ephemeral Compose state, not disk,
+ * saved instance state, diagnostics or an HTTP sidecar.
+ */
+@Composable
+private fun NativeCasPdfCard(email: String, imports: NativeStatementImportRepository,
+    engine: NativeCasPdfEngine, pdf: ByteArray?, filename: String,
+    choose: () -> Unit, discard: () -> Unit, onCommitted: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var password by remember { mutableStateOf("") }
+    var reviewed by remember { mutableStateOf<NativeStatementImportRepository.Review?>(null) }
+    var parsed by remember { mutableStateOf<NativeCasPdfEngine.Parsed?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf("") }
+    LaunchedEffect(pdf) {
+        password = ""
+        reviewed = null
+        parsed = null
+        message = ""
+    }
+    Text("Import a real CAS PDF", style = MaterialTheme.typography.titleLarge)
+    Text("On-device frozen CASPARSER for CAMS, KFintech, NSDL, CDSL and NPS. " +
+        "Only exact existing PAN and instrument identity matches can be accepted.")
+    if (pdf == null) {
+        Button(onClick = choose) { Text("Select locked CAS PDF") }
+        Text("Android file selection locks the vault. Re-authenticate to parse.")
+    } else {
+        Text("Selected: ${filename.take(120)}")
+        OutlinedTextField(password, { password = it }, label = { Text("Statement PDF password") },
+            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+            modifier = Modifier.fillMaxWidth())
+        OutlinedButton(enabled = !busy, onClick = {
+            reviewed = null; parsed = null; password = ""; discard()
+        }) { Text("Discard PDF and password") }
+        Button(enabled = !busy, onClick = {
+            busy = true; message = ""; reviewed = null; parsed = null
+            scope.launch {
+                try {
+                    val result = withContext(Dispatchers.IO) {
+                        engine.parse(pdf, password, filename)
+                    }
+                    val review = withContext(Dispatchers.IO) {
+                        imports.inspectSnapshot(email, result.snapshot, pdf)
+                    }
+                    parsed = result
+                    reviewed = review
+                } catch (_: Exception) {
+                    message = "PDF parsing, total checks, identity matching or " +
+                        "reconciliation failed. No records were imported."
+                } finally { busy = false }
+            }
+        }) { Text("Parse locally and review statement") }
+        val plan = reviewed
+        val details = parsed
+        if (plan != null && details != null) {
+            Text("Issuer: ${details.issuer}; dated ${plan.statementDate}; " +
+                "${details.positionCount} positions; ${details.warnings} parser warnings")
+            if (plan.duplicate) {
+                Text("Already imported from these exact PDF bytes.")
+            } else {
+                plan.matched.forEach { item ->
+                    Text("${item.name}: ${NativeBooksRepository.formatMinor(
+                        item.storedQuantityScaled, 8)} → ${NativeBooksRepository.formatMinor(
+                        item.quantityScaled, 8)} units (${item.action})")
+                }
+                Text("Do not approve if the source, owners, holdings, " +
+                    "or totals do not match the PDF. Changes are snapshots, never purchases.")
+                Button(enabled = !busy, onClick = {
+                    busy = true
+                    scope.launch {
+                        try {
+                            // Reparse at approval; stale altered bytes cannot be committed.
+                            val fresh = withContext(Dispatchers.IO) {
+                                engine.parse(pdf, password, filename)
+                            }
+                            val receipt = withContext(Dispatchers.IO) {
+                                imports.approveSnapshot(email, filename, pdf,
+                                    fresh.snapshot, "CAS_PDF", plan, true)
+                            }
+                            message = if (receipt.duplicate) "Already imported."
+                                else "Approved ${receipt.positions} CAS positions; " +
+                                    "${receipt.adjustments} reconciled quantity changes."
+                            reviewed = null; parsed = null; password = ""; discard()
+                            onCommitted()
+                        } catch (_: Exception) {
+                            message = "Import refused: source or ledger changed, " +
+                                "or the CAS parser is unavailable. No partial records saved."
+                        } finally { busy = false }
+                    }
+                }) { Text("Approve verified CAS PDF snapshot") }
+            }
+        }
+    }
+    if (message.isNotBlank()) Text(message)
 }

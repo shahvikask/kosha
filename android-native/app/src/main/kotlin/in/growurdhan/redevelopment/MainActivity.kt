@@ -28,6 +28,45 @@ class MainActivity : ComponentActivity() {
     private lateinit var accounts: NativeAccountRepository
     private lateinit var books: NativeBooksRepository
     private lateinit var statementImports: NativeStatementImportRepository
+    private lateinit var casPdf: NativeCasPdfEngine
+    private var stagedPdf by mutableStateOf<ByteArray?>(null)
+    private var stagedPdfName by mutableStateOf("")
+    private var pdfPickerPending = false
+    private fun discardPdf() {
+        stagedPdf?.fill(0)
+        stagedPdf = null
+        stagedPdfName = ""
+    }
+    private val pdfPicker = registerForActivityResult(OpenDocument()) { uri ->
+        if (!pdfPickerPending) return@registerForActivityResult
+        pdfPickerPending = false
+        discardPdf()
+        if (uri != null) {
+            stagedPdf = runCatching {
+                contentResolver.openInputStream(uri)?.use { source ->
+                    val out = ByteArrayOutputStream()
+                    val buffer = ByteArray(8192)
+                    while (true) {
+                        val n = source.read(buffer)
+                        if (n < 0) break
+                        require(out.size().toLong() + n <= 16L * 1024 * 1024)
+                        out.write(buffer, 0, n)
+                    }
+                    out.toByteArray()
+                }
+            }.getOrNull()
+            if (stagedPdf != null) {
+                val name = runCatching {
+                    contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME),
+                        null, null, null)?.use { cur ->
+                        if (cur.moveToFirst()) cur.getString(0) else null
+                    }
+                }.getOrNull()
+                stagedPdfName = (name ?: "statement.pdf").take(240)
+            }
+        }
+        lockCompletely(preservePdfForFreshLogin = stagedPdf != null)
+    }
     // Ephemeral only. SAF backgrounds the Activity, so login+device proof is
     // required again before the owner can preview the selected CSV.
     private var stagedCsv by mutableStateOf<ByteArray?>(null)
@@ -106,6 +145,7 @@ class MainActivity : ComponentActivity() {
         accounts = NativeAccountRepository(applicationContext, admission)
         books = NativeBooksRepository(accounts)
         statementImports = NativeStatementImportRepository(accounts)
+        casPdf = NativeCasPdfEngine(applicationContext)
         enableEdgeToEdge()
         setContent {
             GudTheme {
@@ -141,7 +181,15 @@ class MainActivity : ComponentActivity() {
                     )
                 } else if (booksOpen && unlocked && deviceVerified) {
                     NativeBooksScreen(email = activeEmail, books = books,
-                        imports = statementImports,
+                        imports = statementImports, casPdf = casPdf,
+                        pendingPdf = stagedPdf, pendingPdfFilename = stagedPdfName,
+                        onSelectPdf = {
+                            if (unlocked && admission.valid() && !pdfPickerPending) {
+                                pdfPickerPending = true
+                                pdfPicker.launch(arrayOf("application/pdf", "*/*"))
+                            }
+                        },
+                        onDiscardPdf = { discardPdf() },
                         pendingCsv = stagedCsv, pendingCsvFilename = stagedCsvFilename,
                         onSelectCsv = {
                             if (unlocked && admission.valid() && !csvPickerPending) {
@@ -237,7 +285,8 @@ class MainActivity : ComponentActivity() {
 
     private fun requestDeviceChallenge() {
         lockCompletely(preserveStagedArchive = restoreStaged,
-            preserveCsvForFreshLogin = stagedCsv != null)
+            preserveCsvForFreshLogin = stagedCsv != null,
+            preservePdfForFreshLogin = stagedPdf != null)
         val guard = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
         if (!guard.isDeviceSecure) {
             deviceMessage = "Set an Android screen lock before accessing the vault"
@@ -262,7 +311,8 @@ class MainActivity : ComponentActivity() {
 
     private fun lockCompletely(preservePendingChallenge: Boolean = false,
                                preserveStagedArchive: Boolean = false,
-                               preserveCsvForFreshLogin: Boolean = false) {
+                               preserveCsvForFreshLogin: Boolean = false,
+                               preservePdfForFreshLogin: Boolean = false) {
         if (::accounts.isInitialized) accounts.lock()
         unlocked = false
         booksOpen = false
@@ -271,6 +321,7 @@ class MainActivity : ComponentActivity() {
         restoreActive = false
         if (!preserveStagedArchive && !restorePickerPending) restoreStaged = false
         if (!preserveCsvForFreshLogin && !csvPickerPending) discardCsv()
+        if (!preservePdfForFreshLogin && !pdfPickerPending) discardPdf()
         if (!preservePendingChallenge) admission.cancel()
     }
 
@@ -281,6 +332,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         discardCsv()
+        discardPdf()
         super.onDestroy()
     }
 
@@ -289,7 +341,8 @@ class MainActivity : ComponentActivity() {
         lifecycleEpoch++
         lockCompletely(preservePendingChallenge = true,
             preserveStagedArchive = restorePickerPending || restoreStaged,
-            preserveCsvForFreshLogin = csvPickerPending || stagedCsv != null)
+            preserveCsvForFreshLogin = csvPickerPending || stagedCsv != null,
+            preservePdfForFreshLogin = pdfPickerPending || stagedPdf != null)
         if (::accounts.isInitialized) accounts.onBackground()
         super.onStop()
     }
