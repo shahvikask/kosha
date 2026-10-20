@@ -53,6 +53,11 @@ object RestoreLedgerPreflight {
         val holdingOwners = s.holdings.associate { it.id to it.ownerId }
         unique(s.goals.map { it.id })
         val events = unique(s.events.map { it.id })
+        val eventById = s.events.associateBy { it.id }
+        // Multiple corrections of a single historical event are ambiguous:
+        // the source lot engine would omit the old event and count BOTH
+        // competing replacements. Reject without editing source records.
+        val correctedTargets = HashSet<String>()
         for (a in s.accounts) require(a.ownerId in owners) { "Unknown account owner" }
         for (h in s.holdings) {
             require(h.ownerId in owners) { "Unknown holding owner" }
@@ -97,6 +102,56 @@ object RestoreLedgerPreflight {
                 require(e.supersedesEventId != e.id && e.supersedesEventId in events) {
                     "Invalid correction linkage"
                 }
+                val original = eventById.getValue(e.supersedesEventId)
+                require(original.ownerId == e.ownerId &&
+                    original.holdingId == e.holdingId) {
+                    "Correction cannot alter another owner or holding"
+                }
+                require(correctedTargets.add(e.supersedesEventId)) {
+                    "Competing corrections of one source event"
+                }
+            }
+        }
+        // A chain such as CORRECTION C -> CORRECTION B -> BUY A is legal.
+        // A directed cycle has no underlying economic event and causes
+        // source/native ledger folding to lose or misinterpret acquisitions.
+        // Iterative tri-colour walk is O(event count), avoiding recursion
+        // overflow for large genuine family ledgers (up to MAX_RECORDS).
+        val state = HashMap<String, Int>()
+        for (origin in s.events) {
+            if (origin.eventType != "CORRECTION" || state[origin.id] == 2) continue
+            var current = origin
+            val walking = ArrayList<String>()
+            while (current.eventType == "CORRECTION" && state[current.id] != 2) {
+                require(state[current.id] != 1) { "Circular correction lineage" }
+                state[current.id] = 1
+                walking += current.id
+                current = eventById.getValue(requireNotNull(current.supersedesEventId))
+            }
+            for (id in walking) state[id] = 2
+        }
+        // The frozen application deliberately does not derive units from
+        // dividends, interest, cash repayments, or valuation updates. A
+        // positive stored balance accompanied ONLY by those records would
+        // silently become a zero-unit native holding. Do not invent an
+        // OPENING_BALANCE to hide missing historical acquisition evidence.
+        val quantitySources = HashSet<String>()
+        val acquisitionKinds = setOf("BUY", "OPENING_BALANCE",
+            "BONUS", "SNAPSHOT_ADJUSTMENT")
+        for (event in s.events) {
+            if (event.id in correctedTargets) continue
+            var source = event
+            while (source.eventType == "CORRECTION") {
+                source = eventById.getValue(requireNotNull(source.supersedesEventId))
+            }
+            if (source.eventType in acquisitionKinds &&
+                event.quantityScaled.toLong() > 0L) {
+                quantitySources += event.holdingId
+            }
+        }
+        for (h in s.holdings) {
+            require(h.quantityScaled.toLong() <= 0L || h.id in quantitySources) {
+                "Positive historical balance lacks active acquisition or snapshot evidence"
             }
         }
         return Counts(s.owners.size, s.holdings.size, s.accounts.size, s.goals.size, s.events.size)

@@ -528,7 +528,8 @@ class EncryptedVaultStoreInstrumentedTest {
      * No passwords, PAN or vault keys are persisted in CI artifacts.
      */
     private fun newSyntheticEncryptedBackup(
-        modern: Boolean, email: String, password: String
+        modern: Boolean, email: String, password: String,
+        mutateAuthenticatedSnapshot: (JSONObject) -> Unit = {}
     ): Pair<ByteArray, RestoreIdentityGate.Credentials> {
         val random = SecureRandom()
         fun pbkdf(secret: String, salt: ByteArray, rounds: Int): ByteArray {
@@ -595,6 +596,7 @@ class EncryptedVaultStoreInstrumentedTest {
                     .put("targetMinor", "10000")
                     .put("createdAt", "2026-10-17")))
             .put("unknownOpaque", JSONObject().put("untouched", true))
+            .also(mutateAuthenticatedSnapshot)
             .toString()
         val salt = ByteArray(16).also(random::nextBytes)
         val nonce = ByteArray(12).also(random::nextBytes)
@@ -624,6 +626,44 @@ class EncryptedVaultStoreInstrumentedTest {
             email, password, "ABCDE1234F", "1990-01-01",
             "city", "blue", "pet", "river")
         return envelope to credentials
+    }
+
+    @Test fun authenticatedCorrectionForkOrCycleRefusesRestoreBeforeReplayClaim() {
+        // Real synthetically-encrypted ORIGINAL binary and legacy envelopes.
+        // The cross-row correction graph is invalid even though passwords,
+        // AES-GCM tags, source JSON, family identifiers and scaled integers
+        // otherwise authenticate. Refusal must happen before claim creation.
+        for (modern in listOf(true, false)) {
+            val ctx = sandbox()
+            val (archive, credentials) = newSyntheticEncryptedBackup(
+                modern, "fixture@example.invalid", "synthetic-not-a-secret"
+            ) { original ->
+                val history = original.getJSONArray("ledgerEvents")
+                fun correction(id: String, target: String): JSONObject =
+                    JSONObject(history.getJSONObject(0).toString())
+                        .put("id", id).put("eventType", "CORRECTION")
+                        .put("supersedesEventId", target)
+                if (modern) {
+                    history.put(correction("first-revision", "event"))
+                    history.put(correction("competing-revision", "event"))
+                } else {
+                    history.put(correction("cycle-a", "cycle-b"))
+                    history.put(correction("cycle-b", "cycle-a"))
+                }
+            }
+            LockedRestoreStaging(ctx).stageEncryptedArchiveOnce(archive)
+            val pending = File(ctx.noBackupFilesDir, "restore-pending.v1.kosha")
+            val saved = pending.readBytes()
+            assertThrows(IllegalArgumentException::class.java) {
+                ApprovedNewVaultRestore(ctx).restoreFromStagedNewVault(
+                    credentials, explicitOwnerApproval = true,
+                    termsConsent = verifiedConsent)
+            }
+            assertArrayEquals(saved, pending.readBytes())
+            assertFalse(ctx.getDatabasePath("growurdhan-v9.sqlcipher").exists())
+            assertFalse(File(ctx.noBackupFilesDir, "vault-key.v1").exists())
+            assertFalse(File(ctx.noBackupFilesDir, "restore-claims").exists())
+        }
     }
 
     @Test fun orphanedRestoreClaimsAndCandidatesBlockAnyNewVaultWithoutDeletingEvidence() {
