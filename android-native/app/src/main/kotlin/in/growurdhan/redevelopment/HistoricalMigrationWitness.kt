@@ -68,10 +68,21 @@ internal class HistoricalMigrationWitness private constructor(
                             0 -> Unit // NULL
                             1 -> feed(digest, ByteBuffer.allocate(8)
                                 .putLong(cur.getLong(index)).array()) // INTEGER
+                            2 -> {
+                                // Frozen v1-v8 columns may contain true SQLite
+                                // REAL cells even where native finance now uses
+                                // scaled integers. Witness their exact IEEE-754
+                                // storage bit pattern; NEVER round, truncate
+                                // or rewrite those historical cells.
+                                val bits = java.lang.Double.doubleToRawLongBits(
+                                    cur.getDouble(index))
+                                feed(digest, ByteBuffer.allocate(8)
+                                    .putLong(bits).array())
+                            }
                             3 -> feed(digest, cur.getString(index)
                                 .toByteArray(Charsets.UTF_8)) // TEXT
                             4 -> feed(digest, cur.getBlob(index)) // BLOB
-                            else -> error("Unexpected floating-point/unknown legacy value type")
+                            else -> error("Unknown original SQLite storage type")
                         }
                     }
                 }

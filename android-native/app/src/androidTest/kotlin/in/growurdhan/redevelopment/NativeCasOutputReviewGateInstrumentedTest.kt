@@ -50,6 +50,50 @@ class NativeCasOutputReviewGateInstrumentedTest {
         }
     }
 
+    @Test fun validMultiHoldingSourceSubtotalReconcilesToFrozenParserTotal() {
+        val payload = source()
+        payload.getJSONArray("holdings").put(JSONObject()
+            .put("kind", "mutual_fund").put("name", "Synthetic fund")
+            .put("isin", "INF000000001").put("quantity", 5)
+            .put("price", 50).put("value", 250))
+        payload.getJSONObject("parsedTotals").put("holdingsCount", 2)
+            .put("holdingsValue", 1250)
+        payload.getJSONObject("pdfTotals").put("grand", 1250)
+        assertEquals(2,
+            NativeCasOutputReviewGate.verify(payload, "ABCDE1234F").count)
+    }
+
+    @Test fun tamperedIndividualHoldingCannotHideBehindConsistentGrandTotals() {
+        val changedValue = source()
+        changedValue.getJSONArray("holdings").getJSONObject(0)
+            .put("value", 900)
+        assertThrows(IllegalArgumentException::class.java) {
+            NativeCasOutputReviewGate.verify(changedValue, "ABCDE1234F")
+        }
+        val changedQuantity = source()
+        changedQuantity.getJSONArray("holdings").getJSONObject(0)
+            .put("quantity", -10)
+        assertThrows(IllegalArgumentException::class.java) {
+            NativeCasOutputReviewGate.verify(changedQuantity, "ABCDE1234F")
+        }
+    }
+
+    @Test fun missingStringAndNonfiniteSourceAmountsAreNotConvertedToZero() {
+        for (field in listOf("quantity", "price", "value")) {
+            val missing = source()
+            missing.getJSONArray("holdings").getJSONObject(0).remove(field)
+            assertThrows(Exception::class.java) {
+                NativeCasOutputReviewGate.verify(missing, "ABCDE1234F")
+            }
+            val stringValue = source()
+            stringValue.getJSONArray("holdings").getJSONObject(0)
+                .put(field, "1000")
+            assertThrows(IllegalArgumentException::class.java) {
+                NativeCasOutputReviewGate.verify(stringValue, "ABCDE1234F")
+            }
+        }
+    }
+
     @Test fun reportIntegrityAndFullOwnerPanAreMandatoryBeforePreview() {
         for (modified in listOf(
             source().put("engine", "NOT_CASPARSER"),

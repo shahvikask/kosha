@@ -1395,6 +1395,71 @@ class EncryptedVaultStoreInstrumentedTest {
         }
     }
 
+    @Test fun encryptedHistoricalMigrationPreservesOriginalRealStorageValues() {
+        val ctx = sandbox()
+        val store = EncryptedVaultStore(ctx)
+        val observations = listOf(1.25, -0.125, java.lang.Double.MIN_VALUE)
+        store.createFresh(false).use { db ->
+            db.execSQL("ALTER TABLE setting ADD COLUMN historical_real_measure REAL")
+            for ((index, original) in observations.withIndex()) {
+                db.execSQL("INSERT INTO setting(key,value,historical_real_measure) " +
+                    "VALUES(?,?,?)",
+                    arrayOf<Any>("legacy.real.$index", "opaque", original))
+            }
+            db.execSQL("PRAGMA user_version=8")
+            db.execSQL("UPDATE vault_meta SET value='8' WHERE key='schema_version'")
+        }
+        // Synthetic encrypted v8 schema marker, not a captured production
+        // v8 database. Exercises actual production SQLCipher migration path.
+        store.openExisting().use { db ->
+            assertEquals(9L, scalar(db, "PRAGMA user_version"))
+            for ((index, original) in observations.withIndex()) {
+                db.rawQuery("SELECT typeof(historical_real_measure)," +
+                    "historical_real_measure FROM setting WHERE key=?",
+                    arrayOf("legacy.real.$index")).use { cur ->
+                    assertTrue(cur.moveToFirst())
+                    assertEquals("real", cur.getString(0))
+                    assertEquals(
+                        java.lang.Double.doubleToRawLongBits(original),
+                        java.lang.Double.doubleToRawLongBits(cur.getDouble(1)))
+                    assertFalse(cur.moveToNext())
+                }
+            }
+        }
+    }
+
+    @Test fun historicalRealCellMutationForcesSameTransactionRollback() {
+        val ctx = sandbox()
+        EncryptedVaultStore(ctx).createFresh(false).use { db ->
+            db.execSQL("CREATE TABLE original_real_probe " +
+                "(probe_id TEXT PRIMARY KEY, old_rate REAL, opaque BLOB)")
+            val bytes = byteArrayOf(0, 2, -1, 0, 7)
+            db.execSQL("INSERT INTO original_real_probe " +
+                "(probe_id,old_rate,opaque) VALUES(?,?,?)",
+                arrayOf<Any>("record", 1.2345678901234567, bytes))
+            db.beginTransaction()
+            try {
+                val witness = HistoricalMigrationWitness.capture(db)
+                db.execSQL("ALTER TABLE original_real_probe ADD COLUMN new_note TEXT")
+                witness.verifyUnmodified(db)
+                db.execSQL("UPDATE original_real_probe SET old_rate=? WHERE probe_id='record'",
+                    arrayOf<Any>(1.2345678901234565))
+                assertThrows(IllegalArgumentException::class.java) {
+                    witness.verifyUnmodified(db)
+                }
+                // Explicitly DO NOT setTransactionSuccessful: rollback.
+            } finally { db.endTransaction() }
+            db.rawQuery("SELECT old_rate,opaque FROM original_real_probe " +
+                "WHERE probe_id='record'", null).use { cur ->
+                assertTrue(cur.moveToFirst())
+                assertEquals(java.lang.Double.doubleToRawLongBits(
+                    1.2345678901234567), java.lang.Double.doubleToRawLongBits(
+                    cur.getDouble(0)))
+                assertArrayEquals(bytes, cur.getBlob(1))
+            }
+        }
+    }
+
     @Test fun restoreWithoutCurrentTermsIsDeniedBeforeClaimOrPublication() {
         val ctx = sandbox()
         val (archive, proof) = newSyntheticEncryptedBackup(

@@ -48,10 +48,39 @@ internal object NativeCasOutputReviewGate {
         require(counts.getInt("holdingsCount") == holdings.length()) {
             "CAS position totals are inconsistent"
         }
-        val parsed = BigDecimal(counts.get("holdingsValue").toString())
-        val reported = BigDecimal(document.getJSONObject("pdfTotals")
-            .get("grand").toString())
+        // The frozen sidecar reports both individual holdings and summary
+        // totals. Independently recompute its subtotal before trusting a
+        // source with the owner's holdings or investment values. Otherwise a
+        // complete:true flag and plausible grand total could conceal a
+        // truncated, duplicated or changed source position.
+        fun finiteAmount(value: Any): BigDecimal {
+            require(value is Number && value.toString().length <= 40) {
+                "CAS source is not a bounded numeric amount"
+            }
+            val n = BigDecimal(value.toString())
+            require(n.signum() >= 0 && n.precision() <= 18) {
+                "CAS position has a negative or imprecise amount"
+            }
+            return n
+        }
+        var positionsSubtotal = BigDecimal.ZERO
+        for (index in 0 until holdings.length()) {
+            val position = holdings.getJSONObject(index)
+            // Each actual source position must have real, bounded numeric
+            // units/NAV/value. No null, string or guessed replacement value.
+            finiteAmount(position.get("quantity"))
+            finiteAmount(position.get("price"))
+            positionsSubtotal = positionsSubtotal.add(
+                finiteAmount(position.get("value")))
+        }
+        val parsed = finiteAmount(counts.get("holdingsValue"))
+        require(positionsSubtotal.subtract(parsed).abs() <= BigDecimal("0.02")) {
+            "CAS holding values differ from their parsed total"
+        }
+        val reported = finiteAmount(document.getJSONObject("pdfTotals")
+            .get("grand"))
         val delta = BigDecimal(document.get("delta").toString())
+        require(delta.precision() <= 18) { "Unbounded CAS reconciliation delta" }
         require(parsed.signum() >= 0 && reported.signum() >= 0 &&
             parsed.subtract(reported).subtract(delta).abs() <= BigDecimal("0.02") &&
             delta.abs() < BigDecimal.ONE) { "Frozen CAS reconciliation totals are invalid" }
