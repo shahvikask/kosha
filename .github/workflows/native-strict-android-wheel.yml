@@ -63,7 +63,7 @@ jobs:
           ANDROID_API_LEVEL: '26'
           # Upstream's time filter uses P7D, rejected by pip 2026.
           # Keep the upstream setup dependency group; source ref is pinned.
-          CIBW_BEFORE_BUILD: 'python -m pip install --group setup'
+          CIBW_BEFORE_BUILD: 'python -m pip install --group {project}/pyproject.toml:setup'
         run: |
           set -euo pipefail
           test "$(git -C upstream/pypdfium2 rev-parse HEAD)" = 21f85e273036f3bade4f67d896e1d05927e5f4b1
