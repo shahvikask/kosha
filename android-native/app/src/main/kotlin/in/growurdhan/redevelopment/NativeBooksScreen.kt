@@ -46,6 +46,7 @@ import java.time.LocalDate
 internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
     imports: NativeStatementImportRepository,
     payouts: NativeInterestPayoutRepository,
+    annualCredits: NativeAnnualInterestCreditRepository,
     diagnostics: NativePrivateDiagnosticsRepository, casPdf: NativeCasPdfEngine,
     pendingPdf: ByteArray?, pendingPdfFilename: String,
     onSelectPdf: () -> Unit, onDiscardPdf: () -> Unit,
@@ -319,6 +320,13 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                         NativeTaxWorkpaperCard(email, books, data.holdings.filter {
                             ownerFilter.isEmpty() || it.personId == ownerFilter
                         })
+                        NativeAnnualInterestCreditCard(email, annualCredits,
+                            data.holdings.filter { ownerFilter.isEmpty() ||
+                                it.personId == ownerFilter }, busy) {
+                            scope.launch { try { refresh() } catch (_: Exception) {
+                                error = "Cannot refresh annual interest records"
+                            } }
+                        }
                         NativeInterestPayoutForm(email, payouts, data.holdings.filter {
                             (it.category == "FIXED_INCOME" || it.category == "GOLD_SGB") &&
                                 (ownerFilter.isEmpty() || it.personId == ownerFilter)

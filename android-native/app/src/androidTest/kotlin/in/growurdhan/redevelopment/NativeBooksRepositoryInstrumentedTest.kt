@@ -11,6 +11,8 @@ import java.io.File
 import java.util.UUID
 import java.security.MessageDigest
 import `in`.growurdhan.model.NativeStatementCsv
+import `in`.growurdhan.model.NativeAnnualInterestCredit
+import java.time.LocalDate
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -867,6 +869,80 @@ class NativeBooksRepositoryInstrumentedTest {
         assertThrows(IllegalArgumentException::class.java) {
             journal.currentCursor(input.email, owner, "one@example.invalid")
         }
+    }
+
+    @Test fun annualCreditIsAtomicIdempotentAndSurvivesEncryptedReopen() {
+        val context = sandbox()
+        val (accounts, books) = create(context)
+        val owner = books.read(input.email).people.single().id
+        val holding = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, null, "Family PPF", "FIXED_INCOME", "PPF",
+            100_000_000L, 1_000_000L, "2024-01-01", true,
+            interestRateBps = 710))
+        val repo = NativeAnnualInterestCreditRepository(accounts)
+        val original = NativeAnnualInterestCredit.Input("PPF",
+            LocalDate.parse("2026-03-31"), 1_000_000L, 710,
+            LocalDate.parse("2024-01-01"))
+        val checked = repo.inspect(input.email, holding, original)
+        assertEquals(71_000L, checked.credit.amountMinor)
+        val before = books.history(input.email, holding).size
+        assertThrows(IllegalArgumentException::class.java) {
+            repo.approve(input.email, checked, false)
+        }
+        assertEquals(before, books.history(input.email, holding).size)
+        val result = repo.approve(input.email, checked, true)
+        assertEquals(1_071_000L, result.newBalanceMinor)
+        assertEquals(before + 1, books.history(input.email, holding).size)
+        assertEquals("INTEREST", books.history(input.email, holding).last().kind)
+        assertThrows(Exception::class.java) {
+            repo.approve(input.email, checked, true)
+        }
+        assertEquals(before + 1, books.history(input.email, holding).size)
+        accounts.onBackground()
+        val restored = NativeAccountRepository(context, gate())
+        assertTrue(restored.login(input.email, input.password))
+        val persisted = NativeBooksRepository(restored).read(input.email)
+        assertEquals(1_071_000L, persisted.holdings.single().marketPriceMinor)
+        assertEquals(before + 1, NativeBooksRepository(restored)
+            .history(input.email, holding).size)
+    }
+
+    @Test fun staleAnnualReviewOrLaterDepositCannotSilentlyAccrueInterest() {
+        val (accounts, books) = create(sandbox())
+        val owner = books.read(input.email).people.single().id
+        val holding = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, null, "Family EPF", "FIXED_INCOME", "EPF",
+            100_000_000L, 2_000_000L, "2024-01-01", true,
+            interestRateBps = 650))
+        val repo = NativeAnnualInterestCreditRepository(accounts)
+        val term = NativeAnnualInterestCredit.Input("EPF",
+            LocalDate.parse("2026-03-31"), 2_000_000L, 650,
+            LocalDate.parse("2024-01-01"))
+        val checked = repo.inspect(input.email, holding, term)
+        books.recordManualPrice(input.email, holding, 2_050_000L, "2025-08-01")
+        assertThrows(Exception::class.java) {
+            repo.approve(input.email, checked, true)
+        }
+        assertEquals(1, books.history(input.email, holding).size)
+        assertThrows(Exception::class.java) {
+            repo.inspect(input.email, holding, term)
+        }
+    }
+
+    @Test fun unknownOpeningCostNeverQualifiesForAnnualCompounding() {
+        val (accounts, books) = create(sandbox())
+        val owner = books.read(input.email).people.single().id
+        val holding = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, null, "Unknown-cost SSY", "FIXED_INCOME",
+            "Sukanya Samriddhi (SSY)", 100_000_000L, 500_000L,
+            "2024-01-01", knownOpeningCost = false, interestRateBps = 820))
+        val repo = NativeAnnualInterestCreditRepository(accounts)
+        assertThrows(Exception::class.java) {
+            repo.inspect(input.email, holding, NativeAnnualInterestCredit.Input(
+                "SSY", LocalDate.parse("2026-03-31"), 500_000L, 820,
+                LocalDate.parse("2024-01-01")))
+        }
+        assertEquals(1, books.history(input.email, holding).size)
     }
 
 }
