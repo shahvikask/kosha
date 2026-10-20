@@ -27,6 +27,13 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      # Chaquopy's Android wheel task requires a HOST Python 3.11 interpreter.
+      # Ubuntu runners may default to a different Python version.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify Chaquopy build Python
+        run: python3.11 --version
       - uses: gradle/actions/setup-gradle@v4
       - name: Targeted JVM unit tests and Kotlin app/Android test compilation — no emulator
         working-directory: android-native
