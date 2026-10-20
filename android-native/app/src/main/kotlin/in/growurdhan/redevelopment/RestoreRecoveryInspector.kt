@@ -1,7 +1,6 @@
 package `in`.growurdhan.redevelopment
 
 import android.content.Context
-import android.database.Cursor
 import `in`.growurdhan.database.RestoreIdentityGate
 import `in`.growurdhan.database.RestoreV9Plan
 import java.io.File
@@ -28,8 +27,6 @@ internal class RestoreRecoveryInspector(private val context: Context) {
     private val fingerprintName = Regex("restore-([0-9a-f]{64})\\.claim")
     private val candidateDbName = Regex("growurdhan-v9\\.sqlcipher\\.restore-([0-9a-f-]{36})")
     private val candidateKeyName = Regex("vault-key\\.v1\\.restore-([0-9a-f-]{36})")
-    private val tables = listOf("vault_account", "entity", "account", "instrument",
-        "holding", "ledger_event", "goal", "setting")
 
     /** No mutable file operation is permitted, even for malformed evidence. */
     fun inspectForOwnerReview(
@@ -218,40 +215,7 @@ internal class RestoreRecoveryInspector(private val context: Context) {
         // EXACT publication plan from validated candidate consent before
         // comparing every financial row and source fingerprint.
         val publishedPlan = NativeRestoreTermsRows.projectForensicCandidate(plan, db)
-        require(publishedPlan.rows.all { it.table in tables })
-        for (table in tables) {
-            val expected = publishedPlan.rows.filter { it.table == table }
-            val columns = expected.firstOrNull()?.columns
-            if (columns == null) {
-                require(scalar("SELECT COUNT(*) FROM $table") == "0") {
-                    "Unexpected imported data in empty table"
-                }
-                continue
-            }
-            require(expected.all { it.columns == columns } &&
-                columns.isNotEmpty() &&
-                columns.all { it.matches(Regex("[a-z][a-z0-9_]*")) })
-            val counts = expected.groupingBy { it.values }.eachCount().toMutableMap()
-            val selected = columns.joinToString(",")
-            db.rawQuery("SELECT $selected FROM $table", null).use { cur ->
-                while (cur.moveToNext()) {
-                    val actual = (0 until cur.columnCount).map { i ->
-                        when (cur.getType(i)) {
-                            Cursor.FIELD_TYPE_NULL -> null
-                            Cursor.FIELD_TYPE_INTEGER -> cur.getLong(i)
-                            Cursor.FIELD_TYPE_STRING -> cur.getString(i)
-                            else -> throw IllegalStateException("Unsafe restored row type")
-                        }
-                    }
-                    val remaining = counts[actual] ?: 0
-                    require(remaining > 0) { "Recovered row differs from authenticated snapshot" }
-                    if (remaining == 1) counts.remove(actual)
-                    else counts[actual] = remaining - 1
-                }
-            }
-            require(counts.isEmpty()) { "Authenticated restored row missing" }
-        }
-        return publishedPlan.rows.size
+        return RestoredRowsVerifier.verifyExactRows(db, publishedPlan)
     }
 
     private fun exists(file: File) = Files.exists(file.toPath(), LinkOption.NOFOLLOW_LINKS)

@@ -187,17 +187,12 @@ internal class ApprovedNewVaultRestore(
             require(digest == plan.originalJsonSha256) {
                 "Restored original JSON fingerprint changed"
             }
-            val requiredRows = plan.rows.groupingBy { it.table }.eachCount()
-            for ((table, count) in requiredRows) {
-                require(table.matches(Regex("[a-z][a-z0-9_]*")))
-                val actual = db.rawQuery("SELECT COUNT(*) FROM $table", null).use {
-                    check(it.moveToFirst())
-                    it.getLong(0)
-                }
-                require(actual == count.toLong()) {
-                    "Restored encrypted table count mismatch"
-                }
-            }
+            // No publication of a correctly sized but semantically corrupt
+            // financial ledger. The identical verifier is used by read-only
+            // owner recovery for interrupted publication.
+            require(RestoredRowsVerifier.verifyExactRows(db, plan) ==
+                plan.rows.size) { "Restored source row projection incomplete" }
+
         }
     }
 }
