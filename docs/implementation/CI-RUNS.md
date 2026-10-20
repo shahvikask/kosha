@@ -685,3 +685,7 @@ Starting `1ad11ecf70c588ea20fb42c32fc92f214f32ac8d`. Added historical SQLCipher 
 
 
 **Same-batch staging concurrency closure:** `LockedRestoreStaging.stageEncryptedArchiveOnce` now holds the existing cross-process `VaultLifecycleLock` over the preflight and AtomicFile write. A second instance cannot race the first to the same encrypted staging destination. Added an UNEXECUTED Android negative test holding the lifecycle lock while a second instance attempts staging; after releasing the lock, an ordinary exact-ciphertext staged write is expected to succeed. No tests executed.
+
+
+## 2026-10-20 — Native restore TOCTOU and key-custody source batch (UNTESTED)
+Starting SHA `24d67ec9b0a8fab029da37d2951f400a6354c8ce`. Added shared NOFOLLOW new-device vault target guard, locked post-SAF staging recheck, safe fresh/restore admission, non-mutating bounded wrapped-key reads and eight Android positive/negative test sources. **ALL SOURCE AUTHORED, NOT COMPILED OR EXECUTED.** No workflow dispatch, JVM, Gradle, build, instrumented/emulator/physical-device run or CI credit use. Existing prior combined run #39345963722 FAILED on old `357c46bac1325f33c12e1e066f6723e15d43327a`. Current milestone not accepted.

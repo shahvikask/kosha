@@ -71,6 +71,11 @@ internal class LockedRestoreStaging(private val context: Context) {
             require(outer.optString("magic") == "KOSHA1" &&
                 outer.has("cipherB64")) { "Unencrypted or unknown backup refused" }
         }
+        // The file picker can outlive the preflight: a new native vault may
+        // have appeared while SAF was open. Refuse to stage any archive after
+        // such a race, UNDER the same cross-process vault lifecycle lock.
+        UnusedVaultTargetGuard.requireUnused(
+            context, allowAlreadyStagedArchive = false)
         val base = staged.baseFile.toPath()
         val dir = base.parent ?: error("Missing private restore directory")
         check(Files.isDirectory(dir, LinkOption.NOFOLLOW_LINKS) &&

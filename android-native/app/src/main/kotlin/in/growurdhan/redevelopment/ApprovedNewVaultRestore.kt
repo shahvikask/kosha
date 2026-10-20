@@ -54,26 +54,15 @@ internal class ApprovedNewVaultRestore(
         return VaultLifecycleLock.exclusively(context) {
             val target = context.getDatabasePath("growurdhan-v9.sqlcipher")
             val liveKey = File(context.noBackupFilesDir, "vault-key.v1")
-            val liveKeyBak = File(liveKey.path + ".bak")
             val pending = File(context.noBackupFilesDir, "restore-pending.v1.kosha")
-            check(!File(pending.path + ".new").exists()) {
-                "Interrupted encrypted staging write; forensic inspection required"
+            // Recheck all target, journal, legacy and key artifacts UNDER the
+            // lifecycle lock, including dangling symlinks ignored by File.exists.
+            // Only the already staged original encrypted archive is allowed.
+            UnusedVaultTargetGuard.requireUnused(
+                context, allowAlreadyStagedArchive = true)
+            check(Files.isRegularFile(pending.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                "A safe staged encrypted archive is required"
             }
-            check(pending.isFile || File(pending.path + ".bak").isFile) {
-                "No staged encrypted archive to restore"
-            }
-            check(!target.exists() && !File(target.path + "-wal").exists() &&
-                !File(target.path + "-shm").exists() &&
-                !File(target.path + "-journal").exists() &&
-                !liveKey.exists() && !liveKeyBak.exists() &&
-                !File(context.filesDir, "vault.enc").exists() &&
-                !File(context.noBackupFilesDir, "vault.enc").exists()) {
-                "Existing or ambiguous vault state; never overwrite or recreate"
-            }
-
-            // A previous different archive may have claimed restore and left
-            // an orphaned candidate/key. Never begin a second recovery over it.
-            RestoreArtifactGuard.requireNoAbandonedRestore(context)
 
             // All GCM, password, PAN/DOB, two recovery answers and strict
             // original owner/ledger proofs precede a durable replay claim.

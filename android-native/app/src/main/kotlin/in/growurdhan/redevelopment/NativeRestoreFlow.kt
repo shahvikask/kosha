@@ -18,16 +18,10 @@ internal class NativeRestoreFlow(private val context: Context) {
     private val staging get() = LockedRestoreStaging(context)
 
     fun requireEmptyTarget() {
-        val db = context.getDatabasePath("growurdhan-v9.sqlcipher")
-        val key = File(context.noBackupFilesDir, "vault-key.v1")
-        check(!db.exists() && !File(db.path + "-wal").exists() &&
-            !File(db.path + "-shm").exists() && !File(db.path + "-journal").exists() &&
-            !key.exists() && !File(key.path + ".bak").exists() &&
-            !File(context.filesDir, "vault.enc").exists() &&
-            !File(context.noBackupFilesDir, "vault.enc").exists()) {
-            "Restore is available only on a new empty device vault"
-        }
-        RestoreArtifactGuard.requireNoAbandonedRestore(context)
+        // Read-only early UI guard. The SAME predicate is rechecked under
+        // VaultLifecycleLock by the staging and publication writers.
+        UnusedVaultTargetGuard.requireUnused(
+            context, allowAlreadyStagedArchive = true)
     }
 
     fun stage(uri: Uri): String {

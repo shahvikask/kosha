@@ -5,6 +5,9 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.AtomicFile
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.LinkOption
+import java.nio.file.attribute.BasicFileAttributes
 import java.security.KeyStore
 import java.security.SecureRandom
 import javax.crypto.Cipher
@@ -42,8 +45,11 @@ internal class KeystoreWrappedVaultKey(
     private val magic = byteArrayOf(0x47, 0x55, 0x44, 0x4b, 0x45, 0x59, 0x30, 0x31)
     private val random = SecureRandom()
 
-    fun hasExistingEnvelope(): Boolean = keyFile.baseFile.exists() ||
-        backup.exists() || unfinished.exists()
+    private fun existsNoFollow(file: File) =
+        Files.exists(file.toPath(), LinkOption.NOFOLLOW_LINKS)
+
+    fun hasExistingEnvelope(): Boolean = existsNoFollow(keyFile.baseFile) ||
+        existsNoFollow(backup) || existsNoFollow(unfinished)
 
     private fun wrappingKey(): SecretKey {
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
@@ -70,10 +76,10 @@ internal class KeystoreWrappedVaultKey(
      */
     @Synchronized
     fun getOrCreateForFreshInstall(legacyVaultPresent: Boolean): ByteArray {
-        check(!unfinished.exists() && !backup.exists()) {
+        check(!existsNoFollow(unfinished) && !existsNoFollow(backup)) {
             "Interrupted wrapped key write; preserve AtomicFile recovery evidence"
         }
-        if (keyFile.baseFile.exists()) return unwrapExisting()
+        if (existsNoFollow(keyFile.baseFile)) return unwrapExisting()
         check(!legacyVaultPresent) { "Refusing to overwrite or orphan legacy vault data" }
         val key = ByteArray(32).also(random::nextBytes)
         try {
@@ -101,11 +107,33 @@ internal class KeystoreWrappedVaultKey(
     fun unwrapExisting(): ByteArray {
         // AtomicFile.openRead may reconcile .bak or delete a stray .new.
         // Key custody must preserve either artifact for owner-reviewed recovery.
-        check(!unfinished.exists() && !backup.exists()) {
+        check(!existsNoFollow(unfinished) && !existsNoFollow(backup)) {
             "Incomplete wrapped key AtomicFile state; manual recovery required"
         }
-        check(keyFile.baseFile.isFile) { "Missing wrapped key envelope" }
-        val bytes = keyFile.openRead().use { it.readBytes() }
+        val path = keyFile.baseFile.toPath()
+        check(Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) &&
+            !Files.isSymbolicLink(path)) {
+            "Missing or unsafe wrapped key envelope"
+        }
+        val before = Files.readAttributes(path, BasicFileAttributes::class.java,
+            LinkOption.NOFOLLOW_LINKS)
+        // Only 68 bytes are permitted, never read arbitrarily large files or
+        // follow links to device storage during credential recovery.
+        require(before.size() == 8L + 12L + 32L + 16L) {
+            "Invalid wrapped SQLCipher key envelope length"
+        }
+        val bytes = Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS).use { input ->
+            input.readBytes()
+        }
+        val after = Files.readAttributes(path, BasicFileAttributes::class.java,
+            LinkOption.NOFOLLOW_LINKS)
+        check(bytes.size == before.size().toInt() &&
+            after.isRegularFile && before.size() == after.size() &&
+            before.lastModifiedTime() == after.lastModifiedTime() &&
+            (before.fileKey() == null || before.fileKey() == after.fileKey()) &&
+            !existsNoFollow(unfinished) && !existsNoFollow(backup)) {
+            "Wrapped key changed or AtomicFile recovery evidence appeared"
+        }
         require(bytes.size == 8 + 12 + 32 + 16 && bytes.copyOfRange(0, 8).contentEquals(magic)) {
             "Invalid vault key envelope"
         }

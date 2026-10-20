@@ -2,6 +2,8 @@ package `in`.growurdhan.redevelopment
 
 import android.content.Context
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.LinkOption
 import `in`.growurdhan.database.SchemaV9Catalog
 import `in`.growurdhan.database.LegacyMigrationColumnContract
 import net.zetetic.database.DatabaseErrorHandler
@@ -32,22 +34,16 @@ internal class EncryptedVaultStore(private val context: Context) {
         }
 
     private fun createFreshUnderLock(legacyVaultPresent: Boolean): SQLiteDatabase {
-        RestoreArtifactGuard.requireNoAbandonedRestore(context)
-        check(!file.exists()) { "Encrypted vault already exists" }
+        UnusedVaultTargetGuard.requireUnused(
+            context, allowAlreadyStagedArchive = false)
         check(!keys.hasExistingEnvelope()) {
-            "Wrapped key exists without database; refuse silent empty-vault recreation"
+            "Wrapped key exists without database; preserve for recovery"
         }
-        // The caller must also check external legacy-import locations before
-        // authorizing a new vault. This method checks the known local stores.
-        check(!File(context.filesDir, "vault.enc").exists())
-        check(!File(context.noBackupFilesDir, "vault.enc").exists())
-        check(!legacyVaultPresent) { "Existing legacy vault requires explicit import" }
-        val pending = File(context.noBackupFilesDir, "restore-pending.v1.kosha")
-        check(!pending.exists() && !File(pending.path + ".bak").exists() &&
-            !File(pending.path + ".new").exists()) {
-            "Pending encrypted restore must be explicitly reviewed before creating a vault"
+        check(!legacyVaultPresent) {
+            "Existing legacy vault requires explicit import"
         }
-        check(file.parentFile?.mkdirs() == true || file.parentFile?.isDirectory == true)
+        check(file.parentFile?.mkdirs() == true ||
+            file.parentFile?.isDirectory == true)
         val key = keys.getOrCreateForFreshInstall(legacyVaultPresent = false)
         val db = try {
             System.loadLibrary("sqlcipher")
@@ -79,10 +75,10 @@ internal class EncryptedVaultStore(private val context: Context) {
                 Regex("growurdhan-v9\\.sqlcipher\\.restore-[0-9a-f-]{36}"))) {
             "Invalid isolated restore target filename"
         }
-        check(!candidate.exists() &&
-            !File(candidate.path + "-journal").exists() &&
-            !File(candidate.path + "-wal").exists() &&
-            !File(candidate.path + "-shm").exists()) {
+        check(listOf(candidate, File(candidate.path + "-journal"),
+            File(candidate.path + "-wal"), File(candidate.path + "-shm")).none {
+                Files.exists(it.toPath(), LinkOption.NOFOLLOW_LINKS)
+            }) {
             "Restore candidate already exists; manual recovery is required"
         }
         require(candidateKey.size == 32) { "Invalid new SQLCipher key length" }
@@ -119,7 +115,10 @@ internal class EncryptedVaultStore(private val context: Context) {
     /** Existing native database ONLY. Never opens non-existent files or reset-to-empty. */
     @Synchronized
     fun openExisting(): SQLiteDatabase {
-        check(file.isFile) { "Missing native encrypted vault; refusing implicit recreation" }
+        check(Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS) &&
+            !Files.isSymbolicLink(file.toPath())) {
+            "Missing or linked native encrypted vault; refusing implicit recreation"
+        }
         val key = keys.unwrapExisting()
         val db = try {
             System.loadLibrary("sqlcipher")
