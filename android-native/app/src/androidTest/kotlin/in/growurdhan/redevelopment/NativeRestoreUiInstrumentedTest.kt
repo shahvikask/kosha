@@ -23,7 +23,7 @@ class NativeRestoreUiInstrumentedTest {
             GudTheme {
                 NativeRestoreScreen(
                     deviceVerified = false, staged = false,
-                    previewAction = { null }, publishAction = { _, _ -> false },
+                    previewAction = { null }, publishAction = { _, _, _ -> false },
                     selectEncryptedFile = { selected++ }, onBack = {}
                 )
             }
@@ -42,7 +42,7 @@ class NativeRestoreUiInstrumentedTest {
                     previewAction = {
                         NativeRestoreFlow.Preview("b".repeat(64), 1, 2, 3, "a".repeat(64), 4)
                     },
-                    publishAction = { _, _ -> published++; true },
+                    publishAction = { _, _, _ -> published++; true },
                     selectEncryptedFile = {}, onBack = {}
                 )
             }

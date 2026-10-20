@@ -353,4 +353,103 @@ class NativeBooksRepositoryInstrumentedTest {
         assertNull(fresh.catchUpEmi(input.email, loan, "2025-07-31"))
     }
 
+    private fun csvSnapshot(pan: String = "ABCDE1234F",
+        date: String = "2025-03-31", qty: Long = 150_000_000L,
+        isin: String = "INE000000001"): ByteArray =
+        ("owner_pan,statement_date,isin,folio,quantity_scaled,unit_price_minor,current_value_minor\\n" +
+            "$pan,$date,$isin,,$qty,12500,18750\\n")
+            .replace("\\n", "\n").toByteArray(Charsets.UTF_8)
+
+    @Test fun reviewedCsvSnapshotIsOwnerBoundIdempotentAndNotATaxablePurchase() {
+        val ctx = sandbox()
+        val (accounts, books) = create(ctx)
+        val owner = books.read(input.email).people.single().id
+        val holding = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, null, "Synthetic ISIN holding", "EQUITY", "Large cap",
+            100_000_000L, 12_000L, "2024-01-01", true,
+            isin = "INE000000001"))
+        val importer = NativeStatementImportRepository(accounts)
+        val bytes = csvSnapshot()
+        val reviewed = importer.inspect(input.email, bytes)
+        assertEquals(1, reviewed.matched.size)
+        assertEquals(NativeStatementImportRepository.Action.APPLY_SNAPSHOT,
+            reviewed.matched.single().action)
+        assertEquals(50_000_000L, reviewed.matched.single().delta)
+        assertThrows(IllegalArgumentException::class.java) {
+            importer.approve(input.email, "example.csv", bytes, reviewed, false)
+        }
+        assertEquals(1, books.history(input.email, holding).size)
+        assertThrows(IllegalArgumentException::class.java) {
+            importer.approve(input.email, "example.csv", csvSnapshot(qty = 200_000_000L),
+                reviewed, true)
+        }
+        val receipt = importer.approve(input.email, "example.csv", bytes, reviewed, true)
+        assertFalse(receipt.duplicate)
+        assertEquals(1, receipt.positions)
+        assertEquals(1, receipt.adjustments)
+        assertEquals(150_000_000L, books.read(input.email).holdings.single().quantityScaled)
+        assertEquals(2, books.history(input.email, holding).size)
+        assertEquals("SNAPSHOT_ADJUSTMENT", books.history(input.email, holding).last().kind)
+        assertEquals("CSV_STATEMENT", books.read(input.email).holdings.single().priceSource)
+        assertEquals(1, books.read(input.email).imports.size)
+        assertEquals(1, books.read(input.email).documents.size)
+        assertTrue(importer.inspect(input.email, bytes).duplicate)
+        assertTrue(importer.approve(input.email, "example.csv", bytes, reviewed, true).duplicate)
+        assertEquals(2, books.history(input.email, holding).size)
+        accounts.onBackground()
+        val reopened = NativeAccountRepository(ctx, gate())
+        assertTrue(reopened.login(input.email, input.password))
+        val saved = NativeBooksRepository(reopened).read(input.email)
+        assertEquals(150_000_000L, saved.holdings.single().quantityScaled)
+        assertEquals(1, saved.imports.size)
+    }
+
+    @Test fun csvStatementRequiresExactPanAndIsinAndCannotOverrideFutureLedgerOrPrices() {
+        val ctx = sandbox()
+        val (accounts, books) = create(ctx)
+        val owner = books.read(input.email).people.single().id
+        val h = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, null, "Known security", "EQUITY", "Other",
+            100_000_000L, 12_000L, "2024-01-01", true,
+            isin = "INE000000001"))
+        val importer = NativeStatementImportRepository(accounts)
+        for (invalid in listOf(
+            csvSnapshot(pan = "PQRST1234F"),
+            csvSnapshot(isin = "INE000000002"))) {
+            assertThrows(IllegalArgumentException::class.java) {
+                importer.inspect(input.email, invalid)
+            }
+        }
+        val current = importer.inspect(input.email, csvSnapshot())
+        books.appendUserEvent(input.email, NativeBooksRepository.NewEvent(h, "BUY",
+            "2025-04-01", 100_000_000L, 10_000L, 10_000L))
+        assertThrows(IllegalArgumentException::class.java) {
+            importer.approve(input.email, "verified.csv", csvSnapshot(), current, true)
+        }
+        assertEquals(0, books.read(input.email).imports.size)
+        assertEquals(2, books.history(input.email, h).size)
+    }
+
+    @Test fun importingEarlierSnapshotNeverRewindsLaterStatementPosition() {
+        val (accounts, books) = create(sandbox())
+        val owner = books.read(input.email).people.single().id
+        val h = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, null, "Historical security", "EQUITY", "Other",
+            100_000_000L, 10_000L, "2024-01-01", true,
+            isin = "INE000000001"))
+        val importer = NativeStatementImportRepository(accounts)
+        val latestBytes = csvSnapshot(date = "2025-03-31", qty = 150_000_000L)
+        val latest = importer.inspect(input.email, latestBytes)
+        importer.approve(input.email, "march.csv", latestBytes, latest, true)
+        val oldBytes = csvSnapshot(date = "2025-02-28", qty = 125_000_000L)
+        val old = importer.inspect(input.email, oldBytes)
+        assertEquals(NativeStatementImportRepository.Action.HISTORICAL_ONLY,
+            old.matched.single().action)
+        val receipt = importer.approve(input.email, "february.csv", oldBytes, old, true)
+        assertEquals(0, receipt.adjustments)
+        assertEquals(150_000_000L, books.read(input.email).holdings.single().quantityScaled)
+        assertEquals(2, books.read(input.email).imports.size)
+        assertEquals(2, books.history(input.email, h).size)
+    }
+
 }

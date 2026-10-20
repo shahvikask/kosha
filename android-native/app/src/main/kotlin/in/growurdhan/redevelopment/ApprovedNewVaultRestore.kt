@@ -6,6 +6,7 @@ import `in`.growurdhan.database.RestoreIdentityGate
 import `in`.growurdhan.database.RestoreOnceJournal
 import `in`.growurdhan.database.RestoreV9InsertTransaction
 import `in`.growurdhan.database.RestoreV9Plan
+import `in`.growurdhan.model.NativeRegistrationProof
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -44,9 +45,12 @@ internal class ApprovedNewVaultRestore(
     @Synchronized
     fun restoreFromStagedNewVault(
         credentials: RestoreIdentityGate.Credentials,
-        explicitOwnerApproval: Boolean
+        explicitOwnerApproval: Boolean,
+        termsConsent: NativeRegistrationProof.Consent? = null
     ): Receipt {
         check(explicitOwnerApproval) { "Restore requires explicit owner confirmation" }
+        val consent = termsConsent ?: error("Current Terms consent required before restore")
+        NativeRegistrationProof.requireValidConsent(consent)
         return VaultLifecycleLock.exclusively(context) {
             val target = context.getDatabasePath("growurdhan-v9.sqlcipher")
             val liveKey = File(context.noBackupFilesDir, "vault-key.v1")
@@ -73,8 +77,26 @@ internal class ApprovedNewVaultRestore(
 
             // All GCM, password, PAN/DOB, two recovery answers and strict
             // original owner/ledger proofs precede a durable replay claim.
-            val plan = LockedRestoreStaging(context)
+            val authenticatedPlan = LockedRestoreStaging(context)
                 .previewAuthenticatedV9(credentials)
+            // Preserve the authenticated original JSON as the final row.
+            // Local consent is NEW evidence for this new device, not a rewritten
+            // claim about what the historical archive's user consent contained.
+            val consentRows = listOf(
+                "m25.terms.version" to consent.version,
+                "m25.terms.text_id" to consent.textId,
+                "m25.terms.accepted_at" to consent.acceptedAt
+            ).map { (key, value) ->
+                RestoreV9Plan.Row("setting", listOf("key", "value"), listOf(key, value))
+            }
+            val originalRows = authenticatedPlan.rows
+            require(originalRows.last().table == "setting" &&
+                originalRows.last().values.firstOrNull() ==
+                    "m24.authenticated_frozen_original_json") {
+                "Authenticated source fingerprint row missing"
+            }
+            val plan = authenticatedPlan.copy(
+                rows = originalRows.dropLast(1) + consentRows + originalRows.last())
             val sourceFingerprint = plan.originalJsonSha256
             require(plan.rows.isNotEmpty()) { "Missing authenticated restore rows" }
 

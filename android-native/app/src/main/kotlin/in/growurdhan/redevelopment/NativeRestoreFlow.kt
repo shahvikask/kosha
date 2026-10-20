@@ -3,6 +3,7 @@ package `in`.growurdhan.redevelopment
 import android.content.Context
 import android.net.Uri
 import `in`.growurdhan.database.RestoreIdentityGate
+import `in`.growurdhan.model.NativeRegistrationProof
 import `in`.growurdhan.database.RestorePreviewBinding
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -54,7 +55,9 @@ internal class NativeRestoreFlow(private val context: Context) {
             plan.rows.count { it.table == "ledger_event" }, archive.sha256, plan.rows.size)
     }
 
-    fun publish(proof: RestoreIdentityGate.Credentials, preview: Preview) {
+    fun publish(proof: RestoreIdentityGate.Credentials, preview: Preview,
+        termsConsent: NativeRegistrationProof.Consent) {
+        NativeRegistrationProof.requireValidConsent(termsConsent)
         requireEmptyTarget()
         val fresh = staging.previewAuthenticatedV9(proof)
         val archive = staging.inspectWithRecoveryProof(proof)
@@ -62,6 +65,7 @@ internal class NativeRestoreFlow(private val context: Context) {
             RestorePreviewBinding.Review(preview.archiveSha256, preview.sha256,
                 preview.rowCount, approved = true),
             archive.sha256, fresh.originalJsonSha256, fresh.rows.size)
-        ApprovedNewVaultRestore(context).restoreFromStagedNewVault(proof, true)
+        ApprovedNewVaultRestore(context).restoreFromStagedNewVault(
+            proof, true, termsConsent)
     }
 }

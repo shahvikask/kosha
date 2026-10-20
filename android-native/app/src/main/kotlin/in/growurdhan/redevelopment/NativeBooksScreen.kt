@@ -41,8 +41,10 @@ import java.time.LocalDate
  * Financial values are rendered only while the parent Activity has an admitted session.
  */
 @Composable
-internal fun NativeBooksScreen(email: String, books: NativeBooksRepository, onLock: () -> Unit,
-    onReplaceRecovery: () -> Unit) {
+internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
+    imports: NativeStatementImportRepository, pendingCsv: ByteArray?,
+    pendingCsvFilename: String, onSelectCsv: () -> Unit, onDiscardCsv: () -> Unit,
+    onLock: () -> Unit, onReplaceRecovery: () -> Unit) {
     val scope = rememberCoroutineScope()
     var snapshot by remember { mutableStateOf<NativeBooksRepository.Snapshot?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -224,6 +226,14 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository, onLo
                             archive = { id, value -> persist { books.setHoldingArchived(email, id, value) } })
                     }
                     "Documents" -> {
+                        NativeCsvImportCard(email, imports, pendingCsv, pendingCsvFilename,
+                            onSelectCsv, onDiscardCsv) {
+                            scope.launch {
+                                try { refresh() } catch (_: Exception) {
+                                    error = "Could not refresh encrypted import history"
+                                }
+                            }
+                        }
                         Text("Statement and import history", style = MaterialTheme.typography.titleLarge)
                         Text("Records below are read from the encrypted database, not from an email server.")
                         if (data.imports.isEmpty()) Text("No statement imports recorded.")
@@ -753,4 +763,92 @@ private fun NativeEmiForm(holdings: List<NativeBooksRepository.Holding>, busy: B
     Button(enabled = !busy && holdingId.isNotEmpty(), onClick = {
         onCatchUp(holdingId, asOf)
     }) { Text("Post only unpaid due installments") }
+}
+
+
+/**
+ * CSV snapshot approval is never automatic. Selecting a file via Android SAF
+ * invalidates the device/password session; a fresh two-step login is necessary
+ * before these bytes can be inspected. The Activity holds bytes in RAM only.
+ */
+@Composable
+private fun NativeCsvImportCard(email: String,
+    imports: NativeStatementImportRepository,
+    bytes: ByteArray?, filename: String, choose: () -> Unit, discard: () -> Unit,
+    onCommitted: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var preview by remember { mutableStateOf<NativeStatementImportRepository.Review?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf("") }
+    LaunchedEffect(bytes) {
+        preview = null
+        message = ""
+    }
+    Text("Import an explicitly formatted CSV snapshot",
+        style = MaterialTheme.typography.titleLarge)
+    Text("For CSV exports with scaled-integer amounts and an exact owner PAN plus " +
+        "ISIN or folio. This is not PDF CAS parsing. No email/name-based matching.")
+    Text("Required columns: owner_pan,statement_date,isin,folio,quantity_scaled," +
+        "unit_price_minor,current_value_minor", style = MaterialTheme.typography.bodySmall)
+    if (bytes == null) {
+        Button(onClick = choose) { Text("Choose CSV through Android files") }
+        Text("File selection locks the app. Verify device and password again to review.")
+    } else {
+        Text("Private CSV file ready for review: ${filename.take(120)}")
+        OutlinedButton(enabled = !busy, onClick = { preview = null; discard() }) {
+            Text("Discard without importing")
+        }
+        Button(enabled = !busy, onClick = {
+            busy = true
+            message = ""
+            preview = null
+            scope.launch {
+                try {
+                    preview = withContext(Dispatchers.IO) { imports.inspect(email, bytes) }
+                } catch (_: Exception) {
+                    message = "Cannot verify owner, instrument mapping, or statement chronology. " +
+                        "No data was imported."
+                } finally { busy = false }
+            }
+        }) { Text("Verify ownership and preview adjustments") }
+        preview?.let { plan ->
+            if (plan.duplicate) {
+                Text("These exact file bytes were already imported. No new events are required.")
+            } else {
+                Text("Statement date: ${plan.statementDate}")
+                plan.matched.forEach { item ->
+                    Text("${item.name}: statement " +
+                        "${NativeBooksRepository.formatMinor(item.quantityScaled, 8)} " +
+                        "units; book " +
+                        "${NativeBooksRepository.formatMinor(item.storedQuantityScaled, 8)} " +
+                        "units • ${item.action}")
+                    if (item.action == NativeStatementImportRepository.Action.APPLY_SNAPSHOT)
+                        Text("Difference ${NativeBooksRepository.formatMinor(item.delta, 8)} " +
+                            "units; cost of added units remains unknown")
+                }
+                Text("Owner approval records source snapshots, not taxable buys or sells. " +
+                    "Verify every row against the original statement.")
+                Button(enabled = !busy, onClick = {
+                    busy = true
+                    scope.launch {
+                        try {
+                            val receipt = withContext(Dispatchers.IO) {
+                                imports.approve(email, filename, bytes, plan, true)
+                            }
+                            message = if (receipt.duplicate) "Already imported."
+                                else "Approved ${receipt.positions} statement positions and " +
+                                    "${receipt.adjustments} non-trade adjustments."
+                            preview = null
+                            discard()
+                            onCommitted()
+                        } catch (_: Exception) {
+                            message = "Approval denied: file, identity or ledger changed. " +
+                                "No partial import was committed."
+                        } finally { busy = false }
+                    }
+                }) { Text("Approve exact reviewed CSV snapshot") }
+            }
+        }
+    }
+    if (message.isNotEmpty()) Text(message)
 }

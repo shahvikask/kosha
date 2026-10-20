@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import `in`.growurdhan.database.RestoreV9InsertTransaction
 import `in`.growurdhan.database.RestoreIdentityGate
+import `in`.growurdhan.model.NativeRegistrationProof
 import `in`.growurdhan.database.RestoreOnceJournal
 import `in`.growurdhan.database.EncryptedRestorePublisher
 import java.nio.ByteBuffer
@@ -48,6 +49,10 @@ class EncryptedVaultStoreInstrumentedTest {
                 File(root, "files").also { it.mkdirs() }
         }
     }
+
+    private val verifiedConsent = NativeRegistrationProof.Consent(
+        NativeRegistrationProof.TERMS_VERSION,
+        NativeRegistrationProof.TERMS_TEXT_ID, "2026-10-19T20:00:00Z", true)
 
     private val preserve = DatabaseErrorHandler { _, _ ->
         throw IllegalStateException("Test corruption; never delete source")
@@ -609,8 +614,8 @@ class EncryptedVaultStoreInstrumentedTest {
                 RestoreArtifactGuard.requireNoAbandonedRestore(ctx)
             }
             assertThrows(IllegalStateException::class.java) {
-                ApprovedNewVaultRestore(ctx).restoreFromStagedNewVault(
-                    credentials, explicitOwnerApproval = true)
+                ApprovedNewVaultRestore(ctx).restoreFromStagedNewVault(credentials, explicitOwnerApproval = true,
+                    termsConsent = verifiedConsent)
             }
             assertFalse(ctx.getDatabasePath("growurdhan-v9.sqlcipher").exists())
             assertFalse(File(ctx.noBackupFilesDir, "vault-key.v1").exists())
@@ -659,7 +664,8 @@ class EncryptedVaultStoreInstrumentedTest {
                         reached = true
                         throw IllegalStateException("Synthetic crash injection")
                     }
-                }.restoreFromStagedNewVault(credentials, explicitOwnerApproval = true)
+                }.restoreFromStagedNewVault(credentials, explicitOwnerApproval = true,
+                    termsConsent = verifiedConsent)
             }
             assertTrue("Restore should reach injected $boundary", reached)
             fun snapshot(): Map<String, ByteArray> {
@@ -699,8 +705,8 @@ class EncryptedVaultStoreInstrumentedTest {
             // permission to bypass the immutable replay claim.
             if (boundary != ApprovedNewVaultRestore.Boundary.BEFORE_CLAIM) {
                 assertThrows(Exception::class.java) {
-                    ApprovedNewVaultRestore(ctx).restoreFromStagedNewVault(
-                        credentials, explicitOwnerApproval = true)
+                    ApprovedNewVaultRestore(ctx).restoreFromStagedNewVault(credentials, explicitOwnerApproval = true,
+                    termsConsent = verifiedConsent)
                 }
             }
         }
@@ -719,7 +725,8 @@ class EncryptedVaultStoreInstrumentedTest {
                         reached = true
                         throw IllegalStateException("Synthetic interruption after verification")
                     }
-                }.restoreFromStagedNewVault(credentials, explicitOwnerApproval = true)
+                }.restoreFromStagedNewVault(credentials, explicitOwnerApproval = true,
+                    termsConsent = verifiedConsent)
             }
             assertTrue(reached)
             assertEquals(RestoreRecoveryInspector.State.VERIFIED_CANDIDATE,
@@ -738,7 +745,8 @@ class EncryptedVaultStoreInstrumentedTest {
                     interruptedAfterInitialization = true
                     throw IllegalStateException("Synthetic crash before financial INSERT")
                 }
-            }.restoreFromStagedNewVault(credentials, explicitOwnerApproval = true)
+            }.restoreFromStagedNewVault(credentials, explicitOwnerApproval = true,
+                    termsConsent = verifiedConsent)
         }
         assertTrue(interruptedAfterInitialization)
         assertEquals(1, File(initializedOnly.noBackupFilesDir, "restore-claims")
@@ -830,7 +838,8 @@ class EncryptedVaultStoreInstrumentedTest {
                         reached = true
                         throw IOException("Synthetic storage exhaustion (no actual disk filled)")
                     }
-                }.restoreFromStagedNewVault(credentials, explicitOwnerApproval = true)
+                }.restoreFromStagedNewVault(credentials, explicitOwnerApproval = true,
+                    termsConsent = verifiedConsent)
             }
             assertTrue(reached)
             assertArrayEquals(originalPending, pending.readBytes())
@@ -848,8 +857,8 @@ class EncryptedVaultStoreInstrumentedTest {
             assertArrayEquals(claimBytes, claim.readBytes())
             assertFalse(ctx.getDatabasePath("growurdhan-v9.sqlcipher").exists())
             assertThrows(Exception::class.java) {
-                ApprovedNewVaultRestore(ctx).restoreFromStagedNewVault(
-                    credentials, explicitOwnerApproval = true)
+                ApprovedNewVaultRestore(ctx).restoreFromStagedNewVault(credentials, explicitOwnerApproval = true,
+                    termsConsent = verifiedConsent)
             }
             assertArrayEquals(originalPending, pending.readBytes())
         }
@@ -899,8 +908,8 @@ class EncryptedVaultStoreInstrumentedTest {
                 credentials, explicitOwnerApproval = true)
         }
         assertThrows(IllegalStateException::class.java) {
-            ApprovedNewVaultRestore(stagedWithNew).restoreFromStagedNewVault(
-                credentials, explicitOwnerApproval = true)
+            ApprovedNewVaultRestore(stagedWithNew).restoreFromStagedNewVault(credentials, explicitOwnerApproval = true,
+                    termsConsent = verifiedConsent)
         }
         assertArrayEquals(pristine, pending.readBytes())
         assertArrayEquals(partialBytes, partial.readBytes())
@@ -931,17 +940,24 @@ class EncryptedVaultStoreInstrumentedTest {
         val receipt = staging.stageEncryptedArchiveOnce(archive)
         val wrong = credentials.copy(password = "incorrect-credential")
         assertThrows(Exception::class.java) {
-            ApprovedNewVaultRestore(ctx).restoreFromStagedNewVault(
-                wrong, explicitOwnerApproval = true)
+            ApprovedNewVaultRestore(ctx).restoreFromStagedNewVault(wrong, explicitOwnerApproval = true,
+                    termsConsent = verifiedConsent)
         }
         assertFalse(ctx.getDatabasePath("growurdhan-v9.sqlcipher").exists())
         assertThrows(IllegalStateException::class.java) {
-            ApprovedNewVaultRestore(ctx).restoreFromStagedNewVault(
-                credentials, explicitOwnerApproval = false)
+            ApprovedNewVaultRestore(ctx).restoreFromStagedNewVault(credentials, explicitOwnerApproval = false,
+                    termsConsent = verifiedConsent)
         }
-        val result = ApprovedNewVaultRestore(ctx).restoreFromStagedNewVault(
-            credentials, explicitOwnerApproval = true)
-        assertEquals(9, result.restoredRows)
+        val result = ApprovedNewVaultRestore(ctx).restoreFromStagedNewVault(credentials, explicitOwnerApproval = true,
+                    termsConsent = verifiedConsent)
+        assertEquals(12, result.restoredRows)
+        EncryptedVaultStore(ctx).openExisting().use { restored ->
+            restored.rawQuery("SELECT value FROM setting WHERE key='m25.terms.text_id'",
+                null).use { cur ->
+                assertTrue(cur.moveToFirst())
+                assertEquals(NativeRegistrationProof.TERMS_TEXT_ID, cur.getString(0))
+            }
+        }
         assertTrue(result.authenticatedPlaintextSha256.matches(
             Regex("[0-9a-f]{64}")))
         assertEquals(archive.size, receipt.byteCount)
@@ -969,8 +985,8 @@ class EncryptedVaultStoreInstrumentedTest {
         assertArrayEquals(bytes, file.readBytes())
         assertTrue(unrelated.exists()) // failed attempt preserves forensic source
         assertThrows(Exception::class.java) {
-            ApprovedNewVaultRestore(ctx).restoreFromStagedNewVault(
-                credentials, explicitOwnerApproval = true)
+            ApprovedNewVaultRestore(ctx).restoreFromStagedNewVault(credentials, explicitOwnerApproval = true,
+                    termsConsent = verifiedConsent)
         }
         assertArrayEquals(bytes, file.readBytes())
     }
@@ -980,9 +996,9 @@ class EncryptedVaultStoreInstrumentedTest {
             false, "older@example.invalid", "synthetic-not-a-secret")
         val ctx = sandbox()
         LockedRestoreStaging(ctx).stageEncryptedArchiveOnce(archive)
-        val r = ApprovedNewVaultRestore(ctx).restoreFromStagedNewVault(
-            credentials, explicitOwnerApproval = true)
-        assertEquals(9, r.restoredRows)
+        val r = ApprovedNewVaultRestore(ctx).restoreFromStagedNewVault(credentials, explicitOwnerApproval = true,
+                    termsConsent = verifiedConsent)
+        assertEquals(12, r.restoredRows)
         EncryptedVaultStore(ctx).openExisting().use { db ->
             assertEquals(9007199254740993L,
                 scalar(db, "SELECT total_amount_minor FROM ledger_event"))
@@ -998,8 +1014,9 @@ class EncryptedVaultStoreInstrumentedTest {
         LockedRestoreStaging(oldMetadataContext).stageEncryptedArchiveOnce(
             oldMetadata.toString().toByteArray(Charsets.UTF_8))
         val restored = ApprovedNewVaultRestore(oldMetadataContext)
-            .restoreFromStagedNewVault(credentials, explicitOwnerApproval = true)
-        assertEquals(9, restored.restoredRows)
+            .restoreFromStagedNewVault(credentials, explicitOwnerApproval = true,
+                    termsConsent = verifiedConsent)
+        assertEquals(12, restored.restoredRows)
         EncryptedVaultStore(oldMetadataContext).openExisting().use { db ->
             assertEquals(9007199254740993L,
                 scalar(db, "SELECT total_amount_minor FROM ledger_event"))
@@ -1010,8 +1027,8 @@ class EncryptedVaultStoreInstrumentedTest {
         LockedRestoreStaging(invalidKdfContext).stageEncryptedArchiveOnce(
             invalidMetadata.toString().toByteArray(Charsets.UTF_8))
         assertThrows(Exception::class.java) {
-            ApprovedNewVaultRestore(invalidKdfContext).restoreFromStagedNewVault(
-                credentials, explicitOwnerApproval = true)
+            ApprovedNewVaultRestore(invalidKdfContext).restoreFromStagedNewVault(credentials, explicitOwnerApproval = true,
+                    termsConsent = verifiedConsent)
         }
         assertFalse(invalidKdfContext.getDatabasePath("growurdhan-v9.sqlcipher").exists())
         val invalidRoundsContext = sandbox()
@@ -1020,8 +1037,8 @@ class EncryptedVaultStoreInstrumentedTest {
         LockedRestoreStaging(invalidRoundsContext).stageEncryptedArchiveOnce(
             invalidRounds.toString().toByteArray(Charsets.UTF_8))
         assertThrows(Exception::class.java) {
-            ApprovedNewVaultRestore(invalidRoundsContext).restoreFromStagedNewVault(
-                credentials, explicitOwnerApproval = true)
+            ApprovedNewVaultRestore(invalidRoundsContext).restoreFromStagedNewVault(credentials, explicitOwnerApproval = true,
+                    termsConsent = verifiedConsent)
         }
         assertFalse(invalidRoundsContext.getDatabasePath("growurdhan-v9.sqlcipher").exists())
 
@@ -1033,10 +1050,44 @@ class EncryptedVaultStoreInstrumentedTest {
         val changed = wrapped.toString().toByteArray(Charsets.UTF_8)
         LockedRestoreStaging(tamperContext).stageEncryptedArchiveOnce(changed)
         assertThrows(Exception::class.java) {
-            ApprovedNewVaultRestore(tamperContext).restoreFromStagedNewVault(
-                credentials, explicitOwnerApproval = true)
+            ApprovedNewVaultRestore(tamperContext).restoreFromStagedNewVault(credentials, explicitOwnerApproval = true,
+                    termsConsent = verifiedConsent)
         }
         assertFalse(tamperContext.getDatabasePath("growurdhan-v9.sqlcipher").exists())
+    }
+
+    @Test fun migrationWitnessRetainsTypedHistoricCellsAcrossAdditiveDDL() {
+        val ctx = sandbox()
+        EncryptedVaultStore(ctx).createFresh(false).use { db ->
+            db.execSQL("INSERT INTO entity(entity_id,entity_type,display_name,notes,created_at) " +
+                "VALUES ('witness-owner','INDIVIDUAL','Original owner','Sensitive note','2025-03-01')")
+            db.execSQL("INSERT INTO vault_meta(key,value,updated_at) " +
+                "VALUES ('opaque-history','preserve exactly','2025-03-01')")
+            val witness = HistoricalMigrationWitness.capture(db)
+            db.execSQL("ALTER TABLE entity ADD COLUMN custom_migration_field TEXT")
+            db.execSQL("UPDATE vault_meta SET value='8' WHERE key='schema_version'")
+            witness.verifyUnmodified(db)
+            db.execSQL("UPDATE entity SET notes='altered' WHERE entity_id='witness-owner'")
+            assertThrows(IllegalArgumentException::class.java) {
+                witness.verifyUnmodified(db)
+            }
+        }
+    }
+
+    @Test fun restoreWithoutCurrentTermsIsDeniedBeforeClaimOrPublication() {
+        val ctx = sandbox()
+        val (archive, proof) = newSyntheticEncryptedBackup(
+            true, "restore@example.org", "Synthetic!Pass123")
+        LockedRestoreStaging(ctx).stageEncryptedArchiveOnce(archive)
+        val pending = File(ctx.noBackupFilesDir, "restore-pending.v1.kosha")
+        val original = pending.readBytes()
+        assertThrows(IllegalStateException::class.java) {
+            ApprovedNewVaultRestore(ctx).restoreFromStagedNewVault(
+                proof, explicitOwnerApproval = true)
+        }
+        assertArrayEquals(original, pending.readBytes())
+        assertFalse(ctx.getDatabasePath("growurdhan-v9.sqlcipher").exists())
+        assertFalse(File(ctx.noBackupFilesDir, "restore-claims").exists())
     }
 
 }

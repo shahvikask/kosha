@@ -3,6 +3,8 @@ package `in`.growurdhan.redevelopment
 import android.app.Activity
 import android.app.KeyguardManager
 import android.os.Bundle
+import java.io.ByteArrayOutputStream
+import android.provider.OpenableColumns
 import androidx.activity.result.contract.ActivityResultContracts.OpenDocument
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -25,6 +27,51 @@ import kotlinx.coroutines.withContext
 class MainActivity : ComponentActivity() {
     private lateinit var accounts: NativeAccountRepository
     private lateinit var books: NativeBooksRepository
+    private lateinit var statementImports: NativeStatementImportRepository
+    // Ephemeral only. SAF backgrounds the Activity, so login+device proof is
+    // required again before the owner can preview the selected CSV.
+    private var stagedCsv by mutableStateOf<ByteArray?>(null)
+    private var stagedCsvFilename by mutableStateOf("")
+    private var csvPickerPending = false
+    private fun discardCsv() {
+        stagedCsv?.fill(0)
+        stagedCsv = null
+        stagedCsvFilename = ""
+    }
+    private val csvPicker = registerForActivityResult(OpenDocument()) { uri ->
+        if (!csvPickerPending) return@registerForActivityResult
+        csvPickerPending = false
+        discardCsv()
+        if (uri != null) {
+            stagedCsv = runCatching {
+                contentResolver.openInputStream(uri)?.use { input ->
+                    val out = ByteArrayOutputStream()
+                    val part = ByteArray(8192)
+                    while (true) {
+                        val n = input.read(part)
+                        if (n < 0) break
+                        require(out.size().toLong() + n <= 8L * 1024 * 1024) {
+                            "Oversized statement file"
+                        }
+                        out.write(part, 0, n)
+                    }
+                    out.toByteArray()
+                }
+            }.getOrNull()
+            if (stagedCsv != null) {
+                val display = runCatching {
+                    contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME),
+                        null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) cursor.getString(0) else null
+                    }
+                }.getOrNull()
+                stagedCsvFilename = (display ?: uri.lastPathSegment
+                    ?.substringAfterLast('/') ?: "statement.csv").take(240)
+            }
+        }
+        // Never retain admission across a third-party document picker.
+        lockCompletely(preserveCsvForFreshLogin = stagedCsv != null)
+    }
     private var booksOpen by mutableStateOf(false)
     private var activeEmail by mutableStateOf("")
     private var deviceVerified by mutableStateOf(false)
@@ -58,6 +105,7 @@ class MainActivity : ComponentActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         accounts = NativeAccountRepository(applicationContext, admission)
         books = NativeBooksRepository(accounts)
+        statementImports = NativeStatementImportRepository(accounts)
         enableEdgeToEdge()
         setContent {
             GudTheme {
@@ -71,11 +119,11 @@ class MainActivity : ComponentActivity() {
                                 runCatching { restoreFlow.preview(proof) }.getOrNull()
                             }
                         },
-                        publishAction = { proof, preview ->
+                        publishAction = { proof, preview, consent ->
                             if (!admission.valid() || !deviceVerified || unlocked) false
                             else {
                                 val ok = withContext(Dispatchers.IO) {
-                                    runCatching { restoreFlow.publish(proof, preview); true }
+                                    runCatching { restoreFlow.publish(proof, preview, consent); true }
                                         .getOrDefault(false)
                                 }
                                 lockCompletely()
@@ -93,6 +141,15 @@ class MainActivity : ComponentActivity() {
                     )
                 } else if (booksOpen && unlocked && deviceVerified) {
                     NativeBooksScreen(email = activeEmail, books = books,
+                        imports = statementImports,
+                        pendingCsv = stagedCsv, pendingCsvFilename = stagedCsvFilename,
+                        onSelectCsv = {
+                            if (unlocked && admission.valid() && !csvPickerPending) {
+                                csvPickerPending = true
+                                csvPicker.launch(arrayOf("text/csv", "text/plain", "*/*"))
+                            }
+                        },
+                        onDiscardCsv = { discardCsv() },
                         onLock = { lockCompletely() },
                         onReplaceRecovery = { booksOpen = false })
                 } else NativeAuthenticationScreen(
@@ -179,7 +236,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requestDeviceChallenge() {
-        lockCompletely(preserveStagedArchive = restoreStaged)
+        lockCompletely(preserveStagedArchive = restoreStaged,
+            preserveCsvForFreshLogin = stagedCsv != null)
         val guard = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
         if (!guard.isDeviceSecure) {
             deviceMessage = "Set an Android screen lock before accessing the vault"
@@ -203,7 +261,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun lockCompletely(preservePendingChallenge: Boolean = false,
-                               preserveStagedArchive: Boolean = false) {
+                               preserveStagedArchive: Boolean = false,
+                               preserveCsvForFreshLogin: Boolean = false) {
         if (::accounts.isInitialized) accounts.lock()
         unlocked = false
         booksOpen = false
@@ -211,6 +270,7 @@ class MainActivity : ComponentActivity() {
         deviceVerified = false
         restoreActive = false
         if (!preserveStagedArchive && !restorePickerPending) restoreStaged = false
+        if (!preserveCsvForFreshLogin && !csvPickerPending) discardCsv()
         if (!preservePendingChallenge) admission.cancel()
     }
 
@@ -219,11 +279,17 @@ class MainActivity : ComponentActivity() {
         admission.onStart()
     }
 
+    override fun onDestroy() {
+        discardCsv()
+        super.onDestroy()
+    }
+
     override fun onStop() {
         admission.onStop()
         lifecycleEpoch++
         lockCompletely(preservePendingChallenge = true,
-            preserveStagedArchive = restorePickerPending || restoreStaged)
+            preserveStagedArchive = restorePickerPending || restoreStaged,
+            preserveCsvForFreshLogin = csvPickerPending || stagedCsv != null)
         if (::accounts.isInitialized) accounts.onBackground()
         super.onStop()
     }

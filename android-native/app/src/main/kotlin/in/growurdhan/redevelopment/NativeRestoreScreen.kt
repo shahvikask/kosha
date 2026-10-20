@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import `in`.growurdhan.database.RestoreIdentityGate
+import `in`.growurdhan.model.NativeRegistrationProof
 import kotlinx.coroutines.launch
 
 /** Restore secrets live only in ephemeral Compose state, never savedInstanceState. */
@@ -29,7 +30,7 @@ internal fun NativeRestoreScreen(
     deviceVerified: Boolean,
     staged: Boolean,
     previewAction: suspend (RestoreIdentityGate.Credentials) -> NativeRestoreFlow.Preview?,
-    publishAction: suspend (RestoreIdentityGate.Credentials, NativeRestoreFlow.Preview) -> Boolean,
+    publishAction: suspend (RestoreIdentityGate.Credentials, NativeRestoreFlow.Preview, NativeRegistrationProof.Consent) -> Boolean,
     selectEncryptedFile: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -92,7 +93,11 @@ internal fun NativeRestoreScreen(
                     busy = true
                     scope.launch {
                         try {
-                            message = if (publishAction(proof(), p))
+                            val acceptedAt = requireNotNull(termsAcceptedAt)
+                            val consent = NativeRegistrationProof.Consent(
+                                NativeFrozenTerms.VERSION, NativeFrozenTerms.TEXT_ID,
+                                acceptedAt, scrolledToEnd = true)
+                            message = if (publishAction(proof(), p, consent))
                                 "Restore completed. Close and reopen the app to authenticate."
                             else "Restore denied. Existing state was not replaced."
                             preview = null

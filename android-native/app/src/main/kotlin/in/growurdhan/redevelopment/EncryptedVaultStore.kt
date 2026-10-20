@@ -150,6 +150,9 @@ internal class EncryptedVaultStore(private val context: Context) {
         // version marker; no shadow plaintext DB or silent empty replacement.
         db.beginTransaction()
         try {
+            // Capture exact typed pre-migration bytes while holding the same
+            // SQLCipher transaction. Only the schema_version control row may change.
+            val witness = HistoricalMigrationWitness.capture(db)
             for ((stepVersion, statement) in readStatements("m24-frozen-upgrades.sql")) {
                 if (stepVersion == null || stepVersion <= oldVersion) continue
                 if (statement.startsWith("ALTER TABLE", ignoreCase = true) &&
@@ -161,6 +164,7 @@ internal class EncryptedVaultStore(private val context: Context) {
             verifyVersion(db, 9)
             verifyOwnershipAndLedger(db)
             verifyIntegrity(db)
+            witness.verifyUnmodified(db)
             db.setTransactionSuccessful()
         } finally { db.endTransaction() }
     }

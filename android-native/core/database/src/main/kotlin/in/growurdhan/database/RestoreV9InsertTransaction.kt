@@ -28,6 +28,17 @@ object RestoreV9InsertTransaction {
             "Empty or oversized restore plan" }
         require(plan.originalJsonSha256.matches(Regex("[0-9a-f]{64}"))) {
             "Missing authenticated source fingerprint" }
+        val consentKeys = setOf("m25.terms.version", "m25.terms.text_id",
+            "m25.terms.accepted_at")
+        val providedConsent = plan.rows.filter { it.table == "setting" &&
+            it.values.firstOrNull() in consentKeys }
+        require(providedConsent.isEmpty() ||
+            (providedConsent.size == 3 &&
+                providedConsent.map { it.values.firstOrNull() }.toSet() == consentKeys &&
+                providedConsent.all { it.values.getOrNull(1) is String &&
+                    (it.values[1] as String).isNotBlank() })) {
+            "Incomplete or duplicated restore Terms consent"
+        }
         require(plan.rows.first().table == "vault_account" &&
             plan.rows.count { it.table == "vault_account" } == 1 &&
             plan.rows.any { it.table == "entity" } &&
@@ -35,6 +46,7 @@ object RestoreV9InsertTransaction {
                 it.values.firstOrNull() == "m24.authenticated_frozen_original_json" } == 1 &&
             plan.rows.filter { it.table == "setting" }.all {
                 it.values.firstOrNull() == "m24.authenticated_frozen_original_json" ||
+                it.values.firstOrNull() in consentKeys ||
                 (it.values.firstOrNull() as? String)?.startsWith(
                     "m24.frozen_average_cost_per_unit_minor.") == true
             }) {
