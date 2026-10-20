@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import `in`.growurdhan.designsystem.GUDBrandLockup
 import `in`.growurdhan.model.NativeAssetTaxonomy
+import `in`.growurdhan.model.NativeInterestPayoutPlanner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -42,7 +43,9 @@ import java.time.LocalDate
  */
 @Composable
 internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
-    imports: NativeStatementImportRepository, casPdf: NativeCasPdfEngine,
+    imports: NativeStatementImportRepository,
+    payouts: NativeInterestPayoutRepository,
+    diagnostics: NativePrivateDiagnosticsRepository, casPdf: NativeCasPdfEngine,
     pendingPdf: ByteArray?, pendingPdfFilename: String,
     onSelectPdf: () -> Unit, onDiscardPdf: () -> Unit,
     pendingCsv: ByteArray?, pendingCsvFilename: String,
@@ -113,6 +116,7 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                     }
                 }
                 OutlinedButton(onClick = { tab = "Documents" }) { Text("Documents and imports") }
+                OutlinedButton(onClick = { tab = "Settings" }) { Text("Settings and privacy") }
                 if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
                 when (tab) {
                     "Home" -> {
@@ -289,6 +293,9 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                         }
                         Text("Original PDF bytes are not represented by these fingerprint records.")
                     }
+                    "Settings" -> {
+                        NativePrivateDiagnosticsSettings(email, diagnostics)
+                    }
                     "Records" -> {
                         Text("Money events and manual prices", style = MaterialTheme.typography.titleLarge)
                         EventForm(data.holdings.filter { ownerFilter.isEmpty() ||
@@ -299,6 +306,11 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                             })
                         Text("Statement adjustments cannot be created as manual buys or sells.",
                             style = MaterialTheme.typography.bodySmall)
+                        NativeInterestPayoutForm(email, payouts, data.holdings.filter {
+                            (it.category == "FIXED_INCOME" || it.category == "GOLD_SGB") &&
+                                (ownerFilter.isEmpty() || it.personId == ownerFilter)
+                        }, busy) { scope.launch { try { refresh() } catch (_: Exception) {
+                            error = "Cannot refresh reviewed interest history" } } }
                         NativeEmiForm(data.holdings.filter {
                             it.category == "LIABILITY" &&
                                 (ownerFilter.isEmpty() || it.personId == ownerFilter)
@@ -993,4 +1005,192 @@ private fun NativeCasPdfCard(email: String, imports: NativeStatementImportReposi
         }
     }
     if (message.isNotBlank()) Text(message)
+}
+
+
+/**
+ * Explicit owner review for cash coupon-only catch-up. A statement is NOT
+ * presumed received merely because a rate and due date exist. No automatic
+ * posting or changes to holding prices, quantities or compounded balances.
+ */
+@Composable
+private fun NativeInterestPayoutForm(email: String,
+    payouts: NativeInterestPayoutRepository,
+    holdings: List<NativeBooksRepository.Holding>, parentBusy: Boolean,
+    onCommitted: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var holding by remember { mutableStateOf("") }
+    var scheme by remember { mutableStateOf("SGB") }
+    var principal by remember { mutableStateOf("") }
+    var rateBps by remember { mutableStateOf("") }
+    var acquired by remember { mutableStateOf("") }
+    var maturity by remember { mutableStateOf("") }
+    var asOf by remember { mutableStateOf(LocalDate.now().toString()) }
+    var reviewed by remember { mutableStateOf<NativeInterestPayoutRepository.Review?>(null) }
+    var message by remember { mutableStateOf("") }
+    var working by remember { mutableStateOf(false) }
+    val busy = working || parentBusy
+    LaunchedEffect(holding, scheme, principal, rateBps, acquired, maturity, asOf) {
+        reviewed = null
+    }
+    HorizontalDivider()
+    Text("Reviewed cash coupons — partial interest support",
+        style = MaterialTheme.typography.titleMedium)
+    Text("SGB, SCSS or POMIS only. Enter the actual contract principal, " +
+        "annual rate and purchase date. These are not verified issuer " +
+        "receipts; no historical rate or interest is guessed.")
+    Choice("Interest holding", holdings.map { it.id to
+        "${it.name} • ${it.personName}" }, holding, !busy) { holding = it }
+    Choice("Coupon kind", listOf("SGB", "SCSS", "POMIS").map { it to it },
+        scheme, !busy) { scheme = it }
+    OutlinedTextField(principal, { principal = it },
+        label = { Text("Owner-confirmed contract principal ₹") },
+        modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(rateBps, { rateBps = it },
+        label = { Text("Contract annual rate (basis points, e.g. 250 = 2.5%)") },
+        modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(acquired, { acquired = it },
+        label = { Text("Actual acquisition date YYYY-MM-DD") },
+        modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(maturity, { maturity = it },
+        label = { Text("Maturity YYYY-MM-DD (optional)") },
+        modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(asOf, { asOf = it },
+        label = { Text("Review due coupons through YYYY-MM-DD") },
+        modifier = Modifier.fillMaxWidth())
+    Button(enabled = !busy && holding.isNotBlank(), onClick = {
+        message = ""
+        reviewed = null
+        val input = runCatching {
+            NativeInterestPayoutPlanner.Input(
+                NativeInterestPayoutPlanner.Kind.valueOf(scheme),
+                NativeBooksRepository.parseMinor(principal, 4),
+                requireNotNull(rateBps.toIntOrNull()),
+                LocalDate.parse(acquired), LocalDate.parse(asOf),
+                maturity.takeIf { it.isNotBlank() }?.let(LocalDate::parse))
+        }.getOrNull()
+        if (input == null) {
+            message = "Enter exact valid principal, rate and dates."
+        } else {
+            working = true
+            scope.launch {
+                try {
+                    reviewed = withContext(Dispatchers.IO) {
+                        payouts.inspect(email, holding, input)
+                    }
+                } catch (_: Exception) {
+                    message = "Cannot review: owner, contract or ledger evidence is " +
+                        "incompatible. No interest was posted."
+                } finally { working = false }
+            }
+        }
+    }) { Text("Preview all due coupon dates and amounts") }
+    reviewed?.let { plan ->
+        Text("${plan.coupons.size} scheduled cash receipt(s) awaiting review")
+        plan.coupons.forEach { coupon ->
+            Text("${coupon.date} • ₹${NativeBooksRepository.formatMinor(
+                coupon.amountMinor, 4)}")
+        }
+        if (plan.coupons.isEmpty()) {
+            Text("No unpaid coupons in the reviewed window.")
+        } else {
+            Text("Approve only after independently confirming these payments; " +
+                "this app has not verified bank credit or issuer statements.")
+            Button(enabled = !busy, onClick = {
+                working = true
+                scope.launch {
+                    try {
+                        val receipt = withContext(Dispatchers.IO) {
+                            payouts.approve(email, plan, true)
+                        }
+                        message = "Recorded ${receipt.posted} owner-reviewed " +
+                            "immutable cash coupon(s)."
+                        reviewed = null
+                        onCommitted()
+                    } catch (_: Exception) {
+                        message = "Approval refused: contract or encrypted " +
+                            "history changed. No partial coupon batch committed."
+                    } finally { working = false }
+                }
+            }) { Text("Approve and record these cash receipts") }
+        }
+    }
+    if (message.isNotBlank()) Text(message)
+}
+
+/**
+ * Settings are a partial section: technical diagnostics privacy controls are
+ * functional; remaining theme/market/provenance/account preferences are OPEN.
+ */
+@Composable
+private fun NativePrivateDiagnosticsSettings(email: String,
+    diagnostics: NativePrivateDiagnosticsRepository) {
+    val scope = rememberCoroutineScope()
+    var optedIn by remember(email) { mutableStateOf(false) }
+    var loaded by remember(email) { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    var report by remember { mutableStateOf("") }
+    var message by remember { mutableStateOf("") }
+    LaunchedEffect(email) {
+        report = ""
+        try {
+            optedIn = withContext(Dispatchers.IO) { diagnostics.enabled(email) }
+            loaded = true
+        } catch (_: Exception) {
+            loaded = false
+            message = "Diagnostics settings inaccessible. Lock and unlock again."
+        }
+    }
+    Text("Privacy and technical diagnostics",
+        style = MaterialTheme.typography.titleLarge)
+    Text("Opt-in only, entirely local. No financial values, personal identity, " +
+        "PDFs, PAN, emails, credentials or raw logs are collected or uploaded.")
+    if (!loaded) Text("Diagnostics require an unlocked encrypted vault.")
+    else {
+        Text(if (optedIn) "Technical diagnostics: enabled" else
+            "Technical diagnostics: disabled (default)")
+        Button(enabled = !busy && !optedIn, onClick = {
+            busy = true; scope.launch {
+                try {
+                    withContext(Dispatchers.IO) { diagnostics.setEnabled(email, true) }
+                    optedIn = true
+                    message = "Local technical checks enabled. Nothing is uploaded."
+                } catch (_: Exception) {
+                    message = "Consent was not changed. Reauthenticate."
+                } finally { busy = false }
+            }
+        }) { Text("Opt in to on-device technical checks") }
+        OutlinedButton(enabled = !busy && optedIn, onClick = {
+            busy = true; report = ""
+            scope.launch {
+                try {
+                    val result = withContext(Dispatchers.IO) {
+                        diagnostics.localReport(email)
+                    }
+                    report = result?.redactedText().orEmpty()
+                    if (report.isEmpty()) message = "Diagnostics consent is disabled."
+                } catch (_: Exception) {
+                    message = "Technical health unavailable. No diagnostic data exported."
+                } finally { busy = false }
+            }
+        }) { Text("View sanitized health locally") }
+        OutlinedButton(enabled = !busy, onClick = {
+            busy = true
+            scope.launch {
+                try {
+                    withContext(Dispatchers.IO) { diagnostics.setEnabled(email, false) }
+                    optedIn = false
+                    report = ""
+                    message = "Diagnostics disabled; encrypted opt-in marker cleared. " +
+                        "No diagnostic logs are retained."
+                } catch (_: Exception) {
+                    message = "Could not clear consent. Reauthenticate."
+                } finally { busy = false }
+            }
+        }) { Text("Opt out and clear local diagnostics") }
+        if (report.isNotEmpty()) Text(report, style = MaterialTheme.typography.bodySmall)
+        if (message.isNotEmpty()) Text(message)
+        Text("Other appearance, family, backup, market and account settings " +
+            "are not yet implemented in this native section.")
+    }
 }

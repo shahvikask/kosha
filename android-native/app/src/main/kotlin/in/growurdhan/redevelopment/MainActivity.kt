@@ -28,6 +28,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var accounts: NativeAccountRepository
     private lateinit var books: NativeBooksRepository
     private lateinit var statementImports: NativeStatementImportRepository
+    private lateinit var interestPayouts: NativeInterestPayoutRepository
+    private lateinit var privateDiagnostics: NativePrivateDiagnosticsRepository
     private lateinit var casPdf: NativeCasPdfEngine
     private var stagedPdf by mutableStateOf<ByteArray?>(null)
     private var stagedPdfName by mutableStateOf("")
@@ -145,6 +147,8 @@ class MainActivity : ComponentActivity() {
         accounts = NativeAccountRepository(applicationContext, admission)
         books = NativeBooksRepository(accounts)
         statementImports = NativeStatementImportRepository(accounts)
+        interestPayouts = NativeInterestPayoutRepository(accounts)
+        privateDiagnostics = NativePrivateDiagnosticsRepository(accounts)
         casPdf = NativeCasPdfEngine(applicationContext)
         enableEdgeToEdge()
         setContent {
@@ -181,7 +185,9 @@ class MainActivity : ComponentActivity() {
                     )
                 } else if (booksOpen && unlocked && deviceVerified) {
                     NativeBooksScreen(email = activeEmail, books = books,
-                        imports = statementImports, casPdf = casPdf,
+                        imports = statementImports, payouts = interestPayouts,
+                        diagnostics = privateDiagnostics,
+                        casPdf = casPdf,
                         pendingPdf = stagedPdf, pendingPdfFilename = stagedPdfName,
                         onSelectPdf = {
                             if (unlocked && admission.valid() && !pdfPickerPending) {
