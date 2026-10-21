@@ -214,18 +214,18 @@ class NativeSafBackupWriterInstrumentedTest {
     @Test fun publishedBackupMustRemainIdentifiableWithPruningDisabled() {
         val name = "GrowUrDhan-Native-20261021T090000Z-00000001.kosha"
         val published = NativeSafEncryptedBackupWriter.Entry("new", name, 0L)
-        assertEquals(1, NativeSafEncryptedBackupWriter.verifiedPublishedCount(
+        assertEquals(1, writer().verifiedPublishedCount(
             listOf(published), "new", name))
         assertThrows(IllegalArgumentException::class.java) {
-            NativeSafEncryptedBackupWriter.verifiedPublishedCount(
+            writer().verifiedPublishedCount(
                 emptyList(), "new", name)
         }
         assertThrows(IllegalArgumentException::class.java) {
-            NativeSafEncryptedBackupWriter.verifiedPublishedCount(
+            writer().verifiedPublishedCount(
                 listOf(published.copy(name = "renamed.kosha")), "new", name)
         }
         assertThrows(IllegalArgumentException::class.java) {
-            NativeSafEncryptedBackupWriter.verifiedPublishedCount(
+            writer().verifiedPublishedCount(
                 listOf(published), "new", "wrong.kosha")
         }
     }
@@ -235,19 +235,19 @@ class NativeSafBackupWriterInstrumentedTest {
         val published = NativeSafEncryptedBackupWriter.Entry("new", name, 0L)
         val older = NativeSafEncryptedBackupWriter.Entry("old",
             "GrowUrDhan-Native-20261021T090001Z-00000002.kosha", 0L)
-        assertEquals(2, NativeSafEncryptedBackupWriter.verifiedPublishedCount(
+        assertEquals(2, writer().verifiedPublishedCount(
             listOf(published, older), "new", name))
         assertThrows(IllegalArgumentException::class.java) {
-            NativeSafEncryptedBackupWriter.verifiedPublishedCount(
+            writer().verifiedPublishedCount(
                 listOf(published, published.copy(id = "other")), "new", name)
         }
         assertThrows(IllegalArgumentException::class.java) {
-            NativeSafEncryptedBackupWriter.verifiedPublishedCount(
+            writer().verifiedPublishedCount(
                 listOf(published, NativeSafEncryptedBackupWriter.Entry(
                     "new", "unrelated.pdf", 0L)), "new", name)
         }
         assertThrows(IllegalArgumentException::class.java) {
-            NativeSafEncryptedBackupWriter.verifiedPublishedCount(
+            writer().verifiedPublishedCount(
                 listOf(published, older, older.copy(name =
                     "GrowUrDhan-Native-20261021T090002Z-00000003.kosha")),
                 "new", name)
