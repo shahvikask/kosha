@@ -108,6 +108,25 @@ internal class NativeSafEncryptedBackupWriter(private val context: Context) {
         }
     }
 
+    /** SAF publication requires one exact, enumerable newly written document.
+     * Check even when pruning is disabled; never accept a provider alias,
+     * a renamed document, or a listing with duplicate own-format identities.
+     */
+    internal fun verifiedPublishedCount(entries: List<Entry>, id: String,
+        name: String): Int {
+        require(id.isNotBlank() && ownFile.matches(name))
+        val own = entries.filter { ownFile.matches(it.name) }
+        require(own.map { it.id }.distinct().size == own.size &&
+            own.map { it.name }.distinct().size == own.size) {
+            "Ambiguous encrypted backup provider identities"
+        }
+        require(entries.count { it.id == id } == 1 &&
+            own.count { it.id == id && it.name == name } == 1) {
+            "Published encrypted backup missing, renamed or ambiguous"
+        }
+        return own.size
+    }
+
     private fun selectedTree(tree: Uri): Uri {
         require(tree.scheme == "content")
         val grant = context.contentResolver.persistedUriPermissions.any {
@@ -216,6 +235,7 @@ internal class NativeSafEncryptedBackupWriter(private val context: Context) {
         var completed = true
         val finalId = DocumentsContract.getDocumentId(final)
         val entries = childEntries(tree)
+        verifiedPublishedCount(entries, finalId, name)
         if (approvePruning) {
             // Enumerate and pin the just-verified final document FIRST. If
             // provider identity is ambiguous/missing, refuse all deletion.
@@ -230,8 +250,7 @@ internal class NativeSafEncryptedBackupWriter(private val context: Context) {
         // Owner receives a receipt only after final document still reads
         // back byte-exact. Pruning failure leaves all undeleted evidence.
         verifyStoredArchive(resolver, final, encryptedArchive)
-        val retained = childEntries(tree).count { ownFile.matches(it.name) }
-        require(retained >= 1) { "Verified encrypted backup vanished after retention" }
+        val retained = verifiedPublishedCount(childEntries(tree), finalId, name)
         return Receipt(final, encryptedArchive.size, retained, completed)
     }
 }
