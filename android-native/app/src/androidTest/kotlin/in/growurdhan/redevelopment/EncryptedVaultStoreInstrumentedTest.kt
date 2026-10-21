@@ -301,7 +301,9 @@ class EncryptedVaultStoreInstrumentedTest {
         assertEquals("PAUSED", restoredValue("holding", "emi_status"))
         assertEquals("2031-01-01", restoredValue("holding", "maturity_date"))
         assertEquals(9007199254740993L, restoredValue("holding", "benchmark_price_minor"))
-        assertEquals(10001234L, restoredValue("instrument", "fmv_31jan2018_minor"))
+        // The frozen physical column is TEXT: retain its exact validated
+        // canonical decimal, not a coerced Long or floating-point value.
+        assertEquals("10001234", restoredValue("instrument", "fmv_31jan2018_minor"))
         assertEquals("124567", restoredValue("instrument", "amfi_code"))
         assertTrue((restoredValue("holding", "details_json") as String).contains("ANNUAL"))
         assertEquals(1, metadataPlan.rows.count { it.table == "ledger_event" })
@@ -311,6 +313,14 @@ class EncryptedVaultStoreInstrumentedTest {
         }.toString()
         assertThrows(Exception::class.java) {
             FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(invalidRate)
+        }
+        // TEXT representation does not mean accepting fractional/rounded money.
+        val invalidFmv = JSONObject(metadataFixture).apply {
+            getJSONArray("holdings").getJSONObject(0)
+                .put("fmv31Jan2018Minor", "1.25")
+        }.toString()
+        assertThrows(Exception::class.java) {
+            FrozenJsonV9Adapter.planFromAuthenticatedPlaintext(invalidFmv)
         }
         // Historical inner payloads with missing financial provenance must fail
         // closed, not silently acquire invented costs or timestamps.
@@ -1425,6 +1435,16 @@ class EncryptedVaultStoreInstrumentedTest {
                     assertFalse(cur.moveToNext())
                 }
             }
+        }
+        // Unknown floating-point financial metadata must still fail closed;
+        // a historical opaque setting exception must not permit rate columns.
+        store.openExisting().use { db ->
+            db.execSQL("ALTER TABLE setting ADD COLUMN untrusted_interest_rate REAL")
+            db.execSQL("UPDATE setting SET untrusted_interest_rate=1.5 " +
+                "WHERE key='legacy.real.0'")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            store.openExisting().close()
         }
     }
 

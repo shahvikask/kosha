@@ -1,7 +1,7 @@
 name: GrowUrDhan full Android instrumentation diagnostic
 
-# Reuse verified APKs to test all 139 methods without rebuilding Rust/PDFium.
-# DIAGNOSTIC ONLY: this does not waive P01-P34 source/readiness gates.
+# Source-corrected, exact-SHA rebuild using previously audited Android wheels.
+# Diagnostic only. P01-P34 remains fail-closed until source parity is complete.
 on:
   workflow_dispatch:
   push:
@@ -20,56 +20,105 @@ concurrency:
 jobs:
   api35-full-diagnostic:
     if: github.ref == 'refs/heads/GUD-Android-Redevelopment'
-    name: API35 x86_64 139-test native Android diagnostic
+    name: API35 x86_64 full native Android regression on corrected source
     runs-on: ubuntu-latest
     timeout-minutes: 58
-    env:
-      BUILT_SOURCE_SHA: 02cd5868547c21240b9524b8a8914b30173e2386
     steps:
-      - name: Checkout exact triggering SHA
+      - name: Checkout exact triggering source SHA
         uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - name: Enforce branch and unchanged exact-built application sources
+      - name: Enforce branch and frozen parser invariance
         shell: bash
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = "refs/heads/GUD-Android-Redevelopment"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          git cat-file -e "$BUILT_SOURCE_SHA^{commit}"
-          git diff --exit-code "$BUILT_SOURCE_SHA" "$GITHUB_SHA" -- android-native/ src/ src-tauri/ scripts/
-          echo "APK_TESTED_SOURCE_SHA=$BUILT_SOURCE_SHA"
-          echo "WORKFLOW_SHA=$GITHUB_SHA"
-      - name: Reuse original strict-build APK artifact
+          git cat-file -e '02cd5868547c21240b9524b8a8914b30173e2386^{commit}'
+          git diff --exit-code 02cd5868547c21240b9524b8a8914b30173e2386 "$GITHUB_SHA" -- src/ src-tauri/ scripts/
+          echo "EXACT_BUILD_SOURCE_SHA=$GITHUB_SHA"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Reuse audited Android wheels (not prior-source APKs)
         uses: actions/download-artifact@v4
         with:
           repository: shahvikask/kosha
           run-id: 39526640647
           github-token: ${{ github.token }}
-          name: exact-sha-strict-android-build-evidence
-          path: prior-strict-build
-      - name: Verify original app and test APK SHA256
+          name: source-pinned-android-python-wheels
+          path: android-native/app/python-wheels
+      - name: Audit pinned wheels, then build corrected-source APKs and run JVM tests
         shell: bash
         run: |
           set -euo pipefail
-          APP="$(find prior-strict-build -name app-debug.apk -type f -print -quit)"
-          TEST="$(find prior-strict-build -name app-debug-androidTest.apk -type f -print -quit)"
-          test -n "$APP" && test -n "$TEST"
-          echo "d394c0b4a54981a255c594a264af360ce29fee4dcd022f62193132703973af39  $APP" | sha256sum -c -
-          echo "58935025ad356b80e7953292bd0fa7afcf228017506ed9e06bf13e41736ab01c  $TEST" | sha256sum -c -
+          cd android-native/app/python-wheels
+          sha256sum --check SHA256SUMS
+          cat <<'CHECKSUMS' | sha256sum --check -
+          00572b39f652b1e9d50833f6d9a42de7c97c2059e9401d6dcb077c2ec60509d7  pydantic_core-2.41.5-cp313-cp313-android_26_arm64_v8a.whl
+          9bbb2703219eacc4399ca783356aa037356d21847cb8a70c7fcb015db9da17e2  pydantic_core-2.41.5-cp313-cp313-android_26_x86_64.whl
+          bed597b2cea3990164e43f9003f71db18959d0abd5d73adc9c176e7be2d84b98  pypdfium2-5.14.0-py3-none-android_23_arm64_v8a.whl
+          bfedc3776b6e2448ef8ba440e71aa9607f0245c9a65ab9dd11fe27c73c0d6375  pypdfium2-5.14.0-py3-none-android_23_x86_64.whl
+          CHECKSUMS
+          cd ../..
+          chmod +x gradlew
+          ./gradlew :core:model:test :core:database:test :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --stacktrace
+      - name: Confirm original JVM XML and newly compiled APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          for module in ("model", "database"):
+              root=Path("android-native/core")/module/"build/test-results/test"
+              reports=list(root.rglob("TEST-*.xml"))
+              assert reports, f"Missing JVM JUnit XML for {module}"
+              cases=[c for p in reports for c in ET.parse(p).getroot().findall(".//testcase")]
+              assert cases and not any(c.find(x) is not None for c in cases for x in ("failure","error","skipped")), module
+              print(f"JVM_{module.upper()}_PASSED={len(cases)}")
+          PY
+          APP=android-native/app/build/outputs/apk/debug/app-debug.apk
+          TEST=android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          test -s "$APP" && test -s "$TEST"
+          sha256sum "$APP" "$TEST"
           echo "APP_APK=$APP" >> "$GITHUB_ENV"
           echo "TEST_APK=$TEST" >> "$GITHUB_ENV"
-          echo "APK_SOURCE_SHA=$BUILT_SOURCE_SHA" > full-android-provenance.txt
-          echo "APK_STRICT_BUILD_RUN=39526640647" >> full-android-provenance.txt
-          echo "WORKFLOW_SHA=$GITHUB_SHA" >> full-android-provenance.txt
-      - name: Configure KVM
+          echo "APK_SOURCE_SHA=$GITHUB_SHA" >> "$GITHUB_ENV"
+          echo "EXACT_SOURCE_SHA=$GITHUB_SHA" > full-android-provenance.txt
+          echo "TRUSTED_WHEEL_RUN=39526640647" >> full-android-provenance.txt
+          sha256sum "$APP" "$TEST" >> full-android-provenance.txt
+      - name: Check embedded Python/PDFium Android ELF architectures
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from zipfile import ZipFile
+          from io import BytesIO
+          with ZipFile("android-native/app/build/outputs/apk/debug/app-debug.apk") as apk:
+              for abi,platform,machine in (("arm64-v8a","aarch64",183),("x86_64","x86_64",62)):
+                  assert f"lib/{abi}/libpython3.13.so" in apk.namelist()
+                  with ZipFile(BytesIO(apk.read(f"assets/chaquopy/requirements-{abi}.imy"))) as z:
+                      for binary in (f"pydantic_core/_pydantic_core.cpython-313-{platform}-linux-android.so", "pypdfium2_raw/libpdfium.so"):
+                          data=z.read(binary)
+                          assert data[:4] == b"\x7fELF" and int.from_bytes(data[18:20],"little") == machine, binary
+              with ZipFile(BytesIO(apk.read("assets/chaquopy/requirements-common.imy"))) as common:
+                  for name in ("pydantic_core-2.41.5.dist-info/METADATA","pypdfium2-5.14.0.dist-info/METADATA"):
+                      assert name in common.namelist()
+          print("EMBEDDED_ANDROID_WHEELS_VERIFIED=4")
+          PY
+      - name: Configure emulator KVM
         shell: bash
         run: |
           if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm
           else echo "::warning::No KVM; emulator may be slow"; fi
-      - name: Exercise all compiled Android test classes on API35
+      - name: Execute all Android instrumentation tests on API35
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -84,14 +133,18 @@ jobs:
           emulator-boot-timeout: 900
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: bash .github/scripts/native-full-android-diagnostic.sh
-      - name: Preserve original runner output and test provenance
+      - name: Preserve original test, JUnit, new APK and provenance
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: api35-full-android-diagnostic-evidence
+          name: api35-corrected-source-full-android-evidence
           path: |
             full-android-adb.txt
             full-android-diagnostic-summary.json
             full-android-provenance.txt
+            android-native/core/model/build/test-results/test/TEST-*.xml
+            android-native/core/database/build/test-results/test/TEST-*.xml
+            android-native/app/build/outputs/apk/debug/*.apk
+            android-native/app/build/outputs/apk/androidTest/debug/*.apk
           if-no-files-found: warn
           retention-days: 14

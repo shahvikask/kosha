@@ -221,6 +221,18 @@ internal class EncryptedVaultStore(private val context: Context) {
                 else -> true
             }
         }
+        // Frozen columns must never become floating-point finance. Unknown
+        // historical *nonfinancial* setting extensions, however, are opaque
+        // migration evidence: preserve their original SQLite REAL cells,
+        // not as money and never as a converted scaled-integer amount.
+        val canonicalColumns = SchemaV9Catalog.tables.associate {
+            it.name to it.columns.toSet()
+        }
+        val financialName = Regex(
+            "(?i)(amount|minor|scaled|charges?|fees?|cost|price|quantity|" +
+                "units?|value|tax|interest|rate|principal|balance|proceeds|" +
+                "premium|target)"
+        )
         for (table in requiredTables) {
             db.rawQuery("SELECT COUNT(*) FROM sqlite_master " +
                 "WHERE type='table' AND name=?", arrayOf(table)).use { cur ->
@@ -230,8 +242,13 @@ internal class EncryptedVaultStore(private val context: Context) {
             }
             db.rawQuery("PRAGMA table_info('$table')", null).use { cur ->
                 while (cur.moveToNext()) {
-                    require(!cur.getString(2).equals("REAL", ignoreCase = true)) {
-                        "Floating-point persistence field in $table"
+                    val name = cur.getString(1)
+                    val isReal = cur.getString(2).equals("REAL", ignoreCase = true)
+                    val opaqueHistoricalSetting = table == "setting" &&
+                        name !in (canonicalColumns[table] ?: emptySet()) &&
+                        !financialName.containsMatchIn(name)
+                    require(!isReal || opaqueHistoricalSetting) {
+                        "Floating-point financial or canonical persistence field in $table.$name"
                     }
                 }
             }

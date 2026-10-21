@@ -18,7 +18,7 @@ completed = sum(code == "0" for code in codes)
 bad = [code for code in codes if code not in ("0", "1")]
 ok = re.search(r"^OK\s+\((\d+)\s+tests?\)", data, re.M)
 summary = {
-  "binary_source_sha": "02cd5868547c21240b9524b8a8914b30173e2386",
+  "binary_source_sha": __import__("os").environ["APK_SOURCE_SHA"],
   "expected_methods": 139,
   "completed": completed,
   "runner_total": int(ok.group(1)) if ok else None,
