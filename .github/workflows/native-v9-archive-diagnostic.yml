@@ -1,0 +1,114 @@
+name: GrowUrDhan native v9 archive targeted diagnostic
+# New exact-source schema/cipher roundtrip and rollback, not release acceptance.
+on:
+  workflow_dispatch:
+  push:
+    branches: [GUD-Android-Redevelopment]
+    paths:
+      - .github/workflows/native-v9-archive-diagnostic.yml
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  native-v9-archive:
+    if: github.ref == 'refs/heads/GUD-Android-Redevelopment'
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Checkout exact authorized source SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Guard frozen sources and branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/GUD-Android-Redevelopment"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code 272a271508d28b5bbcaf724def8e7eb568b38b56 "$GITHUB_SHA" -- src/ src-tauri/ scripts/
+          echo "NATIVE_V9_ARCHIVE_SOURCE_SHA=$GITHUB_SHA"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Reuse verified Android Python wheels
+        uses: actions/download-artifact@v4
+        with:
+          repository: shahvikask/kosha
+          run-id: 39526640647
+          github-token: ${{ github.token }}
+          name: source-pinned-android-python-wheels
+          path: android-native/app/python-wheels
+      - name: Verify wheel provenance
+        run: cd android-native/app/python-wheels && sha256sum -c SHA256SUMS
+      - name: Targeted JVM preflight, then compile source-specific APKs
+        shell: bash
+        working-directory: android-native
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :core:model:test :core:database:test :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --stacktrace
+      - name: Check JVM JUnit XML and capture exact APK hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          for module in ("model", "database"):
+              reports=list((Path("android-native/core")/module/"build/test-results/test").rglob("TEST-*.xml"))
+              assert reports, f"Missing {module} JUnit XML"
+              cases=[c for p in reports for c in ET.parse(p).getroot().findall(".//testcase")]
+              assert cases and not any(c.find(t) is not None for c in cases for t in ("failure","error","skipped"))
+              if module == "database":
+                  names=[c.attrib.get("name") for c in cases if "NativeV9ArchiveTest" in c.attrib.get("classname","")]
+                  assert len(names)==5, f"Expected 5 native archive tests, got {len(names)}"
+              print(f"JVM_{module.upper()}_PASSED={len(cases)}")
+          PY
+          APP=android-native/app/build/outputs/apk/debug/app-debug.apk
+          TEST=android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          test -s "$APP" && test -s "$TEST"
+          sha256sum "$APP" "$TEST" > native-v9-apk-hashes.txt
+          echo "NATIVE_V9_TESTED_SOURCE_SHA=$GITHUB_SHA" > native-v9-provenance.txt
+          echo "APP_APK=$APP" >> "$GITHUB_ENV"
+          echo "TEST_APK=$TEST" >> "$GITHUB_ENV"
+      - name: Configure KVM
+        shell: bash
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - name: Run only native GUDNAT01 restore tests on API35 x86_64
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 3072M
+          heap-size: 512M
+          force-avd-creation: true
+          disable-animations: true
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: bash .github/scripts/native-v9-archive-diagnostic.sh
+      - name: Preserve raw test, JUnit and exact-source evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-v9-archive-exact-sha-evidence
+          path: |
+            native-v9-archive-adb.txt
+            native-v9-apk-hashes.txt
+            native-v9-provenance.txt
+            android-native/core/model/build/test-results/test/TEST-*.xml
+            android-native/core/database/build/test-results/test/TEST-*.xml
+          if-no-files-found: warn
+          retention-days: 14
