@@ -210,6 +210,31 @@ class MainActivity : ComponentActivity() {
                                 }
                             } finally { password.fill('\u0000') }
                         },
+                        resumePreviewAction = { proof, password, consent ->
+                            try {
+                                if (!admission.valid() || !deviceVerified || unlocked) null
+                                else withContext(Dispatchers.IO) {
+                                    runCatching {
+                                        nativeRestoreFlow.prepareManualResume(proof, password, consent)
+                                    }.getOrNull()
+                                }
+                            } finally { password.fill('\u0000') }
+                        },
+                        resumePublishAction = { proof, password, consent, offer ->
+                            try {
+                                val ok = if (!admission.valid() || !deviceVerified || unlocked ||
+                                    !offer.ownerApproved) false
+                                else withContext(Dispatchers.IO) {
+                                    runCatching {
+                                        nativeRestoreFlow.publishManualResume(proof, password,
+                                            consent, offer)
+                                        true
+                                    }.getOrDefault(false)
+                                }
+                                lockCompletely()
+                                ok
+                            } finally { password.fill('\u0000') }
+                        },
                         onBack = {
                             nativeRestoreMode = false
                             nativeRestoreStaged = false

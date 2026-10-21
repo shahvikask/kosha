@@ -43,6 +43,16 @@ internal class NativeV9RestoreFlow(private val context: Context) {
         recovery.publishAfterOwnerReview(proof, password, consent,
             review, explicitOwnerApproval = review.ownerApproved)
 
+    /** The forensic inspector and authenticated source are revalidated under one lock. */
+    fun prepareManualResume(proof: RestoreIdentityGate.Credentials, password: CharArray,
+        consent: NativeRegistrationProof.Consent): NativeV9ManualResume.Offer =
+        NativeV9ManualResume(context).prepare(proof, password, consent)
+
+    /** New explicit action; not an automatic retry of an earlier claim. */
+    fun publishManualResume(proof: RestoreIdentityGate.Credentials, password: CharArray,
+        consent: NativeRegistrationProof.Consent, offer: NativeV9ManualResume.Offer): Int =
+        NativeV9ManualResume(context).publish(proof, password, consent, offer)
+
     /** Safe to call after a process restart. Never moves or deletes any file. */
     fun forensic(proof: RestoreIdentityGate.Credentials, password: CharArray,
         consent: NativeRegistrationProof.Consent): NativeV9RecoveryInspector.Inspection =

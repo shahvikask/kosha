@@ -1,6 +1,7 @@
 package `in`.growurdhan.redevelopment
 
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollTo
@@ -58,6 +59,8 @@ class NativeV9RestoreUiInstrumentedTest {
             .performScrollTo().assertIsNotEnabled()
         compose.onNodeWithText("Inspect interrupted restore (read-only)")
             .performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("Approve manual native recovery publication")
+            .assertDoesNotExist()
         assertEquals(0, restored)
         assertEquals(0, forensics)
     }

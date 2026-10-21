@@ -58,10 +58,22 @@ internal class NativeV9RecoveryInspector(private val context: Context) {
     }
     fun inspect(credentials: RestoreIdentityGate.Credentials, password: CharArray,
         consent: NativeRegistrationProof.Consent,
+        explicitOwnerApproval: Boolean): Inspection =
+        VaultLifecycleLock.exclusively(context) {
+            inspectUnderLock(credentials, password, consent, explicitOwnerApproval)
+        }
+
+    /**
+     * Caller MUST already own VaultLifecycleLock. Reuse the exact same
+     * owner-authenticated forensic verifier in the manual publication
+     * transaction, avoiding unlock/TOCTOU between inspection and publication.
+     * VERIFIED_* remains information, never permission by itself.
+     */
+    internal fun inspectUnderLock(credentials: RestoreIdentityGate.Credentials,
+        password: CharArray, consent: NativeRegistrationProof.Consent,
         explicitOwnerApproval: Boolean): Inspection {
         require(explicitOwnerApproval) { "Owner must approve forensic review" }
         NativeRegistrationProof.requireValidConsent(consent)
-        return VaultLifecycleLock.exclusively(context) {
             val noBackup = context.noBackupFilesDir
             val liveDb = context.getDatabasePath("growurdhan-v9.sqlcipher")
             val dbDir = liveDb.parentFile ?: error("Missing encrypted database folder")
@@ -118,7 +130,7 @@ internal class NativeV9RecoveryInspector(private val context: Context) {
                     } || listOf(".new",".bak").any { suffix ->
                         exists(File(pending.path + suffix))
                     }
-                if (ambiguous) return@exclusively Inspection(State.AMBIGUOUS,
+                if (ambiguous) return Inspection(State.AMBIGUOUS,
                     claimed = true, liveReservation = reservation)
                 val keyCandidate = keys.singleOrNull()
                 val dbCandidate = dbs.singleOrNull()
@@ -129,7 +141,7 @@ internal class NativeV9RecoveryInspector(private val context: Context) {
                     candidateDb.matchEntire(it.name)!!.groupValues[1]
                 }
                 if (nonceKey != null && nonceDb != null && nonceKey != nonceDb)
-                    return@exclusively Inspection(State.AMBIGUOUS, claimed = true,
+                    return Inspection(State.AMBIGUOUS, claimed = true,
                         liveReservation = reservation)
                 val selected: File
                 val selectedKey: File
@@ -146,12 +158,12 @@ internal class NativeV9RecoveryInspector(private val context: Context) {
                     keyPresent && dbPresent && !reservation) {
                     selected = liveDb; selectedKey = liveKey
                     state = State.VERIFIED_LIVE
-                } else return@exclusively Inspection(
+                } else return Inspection(
                     if (!keyPresent && keyCandidate == null && dbCandidate == null &&
                         !dbPresent) State.CLAIM_ONLY else State.INCOMPLETE,
                     claimed = true, liveReservation = reservation)
                 if (!regular(selected) || selected.length() == 0L ||
-                    !regular(selectedKey)) return@exclusively Inspection(
+                    !regular(selectedKey)) return Inspection(
                     State.INCOMPLETE, claimed = true, liveReservation = reservation)
                 for (file in listOf(selected,liveDb)) for (s in listOf("-wal","-shm","-journal"))
                     require(!exists(File(file.path + s))) {
@@ -183,9 +195,8 @@ internal class NativeV9RecoveryInspector(private val context: Context) {
                     require(!exists(File(file.path + s))) {
                         "Forensic read created unfinished SQLite sidecar"
                     }
-                Inspection(state, proof.rowCount, claimed = true,
+                return Inspection(state, proof.rowCount, claimed = true,
                     liveReservation = reservation)
             } finally { wipe(source); encrypted.fill(0) }
-        }
     }
 }

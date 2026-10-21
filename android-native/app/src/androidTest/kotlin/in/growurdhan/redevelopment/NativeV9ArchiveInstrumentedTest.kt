@@ -333,6 +333,226 @@ class NativeV9ArchiveInstrumentedTest {
             File(destination.noBackupFilesDir, "restore-pending.v1.kosha").toPath()))
     }
 
+
+    @Test fun manualResumeVerifiedCandidatePublishesOnlyWithSecondOwnerApproval() {
+        val destination = sandbox()
+        val backup = verifiedArchive()
+        val first = NativeV9NewDeviceRestore(destination) {
+            if (it == NativeV9NewDeviceRestore.Boundary.AFTER_CANDIDATE_VERIFIED)
+                throw IllegalStateException("Synthetic process interruption")
+        }
+        first.stageNativeOnce(backup)
+        val initial = first.preview(recovery, pass, currentConsent)
+        assertThrows(IllegalStateException::class.java) {
+            first.publishAfterOwnerReview(recovery, pass, currentConsent,
+                initial.copy(ownerApproved = true), true)
+        }
+        val resume = NativeV9ManualResume(destination)
+        val offer = resume.prepare(recovery, pass, currentConsent)
+        assertEquals(NativeV9RecoveryInspector.State.VERIFIED_CANDIDATE, offer.state)
+        assertEquals(initial.snapshotSha256, offer.snapshotSha256)
+        assertThrows(IllegalArgumentException::class.java) {
+            resume.publish(recovery, pass, currentConsent, offer)
+        }
+        assertEquals(initial.rows, resume.publish(
+            recovery, pass, currentConsent, offer.copy(ownerApproved = true)))
+        assertEquals(NativeV9RecoveryInspector.State.VERIFIED_LIVE,
+            NativeV9RecoveryInspector(destination).inspect(
+                recovery, pass, currentConsent, true).state)
+        assertThrows(Exception::class.java) {
+            resume.publish(recovery, pass, currentConsent,
+                offer.copy(ownerApproved = true))
+        }
+        val staged = File(destination.noBackupFilesDir, "restore-pending.v1.kosha")
+        assertArrayEquals(backup, staged.readBytes())
+        assertEquals(1, File(destination.noBackupFilesDir,"restore-claims").listFiles()!!.size)
+    }
+
+    @Test fun manualResumeAfterKeyPublicationUsesExistingKeyWithoutReplacingIt() {
+        val destination = sandbox()
+        val backup = verifiedArchive()
+        val first = NativeV9NewDeviceRestore(destination) {
+            if (it == NativeV9NewDeviceRestore.Boundary.AFTER_KEY_PUBLICATION)
+                throw IllegalStateException("Synthetic interruption after wrapped key")
+        }
+        first.stageNativeOnce(backup)
+        val initial = first.preview(recovery, pass, currentConsent)
+        assertThrows(IllegalStateException::class.java) {
+            first.publishAfterOwnerReview(recovery, pass, currentConsent,
+                initial.copy(ownerApproved = true), true)
+        }
+        val key = File(destination.noBackupFilesDir, "vault-key.v1")
+        val immutableKey = key.readBytes()
+        val resume = NativeV9ManualResume(destination)
+        val offer = resume.prepare(recovery, pass, currentConsent)
+        assertEquals(initial.rows, resume.publish(
+            recovery, pass, currentConsent, offer.copy(ownerApproved = true)))
+        assertArrayEquals(immutableKey, key.readBytes())
+        assertEquals(NativeV9RecoveryInspector.State.VERIFIED_LIVE,
+            NativeV9RecoveryInspector(destination).inspect(
+                recovery, pass, currentConsent, true).state)
+    }
+
+    @Test fun tamperedNativeCandidateAndOccupiedTargetNeverResume() {
+        val destination = sandbox()
+        val backup = verifiedArchive()
+        val first = NativeV9NewDeviceRestore(destination) {
+            if (it == NativeV9NewDeviceRestore.Boundary.AFTER_CANDIDATE_VERIFIED)
+                throw IllegalStateException("Synthetic interruption")
+        }
+        first.stageNativeOnce(backup)
+        val initial = first.preview(recovery, pass, currentConsent)
+        assertThrows(IllegalStateException::class.java) {
+            first.publishAfterOwnerReview(recovery, pass, currentConsent,
+                initial.copy(ownerApproved = true), true)
+        }
+        val resume = NativeV9ManualResume(destination)
+        val offer = resume.prepare(recovery, pass, currentConsent)
+        val target = destination.getDatabasePath("growurdhan-v9.sqlcipher")
+        target.writeBytes(byteArrayOf()) // crash tombstone, NEVER deleted by recovery
+        assertThrows(Exception::class.java) {
+            resume.publish(recovery, pass, currentConsent, offer.copy(ownerApproved = true))
+        }
+        assertEquals(0L, target.length())
+        assertEquals(1, File(destination.noBackupFilesDir,"restore-claims").listFiles()!!.size)
+        // Do not remove even a synthetic tombstone to force a retry.
+        assertThrows(Exception::class.java) {
+            resume.prepare(recovery, pass, currentConsent)
+        }
+    }
+
+    @Test fun interruptedManualResumePreservesPublishedKeyForNewExplicitReview() {
+        val destination = sandbox()
+        val backup = verifiedArchive()
+        val first = NativeV9NewDeviceRestore(destination) {
+            if (it == NativeV9NewDeviceRestore.Boundary.AFTER_CANDIDATE_VERIFIED)
+                throw IllegalStateException("Synthetic interrupted first restore")
+        }
+        first.stageNativeOnce(backup)
+        val initial = first.preview(recovery, pass, currentConsent)
+        assertThrows(IllegalStateException::class.java) {
+            first.publishAfterOwnerReview(recovery, pass, currentConsent,
+                initial.copy(ownerApproved = true), true)
+        }
+        val interrupted = NativeV9ManualResume(destination) {
+            if (it == NativeV9ManualResume.Boundary.AFTER_KEY_PUBLICATION)
+                throw java.io.IOException("Synthetic interrupted resume")
+        }
+        val offered = interrupted.prepare(recovery, pass, currentConsent)
+        assertThrows(java.io.IOException::class.java) {
+            interrupted.publish(recovery, pass, currentConsent,
+                offered.copy(ownerApproved = true))
+        }
+        val key = File(destination.noBackupFilesDir, "vault-key.v1")
+        val saved = key.readBytes()
+        assertEquals(NativeV9RecoveryInspector.State.VERIFIED_CANDIDATE,
+            NativeV9RecoveryInspector(destination).inspect(
+                recovery, pass, currentConsent, true).state)
+        val fresh = NativeV9ManualResume(destination)
+        val reapproved = fresh.prepare(recovery, pass, currentConsent)
+        assertEquals(offered.snapshotSha256, reapproved.snapshotSha256)
+        assertEquals(reapproved.rows, fresh.publish(
+            recovery, pass, currentConsent, reapproved.copy(ownerApproved = true)))
+        assertArrayEquals(saved, key.readBytes())
+        assertThrows(Exception::class.java) {
+            fresh.publish(recovery, pass, currentConsent,
+                reapproved.copy(ownerApproved = true))
+        }
+    }
+
+    @Test fun corruptedNativeCandidateCannotBeOfferedForManualResume() {
+        val destination = sandbox()
+        val backup = verifiedArchive()
+        val first = NativeV9NewDeviceRestore(destination) {
+            if (it == NativeV9NewDeviceRestore.Boundary.AFTER_CANDIDATE_VERIFIED)
+                throw IllegalStateException("Synthetic stop")
+        }
+        first.stageNativeOnce(backup)
+        val original = first.preview(recovery, pass, currentConsent)
+        assertThrows(IllegalStateException::class.java) {
+            first.publishAfterOwnerReview(recovery, pass, currentConsent,
+                original.copy(ownerApproved = true), true)
+        }
+        val file = destination.getDatabasePath("growurdhan-v9.sqlcipher")
+            .parentFile!!.listFiles()!!.single {
+                it.name.startsWith("growurdhan-v9.sqlcipher.restore-")
+            }
+        java.io.RandomAccessFile(file, "rw").use {
+            it.seek(128L)
+            it.writeByte(42)
+        }
+        assertThrows(Exception::class.java) {
+            NativeV9ManualResume(destination).prepare(recovery, pass, currentConsent)
+        }
+        assertFalse(destination.getDatabasePath("growurdhan-v9.sqlcipher").exists())
+        assertFalse(File(destination.noBackupFilesDir, "vault-key.v1").exists())
+        assertEquals(1, File(destination.noBackupFilesDir,"restore-claims").listFiles()!!.size)
+    }
+
+
+    /** Stable no-backup fixture survives a separate instrumentation process. */
+    private fun processBoundarySandbox(): Context {
+        val base = InstrumentationRegistry.getInstrumentation().targetContext
+        val root = File(base.noBackupFilesDir, "native-v9-process-boundary")
+        root.mkdirs()
+        return object : ContextWrapper(base) {
+            override fun getDatabasePath(name: String): File =
+                File(root, "databases/" + name).also { it.parentFile?.mkdirs() }
+            override fun getNoBackupFilesDir(): File =
+                File(root, "no_backup").also { it.mkdirs() }
+            override fun getFilesDir(): File =
+                File(root, "files").also { it.mkdirs() }
+        }
+    }
+
+    @Test fun processBoundaryPhaseOnePreservesVerifiedCandidate() {
+        val destination = processBoundarySandbox()
+        val db = destination.getDatabasePath("growurdhan-v9.sqlcipher")
+        assertFalse("Fresh CI-only process test fixture required", db.exists())
+        val backup = verifiedArchive()
+        val first = NativeV9NewDeviceRestore(destination) {
+            if (it == NativeV9NewDeviceRestore.Boundary.AFTER_CANDIDATE_VERIFIED)
+                throw IllegalStateException("Synthetic interruption before process shutdown")
+        }
+        first.stageNativeOnce(backup)
+        val review = first.preview(recovery, pass, currentConsent)
+        assertThrows(IllegalStateException::class.java) {
+            first.publishAfterOwnerReview(recovery, pass, currentConsent,
+                review.copy(ownerApproved = true), true)
+        }
+        val offered = NativeV9ManualResume(destination).prepare(
+            recovery, pass, currentConsent)
+        assertEquals(review.snapshotSha256, offered.snapshotSha256)
+        assertEquals(NativeV9RecoveryInspector.State.VERIFIED_CANDIDATE,
+            offered.state)
+        assertFalse(db.exists())
+    }
+
+    @Test fun processBoundaryPhaseTwoFreshProcessReauthenticatesAndPublishes() {
+        val destination = processBoundarySandbox()
+        val db = destination.getDatabasePath("growurdhan-v9.sqlcipher")
+        assertFalse("Unpublished candidate must survive Phase 1", db.exists())
+        val resume = NativeV9ManualResume(destination)
+        assertThrows(Exception::class.java) {
+            resume.prepare(recovery.copy(password = "Wrong login password"),
+                pass, currentConsent)
+        }
+        assertThrows(Exception::class.java) {
+            resume.prepare(recovery, "Wrong archive password".toCharArray(),
+                currentConsent)
+        }
+        val offer = resume.prepare(recovery, pass, currentConsent)
+        assertThrows(IllegalArgumentException::class.java) {
+            resume.publish(recovery, pass, currentConsent, offer)
+        }
+        assertEquals(offer.rows, resume.publish(recovery, pass,
+            currentConsent, offer.copy(ownerApproved = true)))
+        assertEquals(NativeV9RecoveryInspector.State.VERIFIED_LIVE,
+            NativeV9RecoveryInspector(destination).inspect(
+                recovery, pass, currentConsent, true).state)
+        assertTrue(db.isFile && db.length() > 0)
+    }
+
     @Test fun allNativeV9TableTypesRestoreIntoIndependentEmptySqlcipher() {
         val ctx = sandbox()
         val store = EncryptedVaultStore(ctx)

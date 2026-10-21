@@ -24,6 +24,11 @@ internal fun NativeV9RestoreScreen(
         NativeRegistrationProof.Consent, NativeV9NewDeviceRestore.Review) -> Boolean,
     forensicAction: suspend (RestoreIdentityGate.Credentials, CharArray,
         NativeRegistrationProof.Consent) -> NativeV9RecoveryInspector.Inspection?,
+    resumePreviewAction: suspend (RestoreIdentityGate.Credentials, CharArray,
+        NativeRegistrationProof.Consent) -> NativeV9ManualResume.Offer? = { _, _, _ -> null },
+    resumePublishAction: suspend (RestoreIdentityGate.Credentials, CharArray,
+        NativeRegistrationProof.Consent, NativeV9ManualResume.Offer) -> Boolean =
+        { _, _, _, _ -> false },
     onBack: () -> Unit
 ) {
     var email by remember { mutableStateOf("") }
@@ -39,10 +44,19 @@ internal fun NativeV9RestoreScreen(
     var review by remember { mutableStateOf<NativeV9NewDeviceRestore.Review?>(null) }
     var publishApproved by remember { mutableStateOf(false) }
     var inspectApproved by remember { mutableStateOf(false) }
+    var forensicState by remember {
+        mutableStateOf<NativeV9RecoveryInspector.State?>(null)
+    }
+    var resumeOffer by remember { mutableStateOf<NativeV9ManualResume.Offer?>(null) }
+    var resumeApproved by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
-    fun invalidate() { review = null; publishApproved = false; message = "" }
+    fun invalidate() {
+        review = null; publishApproved = false; message = ""
+        forensicState = null; resumeOffer = null; resumeApproved = false
+        inspectApproved = false
+    }
     fun proof() = RestoreIdentityGate.Credentials(
         email, accountPassword, pan, dob, q1, a1, q2, a2)
     fun consent() = NativeRegistrationProof.Consent(
@@ -146,11 +160,14 @@ internal fun NativeV9RestoreScreen(
                     try {
                         val outcome = forensicAction(proof(),
                             archivePassword.toCharArray(), consent())
+                        forensicState = outcome?.state
+                        resumeOffer = null
+                        resumeApproved = false
                         message = if (outcome == null)
                             "No verified recovery evidence; no files were changed."
                         else "Forensic state: " + outcome.state +
                             ", verified rows: " + outcome.rows +
-                            ". Publication remains blocked pending manual approval."
+                            ". Inspection alone cannot publish or resume recovery."
                     } catch (_: Exception) {
                         message = "Forensic evidence rejected. No repair or retry was performed."
                     } finally {
@@ -159,6 +176,51 @@ internal fun NativeV9RestoreScreen(
                     }
                 }
             }) { Text("Inspect interrupted restore (read-only)") }
+            if (forensicState == NativeV9RecoveryInspector.State.VERIFIED_CANDIDATE) {
+                Text("An unpublished candidate has passed forensic inspection. " +
+                    "Manual resumption requires fresh owner proof and a second approval.")
+                OutlinedButton(enabled = ready && !busy, onClick = {
+                    busy = true
+                    scope.launch {
+                        try {
+                            resumeOffer = resumePreviewAction(proof(),
+                                archivePassword.toCharArray(), consent())
+                            resumeApproved = false
+                            message = if (resumeOffer == null)
+                                "Native candidate re-verification failed; no files changed."
+                            else "Reverified " + resumeOffer!!.rows +
+                                " typed source rows. Review before irreversible publication."
+                        } catch (_: Exception) {
+                            resumeOffer = null
+                            message = "Manual resume preparation blocked; evidence preserved."
+                        } finally { busy = false }
+                    }
+                }) { Text("Reverify native candidate for manual resumption") }
+                resumeOffer?.let { offer ->
+                    Checkbox(checked = resumeApproved,
+                        onCheckedChange = { resumeApproved = it && ready })
+                    Text("I explicitly approve publishing this same verified, previously " +
+                        "claimed encrypted candidate. Never overwrite an existing vault.")
+                    Button(enabled = ready && resumeApproved, onClick = {
+                        busy = true
+                        scope.launch {
+                            try {
+                                val ok = resumePublishAction(proof(),
+                                    archivePassword.toCharArray(), consent(),
+                                    offer.copy(ownerApproved = true))
+                                message = if (ok)
+                                    "Manual native recovery completed. Reauthenticate to open it."
+                                else "Manual resumption denied; existing artifacts preserved."
+                            } catch (_: Exception) {
+                                message = "Manual resumption blocked; evidence preserved."
+                            } finally {
+                                resumeOffer = null; resumeApproved = false
+                                forensicState = null; clearSecrets(); busy = false
+                            }
+                        }
+                    }) { Text("Approve manual native recovery publication") }
+                }
+            }
         }
         if (message.isNotEmpty()) Text(message)
     }
