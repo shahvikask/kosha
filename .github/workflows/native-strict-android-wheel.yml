@@ -146,9 +146,41 @@ jobs:
           test -s app/build/outputs/apk/debug/app-debug.apk
           test -s app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
           unzip -Z1 app/build/outputs/apk/debug/app-debug.apk > apk-entries.txt
-          grep -E 'pydantic_core|_pydantic_core' apk-entries.txt
-          grep -E 'pypdfium2|pdfium' apk-entries.txt
-          sha256sum app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          # Chaquopy packages Python wheels inside ABI-specific .imy ZIP assets.
+          # Flat APK entry greps cannot see Rust/PDFium binaries nested there.
+          python3 - <<'PY'
+          from hashlib import sha256
+          from io import BytesIO
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          app = Path("app/build/outputs/apk/debug/app-debug.apk")
+          instrumentation = Path("app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk")
+          with ZipFile(app) as apk:
+              entries = set(apk.namelist())
+              common_path = "assets/chaquopy/requirements-common.imy"
+              assert common_path in entries, "Missing Chaquopy common requirements"
+              with ZipFile(BytesIO(apk.read(common_path))) as common:
+                  packages = set(common.namelist())
+                  for metadata in ("pydantic_core-2.41.5.dist-info/METADATA",
+                                   "pypdfium2-5.14.0.dist-info/METADATA"):
+                      assert metadata in packages, f"Missing packaged metadata: {metadata}"
+
+              for abi, platform, machine in (("arm64-v8a", "aarch64", 183),
+                                             ("x86_64", "x86_64", 62)):
+                  assert f"lib/{abi}/libpython3.13.so" in entries, f"Missing Python runtime for {abi}"
+                  archive_path = f"assets/chaquopy/requirements-{abi}.imy"
+                  assert archive_path in entries, f"Missing Chaquopy requirements for {abi}"
+                  with ZipFile(BytesIO(apk.read(archive_path))) as requirements:
+                      for member in (f"pydantic_core/_pydantic_core.cpython-313-{platform}-linux-android.so",
+                                     "pypdfium2_raw/libpdfium.so"):
+                          binary = requirements.read(member)
+                          assert len(binary) > 1024 and binary[:4] == bytes((127, 69, 76, 70)), f"Invalid ELF: {abi}/{member}"
+                          assert int.from_bytes(binary[18:20], "little") == machine, f"Wrong ELF ABI: {abi}/{member}"
+                          print(f"VERIFIED {abi}/{member} sha256={sha256(binary).hexdigest()}")
+          for path in (app, instrumentation):
+              print(f"APK sha256={sha256(path.read_bytes()).hexdigest()} path={path}")
+          PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
