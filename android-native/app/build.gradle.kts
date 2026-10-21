@@ -64,6 +64,8 @@ dependencies {
     testImplementation(libs.compose.ui.test)
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
+    // Exercise actual system Keyguard and DocumentsUI outside Compose semantics.
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.compose.ui.test)
 }

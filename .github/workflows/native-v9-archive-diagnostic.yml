@@ -18,6 +18,8 @@ on:
       - android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeV9RestoreScreen.kt
       - android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeRestoreScreen.kt
       - android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeV9RestoreUiInstrumentedTest.kt
+      - android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeV9RealOsJourneyInstrumentedTest.kt
+      - android-native/app/build.gradle.kts
       - android-native/core/database/src/test/kotlin/in/growurdhan/database/NativeV9ArchiveTest.kt
       - android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeV9ArchiveInstrumentedTest.kt
 
@@ -63,7 +65,14 @@ jobs:
               source = Path("android-native/app/src/androidTest/kotlin") / Path(*clazz.split(".")).with_suffix(".kt")
               assert source.is_file(), f"Missing test source {source}"
               assert re.search(r"@Test\s+fun\s+" + re.escape(method) + r"\s*\(", source.read_text()), target
-          print("NATIVE_V9_STATIC_TARGET_INVENTORY=18 plus 2 isolated process phases")
+          os_source = Path("android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeV9RealOsJourneyInstrumentedTest.kt")
+          os_text = os_source.read_text()
+          for method in (
+              "realSystemCredentialCancellationAndActivityRestartRemainLocked",
+              "realDocumentsUiCancellationRevokesFreshOsAdmissionAndPreservesNoArchive"
+          ):
+              assert re.search(r"@Test\s+fun\s+" + method + r"\s*\(", os_text), method
+          print("NATIVE_V9_STATIC_TARGET_INVENTORY=18 grouped + 2 real OS + 2 isolated process phases")
           PY
       - uses: actions/setup-java@v4
         with:

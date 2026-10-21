@@ -37,8 +37,13 @@ test "${#UI_TESTS[@]}" -eq 3
 test "${#CORE_TESTS[@]}" -eq 15
 UI_CSV=$(IFS=,; echo "${UI_TESTS[*]}")
 CORE_CSV=$(IFS=,; echo "${CORE_TESTS[*]}")
+# Real, external Android credential + DocumentsUI boundary coverage.
+# This is a distinct instrumentation launch before costly archive tests.
+OS_TESTS="in.growurdhan.redevelopment.NativeV9RealOsJourneyInstrumentedTest#realSystemCredentialCancellationAndActivityRestartRemainLocked,in.growurdhan.redevelopment.NativeV9RealOsJourneyInstrumentedTest#realDocumentsUiCancellationRevokesFreshOsAdmissionAndPreservesNoArchive"
 timeout 10m adb shell am instrument -w -r -e class "$UI_CSV" "$RUNNER" \
   | tee native-v9-archive-adb.txt
+timeout 12m adb shell am instrument -w -r -e class "$OS_TESTS" "$RUNNER" \
+  | tee -a native-v9-archive-adb.txt
 timeout 25m adb shell am instrument -w -r -e class "$CORE_CSV" "$RUNNER" \
   | tee -a native-v9-archive-adb.txt
 # Phase I deliberately stops after a verified candidate is sealed, then the
@@ -75,16 +80,19 @@ expected={
  "tamperedNativeCandidateAndOccupiedTargetNeverResume",
  "interruptedManualResumePreservesPublishedKeyForNewExplicitReview",
  "corruptedNativeCandidateCannotBeOfferedForManualResume",
+ "realSystemCredentialCancellationAndActivityRestartRemainLocked",
+ "realDocumentsUiCancellationRevokesFreshOsAdmissionAndPreservesNoArchive",
  "processBoundaryPhaseOnePreservesVerifiedCandidate",
  "processBoundaryPhaseTwoFreshProcessReauthenticatesAndPublishes",
 }
 codes=re.findall(r"^INSTRUMENTATION_STATUS_CODE: (-?\d+)\s*$",data,re.M)
 assert expected == tests, f"Wrong test set (no financial contents): {tests}"
-assert codes.count("0") == 20 and codes.count("1") == 20, f"Wrong instrumentation status counts: {codes}"
+assert codes.count("0") == 22 and codes.count("1") == 22, f"Wrong instrumentation status counts: {codes}"
 assert all(c in ("0","1") for c in codes), "Failed/ignored instrumentation status"
+assert len(re.findall(r"^OK\s+\(2 tests\)",data,re.M)) == 1, "Missing real OS two-test group"
 assert len(re.findall(r"^OK\s+\(3 tests\)",data,re.M)) == 1, "Missing passing three-case Compose UI suite"
 assert len(re.findall(r"^OK\s+\(15 tests\)",data,re.M)) == 1, "Missing passing fifteen-case archive suite"
 assert len(re.findall(r"^OK\s+\(1 test\)",data,re.M)) == 2, "Missing both independent process terminal results"
 assert not any(s in data for s in ("FAILURES!!!","INSTRUMENTATION_FAILED"))
-print("NATIVE_V9_ARCHIVE=20 passed=20 failed=0 skipped=0")
+print("NATIVE_V9_ARCHIVE=22 passed=22 failed=0 skipped=0")
 PY
