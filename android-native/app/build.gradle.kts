@@ -85,7 +85,9 @@ chaquopy {
             // Fail strictly if those wheels are missing: no ABI substitution.
             options("--find-links", project.layout.projectDirectory.dir(
                 "python-wheels").asFile.absolutePath)
-            options("--only-binary", "pydantic-core,pypdfium2")
+            // Explicit Android platform constraints require all pip dependencies to be wheels.
+            // Fail closed rather than compiling unsupported Linux binaries.
+            options("--only-binary", ":all:")
             install("pydantic==2.12.5")
             install("pydantic-core==2.41.5")
             install("pypdfium2==5.14.0")

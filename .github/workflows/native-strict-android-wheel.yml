@@ -1,5 +1,6 @@
 name: GrowUrDhan strict Android Python-wheel build
 # Owner-authorized exact-SHA strict packaging; no release/publishing.
+# Revalidate pip Android --only-binary=:all: compatibility against this exact source SHA.
 on:
   workflow_dispatch:
   push:
