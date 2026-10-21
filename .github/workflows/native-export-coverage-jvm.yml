@@ -1,0 +1,82 @@
+name: GrowUrDhan native export coverage JVM preflight
+
+# Exact-SHA cheap P03/P04/P28 contract test and Kotlin compile.
+# NO emulator, release or financial export acceptance.
+on:
+  workflow_dispatch:
+  push:
+    branches: [GUD-Android-Redevelopment]
+    paths:
+      - .github/workflows/native-export-coverage-jvm.yml
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  export-coverage:
+    if: github.ref == 'refs/heads/GUD-Android-Redevelopment'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Verify exact SHA and frozen-source boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/GUD-Android-Redevelopment
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code 92cbf6f364fffa52ba525f3042e16ceb3c6bc644 "$GITHUB_SHA" -- src/ src-tauri/ scripts/
+          echo "P28_EXPORT_COVERAGE_SOURCE_SHA=$GITHUB_SHA"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Reuse audited Android wheels without rebuilding Rust/PDFium
+        uses: actions/download-artifact@v4
+        with:
+          repository: shahvikask/kosha
+          run-id: 39526640647
+          github-token: ${{ github.token }}
+          name: source-pinned-android-python-wheels
+          path: android-native/app/python-wheels
+      - name: Verify source-pinned wheel manifest
+        run: cd android-native/app/python-wheels && sha256sum -c SHA256SUMS
+      - name: Run all database JVM tests, then compile native Android Kotlin
+        working-directory: android-native
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :core:database:test :app:compileDebugKotlin --no-daemon --stacktrace
+      - name: Assert original JVM report and new coverage tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          paths=list(Path("android-native/core/database/build/test-results/test").rglob("TEST-*.xml"))
+          assert paths, "No database JVM report"
+          cases=[c for p in paths for c in ET.parse(p).getroot().findall(".//testcase")]
+          assert cases and not any(c.find(t) is not None for c in cases for t in ("failure","error","skipped")), "JVM failures/skips"
+          new=[c for c in cases if "NativeV9ExportCoverageTest" in c.attrib.get("classname","")]
+          assert len(new)==5, f"Expected five new export safeguards, got {len(new)}"
+          print(f"DATABASE_JVM_PASSED={len(cases)} NEW_EXPORT_COVERAGE_JVM_PASSED=5")
+          PY
+      - name: Preserve JVM XML and tested-source receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p28-native-export-coverage-jvm-evidence
+          path: android-native/core/database/build/test-results/test/TEST-*.xml
+          if-no-files-found: warn
+          retention-days: 14
