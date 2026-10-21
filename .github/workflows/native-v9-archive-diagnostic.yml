@@ -6,6 +6,7 @@ on:
     branches: [GUD-Android-Redevelopment]
     paths:
       - .github/workflows/native-v9-archive-diagnostic.yml
+      - .github/scripts/native-v9-archive-diagnostic.sh
       - android-native/core/database/src/main/kotlin/in/growurdhan/database/NativeV9RecoveryProof.kt
       - android-native/core/database/src/test/kotlin/in/growurdhan/database/NativeV9RecoveryProofTest.kt
       - android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeV9NewDeviceRestore.kt
@@ -44,6 +45,26 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           git diff --exit-code 272a271508d28b5bbcaf724def8e7eb568b38b56 "$GITHUB_SHA" -- src/ src-tauri/ scripts/
           echo "NATIVE_V9_ARCHIVE_SOURCE_SHA=$GITHUB_SHA"
+      - name: Preflight diagnostic harness shell syntax before expensive Android steps
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n .github/scripts/native-v9-archive-diagnostic.sh
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          harness = Path(".github/scripts/native-v9-archive-diagnostic.sh").read_text()
+          suite = re.search(r'^MAIN_TESTS="([^"]+)"', harness, re.M)
+          assert suite, "No explicit Android target test inventory"
+          selected = suite.group(1).split(",")
+          assert len(selected) == len(set(selected)) == 18, "Expected 18 unique grouped tests"
+          for target in selected:
+              clazz, method = target.split("#", 1)
+              source = Path("android-native/app/src/androidTest/kotlin") / Path(*clazz.split(".")).with_suffix(".kt")
+              assert source.is_file(), f"Missing test source {source}"
+              assert re.search(r"@Test\s+fun\s+" + re.escape(method) + r"\s*\(", source.read_text()), target
+          print("NATIVE_V9_STATIC_TARGET_INVENTORY=18 plus 2 isolated process phases")
+          PY
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
