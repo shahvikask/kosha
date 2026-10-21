@@ -1,0 +1,133 @@
+name: GrowUrDhan native CAS emulator smoke
+
+# A deliberately narrow, owner-authorized runtime check after strict Android
+# APK/wheel packaging passed. It is NOT P01-P34 acceptance or a real CAS PDF test.
+# Reuse the already-verified APK artifacts to avoid another costly Rust/PDFium
+# wheel build. A source diff is a hard failure before starting the emulator.
+on:
+  workflow_dispatch:
+  push:
+    branches: [GUD-Android-Redevelopment]
+    paths:
+      - .github/workflows/native-cas-emulator-smoke.yml
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: native-cas-emulator-smoke-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  cas-runtime:
+    name: API35 x86_64 frozen CAS/PDFium loading and source-boundary tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 38
+    env:
+      BUILT_SOURCE_SHA: 02cd5868547c21240b9524b8a8914b30173e2386
+      BUILT_WORKFLOW_RUN: '39526640647'
+    steps:
+      - name: Check out triggering commit with exact build source available
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove source/fixtures/Android tests are identical to strict build
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git cat-file -e "$BUILT_SOURCE_SHA^{commit}"
+          # Differences in this new workflow/handoff are permissible; changes
+          # to the Android test source, frozen parser or Gradle inputs are NOT.
+          git diff --exit-code "$BUILT_SOURCE_SHA" "$GITHUB_SHA" -- \
+            android-native/ src/ scripts/ src-tauri/
+          echo "TESTED_BINARY_SOURCE_SHA=$BUILT_SOURCE_SHA"
+          echo "WORKFLOW_SHA=$GITHUB_SHA"
+      - name: Reuse exact successful strict-build APK evidence
+        uses: actions/download-artifact@v4
+        with:
+          repository: shahvikask/kosha
+          run-id: 39526640647
+          github-token: ${{ github.token }}
+          name: exact-sha-strict-android-build-evidence
+          path: prior-strict-build
+      - name: Verify the original built APK digests before emulation
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$(find prior-strict-build -name app-debug.apk -type f -print -quit)"
+          TEST="$(find prior-strict-build -name app-debug-androidTest.apk -type f -print -quit)"
+          test -n "$APP" && test -n "$TEST"
+          echo 'd394c0b4a54981a255c594a264af360ce29fee4dcd022f62193132703973af39  '"$APP" | sha256sum -c -
+          echo '58935025ad356b80e7953292bd0fa7afcf228017506ed9e06bf13e41736ab01c  '"$TEST" | sha256sum -c -
+          echo "APP_APK=$APP" >> "$GITHUB_ENV"
+          echo "TEST_APK=$TEST" >> "$GITHUB_ENV"
+          echo "APK_BUILD_SHA=$BUILT_SOURCE_SHA" > cas-runtime-provenance.txt
+          echo "APK_GITHUB_WORKFLOW_RUN=$BUILT_WORKFLOW_RUN" >> cas-runtime-provenance.txt
+      - name: Configure emulator KVM access
+        shell: bash
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm
+          else echo "::warning::No /dev/kvm available; emulator may be slow"; fi
+      - name: Execute frozen on-device Python/PDFium runtime and CAS boundary tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 3072M
+          heap-size: 512M
+          force-avd-creation: true
+          disable-animations: true
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: |
+            set -euo pipefail
+            test "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" = "35"
+            adb install -r "$APP_APK"
+            adb install -r "$TEST_APK"
+            adb shell am instrument -w -r \
+              -e class 'in.growurdhan.redevelopment.NativeCasPdfEngineInstrumentedTest,in.growurdhan.redevelopment.NativeCasOutputReviewGateInstrumentedTest' \
+              in.growurdhan.redevelopment.test/androidx.test.runner.AndroidJUnitRunner \
+              | tee cas-runtime-adb.txt
+            # am instrument may return zero despite test failures. Parse the raw
+            # original test output, not just the GitHub runner's exit code.
+            python3 - <<'PY'
+            from pathlib import Path
+            import re
+            data = Path("cas-runtime-adb.txt").read_text()
+            expected = {
+                "arbitraryBytesNeverReachPythonPdfParser",
+                "tooLargeOrMissingPdfNameIsRejectedBeforePasswordHandling",
+                "explicitFullPanIsRequiredBeforePythonIsInvoked",
+                "packagedFrozenCasparserAndPdfiumActuallyLoadOnAndroid",
+                "singleSyntheticOriginalFormatAccountPassesStrictPayloadGate",
+                "multipleAccountsCannotAssumeFirstDematOwnerOwnsEverything",
+                "validMultiHoldingSourceSubtotalReconcilesToFrozenParserTotal",
+                "tamperedIndividualHoldingCannotHideBehindConsistentGrandTotals",
+                "missingStringAndNonfiniteSourceAmountsAreNotConvertedToZero",
+                "reportIntegrityAndFullOwnerPanAreMandatoryBeforePreview",
+            }
+            methods = set(re.findall(r"^INSTRUMENTATION_STATUS: test=(\S+)$", data, re.M))
+            completed = len(re.findall(r"^INSTRUMENTATION_STATUS_CODE: 0\s*$", data, re.M))
+            assert methods == expected, f"Expected named CAS tests; got {sorted(methods)}"
+            assert completed == len(expected), f"Expected 10 successful methods, got {completed}"
+            assert re.search(r"\bOK \(10 tests\)", data), "Instrumentation did not finish cleanly"
+            assert "FAILURES!!!" not in data and "INSTRUMENTATION_FAILED" not in data
+            print("API35_NATIVE_CAS_RUNTIME_CONFIRMED=10 passed=10 failed=0 skipped=0")
+            PY
+      - name: Preserve original emulator instrumentation and binary provenance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api35-frozen-cas-emulator-original-test-output
+          path: |
+            cas-runtime-adb.txt
+            cas-runtime-provenance.txt
+          if-no-files-found: warn
+          retention-days: 14
