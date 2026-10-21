@@ -52,9 +52,12 @@ internal fun NativeV9RestoreScreen(
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
-    fun invalidate() {
+    fun invalidate(keepForensicHint: Boolean = false) {
         review = null; publishApproved = false; message = ""
-        forensicState = null; resumeOffer = null; resumeApproved = false
+        // The read-only forensic hint survives secret re-entry, but neither
+        // a verified offer nor owner approval can survive any input change.
+        if (!keepForensicHint) forensicState = null
+        resumeOffer = null; resumeApproved = false
         inspectApproved = false
     }
     fun proof() = RestoreIdentityGate.Credentials(
@@ -83,10 +86,10 @@ internal fun NativeV9RestoreScreen(
         if (deviceVerified) {
             OutlinedTextField(email, { email = it; invalidate() },
                 label = { Text("Original account email") })
-            OutlinedTextField(accountPassword, { accountPassword = it; invalidate() },
+            OutlinedTextField(accountPassword, { accountPassword = it; invalidate(keepForensicHint = true) },
                 label = { Text("Original account password") },
                 visualTransformation = PasswordVisualTransformation())
-            OutlinedTextField(archivePassword, { archivePassword = it; invalidate() },
+            OutlinedTextField(archivePassword, { archivePassword = it; invalidate(keepForensicHint = true) },
                 label = { Text("Separate backup password") },
                 visualTransformation = PasswordVisualTransformation())
             OutlinedTextField(pan, { pan = it; invalidate() },
@@ -95,12 +98,12 @@ internal fun NativeV9RestoreScreen(
                 label = { Text("Original date of birth (YYYY-MM-DD)") })
             OutlinedTextField(q1, { q1 = it; invalidate() },
                 label = { Text("First security question ID") })
-            OutlinedTextField(a1, { a1 = it; invalidate() },
+            OutlinedTextField(a1, { a1 = it; invalidate(keepForensicHint = true) },
                 label = { Text("First answer") },
                 visualTransformation = PasswordVisualTransformation())
             OutlinedTextField(q2, { q2 = it; invalidate() },
                 label = { Text("Second security question ID") })
-            OutlinedTextField(a2, { a2 = it; invalidate() },
+            OutlinedTextField(a2, { a2 = it; invalidate(keepForensicHint = true) },
                 label = { Text("Second answer") },
                 visualTransformation = PasswordVisualTransformation())
             NativeTermsGate(acceptedAt, enabled = !busy,
