@@ -7,8 +7,6 @@ on:
     branches: [GUD-Android-Redevelopment]
     paths:
       - .github/workflows/native-p29-saf-diagnostic.yml
-      - android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeSafEncryptedBackupWriter.kt
-      - android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeSafBackupWriterInstrumentedTest.kt
 
 permissions:
   contents: read
