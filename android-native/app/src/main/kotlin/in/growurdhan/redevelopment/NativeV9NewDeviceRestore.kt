@@ -107,7 +107,8 @@ internal class NativeV9NewDeviceRestore(
      */
     fun publishAfterOwnerReview(credentials: RestoreIdentityGate.Credentials,
         backupPassword: CharArray, consent: NativeRegistrationProof.Consent,
-        reviewed: Review, explicitOwnerApproval: Boolean): Int {
+        reviewed: Review, explicitOwnerApproval: Boolean,
+        deviceAdmissionStillValid: () -> Boolean): Int {
         require(explicitOwnerApproval && reviewed.ownerApproved) {
             "New device owner must explicitly approve a matching preview"
         }
@@ -117,6 +118,9 @@ internal class NativeV9NewDeviceRestore(
             "Secure Android device lock is required for native recovery"
         }
         return VaultLifecycleLock.exclusively(context) {
+            check(deviceAdmissionStillValid()) {
+                "Fresh native recovery denied: Android OS admission is no longer valid"
+            }
             UnusedVaultTargetGuard.requireUnused(context,
                 allowAlreadyStagedArchive = true)
             val archive = StableStagedArchiveReader.read(pending.toPath())
@@ -132,6 +136,9 @@ internal class NativeV9NewDeviceRestore(
                 require(reviewed.copy(ownerApproved = false) ==
                     Review(digest(archive), proof.snapshotSha256, proof.rowCount, false)) {
                     "Authenticated archive or owner review changed"
+                }
+                check(deviceAdmissionStillValid()) {
+                    "Fresh native recovery OS admission revoked during owner verification"
                 }
                 val dir = File(context.noBackupFilesDir, "restore-claims").toPath()
                 if (!Files.exists(dir, LinkOption.NOFOLLOW_LINKS))
@@ -190,10 +197,19 @@ internal class NativeV9NewDeviceRestore(
                     context.noBackupFilesDir.toPath(), proof.snapshotSha256, consent)
                 require(digest(StableStagedArchiveReader.read(pending.toPath())) ==
                     reviewed.archiveSha256) { "Staged ciphertext changed before publication" }
+                // A revoked foreground ticket must not publish a key envelope.
+                check(deviceAdmissionStillValid()) {
+                    "Fresh native recovery OS admission revoked before key publication"
+                }
                 // Both names are exclusively reserved. No delete/retry on crash.
                 EncryptedRestorePublisher.publishReservedAtomic(
                     keyFile.toPath(), liveKey.toPath())
                 faultAt?.invoke(Boundary.AFTER_KEY_PUBLICATION)
+                // If revoked between publication phases, preserve key, claim,
+                // candidate and staging for explicit, reauthenticated manual resume.
+                check(deviceAdmissionStillValid()) {
+                    "Fresh native recovery OS admission revoked before database publication"
+                }
                 EncryptedRestorePublisher.publishReservedAtomic(
                     candidate.toPath(), target.toPath())
                 faultAt?.invoke(Boundary.AFTER_DATABASE_PUBLICATION)

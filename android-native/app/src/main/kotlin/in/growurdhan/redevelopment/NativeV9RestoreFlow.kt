@@ -39,9 +39,11 @@ internal class NativeV9RestoreFlow(private val context: Context) {
 
     fun publish(proof: RestoreIdentityGate.Credentials, password: CharArray,
         consent: NativeRegistrationProof.Consent,
-        review: NativeV9NewDeviceRestore.Review): Int =
+        review: NativeV9NewDeviceRestore.Review,
+        deviceAdmissionStillValid: () -> Boolean): Int =
         recovery.publishAfterOwnerReview(proof, password, consent,
-            review, explicitOwnerApproval = review.ownerApproved)
+            review, explicitOwnerApproval = review.ownerApproved,
+            deviceAdmissionStillValid = deviceAdmissionStillValid)
 
     /** The forensic inspector and authenticated source are revalidated under one lock. */
     fun prepareManualResume(proof: RestoreIdentityGate.Credentials, password: CharArray,

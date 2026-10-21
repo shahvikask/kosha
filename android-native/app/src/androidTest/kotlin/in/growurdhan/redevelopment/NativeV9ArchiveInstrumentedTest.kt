@@ -156,11 +156,21 @@ class NativeV9ArchiveInstrumentedTest {
         assertTrue(reviewed.rows > 18)
         assertThrows(IllegalArgumentException::class.java) {
             restore.publishAfterOwnerReview(recovery, pass, currentConsent,
-                reviewed, explicitOwnerApproval = false)
+                reviewed, explicitOwnerApproval = false, deviceAdmissionStillValid = { true })
         }
         assertFalse(destination.getDatabasePath("growurdhan-v9.sqlcipher").exists())
+        // Rejected foreground admission must leave the single-use claim unused
+        // and may not publish either of the final vault names.
+        assertThrows(IllegalStateException::class.java) {
+            restore.publishAfterOwnerReview(recovery, pass, currentConsent,
+                reviewed.copy(ownerApproved = true), explicitOwnerApproval = true,
+                deviceAdmissionStillValid = { false })
+        }
+        assertFalse(File(destination.noBackupFilesDir, "restore-claims").exists())
+        assertFalse(File(destination.noBackupFilesDir, "vault-key.v1").exists())
+        assertFalse(destination.getDatabasePath("growurdhan-v9.sqlcipher").exists())
         val inserted = restore.publishAfterOwnerReview(recovery, pass, currentConsent,
-            reviewed.copy(ownerApproved = true), explicitOwnerApproval = true)
+            reviewed.copy(ownerApproved = true), explicitOwnerApproval = true, deviceAdmissionStillValid = { true })
         assertEquals(reviewed.rows, inserted)
         val forensic = NativeV9RecoveryInspector(destination).inspect(
             recovery, pass, currentConsent, explicitOwnerApproval = true)
@@ -194,7 +204,7 @@ class NativeV9ArchiveInstrumentedTest {
         } finally { key.fill(0) }
         assertThrows(Exception::class.java) {
             restore.publishAfterOwnerReview(recovery, pass, currentConsent,
-                reviewed.copy(ownerApproved = true), true)
+                reviewed.copy(ownerApproved = true), true, deviceAdmissionStillValid = { true })
         }
         assertArrayEquals(archive, StableStagedArchiveReader.read(
             File(destination.noBackupFilesDir, "restore-pending.v1.kosha").toPath()))
@@ -214,7 +224,7 @@ class NativeV9ArchiveInstrumentedTest {
         val review = restore.preview(recovery, pass, currentConsent)
         assertThrows(IllegalStateException::class.java) {
             restore.publishAfterOwnerReview(recovery, pass, currentConsent,
-                review.copy(ownerApproved = true), true)
+                review.copy(ownerApproved = true), true, deviceAdmissionStillValid = { true })
         }
         val terms = File(destination.noBackupFilesDir,
             "restore-terms/restore-" + review.snapshotSha256 + ".terms")
@@ -245,7 +255,7 @@ class NativeV9ArchiveInstrumentedTest {
         val preview = restoration.preview(recovery, pass, currentConsent)
         assertThrows(IllegalStateException::class.java) {
             restoration.publishAfterOwnerReview(recovery, pass, currentConsent,
-                preview.copy(ownerApproved = true), true)
+                preview.copy(ownerApproved = true), true, deviceAdmissionStillValid = { true })
         }
         val liveKey = File(destination.noBackupFilesDir, "vault-key.v1")
         val liveDb = destination.getDatabasePath("growurdhan-v9.sqlcipher")
@@ -276,7 +286,7 @@ class NativeV9ArchiveInstrumentedTest {
         val review = restoration.preview(recovery, pass, currentConsent)
         assertThrows(java.io.IOException::class.java) {
             restoration.publishAfterOwnerReview(recovery, pass, currentConsent,
-                review.copy(ownerApproved = true), true)
+                review.copy(ownerApproved = true), true, deviceAdmissionStillValid = { true })
         }
         val inspection = NativeV9RecoveryInspector(destination).inspect(
             recovery, pass, currentConsent, true)
@@ -302,7 +312,7 @@ class NativeV9ArchiveInstrumentedTest {
         val reviewed = restore.preview(recovery, pass, currentConsent)
         assertThrows(IllegalStateException::class.java) {
             restore.publishAfterOwnerReview(recovery, pass, currentConsent,
-                reviewed.copy(ownerApproved = true), true)
+                reviewed.copy(ownerApproved = true), true, deviceAdmissionStillValid = { true })
         }
         assertEquals(1, faultCount)
         val forensic = NativeV9RecoveryInspector(destination).inspect(
@@ -324,7 +334,7 @@ class NativeV9ArchiveInstrumentedTest {
         assertThrows(Exception::class.java) {
             NativeV9NewDeviceRestore(destination).publishAfterOwnerReview(
                 recovery, pass, currentConsent,
-                reviewed.copy(ownerApproved = true), true)
+                reviewed.copy(ownerApproved = true), true, deviceAdmissionStillValid = { true })
         }
         assertThrows(Exception::class.java) {
             EncryptedVaultStore(destination).createFresh(false).close()
@@ -345,7 +355,7 @@ class NativeV9ArchiveInstrumentedTest {
         val initial = first.preview(recovery, pass, currentConsent)
         assertThrows(IllegalStateException::class.java) {
             first.publishAfterOwnerReview(recovery, pass, currentConsent,
-                initial.copy(ownerApproved = true), true)
+                initial.copy(ownerApproved = true), true, deviceAdmissionStillValid = { true })
         }
         val resume = NativeV9ManualResume(destination)
         val offer = resume.prepare(recovery, pass, currentConsent)
@@ -388,7 +398,7 @@ class NativeV9ArchiveInstrumentedTest {
         val initial = first.preview(recovery, pass, currentConsent)
         assertThrows(IllegalStateException::class.java) {
             first.publishAfterOwnerReview(recovery, pass, currentConsent,
-                initial.copy(ownerApproved = true), true)
+                initial.copy(ownerApproved = true), true, deviceAdmissionStillValid = { true })
         }
         val key = File(destination.noBackupFilesDir, "vault-key.v1")
         val immutableKey = key.readBytes()
@@ -413,7 +423,7 @@ class NativeV9ArchiveInstrumentedTest {
         val initial = first.preview(recovery, pass, currentConsent)
         assertThrows(IllegalStateException::class.java) {
             first.publishAfterOwnerReview(recovery, pass, currentConsent,
-                initial.copy(ownerApproved = true), true)
+                initial.copy(ownerApproved = true), true, deviceAdmissionStillValid = { true })
         }
         val resume = NativeV9ManualResume(destination)
         val offer = resume.prepare(recovery, pass, currentConsent)
@@ -441,7 +451,7 @@ class NativeV9ArchiveInstrumentedTest {
         val initial = first.preview(recovery, pass, currentConsent)
         assertThrows(IllegalStateException::class.java) {
             first.publishAfterOwnerReview(recovery, pass, currentConsent,
-                initial.copy(ownerApproved = true), true)
+                initial.copy(ownerApproved = true), true, deviceAdmissionStillValid = { true })
         }
         val interrupted = NativeV9ManualResume(destination) {
             if (it == NativeV9ManualResume.Boundary.AFTER_KEY_PUBLICATION)
@@ -480,7 +490,7 @@ class NativeV9ArchiveInstrumentedTest {
         val beforeRevocation = interruptedOriginal.preview(recovery, pass, currentConsent)
         assertThrows(IllegalStateException::class.java) {
             interruptedOriginal.publishAfterOwnerReview(recovery, pass, currentConsent,
-                beforeRevocation.copy(ownerApproved = true), true)
+                beforeRevocation.copy(ownerApproved = true), true, deviceAdmissionStillValid = { true })
         }
         var admitted = true
         val interruptedByOs = NativeV9ManualResume(revokedTarget) { point ->
@@ -513,7 +523,7 @@ class NativeV9ArchiveInstrumentedTest {
         val original = first.preview(recovery, pass, currentConsent)
         assertThrows(IllegalStateException::class.java) {
             first.publishAfterOwnerReview(recovery, pass, currentConsent,
-                original.copy(ownerApproved = true), true)
+                original.copy(ownerApproved = true), true, deviceAdmissionStillValid = { true })
         }
         val file = destination.getDatabasePath("growurdhan-v9.sqlcipher")
             .parentFile!!.listFiles()!!.single {
@@ -560,7 +570,7 @@ class NativeV9ArchiveInstrumentedTest {
         val review = first.preview(recovery, pass, currentConsent)
         assertThrows(IllegalStateException::class.java) {
             first.publishAfterOwnerReview(recovery, pass, currentConsent,
-                review.copy(ownerApproved = true), true)
+                review.copy(ownerApproved = true), true, deviceAdmissionStillValid = { true })
         }
         val offered = NativeV9ManualResume(destination).prepare(
             recovery, pass, currentConsent)

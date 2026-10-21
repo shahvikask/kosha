@@ -189,11 +189,15 @@ class MainActivity : ComponentActivity() {
                         },
                         publishAction = { proof, password, consent, review ->
                             try {
-                                val ok = if (!admission.valid() || !deviceVerified || unlocked ||
+                                // The same Keyguard challenge must remain admitted at
+                                // publication boundaries inside VaultLifecycleLock.
+                                val ticket = admission.ticket()
+                                val ok = if (ticket == null || !deviceVerified || unlocked ||
                                     !review.ownerApproved) false
                                 else withContext(Dispatchers.IO) {
                                     runCatching {
-                                        nativeRestoreFlow.publish(proof, password, consent, review)
+                                        nativeRestoreFlow.publish(proof, password, consent,
+                                            review) { admission.validTicket(ticket) }
                                         true
                                     }.getOrDefault(false)
                                 }
