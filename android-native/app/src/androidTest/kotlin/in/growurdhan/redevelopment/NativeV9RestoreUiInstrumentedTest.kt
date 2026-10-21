@@ -92,6 +92,12 @@ class NativeV9RestoreUiInstrumentedTest {
         fill("nativeRecoveryArchivePassword", "long-sample-phrase")
         fill("nativeRecoveryAnswer1", "answer1")
         fill("nativeRecoveryAnswer2", "answer2")
+        // PAN/DOB are mandatory parts of the original owner proof, not merely
+        // backend checks after the UI has offered an eligible action.
+        compose.onNodeWithText("Verify native identity and preview")
+            .performScrollTo().assertIsNotEnabled()
+        fill("nativeRecoveryPan", "ABCDE1234F")
+        fill("nativeRecoveryDob", "1985-01-01")
         compose.onNodeWithTag("nativeRecoveryTermsScroller")
             .performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, 100000f) }
         compose.onNodeWithText("I accept the full versioned Terms")

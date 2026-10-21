@@ -119,6 +119,8 @@ internal fun NativeV9RestoreScreen(
                 onDecline = { clearSecrets(); onBack() })
             val ready = !busy && acceptedAt != null && email.isNotBlank() &&
                 accountPassword.isNotBlank() && archivePassword.length >= 12 &&
+                pan.isNotBlank() && dob.isNotBlank() &&
+                q1.isNotBlank() && q2.isNotBlank() &&
                 a1.isNotBlank() && a2.isNotBlank()
             Button(enabled = staged && ready, onClick = {
                 busy = true
