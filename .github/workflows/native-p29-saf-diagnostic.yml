@@ -1,0 +1,110 @@
+name: GrowUrDhan P29 SAF exact-source diagnostic
+
+# Owner-authorized targeted security test, not P01-P34 acceptance.
+on:
+  workflow_dispatch:
+  push:
+    branches: [GUD-Android-Redevelopment]
+    paths:
+      - .github/workflows/native-p29-saf-diagnostic.yml
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  p29-saf:
+    if: github.ref == 'refs/heads/GUD-Android-Redevelopment'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Exact SHA, branch and frozen source guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/GUD-Android-Redevelopment
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code 5e8e19765352ff77f6f2aaf8955388b570b5791c "$GITHUB_SHA" -- src/ src-tauri/ scripts/
+          echo "P29_SOURCE_SHA=$GITHUB_SHA"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Reuse source-pinned Android Python wheels
+        uses: actions/download-artifact@v4
+        with:
+          repository: shahvikask/kosha
+          run-id: 39526640647
+          github-token: ${{ github.token }}
+          name: source-pinned-android-python-wheels
+          path: android-native/app/python-wheels
+      - name: Verify wheels and compile current source plus JVM suites
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd android-native/app/python-wheels && sha256sum -c SHA256SUMS)
+          cd android-native
+          chmod +x gradlew
+          ./gradlew :core:model:test :core:database:test :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --stacktrace
+      - name: Confirm zero-skip JVM XML and APK hash evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          for m in ("model","database"):
+              reports=list((Path("android-native/core")/m/"build/test-results/test").rglob("TEST-*.xml"))
+              assert reports, f"Missing {m} test reports"
+              cases=[c for p in reports for c in ET.parse(p).getroot().findall(".//testcase")]
+              assert cases and not any(c.find(t) is not None for c in cases for t in ("failure","error","skipped"))
+              print(f"P29_JVM_{m.upper()}_PASS={len(cases)}")
+          PY
+          APP=android-native/app/build/outputs/apk/debug/app-debug.apk
+          TEST=android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          test -s "$APP" && test -s "$TEST"
+          sha256sum "$APP" "$TEST" > p29-apk-sha256.txt
+          echo "P29_TESTED_SHA=$GITHUB_SHA" > p29-provenance.txt
+          echo "APP_APK=$APP" >> "$GITHUB_ENV"
+          echo "TEST_APK=$TEST" >> "$GITHUB_ENV"
+      - name: KVM access
+        shell: bash
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - name: Execute P29 SAF regression on API35
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 3072M
+          heap-size: 512M
+          disable-animations: true
+          force-avd-creation: true
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: bash .github/scripts/native-p29-saf-diagnostic.sh
+      - name: Upload original Android and JVM evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p29-saf-exact-source-test-evidence
+          path: |
+            p29-saf-adb.txt
+            p29-apk-sha256.txt
+            p29-provenance.txt
+            android-native/core/model/build/test-results/test/TEST-*.xml
+            android-native/core/database/build/test-results/test/TEST-*.xml
+          if-no-files-found: warn
+          retention-days: 14
