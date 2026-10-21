@@ -43,7 +43,7 @@ class NativeV9ArchiveTest {
         assertEquals(SchemaV9Catalog.tables.size, recovered.tables.size)
         assertEquals(Long.MIN_VALUE + 75,
             recovered.tables.first().rows.first().first().boundValue())
-        assertEquals(-0.0.toRawBits(), (recovered.tables.first { it.columns.size > 4 }.rows.first()[4]
+        assertEquals((-0.0).toRawBits(), (recovered.tables.first { it.columns.size > 4 }.rows.first()[4]
             .boundValue() as Double).toRawBits())
         assertArrayEquals(byteArrayOf(0, 1, -1, 127),
             recovered.tables.first().rows.first()[2].boundValue() as ByteArray)

@@ -6,6 +6,7 @@ on:
     branches: [GUD-Android-Redevelopment]
     paths:
       - .github/workflows/native-v9-archive-diagnostic.yml
+      - android-native/core/database/src/test/kotlin/in/growurdhan/database/NativeV9ArchiveTest.kt
 
 permissions:
   contents: read
