@@ -7,6 +7,7 @@ on:
     paths:
       - .github/workflows/native-v9-archive-diagnostic.yml
       - android-native/core/database/src/test/kotlin/in/growurdhan/database/NativeV9ArchiveTest.kt
+      - android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeV9ArchiveInstrumentedTest.kt
 
 permissions:
   contents: read

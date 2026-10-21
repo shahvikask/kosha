@@ -123,7 +123,7 @@ class NativeV9ArchiveInstrumentedTest {
         val bad = valid.copyOf().also { it[40] = (it[40].toInt() xor 1).toByte() }
         val table = snapshot.tables.single { it.name == "vault_account" }
         val duplicate = snapshot.copy(tables = snapshot.tables.map {
-            if (it.name == table.name) it.copy(rows = it.rows + it.rows.first())
+            if (it.name == table.name) it.copy(rows = it.rows + listOf(it.rows.first()))
             else it
         })
         val poisoned = NativeV9Archive.encrypt(duplicate, email, pass)
