@@ -142,7 +142,8 @@ internal fun NativeV9RestoreScreen(
                     " original rows. A permanent one-use recovery claim will be created.")
                 Text("Only an unused vault can be published; never merge or overwrite.")
                 Checkbox(checked = publishApproved,
-                    onCheckedChange = { publishApproved = it && ready })
+                    onCheckedChange = { publishApproved = it && ready },
+                    modifier = Modifier.testTag("nativeRecoveryPublishApproval"))
                 Text("I approve creating one new private vault from this exact " +
                     "authenticated source and its current Terms.")
                 Button(enabled = ready && publishApproved, onClick = {

@@ -1,5 +1,8 @@
 package `in`.growurdhan.redevelopment
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -22,17 +25,38 @@ import org.junit.runner.RunWith
 class NativeV9RestoreUiInstrumentedTest {
     @get:Rule val compose = createComposeRule()
 
+    /**
+     * Complete Compose callback choreography for native source selection ->
+     * revoked session -> fresh device admission -> owner proof/Terms ->
+     * authenticated preview -> separate owner approval -> publication.
+     * SAF and Keyguard are synthetic callbacks here; real OS UI is NOT tested.
+     */
     @Test fun nativeFileAndForensicSelectionRequireDeviceAdmission() {
-        var pick = 0
-        var preview = 0
+        var deviceAdmitted by mutableStateOf(false)
+        var staged by mutableStateOf(false)
+        var selected = 0
+        var previews = 0
+        var published = 0
         var forensic = 0
         compose.setContent {
             GudTheme {
                 NativeV9RestoreScreen(
-                    deviceVerified = false, staged = false,
-                    selectEncryptedFile = { pick++ },
-                    previewAction = { _, _, _ -> preview++; null },
-                    publishAction = { _, _, _, _ -> false },
+                    deviceVerified = deviceAdmitted, staged = staged,
+                    selectEncryptedFile = {
+                        selected++
+                        staged = true
+                        deviceAdmitted = false // SAF leaves the Activity; OS admission expires.
+                    },
+                    previewAction = { _, _, _ ->
+                        previews++
+                        NativeV9NewDeviceRestore.Review(
+                            "a".repeat(64), "b".repeat(64), 2, false)
+                    },
+                    publishAction = { _, _, _, review ->
+                        assertEquals(true, review.ownerApproved)
+                        published++
+                        true
+                    },
                     forensicAction = { _, _, _ -> forensic++; null },
                     onBack = {}
                 )
@@ -40,8 +64,47 @@ class NativeV9RestoreUiInstrumentedTest {
         }
         compose.onNodeWithText("Choose native encrypted GUDNAT01 backup")
             .assertExists().assertIsNotEnabled()
-        assertEquals(0, pick)
-        assertEquals(0, preview)
+        assertEquals(0, selected)
+        assertEquals(0, previews)
+        compose.runOnUiThread { deviceAdmitted = true }
+        compose.onNodeWithText("Choose native encrypted GUDNAT01 backup")
+            .performClick()
+        compose.waitForIdle()
+        assertEquals(1, selected)
+        // The just-returned (simulated) SAF picker cannot inherit admission.
+        compose.onNodeWithText("Encrypted native archive staged").assertIsNotEnabled()
+        compose.onNodeWithText("Verify native identity and preview").assertDoesNotExist()
+        assertEquals(0, previews)
+        compose.runOnUiThread { deviceAdmitted = true } // simulated fresh OS challenge
+        fun fill(t: String, v: String) {
+            compose.onNodeWithTag(t).performScrollTo().performTextInput(v)
+        }
+        fill("nativeRecoveryEmail", "x@example.test")
+        fill("nativeRecoveryAccountPassword", "sample")
+        fill("nativeRecoveryArchivePassword", "long-sample-phrase")
+        fill("nativeRecoveryPan", "ABCDE1234F")
+        fill("nativeRecoveryDob", "1985-01-01")
+        fill("nativeRecoveryAnswer1", "answer1")
+        fill("nativeRecoveryAnswer2", "answer2")
+        compose.onNodeWithText("Verify native identity and preview")
+            .performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithTag("nativeRecoveryTermsScroller")
+            .performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, 100000f) }
+        compose.onNodeWithText("I accept the full versioned Terms")
+            .performScrollTo().performClick()
+        compose.onNodeWithText("Verify native identity and preview")
+            .performScrollTo().assertIsEnabled().performClick()
+        compose.waitForIdle()
+        assertEquals(1, previews)
+        compose.onNodeWithText("Confirm one-time native recovery")
+            .performScrollTo().assertIsNotEnabled()
+        assertEquals(0, published)
+        compose.onNodeWithTag("nativeRecoveryPublishApproval")
+            .performScrollTo().performClick()
+        compose.onNodeWithText("Confirm one-time native recovery")
+            .performScrollTo().assertIsEnabled().performClick()
+        compose.waitForIdle()
+        assertEquals(1, published)
         assertEquals(0, forensic)
     }
 
