@@ -312,7 +312,7 @@ class NativeV9ArchiveInstrumentedTest {
         assertEquals(reviewed.rows, forensic.rows)
         val claims = File(destination.noBackupFilesDir, "restore-claims")
         assertEquals(1, claims.listFiles()?.size)
-        assertTrue(File(destination.noBackupFilesDir).listFiles()!!.any {
+        assertTrue(destination.noBackupFilesDir.listFiles()!!.any {
             it.name.startsWith("vault-key.v1.restore-")
         })
         assertTrue(destination.getDatabasePath("growurdhan-v9.sqlcipher")
