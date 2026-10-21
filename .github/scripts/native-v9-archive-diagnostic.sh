@@ -9,7 +9,7 @@ adb shell locksettings set-pin 246810
 adb install -r "$APP_APK"
 adb install -r "$TEST_APK"
 timeout 25m adb shell am instrument -w -r -e class \
-  in.growurdhan.redevelopment.NativeV9ArchiveInstrumentedTest \
+  in.growurdhan.redevelopment.NativeV9ArchiveInstrumentedTest,in.growurdhan.redevelopment.NativeV9RestoreUiInstrumentedTest \
   in.growurdhan.redevelopment.test/androidx.test.runner.AndroidJUnitRunner \
   | tee native-v9-archive-adb.txt
 python3 - <<'PY'
@@ -28,12 +28,14 @@ expected={
  "restoreInterruptedAfterKeyPublicationIsForensicallyReadableWithoutRepair",
  "syntheticLowStorageFailureAfterCandidateVerificationRetainsEncryptedEvidence",
  "acceptedTermsReceiptSurvivesClaimOnlyCrashAndTamperingBlocksForensicReview",
+ "nativeFileAndForensicSelectionRequireDeviceAdmission",
+ "nativeRestoreAndForensicActionsCannotBypassOwnerProofOrTerms",
 }
 codes=re.findall(r"^INSTRUMENTATION_STATUS_CODE: (-?\d+)\s*$",data,re.M)
 assert expected == tests, f"Wrong test set (no financial contents): {tests}"
-assert codes.count("0") == 10 and codes.count("1") == 10, f"Wrong instrumentation status counts: {codes}"
+assert codes.count("0") == 12 and codes.count("1") == 12, f"Wrong instrumentation status counts: {codes}"
 assert all(c in ("0","1") for c in codes), "Failed/ignored instrumentation status"
-assert re.search(r"^OK\s+\(10 tests\)",data,re.M), "Missing clean JUnit terminal status"
+assert re.search(r"^OK\s+\(12 tests\)",data,re.M), "Missing clean JUnit terminal status"
 assert not any(s in data for s in ("FAILURES!!!","INSTRUMENTATION_FAILED"))
-print("NATIVE_V9_ARCHIVE=10 passed=10 failed=0 skipped=0")
+print("NATIVE_V9_ARCHIVE=12 passed=12 failed=0 skipped=0")
 PY

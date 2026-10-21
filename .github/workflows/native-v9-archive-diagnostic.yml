@@ -11,6 +11,11 @@ on:
       - android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeV9NewDeviceRestore.kt
       - android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeV9RecoveryInspector.kt
       - android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeV9RestoreConsentJournal.kt
+      - android-native/app/src/main/kotlin/in/growurdhan/redevelopment/MainActivity.kt
+      - android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeV9RestoreFlow.kt
+      - android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeV9RestoreScreen.kt
+      - android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeRestoreScreen.kt
+      - android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeV9RestoreUiInstrumentedTest.kt
       - android-native/core/database/src/test/kotlin/in/growurdhan/database/NativeV9ArchiveTest.kt
       - android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeV9ArchiveInstrumentedTest.kt
 

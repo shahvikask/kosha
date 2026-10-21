@@ -122,15 +122,26 @@ class MainActivity : ComponentActivity() {
     private var lifecycleEpoch = 0
     private var restoreActive by mutableStateOf(false)
     private var restoreStaged by mutableStateOf(false)
+    private var nativeRestoreMode by mutableStateOf(false)
+    private var nativeRestoreStaged by mutableStateOf(false)
     private var restorePickerPending = false
+    private var nativePickerPending = false
     private val restoreFlow by lazy { NativeRestoreFlow(applicationContext) }
+    private val nativeRestoreFlow by lazy { NativeV9RestoreFlow(applicationContext) }
     private val restorePicker = registerForActivityResult(OpenDocument()) { uri ->
         if (!restorePickerPending) return@registerForActivityResult
         restorePickerPending = false
-        if (uri != null) restoreStaged = runCatching {
-            restoreFlow.stage(uri); true
-        }.getOrDefault(false)
-        // SAF returned from another Activity: require a completely new OS challenge.
+        if (uri != null) {
+            if (nativePickerPending) {
+                nativeRestoreStaged = runCatching {
+                    nativeRestoreFlow.stage(uri); true
+                }.getOrDefault(false)
+            } else restoreStaged = runCatching {
+                restoreFlow.stage(uri); true
+            }.getOrDefault(false)
+        }
+        nativePickerPending = false
+        // Third-party SAF round trip revokes admission even on cancellation.
         lockCompletely(preserveStagedArchive = true)
     }
     private val admission = NativeDeviceAdmission()
@@ -139,7 +150,7 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.StartActivityForResult()) { result ->
         deviceVerified = admission.complete(result.resultCode == Activity.RESULT_OK)
         deviceMessage = if (deviceVerified) "" else "Device authentication was not completed"
-        if (deviceVerified && restoreStaged) restoreActive = true
+        if (deviceVerified && (restoreStaged || nativeRestoreStaged)) restoreActive = true
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -156,7 +167,56 @@ class MainActivity : ComponentActivity() {
         setContent {
             GudTheme {
                 if (restoreActive && deviceVerified) {
-                    NativeRestoreScreen(
+                    if (nativeRestoreMode) NativeV9RestoreScreen(
+                        deviceVerified = deviceVerified,
+                        staged = nativeRestoreStaged,
+                        selectEncryptedFile = {
+                            if (admission.valid() && deviceVerified && !unlocked &&
+                                !restorePickerPending) {
+                                nativePickerPending = true
+                                restorePickerPending = true
+                                restorePicker.launch(arrayOf("application/octet-stream", "*/*"))
+                            }
+                        },
+                        previewAction = { proof, password, consent ->
+                            try {
+                                if (!admission.valid() || !deviceVerified || unlocked) null
+                                else withContext(Dispatchers.IO) {
+                                    runCatching { nativeRestoreFlow.preview(proof, password, consent) }
+                                        .getOrNull()
+                                }
+                            } finally { password.fill('\u0000') }
+                        },
+                        publishAction = { proof, password, consent, review ->
+                            try {
+                                val ok = if (!admission.valid() || !deviceVerified || unlocked ||
+                                    !review.ownerApproved) false
+                                else withContext(Dispatchers.IO) {
+                                    runCatching {
+                                        nativeRestoreFlow.publish(proof, password, consent, review)
+                                        true
+                                    }.getOrDefault(false)
+                                }
+                                lockCompletely()
+                                ok
+                            } finally { password.fill('\u0000') }
+                        },
+                        forensicAction = { proof, password, consent ->
+                            try {
+                                if (!admission.valid() || !deviceVerified || unlocked) null
+                                else withContext(Dispatchers.IO) {
+                                    runCatching { nativeRestoreFlow.forensic(proof, password, consent) }
+                                        .getOrNull()
+                                }
+                            } finally { password.fill('\u0000') }
+                        },
+                        onBack = {
+                            nativeRestoreMode = false
+                            nativeRestoreStaged = false
+                            restoreActive = false
+                            lockCompletely()
+                        }
+                    ) else NativeRestoreScreen(
                         deviceVerified = deviceVerified,
                         staged = restoreStaged,
                         previewAction = { proof ->
@@ -182,6 +242,10 @@ class MainActivity : ComponentActivity() {
                                 restorePickerPending = true
                                 restorePicker.launch(arrayOf("application/octet-stream", "application/json", "*/*"))
                             }
+                        },
+                        onOpenNativeRestore = {
+                            if (deviceVerified && admission.valid() && !unlocked && !restoreStaged)
+                                nativeRestoreMode = true
                         },
                         onBack = { restoreActive = false; restoreStaged = false; lockCompletely() }
                     )
@@ -293,7 +357,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requestDeviceChallenge() {
-        lockCompletely(preserveStagedArchive = restoreStaged,
+        lockCompletely(preserveStagedArchive = restoreStaged || nativeRestoreStaged,
             preserveCsvForFreshLogin = stagedCsv != null,
             preservePdfForFreshLogin = stagedPdf != null)
         val guard = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
@@ -328,7 +392,11 @@ class MainActivity : ComponentActivity() {
         activeEmail = ""
         deviceVerified = false
         restoreActive = false
-        if (!preserveStagedArchive && !restorePickerPending) restoreStaged = false
+        if (!preserveStagedArchive && !restorePickerPending) {
+            restoreStaged = false
+            nativeRestoreStaged = false
+            nativeRestoreMode = false
+        }
         if (!preserveCsvForFreshLogin && !csvPickerPending) discardCsv()
         if (!preservePdfForFreshLogin && !pdfPickerPending) discardPdf()
         if (!preservePendingChallenge) admission.cancel()
@@ -349,7 +417,7 @@ class MainActivity : ComponentActivity() {
         admission.onStop()
         lifecycleEpoch++
         lockCompletely(preservePendingChallenge = true,
-            preserveStagedArchive = restorePickerPending || restoreStaged,
+            preserveStagedArchive = restorePickerPending || restoreStaged || nativeRestoreStaged,
             preserveCsvForFreshLogin = csvPickerPending || stagedCsv != null,
             preservePdfForFreshLogin = pdfPickerPending || stagedPdf != null)
         if (::accounts.isInitialized) accounts.onBackground()

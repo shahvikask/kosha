@@ -32,6 +32,7 @@ internal fun NativeRestoreScreen(
     previewAction: suspend (RestoreIdentityGate.Credentials) -> NativeRestoreFlow.Preview?,
     publishAction: suspend (RestoreIdentityGate.Credentials, NativeRestoreFlow.Preview, NativeRegistrationProof.Consent) -> Boolean,
     selectEncryptedFile: () -> Unit,
+    onOpenNativeRestore: () -> Unit = {},
     onBack: () -> Unit
 ) {
     var email by remember { mutableStateOf("") }
@@ -55,6 +56,10 @@ internal fun NativeRestoreScreen(
         Text("Restore encrypted legacy backup — new empty device only")
         Text("No data is sent to a server. The backup and identity evidence remain on this phone.")
         OutlinedButton(onClick = onBack, enabled = !busy) { Text("Cancel restore") }
+        if (!staged) OutlinedButton(onClick = onOpenNativeRestore,
+            enabled = deviceVerified && !busy) {
+            Text("Restore a newer GUDNAT01 native encrypted backup")
+        }
         Button(onClick = selectEncryptedFile, enabled = deviceVerified && !busy && !staged) {
             Text(if (staged) "Encrypted archive staged" else "Choose encrypted .kosha backup")
         }

@@ -75,4 +75,30 @@ internal object NativeV9RestoreConsentJournal {
             }
         } finally { expected.fill(0) }
     }
+
+    /**
+     * Read the original, immutable new-device acceptance timestamp after a
+     * process restart. Only owner-verified forensic review may call this.
+     * Current Terms version and exact bytes must still verify.
+     */
+    fun readCurrent(noBackup: Path, sha: String): NativeRegistrationProof.Consent {
+        val parent = noBackup.resolve("restore-terms")
+        require(Files.isDirectory(parent, noFollow) &&
+            !Files.isSymbolicLink(parent)) { "Missing protected acceptance evidence" }
+        val file = parent.resolve(filename(sha))
+        require(Files.isRegularFile(file, noFollow) &&
+            !Files.isSymbolicLink(file) && Files.size(file) in 90L..512L) {
+            "Missing or oversized native acceptance evidence"
+        }
+        val lines = Files.readAllBytes(file).toString(Charsets.US_ASCII).split('\n')
+        require(lines.size == 6 && lines.last().isEmpty() &&
+            lines[0] == "GUD_NATIVE_RESTORE_TERMS_V1" && lines[1] == sha) {
+            "Invalid native acceptance receipt"
+        }
+        val accepted = NativeRegistrationProof.Consent(
+            lines[2], lines[3], lines[4], scrolledToEnd = true)
+        requireExact(noBackup, sha, accepted)
+        return accepted
+    }
+
 }

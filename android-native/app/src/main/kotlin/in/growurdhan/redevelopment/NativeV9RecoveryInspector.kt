@@ -90,8 +90,12 @@ internal class NativeV9RecoveryInspector(private val context: Context) {
                     Files.readAllBytes(expected.toPath()).contentEquals(claimBytes)) {
                     "Missing or ambiguous permanent native restore claim"
                 }
-                NativeV9RestoreConsentJournal.requireExact(
-                    noBackup.toPath(), fingerprint, consent)
+                val recordedConsent = NativeV9RestoreConsentJournal.readCurrent(
+                    noBackup.toPath(), fingerprint)
+                require(recordedConsent.version == consent.version &&
+                    recordedConsent.textId == consent.textId) {
+                    "Outdated accepted native recovery Terms"
+                }
                 // Unknown or duplicate names, foreign candidates, or sidecar
                 // ciphertext mean manual recovery: never choose by mtime.
                 val keys = children(noBackup).filter {
