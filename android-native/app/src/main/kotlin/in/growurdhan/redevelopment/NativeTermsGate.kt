@@ -16,6 +16,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import java.time.Instant
 
@@ -30,7 +31,7 @@ internal fun NativeTermsGate(acceptedAt: String?, enabled: Boolean,
         Text("Current Terms and Conditions • ${NativeFrozenTerms.VERSION}",
             style = MaterialTheme.typography.titleMedium)
         Text("Read all sections to the end before accepting. Declining prevents registration.")
-        Column(Modifier.fillMaxWidth().height(280.dp).verticalScroll(state)
+        Column(Modifier.fillMaxWidth().height(280.dp).testTag("nativeRecoveryTermsScroller").verticalScroll(state)
             .padding(8.dp)) {
             Text(NativeFrozenTerms.fullText, style = MaterialTheme.typography.bodyMedium)
         }

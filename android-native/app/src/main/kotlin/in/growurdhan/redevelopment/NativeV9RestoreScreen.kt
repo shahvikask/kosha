@@ -6,6 +6,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import `in`.growurdhan.database.RestoreIdentityGate
@@ -85,25 +86,32 @@ internal fun NativeV9RestoreScreen(
             "cannot clean files, resume publication, or approve an existing vault.")
         if (deviceVerified) {
             OutlinedTextField(email, { email = it; invalidate() },
+                modifier = Modifier.testTag("nativeRecoveryEmail"),
                 label = { Text("Original account email") })
             OutlinedTextField(accountPassword, { accountPassword = it; invalidate(keepForensicHint = true) },
+                modifier = Modifier.testTag("nativeRecoveryAccountPassword"),
                 label = { Text("Original account password") },
                 visualTransformation = PasswordVisualTransformation())
             OutlinedTextField(archivePassword, { archivePassword = it; invalidate(keepForensicHint = true) },
+                modifier = Modifier.testTag("nativeRecoveryArchivePassword"),
                 label = { Text("Separate backup password") },
                 visualTransformation = PasswordVisualTransformation())
             OutlinedTextField(pan, { pan = it; invalidate() },
+                modifier = Modifier.testTag("nativeRecoveryPan"),
                 label = { Text("Full original PAN") })
             OutlinedTextField(dob, { dob = it; invalidate() },
+                modifier = Modifier.testTag("nativeRecoveryDob"),
                 label = { Text("Original date of birth (YYYY-MM-DD)") })
             OutlinedTextField(q1, { q1 = it; invalidate() },
                 label = { Text("First security question ID") })
             OutlinedTextField(a1, { a1 = it; invalidate(keepForensicHint = true) },
+                modifier = Modifier.testTag("nativeRecoveryAnswer1"),
                 label = { Text("First answer") },
                 visualTransformation = PasswordVisualTransformation())
             OutlinedTextField(q2, { q2 = it; invalidate() },
                 label = { Text("Second security question ID") })
             OutlinedTextField(a2, { a2 = it; invalidate(keepForensicHint = true) },
+                modifier = Modifier.testTag("nativeRecoveryAnswer2"),
                 label = { Text("Second answer") },
                 visualTransformation = PasswordVisualTransformation())
             NativeTermsGate(acceptedAt, enabled = !busy,
@@ -154,7 +162,8 @@ internal fun NativeV9RestoreScreen(
                     }
                 }) { Text("Confirm one-time native recovery") }
             }
-            Checkbox(checked = inspectApproved, onCheckedChange = { inspectApproved = it })
+            Checkbox(checked = inspectApproved, onCheckedChange = { inspectApproved = it },
+                modifier = Modifier.testTag("nativeRecoveryInspectApproval"))
             Text("I approve READ-ONLY inspection of interrupted recovery evidence. " +
                 "This does not authorize publication or cleanup.")
             OutlinedButton(enabled = ready && inspectApproved, onClick = {
@@ -201,7 +210,8 @@ internal fun NativeV9RestoreScreen(
                 }) { Text("Reverify native candidate for manual resumption") }
                 resumeOffer?.let { offer ->
                     Checkbox(checked = resumeApproved,
-                        onCheckedChange = { resumeApproved = it && ready })
+                        onCheckedChange = { resumeApproved = it && ready },
+                        modifier = Modifier.testTag("nativeRecoveryResumeApproval"))
                     Text("I explicitly approve publishing this same verified, previously " +
                         "claimed encrypted candidate. Never overwrite an existing vault.")
                     Button(enabled = ready && resumeApproved, onClick = {
