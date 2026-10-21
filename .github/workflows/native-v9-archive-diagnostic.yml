@@ -83,14 +83,14 @@ jobs:
           path: android-native/app/python-wheels
       - name: Verify wheel provenance
         run: cd android-native/app/python-wheels && sha256sum -c SHA256SUMS
-      - name: Targeted JVM preflight, then compile source-specific APKs
+      - name: Run targeted JVM model and database tests first
         shell: bash
         working-directory: android-native
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew :core:model:test :core:database:test :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --stacktrace
-      - name: Check JVM JUnit XML and capture exact APK hashes
+          ./gradlew :core:model:test :core:database:test --no-daemon --stacktrace
+      - name: Check original JVM JUnit XML before Android compilation
         shell: bash
         run: |
           set -euo pipefail
@@ -110,6 +110,16 @@ jobs:
                       assert len(selected)==3, f"Expected three {group} tests, got {len(selected)}"
               print(f"JVM_{module.upper()}_PASSED={len(cases)}")
           PY
+      - name: Compile exact-source Android app and test APKs
+        shell: bash
+        working-directory: android-native
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --stacktrace
+      - name: Capture exact Android APK SHA256 hashes
+        shell: bash
+        run: |
+          set -euo pipefail
           APP=android-native/app/build/outputs/apk/debug/app-debug.apk
           TEST=android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
           test -s "$APP" && test -s "$TEST"
