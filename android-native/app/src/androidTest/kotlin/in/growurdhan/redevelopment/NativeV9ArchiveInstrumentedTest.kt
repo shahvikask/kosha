@@ -92,6 +92,247 @@ class NativeV9ArchiveInstrumentedTest {
             " VALUES('synthetic-message','synthetic-attachment','2026-10-21')")
     }
 
+
+    private val login = "Synthetic-login-password-2026!"
+    private val recovery = `in`.growurdhan.database.RestoreIdentityGate.Credentials(
+        email, login, "ABCDE1234F", "1985-01-01", "city", "synthetic city",
+        "pet", "synthetic pet")
+    private val currentConsent = `in`.growurdhan.model.NativeRegistrationProof.Consent(
+        `in`.growurdhan.model.NativeRegistrationProof.TERMS_VERSION,
+        `in`.growurdhan.model.NativeRegistrationProof.TERMS_TEXT_ID,
+        "2026-10-21T12:00:00Z", true)
+
+    /** Fully synthetic hash, PAN and recovery answers. Never print them in CI. */
+    private fun hash(secret: String): Pair<String, String> {
+        val salt = ByteArray(16) { i -> (i + 1).toByte() }
+        val spec = javax.crypto.spec.PBEKeySpec(secret.toCharArray(), salt, 210_000, 256)
+        val result = try {
+            javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+                .generateSecret(spec).encoded
+        } finally { spec.clearPassword() }
+        return java.util.Base64.getEncoder().encodeToString(salt) to
+            java.util.Base64.getEncoder().encodeToString(result)
+    }
+    private fun packedAnswer(answer: String): String {
+        val (salt, digest) = hash(answer)
+        return "$salt:$digest:210000"
+    }
+    private fun seedOwnerProof(db: SQLiteDatabase) {
+        val (salt, digest) = hash(login)
+        db.execSQL("UPDATE vault_account SET password_salt=?,password_hash=?," +
+            "pan_for_statements=?,date_of_birth=?,q1_hash=?,q2_hash=? WHERE id='native'",
+            arrayOf(salt, digest, "ABCDE1234F", "1985-01-01",
+                packedAnswer("synthetic city"), packedAnswer("synthetic pet")))
+        db.execSQL("UPDATE entity SET is_primary=1 WHERE entity_id='owner'")
+        db.execSQL("INSERT INTO setting(key,value) VALUES(?,?)",
+            arrayOf("m25.terms.version", currentConsent.version))
+        db.execSQL("INSERT INTO setting(key,value) VALUES(?,?)",
+            arrayOf("m25.terms.text_id", currentConsent.textId))
+        db.execSQL("INSERT INTO setting(key,value) VALUES(?,?)",
+            arrayOf("m25.terms.accepted_at", "2026-10-21T11:00:00Z"))
+    }
+    private fun verifiedArchive(): ByteArray {
+        val origin = sandbox()
+        val snapshot = EncryptedVaultStore(origin).createFresh(false).use { db ->
+            db.beginTransaction()
+            try { seed(db); seedOwnerProof(db); db.setTransactionSuccessful() }
+            finally { db.endTransaction() }
+            NativeV9SnapshotReader.capture(db)
+        }
+        return NativeV9Archive.encrypt(snapshot, email, pass)
+    }
+
+    @Test fun ownerApprovedFullNativeRestorePublishesIndependentKeystoreCiphertext() {
+        val manager = InstrumentationRegistry.getInstrumentation().targetContext
+            .getSystemService(Context.KEYGUARD_SERVICE) as android.app.KeyguardManager
+        assertTrue("Emulator PIN must be configured by CI", manager.isDeviceSecure)
+        val destination = sandbox()
+        val restore = NativeV9NewDeviceRestore(destination)
+        val archive = verifiedArchive()
+        val sha = restore.stageNativeOnce(archive)
+        val reviewed = restore.preview(recovery, pass, currentConsent)
+        assertEquals(sha, reviewed.archiveSha256)
+        assertFalse(reviewed.ownerApproved)
+        assertTrue(reviewed.rows > 18)
+        assertThrows(IllegalArgumentException::class.java) {
+            restore.publishAfterOwnerReview(recovery, pass, currentConsent,
+                reviewed, explicitOwnerApproval = false)
+        }
+        assertFalse(destination.getDatabasePath("growurdhan-v9.sqlcipher").exists())
+        val inserted = restore.publishAfterOwnerReview(recovery, pass, currentConsent,
+            reviewed.copy(ownerApproved = true), explicitOwnerApproval = true)
+        assertEquals(reviewed.rows, inserted)
+        val forensic = NativeV9RecoveryInspector(destination).inspect(
+            recovery, pass, currentConsent, explicitOwnerApproval = true)
+        assertEquals(NativeV9RecoveryInspector.State.VERIFIED_LIVE, forensic.state)
+        assertEquals(inserted, forensic.rows)
+        `in`.growurdhan.redevelopment.NativeV9RestoreConsentJournal.requireExact(
+            destination.noBackupFilesDir.toPath(), reviewed.snapshotSha256, currentConsent)
+        val target = destination.getDatabasePath("growurdhan-v9.sqlcipher")
+        val liveKey = File(destination.noBackupFilesDir, "vault-key.v1")
+        assertTrue(target.isFile && target.length() > 0 && liveKey.isFile)
+        assertFalse(target.readBytes().copyOfRange(0, 16).contentEquals(
+            "SQLite format 3\u0000".toByteArray(Charsets.UTF_8)))
+        val key = KeystoreWrappedVaultKey(destination).unwrapExisting()
+        try {
+            val preserve = net.zetetic.database.DatabaseErrorHandler { _, _ ->
+                error("Corrupt restored ciphertext must not be deleted")
+            }
+            SQLiteDatabase.openDatabase(target.absolutePath, key, null,
+                SQLiteDatabase.OPEN_READONLY, preserve, null).use { db ->
+                val restored = NativeV9SnapshotReader.capture(db)
+                assertEquals(reviewed.snapshotSha256,
+                    `in`.growurdhan.database.NativeV9RecoveryProof
+                        .authenticate(restored, recovery, currentConsent).snapshotSha256)
+                assertEquals(1L, count(db, "liability"))
+                assertEquals(1L, count(db, "ledger_event"))
+                assertEquals(9007199254740993L, db.rawQuery(
+                    "SELECT total_amount_minor FROM ledger_event", null).use {
+                    assertTrue(it.moveToFirst()); it.getLong(0)
+                })
+            }
+        } finally { key.fill(0) }
+        assertThrows(Exception::class.java) {
+            restore.publishAfterOwnerReview(recovery, pass, currentConsent,
+                reviewed.copy(ownerApproved = true), true)
+        }
+        assertArrayEquals(archive, StableStagedArchiveReader.read(
+            File(destination.noBackupFilesDir, "restore-pending.v1.kosha").toPath()))
+        assertTrue(File(destination.noBackupFilesDir, "restore-claims").listFiles()
+            ?.singleOrNull()?.isFile == true)
+    }
+
+
+    @Test fun acceptedTermsReceiptSurvivesClaimOnlyCrashAndTamperingBlocksForensicReview() {
+        val destination = sandbox()
+        val encrypted = verifiedArchive()
+        val restore = NativeV9NewDeviceRestore(destination) {
+            if (it == NativeV9NewDeviceRestore.Boundary.AFTER_CLAIM)
+                throw IllegalStateException("Synthetic crash after durable claim and Terms")
+        }
+        restore.stageNativeOnce(encrypted)
+        val review = restore.preview(recovery, pass, currentConsent)
+        assertThrows(IllegalStateException::class.java) {
+            restore.publishAfterOwnerReview(recovery, pass, currentConsent,
+                review.copy(ownerApproved = true), true)
+        }
+        val terms = File(destination.noBackupFilesDir,
+            "restore-terms/restore-" + review.snapshotSha256 + ".terms")
+        assertTrue(terms.isFile)
+        val forensic = NativeV9RecoveryInspector(destination).inspect(
+            recovery, pass, currentConsent, true)
+        assertEquals(NativeV9RecoveryInspector.State.CLAIM_ONLY, forensic.state)
+        val saved = terms.readBytes()
+        assertTrue(saved.isNotEmpty())
+        terms.writeBytes(saved.copyOf().also { it[it.lastIndex] = 88 })
+        assertThrows(Exception::class.java) {
+            NativeV9RecoveryInspector(destination).inspect(
+                recovery, pass, currentConsent, true)
+        }
+        assertFalse(destination.getDatabasePath("growurdhan-v9.sqlcipher").exists())
+        assertTrue(File(destination.noBackupFilesDir,"restore-claims")
+            .listFiles()!!.size == 1)
+    }
+
+    @Test fun restoreInterruptedAfterKeyPublicationIsForensicallyReadableWithoutRepair() {
+        val destination = sandbox()
+        val archive = verifiedArchive()
+        val restoration = NativeV9NewDeviceRestore(destination) {
+            if (it == NativeV9NewDeviceRestore.Boundary.AFTER_KEY_PUBLICATION)
+                throw IllegalStateException("Synthetic crash before vault DB publication")
+        }
+        restoration.stageNativeOnce(archive)
+        val preview = restoration.preview(recovery, pass, currentConsent)
+        assertThrows(IllegalStateException::class.java) {
+            restoration.publishAfterOwnerReview(recovery, pass, currentConsent,
+                preview.copy(ownerApproved = true), true)
+        }
+        val liveKey = File(destination.noBackupFilesDir, "vault-key.v1")
+        val liveDb = destination.getDatabasePath("growurdhan-v9.sqlcipher")
+        assertTrue(liveKey.isFile)
+        assertFalse(liveDb.exists())
+        val beforeKey = liveKey.readBytes()
+        val inspection = NativeV9RecoveryInspector(destination).inspect(
+            recovery, pass, currentConsent, true)
+        assertEquals(NativeV9RecoveryInspector.State.VERIFIED_CANDIDATE,
+            inspection.state)
+        assertTrue(inspection.claimed)
+        assertEquals(preview.rows, inspection.rows)
+        assertArrayEquals(beforeKey, liveKey.readBytes())
+        assertFalse(liveDb.exists())
+        assertThrows(Exception::class.java) {
+            EncryptedVaultStore(destination).createFresh(false).close()
+        }
+    }
+
+    @Test fun syntheticLowStorageFailureAfterCandidateVerificationRetainsEncryptedEvidence() {
+        val destination = sandbox()
+        val archive = verifiedArchive()
+        val restoration = NativeV9NewDeviceRestore(destination) {
+            if (it == NativeV9NewDeviceRestore.Boundary.AFTER_CANDIDATE_VERIFIED)
+                throw java.io.IOException("Synthetic ENOSPC before publication")
+        }
+        restoration.stageNativeOnce(archive)
+        val review = restoration.preview(recovery, pass, currentConsent)
+        assertThrows(java.io.IOException::class.java) {
+            restoration.publishAfterOwnerReview(recovery, pass, currentConsent,
+                review.copy(ownerApproved = true), true)
+        }
+        val inspection = NativeV9RecoveryInspector(destination).inspect(
+            recovery, pass, currentConsent, true)
+        assertEquals(NativeV9RecoveryInspector.State.VERIFIED_CANDIDATE,
+            inspection.state)
+        assertArrayEquals(archive, StableStagedArchiveReader.read(
+            File(destination.noBackupFilesDir, "restore-pending.v1.kosha").toPath()))
+        assertFalse(File(destination.noBackupFilesDir, "vault-key.v1").exists())
+        assertFalse(destination.getDatabasePath("growurdhan-v9.sqlcipher").exists())
+    }
+
+    @Test fun nativeRecoveryCrashAfterCandidateVerificationKeepsClaimAndNeverAutoRetries() {
+        val destination = sandbox()
+        val archive = verifiedArchive()
+        var faultCount = 0
+        val restore = NativeV9NewDeviceRestore(destination) { boundary ->
+            if (boundary == NativeV9NewDeviceRestore.Boundary.AFTER_CANDIDATE_VERIFIED) {
+                faultCount++
+                throw IllegalStateException("Synthetic verified-candidate interruption")
+            }
+        }
+        restore.stageNativeOnce(archive)
+        val reviewed = restore.preview(recovery, pass, currentConsent)
+        assertThrows(IllegalStateException::class.java) {
+            restore.publishAfterOwnerReview(recovery, pass, currentConsent,
+                reviewed.copy(ownerApproved = true), true)
+        }
+        assertEquals(1, faultCount)
+        val forensic = NativeV9RecoveryInspector(destination).inspect(
+            recovery, pass, currentConsent, explicitOwnerApproval = true)
+        assertEquals(NativeV9RecoveryInspector.State.VERIFIED_CANDIDATE,
+            forensic.state)
+        assertEquals(reviewed.rows, forensic.rows)
+        val claims = File(destination.noBackupFilesDir, "restore-claims")
+        assertEquals(1, claims.listFiles()?.size)
+        assertTrue(File(destination.noBackupFilesDir).listFiles()!!.any {
+            it.name.startsWith("vault-key.v1.restore-")
+        })
+        assertTrue(destination.getDatabasePath("growurdhan-v9.sqlcipher")
+            .parentFile!!.listFiles()!!.any {
+                it.name.startsWith("growurdhan-v9.sqlcipher.restore-")
+            })
+        assertFalse(destination.getDatabasePath("growurdhan-v9.sqlcipher").exists())
+        assertFalse(File(destination.noBackupFilesDir, "vault-key.v1").exists())
+        assertThrows(Exception::class.java) {
+            NativeV9NewDeviceRestore(destination).publishAfterOwnerReview(
+                recovery, pass, currentConsent,
+                reviewed.copy(ownerApproved = true), true)
+        }
+        assertThrows(Exception::class.java) {
+            EncryptedVaultStore(destination).createFresh(false).close()
+        }
+        assertArrayEquals(archive, StableStagedArchiveReader.read(
+            File(destination.noBackupFilesDir, "restore-pending.v1.kosha").toPath()))
+    }
+
     @Test fun allNativeV9TableTypesRestoreIntoIndependentEmptySqlcipher() {
         val ctx = sandbox()
         val store = EncryptedVaultStore(ctx)

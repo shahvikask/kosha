@@ -2,6 +2,10 @@
 # Native GUDNAT01 target-class acceptance only; not P01-P34 release signoff.
 set -euo pipefail
 test "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" = "35"
+# Mandatory secure Keyguard on the clean ephemeral emulator. Never claim a
+# positive recovery test if the secure device lock cannot be provisioned.
+adb shell locksettings set-pin 246810
+
 adb install -r "$APP_APK"
 adb install -r "$TEST_APK"
 timeout 25m adb shell am instrument -w -r -e class \
@@ -19,12 +23,17 @@ expected={
  "opaqueHistoricalSchemaExtensionCannotBeSilentlyDroppedOnRestore",
  "separateNewDeviceStagesNativeCiphertextOnceAndRefusesReplacement",
  "nativeStagedTamperAndInterruptedAtomicWriteDoNotPublishVault",
+ "ownerApprovedFullNativeRestorePublishesIndependentKeystoreCiphertext",
+ "nativeRecoveryCrashAfterCandidateVerificationKeepsClaimAndNeverAutoRetries",
+ "restoreInterruptedAfterKeyPublicationIsForensicallyReadableWithoutRepair",
+ "syntheticLowStorageFailureAfterCandidateVerificationRetainsEncryptedEvidence",
+ "acceptedTermsReceiptSurvivesClaimOnlyCrashAndTamperingBlocksForensicReview",
 }
 codes=re.findall(r"^INSTRUMENTATION_STATUS_CODE: (-?\d+)\s*$",data,re.M)
 assert expected == tests, f"Wrong test set (no financial contents): {tests}"
-assert codes.count("0") == 5 and codes.count("1") == 5, f"Wrong instrumentation status counts: {codes}"
+assert codes.count("0") == 10 and codes.count("1") == 10, f"Wrong instrumentation status counts: {codes}"
 assert all(c in ("0","1") for c in codes), "Failed/ignored instrumentation status"
-assert re.search(r"^OK\s+\(5 tests\)",data,re.M), "Missing clean JUnit terminal status"
+assert re.search(r"^OK\s+\(10 tests\)",data,re.M), "Missing clean JUnit terminal status"
 assert not any(s in data for s in ("FAILURES!!!","INSTRUMENTATION_FAILED"))
-print("NATIVE_V9_ARCHIVE=5 passed=5 failed=0 skipped=0")
+print("NATIVE_V9_ARCHIVE=10 passed=10 failed=0 skipped=0")
 PY

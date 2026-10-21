@@ -141,6 +141,10 @@ internal class NativeV9NewDeviceRestore(
                 // fresh GCM randomness cannot evade the once-only replay gate.
                 faultAt?.invoke(Boundary.BEFORE_CLAIM)
                 journal.claimOnce(proof.snapshotSha256)
+                // A new-device Terms event is independently durable without
+                // mutating any original financial or historical source cell.
+                NativeV9RestoreConsentJournal.recordOnce(
+                    context.noBackupFilesDir.toPath(), proof.snapshotSha256, consent)
                 faultAt?.invoke(Boundary.AFTER_CLAIM)
 
                 val nonce = UUID.randomUUID().toString()
@@ -182,6 +186,8 @@ internal class NativeV9NewDeviceRestore(
                     "Incomplete candidate key envelope; manual recovery required"
                 }
                 val liveKey = File(context.noBackupFilesDir, "vault-key.v1")
+                NativeV9RestoreConsentJournal.requireExact(
+                    context.noBackupFilesDir.toPath(), proof.snapshotSha256, consent)
                 require(digest(StableStagedArchiveReader.read(pending.toPath())) ==
                     reviewed.archiveSha256) { "Staged ciphertext changed before publication" }
                 // Both names are exclusively reserved. No delete/retry on crash.
