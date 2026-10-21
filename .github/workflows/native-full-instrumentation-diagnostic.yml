@@ -1,0 +1,97 @@
+name: GrowUrDhan full Android instrumentation diagnostic
+
+# Reuse verified APKs to test all 139 methods without rebuilding Rust/PDFium.
+# DIAGNOSTIC ONLY: this does not waive P01-P34 source/readiness gates.
+on:
+  workflow_dispatch:
+  push:
+    branches: [GUD-Android-Redevelopment]
+    paths:
+      - .github/workflows/native-full-instrumentation-diagnostic.yml
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: native-full-android-diagnostic-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  api35-full-diagnostic:
+    if: github.ref == 'refs/heads/GUD-Android-Redevelopment'
+    name: API35 x86_64 139-test native Android diagnostic
+    runs-on: ubuntu-latest
+    timeout-minutes: 58
+    env:
+      BUILT_SOURCE_SHA: 02cd5868547c21240b9524b8a8914b30173e2386
+    steps:
+      - name: Checkout exact triggering SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Enforce branch and unchanged exact-built application sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/GUD-Android-Redevelopment"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git cat-file -e "$BUILT_SOURCE_SHA^{commit}"
+          git diff --exit-code "$BUILT_SOURCE_SHA" "$GITHUB_SHA" -- android-native/ src/ src-tauri/ scripts/
+          echo "APK_TESTED_SOURCE_SHA=$BUILT_SOURCE_SHA"
+          echo "WORKFLOW_SHA=$GITHUB_SHA"
+      - name: Reuse original strict-build APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          repository: shahvikask/kosha
+          run-id: 39526640647
+          github-token: ${{ github.token }}
+          name: exact-sha-strict-android-build-evidence
+          path: prior-strict-build
+      - name: Verify original app and test APK SHA256
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$(find prior-strict-build -name app-debug.apk -type f -print -quit)"
+          TEST="$(find prior-strict-build -name app-debug-androidTest.apk -type f -print -quit)"
+          test -n "$APP" && test -n "$TEST"
+          echo "d394c0b4a54981a255c594a264af360ce29fee4dcd022f62193132703973af39  $APP" | sha256sum -c -
+          echo "58935025ad356b80e7953292bd0fa7afcf228017506ed9e06bf13e41736ab01c  $TEST" | sha256sum -c -
+          echo "APP_APK=$APP" >> "$GITHUB_ENV"
+          echo "TEST_APK=$TEST" >> "$GITHUB_ENV"
+          echo "APK_SOURCE_SHA=$BUILT_SOURCE_SHA" > full-android-provenance.txt
+          echo "APK_STRICT_BUILD_RUN=39526640647" >> full-android-provenance.txt
+          echo "WORKFLOW_SHA=$GITHUB_SHA" >> full-android-provenance.txt
+      - name: Configure KVM
+        shell: bash
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm
+          else echo "::warning::No KVM; emulator may be slow"; fi
+      - name: Exercise all compiled Android test classes on API35
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 3072M
+          heap-size: 512M
+          force-avd-creation: true
+          disable-animations: true
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: bash .github/scripts/native-full-android-diagnostic.sh
+      - name: Preserve original runner output and test provenance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api35-full-android-diagnostic-evidence
+          path: |
+            full-android-adb.txt
+            full-android-diagnostic-summary.json
+            full-android-provenance.txt
+          if-no-files-found: warn
+          retention-days: 14
