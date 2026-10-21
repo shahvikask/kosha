@@ -166,4 +166,63 @@ class NativeV9ArchiveInstrumentedTest {
             assertEquals(1L, count(target, "vault_meta"))
         }
     }
+    @Test fun separateNewDeviceStagesNativeCiphertextOnceAndRefusesReplacement() {
+        val origin = sandbox()
+        val snapshot = EncryptedVaultStore(origin).createFresh(false).use { db ->
+            seed(db)
+            NativeV9SnapshotReader.capture(db)
+        }
+        val archive = NativeV9Archive.encrypt(snapshot, email, pass)
+        val destination = sandbox()
+        val restore = NativeV9NewDeviceRestore(destination)
+        val first = restore.stageNativeOnce(archive)
+        val stored = File(destination.noBackupFilesDir, "restore-pending.v1.kosha")
+        assertTrue(stored.isFile)
+        assertArrayEquals(archive, StableStagedArchiveReader.read(stored.toPath()))
+        assertEquals(first, java.security.MessageDigest.getInstance("SHA-256")
+            .digest(archive).joinToString("") { "%02x".format(it) })
+        assertThrows(Exception::class.java) {
+            restore.stageNativeOnce(archive)
+        }
+        assertArrayEquals(archive, StableStagedArchiveReader.read(stored.toPath()))
+        assertFalse(File(destination.noBackupFilesDir,"vault-key.v1").exists())
+        assertFalse(destination.getDatabasePath("growurdhan-v9.sqlcipher").exists())
+    }
+
+    @Test fun nativeStagedTamperAndInterruptedAtomicWriteDoNotPublishVault() {
+        val original = sandbox()
+        val snapshot = EncryptedVaultStore(original).createFresh(false).use { db ->
+            seed(db)
+            NativeV9SnapshotReader.capture(db)
+        }
+        val archive = NativeV9Archive.encrypt(snapshot, email, pass)
+        val destination = sandbox()
+        val damaged = archive.copyOf()
+        damaged[40] = (damaged[40].toInt() xor 1).toByte()
+        val restore = NativeV9NewDeviceRestore(destination)
+        restore.stageNativeOnce(damaged)
+        val proof = `in`.growurdhan.database.RestoreIdentityGate.Credentials(
+            email, "Synthetic login password", "ABCDE1234F", "1980-01-01",
+            "city", "synthetic city", "pet", "synthetic pet")
+        val consent = `in`.growurdhan.model.NativeRegistrationProof.Consent(
+            `in`.growurdhan.model.NativeRegistrationProof.TERMS_VERSION,
+            `in`.growurdhan.model.NativeRegistrationProof.TERMS_TEXT_ID,
+            "2026-10-21T10:00:00Z", true)
+        assertThrows(Exception::class.java) {
+            restore.preview(proof, pass, consent)
+        }
+        assertFalse(File(destination.noBackupFilesDir,"restore-claims").exists())
+        assertFalse(File(destination.noBackupFilesDir,"vault-key.v1").exists())
+        assertFalse(destination.getDatabasePath("growurdhan-v9.sqlcipher").exists())
+
+        val second = sandbox()
+        val interrupted = File(second.noBackupFilesDir, "restore-pending.v1.kosha.new")
+        interrupted.writeBytes(byteArrayOf(1,2,3))
+        assertThrows(Exception::class.java) {
+            NativeV9NewDeviceRestore(second).stageNativeOnce(archive)
+        }
+        assertArrayEquals(byteArrayOf(1,2,3), interrupted.readBytes())
+        assertFalse(File(second.noBackupFilesDir, "vault-key.v1").exists())
+    }
+
 }

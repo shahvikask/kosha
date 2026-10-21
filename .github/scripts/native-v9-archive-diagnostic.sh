@@ -17,12 +17,14 @@ expected={
  "allNativeV9TableTypesRestoreIntoIndependentEmptySqlcipher",
  "wrongPasswordTamperedCipherAndDuplicateRowsNeverPartiallyImport",
  "opaqueHistoricalSchemaExtensionCannotBeSilentlyDroppedOnRestore",
+ "separateNewDeviceStagesNativeCiphertextOnceAndRefusesReplacement",
+ "nativeStagedTamperAndInterruptedAtomicWriteDoNotPublishVault",
 }
 codes=re.findall(r"^INSTRUMENTATION_STATUS_CODE: (-?\d+)\s*$",data,re.M)
 assert expected == tests, f"Wrong test set (no financial contents): {tests}"
-assert codes.count("0") == 3 and codes.count("1") == 3, f"Wrong instrumentation status counts: {codes}"
+assert codes.count("0") == 5 and codes.count("1") == 5, f"Wrong instrumentation status counts: {codes}"
 assert all(c in ("0","1") for c in codes), "Failed/ignored instrumentation status"
-assert re.search(r"^OK\s+\(3 tests\)",data,re.M), "Missing clean JUnit terminal status"
+assert re.search(r"^OK\s+\(5 tests\)",data,re.M), "Missing clean JUnit terminal status"
 assert not any(s in data for s in ("FAILURES!!!","INSTRUMENTATION_FAILED"))
-print("NATIVE_V9_ARCHIVE=3 passed=3 failed=0 skipped=0")
+print("NATIVE_V9_ARCHIVE=5 passed=5 failed=0 skipped=0")
 PY
