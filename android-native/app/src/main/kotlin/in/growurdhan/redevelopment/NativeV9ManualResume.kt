@@ -73,7 +73,8 @@ internal class NativeV9ManualResume(
      * evidence; a second call cannot silently delete or replace artifacts.
      */
     fun publish(proof: RestoreIdentityGate.Credentials, password: CharArray,
-        consent: NativeRegistrationProof.Consent, approved: Offer): Int {
+        consent: NativeRegistrationProof.Consent, approved: Offer,
+        deviceAdmissionStillValid: () -> Boolean): Int {
         require(approved.ownerApproved) { "Owner has not approved manual native resumption" }
         NativeRegistrationProof.requireValidConsent(consent)
         val keyguard = context.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
@@ -81,10 +82,14 @@ internal class NativeV9ManualResume(
             "Manual native resumption requires a secure Android lock"
         }
         return VaultLifecycleLock.exclusively(context) {
+            // Revalidate the Activity's exact generation-bound Keyguard admission
+            // under the vault lock, not just before asynchronous IO dispatch.
+            check(deviceAdmissionStillValid()) { "OS admission revoked before manual recovery" }
             val verified = reviewUnderLock(proof, password, consent)
             require(approved.copy(ownerApproved = false) == verified) {
                 "Previously reviewed native candidate no longer matches"
             }
+            check(deviceAdmissionStillValid()) { "OS admission revoked during candidate review" }
             val noBackup = context.noBackupFilesDir
             val database = context.getDatabasePath("growurdhan-v9.sqlcipher")
             val dbDirectory = database.parentFile ?: error("Missing native database folder")
@@ -94,6 +99,7 @@ internal class NativeV9ManualResume(
             val liveKey = File(noBackup, "vault-key.v1")
             val keyCandidate = matchSingle(noBackup, "vault-key.v1.restore-", keyName)
             check(!present(database)) { "Cannot overwrite an existing live or reserved vault" }
+            check(deviceAdmissionStillValid()) { "OS admission revoked before key publication" }
             if (keyCandidate != null) {
                 check(!present(liveKey)) { "Live key already occupied or linked" }
                 val keyUuid = keyCandidate.name.removePrefix("vault-key.v1.restore-")
@@ -110,6 +116,9 @@ internal class NativeV9ManualResume(
                 }
             }
             atBoundary?.invoke(Boundary.AFTER_KEY_PUBLICATION)
+            check(deviceAdmissionStillValid()) {
+                "OS admission revoked between key and encrypted database publication"
+            }
             // This never replaces an existing non-empty DB or tombstone.
             EncryptedRestorePublisher.publishReservedAtomic(
                 db.toPath(), database.toPath())

@@ -50,8 +50,10 @@ internal class NativeV9RestoreFlow(private val context: Context) {
 
     /** New explicit action; not an automatic retry of an earlier claim. */
     fun publishManualResume(proof: RestoreIdentityGate.Credentials, password: CharArray,
-        consent: NativeRegistrationProof.Consent, offer: NativeV9ManualResume.Offer): Int =
-        NativeV9ManualResume(context).publish(proof, password, consent, offer)
+        consent: NativeRegistrationProof.Consent, offer: NativeV9ManualResume.Offer,
+        deviceAdmissionStillValid: () -> Boolean): Int =
+        NativeV9ManualResume(context).publish(proof, password, consent, offer,
+            deviceAdmissionStillValid)
 
     /** Safe to call after a process restart. Never moves or deletes any file. */
     fun forensic(proof: RestoreIdentityGate.Credentials, password: CharArray,

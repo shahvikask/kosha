@@ -222,12 +222,16 @@ class MainActivity : ComponentActivity() {
                         },
                         resumePublishAction = { proof, password, consent, offer ->
                             try {
-                                val ok = if (!admission.valid() || !deviceVerified || unlocked ||
+                                // Bind authorization to the precise foreground OS challenge.
+                                // A picker/background/onStop invalidates this ticket, including
+                                // while the restore is running on Dispatchers.IO.
+                                val ticket = admission.ticket()
+                                val ok = if (ticket == null || !deviceVerified || unlocked ||
                                     !offer.ownerApproved) false
                                 else withContext(Dispatchers.IO) {
                                     runCatching {
                                         nativeRestoreFlow.publishManualResume(proof, password,
-                                            consent, offer)
+                                            consent, offer) { admission.validTicket(ticket) }
                                         true
                                     }.getOrDefault(false)
                                 }

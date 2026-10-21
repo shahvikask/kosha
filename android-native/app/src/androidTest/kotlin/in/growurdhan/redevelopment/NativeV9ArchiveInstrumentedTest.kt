@@ -351,17 +351,26 @@ class NativeV9ArchiveInstrumentedTest {
         val offer = resume.prepare(recovery, pass, currentConsent)
         assertEquals(NativeV9RecoveryInspector.State.VERIFIED_CANDIDATE, offer.state)
         assertEquals(initial.snapshotSha256, offer.snapshotSha256)
+        // OS challenge can expire after the read-only forensic offer.
+        // A revoked admission must NOT publish a key, database or claim update.
+        assertThrows(IllegalStateException::class.java) {
+            resume.publish(recovery, pass, currentConsent,
+                offer.copy(ownerApproved = true), { false })
+        }
+        assertFalse(File(destination.noBackupFilesDir, "vault-key.v1").exists())
+        assertFalse(destination.getDatabasePath("growurdhan-v9.sqlcipher").exists())
+        assertEquals(1, File(destination.noBackupFilesDir, "restore-claims").listFiles()!!.size)
         assertThrows(IllegalArgumentException::class.java) {
-            resume.publish(recovery, pass, currentConsent, offer)
+            resume.publish(recovery, pass, currentConsent, offer, { true })
         }
         assertEquals(initial.rows, resume.publish(
-            recovery, pass, currentConsent, offer.copy(ownerApproved = true)))
+            recovery, pass, currentConsent, offer.copy(ownerApproved = true), { true }))
         assertEquals(NativeV9RecoveryInspector.State.VERIFIED_LIVE,
             NativeV9RecoveryInspector(destination).inspect(
                 recovery, pass, currentConsent, true).state)
         assertThrows(Exception::class.java) {
             resume.publish(recovery, pass, currentConsent,
-                offer.copy(ownerApproved = true))
+                offer.copy(ownerApproved = true), { true })
         }
         val staged = File(destination.noBackupFilesDir, "restore-pending.v1.kosha")
         assertArrayEquals(backup, staged.readBytes())
@@ -386,7 +395,7 @@ class NativeV9ArchiveInstrumentedTest {
         val resume = NativeV9ManualResume(destination)
         val offer = resume.prepare(recovery, pass, currentConsent)
         assertEquals(initial.rows, resume.publish(
-            recovery, pass, currentConsent, offer.copy(ownerApproved = true)))
+            recovery, pass, currentConsent, offer.copy(ownerApproved = true), { true }))
         assertArrayEquals(immutableKey, key.readBytes())
         assertEquals(NativeV9RecoveryInspector.State.VERIFIED_LIVE,
             NativeV9RecoveryInspector(destination).inspect(
@@ -411,7 +420,7 @@ class NativeV9ArchiveInstrumentedTest {
         val target = destination.getDatabasePath("growurdhan-v9.sqlcipher")
         target.writeBytes(byteArrayOf()) // crash tombstone, NEVER deleted by recovery
         assertThrows(Exception::class.java) {
-            resume.publish(recovery, pass, currentConsent, offer.copy(ownerApproved = true))
+            resume.publish(recovery, pass, currentConsent, offer.copy(ownerApproved = true), { true })
         }
         assertEquals(0L, target.length())
         assertEquals(1, File(destination.noBackupFilesDir,"restore-claims").listFiles()!!.size)
@@ -441,7 +450,7 @@ class NativeV9ArchiveInstrumentedTest {
         val offered = interrupted.prepare(recovery, pass, currentConsent)
         assertThrows(java.io.IOException::class.java) {
             interrupted.publish(recovery, pass, currentConsent,
-                offered.copy(ownerApproved = true))
+                offered.copy(ownerApproved = true), { true })
         }
         val key = File(destination.noBackupFilesDir, "vault-key.v1")
         val saved = key.readBytes()
@@ -452,12 +461,45 @@ class NativeV9ArchiveInstrumentedTest {
         val reapproved = fresh.prepare(recovery, pass, currentConsent)
         assertEquals(offered.snapshotSha256, reapproved.snapshotSha256)
         assertEquals(reapproved.rows, fresh.publish(
-            recovery, pass, currentConsent, reapproved.copy(ownerApproved = true)))
+            recovery, pass, currentConsent, reapproved.copy(ownerApproved = true), { true }))
         assertArrayEquals(saved, key.readBytes())
         assertThrows(Exception::class.java) {
             fresh.publish(recovery, pass, currentConsent,
-                reapproved.copy(ownerApproved = true))
+                reapproved.copy(ownerApproved = true), { true })
         }
+
+        // Separate synthetic foreground interruption: the Activity admission
+        // expires just AFTER key publication but BEFORE database publication.
+        // The next owner review must still see a claimed, unpublished candidate.
+        val revokedTarget = sandbox()
+        val interruptedOriginal = NativeV9NewDeviceRestore(revokedTarget) {
+            if (it == NativeV9NewDeviceRestore.Boundary.AFTER_CANDIDATE_VERIFIED)
+                throw IllegalStateException("Synthetic first-process stop")
+        }
+        interruptedOriginal.stageNativeOnce(backup)
+        val beforeRevocation = interruptedOriginal.preview(recovery, pass, currentConsent)
+        assertThrows(IllegalStateException::class.java) {
+            interruptedOriginal.publishAfterOwnerReview(recovery, pass, currentConsent,
+                beforeRevocation.copy(ownerApproved = true), true)
+        }
+        var admitted = true
+        val interruptedByOs = NativeV9ManualResume(revokedTarget) { point ->
+            if (point == NativeV9ManualResume.Boundary.AFTER_KEY_PUBLICATION)
+                admitted = false
+        }
+        val secondOffer = interruptedByOs.prepare(recovery, pass, currentConsent)
+        assertThrows(IllegalStateException::class.java) {
+            interruptedByOs.publish(recovery, pass, currentConsent,
+                secondOffer.copy(ownerApproved = true), { admitted })
+        }
+        assertTrue(File(revokedTarget.noBackupFilesDir, "vault-key.v1").isFile)
+        assertFalse(revokedTarget.getDatabasePath("growurdhan-v9.sqlcipher").exists())
+        assertEquals(1, File(revokedTarget.noBackupFilesDir, "restore-claims").listFiles()!!.size)
+        val restarted = NativeV9ManualResume(revokedTarget)
+        val renewed = restarted.prepare(recovery, pass, currentConsent)
+        assertEquals(NativeV9RecoveryInspector.State.VERIFIED_CANDIDATE, renewed.state)
+        assertEquals(renewed.rows, restarted.publish(recovery, pass,
+            currentConsent, renewed.copy(ownerApproved = true), { true }))
     }
 
     @Test fun corruptedNativeCandidateCannotBeOfferedForManualResume() {
@@ -543,10 +585,10 @@ class NativeV9ArchiveInstrumentedTest {
         }
         val offer = resume.prepare(recovery, pass, currentConsent)
         assertThrows(IllegalArgumentException::class.java) {
-            resume.publish(recovery, pass, currentConsent, offer)
+            resume.publish(recovery, pass, currentConsent, offer, { true })
         }
         assertEquals(offer.rows, resume.publish(recovery, pass,
-            currentConsent, offer.copy(ownerApproved = true)))
+            currentConsent, offer.copy(ownerApproved = true), { true }))
         assertEquals(NativeV9RecoveryInspector.State.VERIFIED_LIVE,
             NativeV9RecoveryInspector(destination).inspect(
                 recovery, pass, currentConsent, true).state)
