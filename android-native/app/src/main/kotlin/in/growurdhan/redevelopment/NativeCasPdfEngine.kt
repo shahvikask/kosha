@@ -5,6 +5,7 @@ import android.util.Base64
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
 import `in`.growurdhan.model.NativeStatementCsv
+import `in`.growurdhan.parser.ParserBoundary
 import java.math.BigDecimal
 import java.security.MessageDigest
 import java.time.LocalDate
@@ -53,7 +54,7 @@ internal class NativeCasPdfEngine(private val context: Context) {
             "Explicit owner PAN confirmation required"
         }
         val sha = digest(pdf)
-        try {
+        return ParserBoundary.withAdmittedPdf(displayName, pdf) {
             if (!Python.isStarted()) Python.start(AndroidPlatform(context.applicationContext))
             val encoded = Base64.encodeToString(pdf, Base64.NO_WRAP)
             val response = Python.getInstance().getModule("cas_android")
@@ -84,10 +85,8 @@ internal class NativeCasPdfEngine(private val context: Context) {
             require(positions.map { it.isin to it.folio }.distinct().size == positions.size) {
                 "Ambiguous issuer position identity; manual mapping required"
             }
-            return Parsed(NativeStatementCsv.Snapshot(sha, pdf.size, pan, date, positions),
+            Parsed(NativeStatementCsv.Snapshot(sha, pdf.size, pan, date, positions),
                 verified.issuer, positions.size, verified.warnings)
-        } finally {
-            // PDF/password are owned by the UI lifecycle, never written to disk here.
         }
     }
 }
