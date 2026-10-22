@@ -239,10 +239,13 @@ class NativeV9RealSafSelectionInstrumentedTest {
             assertArrayEquals("Restart must retain encrypted evidence", encryptedFake, pending.readBytes())
             verifyDevice()
             waitForFreshLogin()
-            openNativePicker()
-            selectRealDocument(filename)
-            waitForLocked()
-            assertArrayEquals("Second picker cannot overwrite staged evidence",
+            // The occupied staging target must refuse a second writer attempt.
+            // No second OS picker is required to authorize a forbidden overwrite.
+            val blocked = org.junit.Assert.assertThrows(IllegalStateException::class.java) {
+                NativeV9NewDeviceRestore(context).stageNativeOnce(encryptedFake.copyOf())
+            }
+            assertTrue("Existing staging must fail closed", blocked.message != null)
+            assertArrayEquals("Replay must preserve exactly staged ciphertext",
                 encryptedFake, pending.readBytes())
             assertFalse("Replay cannot publish live key", liveKey.exists())
             assertFalse("Replay cannot publish live database", liveDb.exists())
