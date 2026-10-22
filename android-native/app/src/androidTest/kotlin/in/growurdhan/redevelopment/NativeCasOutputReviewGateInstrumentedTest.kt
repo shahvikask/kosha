@@ -34,6 +34,26 @@ class NativeCasOutputReviewGateInstrumentedTest {
             .put("holdingsCount", 1).put("holdingsValue", 1000))
         .put("delta", 0).put("complete", true)
 
+
+    @Test fun forgedCompleteReportsNeverPassImportReviewGate() {
+        val cases = listOf(
+            source().put("ok", false),
+            source().put("engine", "SIMULATED"),
+            source().put("complete", false),
+            source().put("investorPan", "PQRST1234F"),
+            source().put("holdings", JSONArray()),
+            source().put("parsedTotals", JSONObject()
+                .put("holdingsCount", 1).put("holdingsValue", 999)),
+            source().put("pdfTotals", JSONObject().put("grand", 999)),
+            source().put("skippedNilHoldings", 1)
+        )
+        for (forged in cases) {
+            assertThrows(Exception::class.java) {
+                NativeCasOutputReviewGate.verify(forged, "ABCDE1234F")
+            }
+        }
+    }
+
     @Test fun singleSyntheticOriginalFormatAccountPassesStrictPayloadGate() {
         val verified = NativeCasOutputReviewGate.verify(source(), "ABCDE1234F")
         assertEquals("NSDL", verified.issuer)
