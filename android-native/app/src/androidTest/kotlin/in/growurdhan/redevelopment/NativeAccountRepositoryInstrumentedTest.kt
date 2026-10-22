@@ -462,6 +462,27 @@ class NativeAccountRepositoryInstrumentedTest {
         assertEquals("CAS approval requires original PDF container",
             relabelError.message)
         assertEquals(before, financialCounts())
+        // A well-bound PDF-shaped snapshot must still refuse an unknown
+        // PAN/ISIN/folio. No holding may be created by statement import.
+        val candidateBytes = ("%PDF-1.4\\n" + "not-a-real-financial-fixture".repeat(3))
+            .toByteArray(Charsets.UTF_8)
+        val candidateSha = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(candidateBytes).joinToString("") { "%02x".format(it) }
+        val position = `in`.growurdhan.model.NativeStatementCsv.Position(
+            "ABCDE1234F", "2025-02-28", "INE000000001", "unknown-folio",
+            100000000L, 10000L, 10000L)
+        val unknownPosition = `in`.growurdhan.model.NativeStatementCsv.Snapshot(
+            candidateSha, candidateBytes.size, "ABCDE1234F", "2025-02-28",
+            listOf(position))
+        assertThrows(IllegalArgumentException::class.java) {
+            imports.inspectSnapshot(email, unknownPosition, candidateBytes)
+        }
+        assertEquals(before, financialCounts())
+        assertThrows(IllegalArgumentException::class.java) {
+            imports.approveSnapshot(email, "candidate.pdf", candidateBytes,
+                unknownPosition, "CAS_PDF", fakeReview, true)
+        }
+        assertEquals(before, financialCounts())
         accounts.onBackground()
     }
 
