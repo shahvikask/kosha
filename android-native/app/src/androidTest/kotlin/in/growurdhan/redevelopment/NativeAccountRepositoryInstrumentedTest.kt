@@ -439,6 +439,21 @@ class NativeAccountRepositoryInstrumentedTest {
                 fakeReview, true)
         }
         assertEquals(before, financialCounts())
+        // The SQLCipher approval boundary must reject source-type relabeling
+        // before inspecting any potentially fabricated snapshot contents.
+        val mislabeledBytes = ByteArray(64) { 0x41.toByte() }
+        val mislabeledSha = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(mislabeledBytes).joinToString("") { "%02x".format(it) }
+        val mislabeled = `in`.growurdhan.model.NativeStatementCsv.Snapshot(
+            mislabeledSha, mislabeledBytes.size, "ABCDE1234F", "2025-02-28",
+            emptyList())
+        val relabelError = assertThrows(IllegalArgumentException::class.java) {
+            imports.approveSnapshot(email, "source.pdf", mislabeledBytes, mislabeled,
+                "CAS_PDF", fakeReview, true)
+        }
+        assertEquals("CAS approval requires original PDF container",
+            relabelError.message)
+        assertEquals(before, financialCounts())
         accounts.onBackground()
     }
 
