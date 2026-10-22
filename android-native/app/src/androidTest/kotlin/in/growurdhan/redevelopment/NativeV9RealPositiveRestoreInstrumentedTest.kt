@@ -6,6 +6,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.view.KeyEvent
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -59,17 +60,42 @@ class NativeV9RealPositiveRestoreInstrumentedTest {
         device.waitForIdle()
         assertTrue("PIN must be entered in the external Android credential UI",
             device.currentPackageName != appPackage)
+        // Test-only OS UI diagnostics: fixed control labels and package only,
+        // NEVER the PIN, account identity, answers, archive or financial cells.
+        fun observedState(): String {
+            val approved = compose.onAllNodesWithText(
+                "Device verified. Enter your account credentials.")
+                .fetchSemanticsNodes().isNotEmpty()
+            val rejected = compose.onAllNodesWithText(
+                "Device authentication was not completed")
+                .fetchSemanticsNodes().isNotEmpty()
+            val locked = compose.onAllNodesWithText("Verify this device")
+                .fetchSemanticsNodes().isNotEmpty()
+            return "osPackage=" + device.currentPackageName.orEmpty() +
+                ", verifiedUi=" + approved + ", rejectedUi=" + rejected +
+                ", lockedUi=" + locked +
+                ", pinInputWidget=" + device.hasObject(By.clazz("android.widget.EditText"))
+        }
+        System.out.println("NATIVE_V9_POSITIVE_CREDENTIAL_BEFORE osPackage=" +
+            device.currentPackageName.orEmpty() + ", pinInputWidget=" +
+            device.hasObject(By.clazz("android.widget.EditText")))
         device.executeShellCommand("input text 246810")
         device.pressKeyCode(KeyEvent.KEYCODE_ENTER)
-        // Do NOT call scenario.moveToState(CREATED) after OS confirmation:
-        // MainActivity.onStop() intentionally revokes a successful admission.
-        // Only the real ActivityResult callback may set deviceVerified.
+        // Do NOT change Activity lifecycle after PIN success: onStop revokes
+        // admission. Only the real Android ActivityResult may grant admission.
         assertTrue("Credential UI must return to the real MainActivity",
             device.wait(Until.hasObject(By.pkg(appPackage)), 20_000))
-        compose.waitUntil(30_000) {
-            compose.onAllNodesWithText("Device verified. Enter your account credentials.")
-                .fetchSemanticsNodes().isNotEmpty()
+        try {
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("Device verified. Enter your account credentials.")
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+        } catch (failure: ComposeTimeoutException) {
+            throw AssertionError(
+                "Real Android credential result did not grant new admission: " +
+                    observedState(), failure)
         }
+        System.out.println("NATIVE_V9_POSITIVE_CREDENTIAL_ACCEPTED " + observedState())
     }
 
     private fun pickerSelect(filename: String) {
