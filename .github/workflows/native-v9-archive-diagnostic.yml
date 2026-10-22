@@ -157,7 +157,10 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 900
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          script: bash .github/scripts/native-v9-archive-diagnostic.sh
+          # The in-progress UI fixture needs an isolated first-class diagnostic.
+          # No other tests are reported as run. Remove this only for a coherent
+          # full 23-case exact-SHA candidate, never to hide a failing SAF test.
+          script: NATIVE_V9_SAF_ONLY=1 bash .github/scripts/native-v9-archive-diagnostic.sh
       - name: Preserve raw test, JUnit and exact-source evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -165,6 +168,7 @@ jobs:
           name: native-v9-archive-exact-sha-evidence
           path: |
             native-v9-archive-adb.txt
+            native-v9-picker-diagnostic.txt
             native-v9-apk-hashes.txt
             native-v9-provenance.txt
             android-native/core/model/build/test-results/test/TEST-*.xml

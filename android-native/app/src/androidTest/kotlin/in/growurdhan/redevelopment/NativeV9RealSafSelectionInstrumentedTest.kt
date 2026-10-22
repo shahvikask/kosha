@@ -19,6 +19,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
 import java.io.File
 import org.junit.Assert.assertArrayEquals
@@ -59,22 +60,71 @@ class NativeV9RealSafSelectionInstrumentedTest {
         device.pressKeyCode(KeyEvent.KEYCODE_ENTER)
     }
 
+    // Diagnostic labels are fixed OS navigation names, NEVER user file listings.
+    private fun pickerState(): String {
+        val labels = listOf("Recent", "Downloads", "Download", "Internal storage",
+            "Browse", "Files").filter { device.hasObject(By.text(it)) }
+        val pkg = device.currentPackageName.orEmpty()
+        return "foreground=" + pkg + ", visibleSystemRoots=" + labels.joinToString("|")
+    }
+
+    private fun openRoots(): Boolean {
+        val drawer = device.findObject(By.desc("Show roots"))
+            ?: device.findObject(By.descContains("navigation drawer"))
+            ?: device.findObject(By.descContains("Browse files"))
+        if (drawer != null) { drawer.click(); device.waitForIdle(); return true }
+        return false
+    }
+
     private fun selectRealDocument(filename: String) {
-        // DocumentsUI can present as a floating/overlay window while the
-        // underlying app remains in the accessibility tree. Its *own* package
-        // and the exact item are mandatory, not disappearance of the app node.
-        val entry = device.wait(Until.findObject(By.text(filename)), 20_000)
-            ?: run {
-                device.findObject(By.desc("Show roots"))?.click()
-                device.wait(Until.findObject(By.text("Downloads")), 10_000)?.click()
-                device.wait(Until.findObject(By.text(filename)), 15_000)
+        // The actual Android DocumentsUI must own the foreground. An in-app
+        // simulation is not sufficient even when a matching filename exists.
+        val picker = device.wait(Until.findObject(By.pkg("com.google.android.documentsui")), 12_000)
+            ?: device.wait(Until.findObject(By.pkg("com.android.documentsui")), 5_000)
+        assertNotNull("Android DocumentsUI package not present; " + pickerState(), picker)
+        System.out.println("NATIVE_V9_SAF_PICKER_INITIAL " + pickerState())
+
+        fun exact(): UiObject2? = device.findObject(By.text(filename))
+        var entry = exact()
+        if (entry == null) {
+            // DocumentsUI normally starts in Recent; a new test MediaStore item
+            // is not guaranteed to appear there. Open the real Downloads root.
+            openRoots()
+            val downloads = device.wait(Until.findObject(By.text("Downloads")), 5_000)
+            if (downloads != null) { downloads.click(); device.waitForIdle() }
+            System.out.println("NATIVE_V9_SAF_PICKER_DOWNLOADS " + pickerState())
+            entry = device.wait(Until.findObject(By.text(filename)), 6_000)
+        }
+        if (entry == null) {
+            // On some API35 images the Downloads root does not index new
+            // MediaStore entries immediately. Browse the external-storage
+            // provider's physical Download folder; no direct Uri grant bypass.
+            openRoots()
+            val storage = device.wait(Until.findObject(By.text("Internal storage")), 5_000)
+            if (storage != null) {
+                storage.click()
+                val folder = device.wait(Until.findObject(By.text("Download")), 5_000)
+                    ?: device.findObject(By.text("Downloads"))
+                folder?.click()
             }
-        assertNotNull("Synthetic Downloads item must be visible in Android DocumentsUI", entry)
+            System.out.println("NATIVE_V9_SAF_PICKER_STORAGE " + pickerState())
+            entry = device.wait(Until.findObject(By.text(filename)), 6_000)
+        }
+        if (entry == null) {
+            // Last resort is DocumentsUI's own search, never injected picker
+            // results or direct content-URI delivery to the Activity.
+            device.findObject(By.desc("Search"))?.click()
+            device.wait(Until.findObject(By.clazz("android.widget.EditText")), 4_000)
+                ?.setText(filename)
+            System.out.println("NATIVE_V9_SAF_PICKER_SEARCH " + pickerState())
+            entry = device.wait(Until.findObject(By.text(filename)), 8_000)
+        }
+        assertNotNull("Exact synthetic file absent from real picker; " + pickerState(), entry)
         val foreground = device.currentPackageName.orEmpty()
-        assertTrue("Selected item must belong to real Android DocumentsUI: " + foreground,
+        assertTrue("Real Android DocumentsUI must own the selected item: " + foreground,
             foreground != appPackage && foreground.contains("documentsui", ignoreCase = true))
         entry!!.click()
-        assertTrue("Document picker must return to MainActivity",
+        assertTrue("Real picker must return to MainActivity",
             device.wait(Until.hasObject(By.pkg(appPackage)), 20_000))
     }
 
@@ -114,9 +164,23 @@ class NativeV9RealSafSelectionInstrumentedTest {
         ) { "Cannot create test-only synthetic Downloads document" }
         try {
             resolver.openOutputStream(uri, "w")!!.use { it.write(encryptedFake) }
-            resolver.update(uri, ContentValues().apply {
+            val updated = resolver.update(uri, ContentValues().apply {
                 put(MediaStore.MediaColumns.IS_PENDING, 0)
             }, null, null)
+            assertTrue("Synthetic MediaStore publication must complete", updated == 1)
+            resolver.query(uri, arrayOf(MediaStore.MediaColumns.DISPLAY_NAME,
+                MediaStore.MediaColumns.RELATIVE_PATH, MediaStore.MediaColumns.IS_PENDING,
+                MediaStore.MediaColumns.SIZE), null, null, null)?.use { cursor ->
+                assertTrue("Synthetic MediaStore row must be queryable", cursor.moveToFirst())
+                assertTrue("Only the exact synthetic fixture may be selected",
+                    cursor.getString(0) == filename)
+                assertTrue("Synthetic file must be in Downloads",
+                    cursor.getString(1).startsWith(Environment.DIRECTORY_DOWNLOADS))
+                assertTrue("Synthetic MediaStore item cannot remain pending", cursor.getInt(2) == 0)
+                assertTrue("MediaStore size must match the synthetic ciphertext",
+                    cursor.getLong(3) == encryptedFake.size.toLong())
+                System.out.println("NATIVE_V9_SAF_MEDIASTORE=exact synthetic row visible, pending=0, bounded bytes")
+            } ?: error("Synthetic MediaStore row inaccessible")
             val pending = File(context.noBackupFilesDir, "restore-pending.v1.kosha")
             val liveKey = File(context.noBackupFilesDir, "vault-key.v1")
             val liveDb = context.getDatabasePath("growurdhan-v9.sqlcipher")

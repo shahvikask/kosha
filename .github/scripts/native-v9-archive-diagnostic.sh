@@ -41,6 +41,29 @@ CORE_CSV=$(IFS=,; echo "${CORE_TESTS[*]}")
 # This is a distinct instrumentation launch before costly archive tests.
 OS_TESTS="in.growurdhan.redevelopment.NativeV9RealOsJourneyInstrumentedTest#realSystemCredentialCancellationAndActivityRestartRemainLocked,in.growurdhan.redevelopment.NativeV9RealOsJourneyInstrumentedTest#realDocumentsUiCancellationRevokesFreshOsAdmissionAndPreservesNoArchive"
 SAF_TEST="in.growurdhan.redevelopment.NativeV9RealSafSelectionInstrumentedTest#realDocumentsUiStagesTamperedNativeAndDeniesPreviewAndReplay"
+# Temporary targeted-development mode: one authentic UI file selection method
+# ONLY. Does not claim a full 23-case native suite or alter its assertions.
+if [[ "${NATIVE_V9_SAF_ONLY:-0}" == "1" ]]; then
+  timeout 12m adb shell am instrument -w -r -e class "$SAF_TEST" "$RUNNER" \
+    | tee native-v9-archive-adb.txt
+  # Store ONLY explicit synthetic metadata diagnostics, never arbitrary OS
+  # DocumentsUI file names or a full (possibly private) window dump.
+  adb logcat -d -v brief -s System.out:I | grep 'NATIVE_V9_SAF_' \
+    > native-v9-picker-diagnostic.txt || true
+  python3 - <<'PY'
+import re
+from pathlib import Path
+s=Path("native-v9-archive-adb.txt").read_text(encoding="utf-8", errors="replace")
+tests=set(re.findall(r"^INSTRUMENTATION_STATUS: test=(\w+)\s*$",s,re.M))
+codes=re.findall(r"^INSTRUMENTATION_STATUS_CODE: (-?\d+)\s*$",s,re.M)
+assert tests=={"realDocumentsUiStagesTamperedNativeAndDeniesPreviewAndReplay"},tests
+assert codes==["1","0"],f"Real SAF diagnostic failed: {codes}"
+assert len(re.findall(r"^OK\s+\(1 test\)",s,re.M))==1
+assert "FAILURES!!!" not in s and "INSTRUMENTATION_FAILED" not in s
+print("NATIVE_V9_SAF_DIAGNOSTIC=1 passed=1 failed=0 skipped=0; FULL_23_CASE_SUITE_NOT_RUN")
+PY
+  exit 0
+fi
 # Fail immediately on a missing Compose test host. Android's am instrument can
 # exit zero even when JUnit reports FAILURES!!!, so validate raw status codes
 # before spending another 15+ minutes on unrelated encryption tests.
