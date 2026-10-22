@@ -1,0 +1,53 @@
+name: GrowUrDhan Phase 2 parser boundary preflight
+on:
+  push:
+    branches: [GUD-Android-Redevelopment]
+    paths: [.github/workflows/native-phase2-parser-preflight.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  parser-preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Exact SHA
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          echo "$GITHUB_SHA" > phase2-parser-source-sha.txt
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Parser API compile and original JVM tests
+        working-directory: android-native
+        run: |
+          chmod +x gradlew
+          ./gradlew :core:parser-api:test --no-daemon --stacktrace
+      - name: Validate original JUnit reports are nonempty and complete
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          xmls=list(Path('android-native/core/parser-api/build/test-results/test').glob('TEST-*.xml'))
+          assert xmls, 'Missing original parser-api XML'
+          cases=[c for path in xmls for c in ET.parse(path).getroot().findall('.//testcase')]
+          assert len(cases)>=5,len(cases)
+          assert not [c for c in cases if any(c.find(t) is not None for t in ('error','failure','skipped'))]
+          print('PARSER_API_PASS',len(cases))
+          PY
+      - name: Preserve original test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase2-parser-api-preflight-evidence
+          path: |
+            phase2-parser-source-sha.txt
+            android-native/core/parser-api/build/test-results/test/TEST-*.xml
+          if-no-files-found: warn
+          retention-days: 14
