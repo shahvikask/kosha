@@ -11,6 +11,7 @@ import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import androidx.test.uiautomator.By
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -26,6 +27,10 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class NativeV9RealOsJourneyInstrumentedTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+
+    @Before fun verifySecureEmulatorHostIsInteractive() {
+        NativeV9SecureTestHost.requireUnlockedInteractiveDevice()
+    }
     private val device by lazy { UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()) }
     private val appPackage by lazy { InstrumentationRegistry.getInstrumentation().targetContext.packageName }
 

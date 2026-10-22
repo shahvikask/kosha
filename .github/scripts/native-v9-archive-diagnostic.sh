@@ -40,10 +40,33 @@ CORE_CSV=$(IFS=,; echo "${CORE_TESTS[*]}")
 # Real, external Android credential + DocumentsUI boundary coverage.
 # This is a distinct instrumentation launch before costly archive tests.
 OS_TESTS="in.growurdhan.redevelopment.NativeV9RealOsJourneyInstrumentedTest#realSystemCredentialCancellationAndActivityRestartRemainLocked,in.growurdhan.redevelopment.NativeV9RealOsJourneyInstrumentedTest#realDocumentsUiCancellationRevokesFreshOsAdmissionAndPreservesNoArchive"
+# Fail immediately on a missing Compose test host. Android's am instrument can
+# exit zero even when JUnit reports FAILURES!!!, so validate raw status codes
+# before spending another 15+ minutes on unrelated encryption tests.
+check_ui_phase() {
+  local completed="$1"
+  python3 - "$completed" <<'PY'
+import re
+import sys
+from pathlib import Path
+data = Path("native-v9-archive-adb.txt").read_text(encoding="utf-8", errors="replace")
+n = int(sys.argv[1])
+codes = re.findall(r"^INSTRUMENTATION_STATUS_CODE: (-?\d+)\s*$", data, re.M)
+assert len(codes) == n * 2 and codes.count("0") == n and codes.count("1") == n, (
+    f"Compose/OS preflight must be {n}/{n} passing before expensive recovery: {codes}")
+assert "FAILURES!!!" not in data and "INSTRUMENTATION_FAILED" not in data
+assert len(re.findall(r"^OK\s+\(3 tests\)", data, re.M)) == 1
+if n == 5:
+    assert len(re.findall(r"^OK\s+\(2 tests\)", data, re.M)) == 1
+print(f"NATIVE_V9_UI_OS_PREFLIGHT={n}/{n} PASS; encrypted recovery still pending")
+PY
+}
 timeout 10m adb shell am instrument -w -r -e class "$UI_CSV" "$RUNNER" \
   | tee native-v9-archive-adb.txt
+check_ui_phase 3
 timeout 12m adb shell am instrument -w -r -e class "$OS_TESTS" "$RUNNER" \
   | tee -a native-v9-archive-adb.txt
+check_ui_phase 5
 timeout 25m adb shell am instrument -w -r -e class "$CORE_CSV" "$RUNNER" \
   | tee -a native-v9-archive-adb.txt
 # Phase I deliberately stops after a verified candidate is sealed, then the

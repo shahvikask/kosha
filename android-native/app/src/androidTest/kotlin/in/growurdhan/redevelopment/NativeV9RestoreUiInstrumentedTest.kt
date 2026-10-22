@@ -16,6 +16,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import `in`.growurdhan.designsystem.GudTheme
 import org.junit.Assert.assertEquals
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -24,6 +25,10 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class NativeV9RestoreUiInstrumentedTest {
     @get:Rule val compose = createComposeRule()
+
+    @Before fun verifySecureEmulatorHostIsInteractive() {
+        NativeV9SecureTestHost.requireUnlockedInteractiveDevice()
+    }
 
     /**
      * Complete Compose callback choreography for native source selection ->
