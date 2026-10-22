@@ -15,6 +15,25 @@ class NativeCasPdfEngineInstrumentedTest {
     private val engine get() = NativeCasPdfEngine(
         InstrumentationRegistry.getInstrumentation().targetContext)
 
+
+    /**
+     * Run as the sole instrumentation method in a clean app process. The
+     * synthetic PDF header deliberately passes the older native preconditions
+     * (length, magic and PAN), but its non-PDF extension must be refused by
+     * ParserBoundary *before* Python.start or the frozen parser callback.
+     */
+    @Test fun malformedCasContainerNeverStartsChaquopyOnFreshProcess() {
+        assertFalse("Test must begin in a clean process, not skip the proof",
+            Python.isStarted())
+        val headerOnly = ("%PDF-" + "synthetic-header-not-a-real-statement".repeat(2))
+            .toByteArray(Charsets.UTF_8)
+        assertThrows(IllegalArgumentException::class.java) {
+            engine.parse(headerOnly, "synthetic-password", "synthetic.txt", "ABCDE1234F")
+        }
+        assertFalse("Rejected CAS container must not initialize Chaquopy",
+            Python.isStarted())
+    }
+
     @Test fun arbitraryBytesNeverReachPythonPdfParser() {
         assertThrows(IllegalArgumentException::class.java) {
             engine.parse("not-a-pdf".toByteArray(), "", "bad.pdf", "ABCDE1234F")
