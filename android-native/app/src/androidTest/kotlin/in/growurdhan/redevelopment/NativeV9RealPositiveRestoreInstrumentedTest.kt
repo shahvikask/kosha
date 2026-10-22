@@ -55,6 +55,13 @@ class NativeV9RealPositiveRestoreInstrumentedTest {
             device.currentPackageName != appPackage)
         device.executeShellCommand("input text 246810")
         device.pressKeyCode(KeyEvent.KEYCODE_ENTER)
+        // Keyguard dismissal can leave MainActivity paused or behind a
+        // transient system window. Explicitly return the REAL Activity to
+        // RESUMED before inspecting Compose; this does not grant admission.
+        compose.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
+        compose.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+        assertTrue("Keyguard confirmation must return a visible real MainActivity",
+            device.wait(Until.hasObject(By.pkg(appPackage)), 20_000))
         compose.waitUntil(30_000) {
             compose.onAllNodesWithText("Device verified. Enter your account credentials.")
                 .fetchSemanticsNodes().isNotEmpty()
