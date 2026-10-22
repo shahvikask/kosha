@@ -403,4 +403,44 @@ class NativeAccountRepositoryInstrumentedTest {
             }
         }
     }
+
+    /** An invalid CAS-derived snapshot must not write to the REAL encrypted vault. */
+    @Test fun malformedCasSnapshotCannotWriteToSqlCipherOnInspectOrApproval() {
+        val ctx = sandbox()
+        val email = "cas-negative@example.org"
+        val password = "Strong!Pass123"
+        val accounts = repository(ctx)
+        verifiedEnroll(accounts, NativeCredentials.Enrollment(
+            email, "Cas", "Negative", password, "school", "School", "pet", "Cat"))
+        assertTrue(accounts.login(email, password))
+        val imports = NativeStatementImportRepository(accounts)
+        val source = "%PDF-synthetic-not-financial".toByteArray(Charsets.UTF_8)
+        val forged = `in`.growurdhan.model.NativeStatementCsv.Snapshot(
+            "0".repeat(64), source.size, "ABCDE1234F", "2025-02-28",
+            emptyList())
+        fun financialCounts(): List<Long> = accounts.withUnlockedVault(email) { db ->
+            listOf("source_document", "import_batch", "statement_position",
+                "ledger_event", "holding").map { table ->
+                db.rawQuery("SELECT COUNT(*) FROM " + table, null).use { cursor ->
+                    assertTrue(cursor.moveToFirst())
+                    cursor.getLong(0)
+                }
+            }
+        }
+        val before = financialCounts()
+        assertThrows(IllegalArgumentException::class.java) {
+            imports.inspectSnapshot(email, forged, source)
+        }
+        assertEquals(before, financialCounts())
+        val fakeReview = NativeStatementImportRepository.Review(
+            "0".repeat(64), "2025-02-28", emptyList(), "0".repeat(64), false)
+        assertThrows(IllegalArgumentException::class.java) {
+            imports.approveSnapshot(email, "fake.pdf", source, forged, "CAS_PDF",
+                fakeReview, true)
+        }
+        assertEquals(before, financialCounts())
+        accounts.onBackground()
+    }
+
+
 }
