@@ -1,0 +1,84 @@
+name: GrowUrDhan Phase 2 owner CAS approval compile preflight
+on:
+  push:
+    branches: [GUD-Android-Redevelopment]
+    paths: [.github/workflows/native-phase2-owner-cas-approval-compile.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  compile-cas-bridge:
+    if: github.ref == 'refs/heads/GUD-Android-Redevelopment'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify exact source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          printf '%s\n' "$GITHUB_SHA" > phase2-owner-cas-compile-source-sha.txt
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Reuse source-pinned Android ABI wheels
+        uses: actions/download-artifact@v4
+        with:
+          repository: shahvikask/kosha
+          run-id: 39526640647
+          github-token: ${{ github.token }}
+          name: source-pinned-android-python-wheels
+          path: android-native/app/python-wheels
+      - name: Check exact wheel hashes and both ABI variants
+        working-directory: android-native/app/python-wheels
+        run: |
+          set -euo pipefail
+          sha256sum --check SHA256SUMS
+          python3 - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          for pkg,version in (('pydantic_core','2.41.5'),('pypdfium2','5.14.0')):
+              for abi in ('arm64_v8a','x86_64'):
+                  matches=list(Path('.').glob(f'{pkg}-{version}-*android_*_{abi}.whl'))
+                  assert len(matches)==1,(pkg,abi,matches)
+                  with ZipFile(matches[0]) as f:
+                      assert any(n.endswith('.so') for n in f.namelist())
+                  print('WHEEL_OK',pkg,version,abi)
+          PY
+      - name: Scoped parser JVM and Android app debug Kotlin compilation
+        working-directory: android-native
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :core:parser-api:test :app:compileDebugKotlin --no-daemon --stacktrace
+      - name: Fail on missing/skipped/failed parser original JUnit
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as E
+          xml=list(Path('android-native/core/parser-api/build/test-results/test').glob('TEST-*.xml'))
+          assert xml,'Missing parser JUnit'
+          cases=[c for p in xml for c in E.parse(p).getroot().findall('.//testcase')]
+          assert len(cases)>=7
+          assert all(not any(c.find(t) is not None for t in ('failure','error','skipped')) for c in cases)
+          print('PARSER_JVM_PASS',len(cases))
+          PY
+      - name: Preserve exact SHA and original parser JUnit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase2-owner-cas-compile-evidence
+          path: |
+            phase2-owner-cas-compile-source-sha.txt
+            android-native/core/parser-api/build/test-results/test/TEST-*.xml
+          if-no-files-found: warn
+          retention-days: 14
