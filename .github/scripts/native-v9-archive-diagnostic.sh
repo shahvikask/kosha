@@ -41,6 +41,26 @@ CORE_CSV=$(IFS=,; echo "${CORE_TESTS[*]}")
 # This is a distinct instrumentation launch before costly archive tests.
 OS_TESTS="in.growurdhan.redevelopment.NativeV9RealOsJourneyInstrumentedTest#realSystemCredentialCancellationAndActivityRestartRemainLocked,in.growurdhan.redevelopment.NativeV9RealOsJourneyInstrumentedTest#realDocumentsUiCancellationRevokesFreshOsAdmissionAndPreservesNoArchive"
 SAF_TEST="in.growurdhan.redevelopment.NativeV9RealSafSelectionInstrumentedTest#realDocumentsUiStagesTamperedNativeAndDeniesPreviewAndReplay"
+POSITIVE_SAF_TEST="in.growurdhan.redevelopment.NativeV9RealPositiveRestoreInstrumentedTest#realDocumentsUiOwnerApprovedNativePublicationAndReplayDenial"
+# Separate FRESH-EMULATOR POSITIVE test. The earlier negative test leaves a
+# permanent staged artifact; never delete it to make a second test succeed.
+if [[ "${NATIVE_V9_POSITIVE_ONLY:-0}" == "1" ]]; then
+  timeout 20m adb shell am instrument -w -r -e class "$POSITIVE_SAF_TEST" "$RUNNER" \
+    | tee native-v9-archive-adb.txt
+  python3 - <<'PY'
+from pathlib import Path
+import re
+s=Path("native-v9-archive-adb.txt").read_text(encoding="utf-8", errors="replace")
+tests=set(re.findall(r"^INSTRUMENTATION_STATUS: test=(\w+)\s*$",s,re.M))
+codes=re.findall(r"^INSTRUMENTATION_STATUS_CODE: (-?\d+)\s*$",s,re.M)
+assert tests=={"realDocumentsUiOwnerApprovedNativePublicationAndReplayDenial"},tests
+assert codes==["1","0"],f"Positive owner restore failed: {codes}"
+assert len(re.findall(r"^OK\s+\(1 test\)",s,re.M))==1
+assert "FAILURES!!!" not in s and "INSTRUMENTATION_FAILED" not in s
+print("NATIVE_V9_REAL_POSITIVE=1 passed=1 failed=0 skipped=0; FULL_23_CASE_SUITE_NOT_RUN")
+PY
+  exit 0
+fi
 # Temporary targeted-development mode: one authentic UI file selection method
 # ONLY. Does not claim a full 23-case native suite or alter its assertions.
 if [[ "${NATIVE_V9_SAF_ONLY:-0}" == "1" ]]; then

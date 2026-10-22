@@ -20,6 +20,7 @@ on:
       - android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeV9RestoreUiInstrumentedTest.kt
       - android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeV9RealOsJourneyInstrumentedTest.kt
       - android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeV9RealSafSelectionInstrumentedTest.kt
+      - android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeV9RealPositiveRestoreInstrumentedTest.kt
       - android-native/app/build.gradle.kts
       - android-native/core/database/src/test/kotlin/in/growurdhan/database/NativeV9ArchiveTest.kt
       - android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeV9ArchiveInstrumentedTest.kt
@@ -75,7 +76,9 @@ jobs:
               assert re.search(r"@Test\s+fun\s+" + method + r"\s*\(", os_text), method
           saf_source = Path("android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeV9RealSafSelectionInstrumentedTest.kt")
           assert re.search(r"@Test\s+fun\s+realDocumentsUiStagesTamperedNativeAndDeniesPreviewAndReplay\s*\(", saf_source.read_text()), "Missing real SAF selection regression"
-          print("NATIVE_V9_STATIC_TARGET_INVENTORY=18 grouped + 2 real OS + 1 real SAF selection + 2 isolated process phases")
+          positive = Path("android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeV9RealPositiveRestoreInstrumentedTest.kt")
+          assert re.search(r"@Test\s+fun\s+realDocumentsUiOwnerApprovedNativePublicationAndReplayDenial\s*\(", positive.read_text()), "Missing real owner-approved SAF test"
+          print("NATIVE_V9_STATIC_TARGET_INVENTORY=18 grouped + 2 real OS + 1 real SAF selection + 2 isolated process + separate 1 positive fresh-emulator method")
           PY
       - uses: actions/setup-java@v4
         with:
@@ -160,7 +163,7 @@ jobs:
           # The in-progress UI fixture needs an isolated first-class diagnostic.
           # No other tests are reported as run. Remove this only for a coherent
           # full 23-case exact-SHA candidate, never to hide a failing SAF test.
-          script: NATIVE_V9_SAF_ONLY=1 bash .github/scripts/native-v9-archive-diagnostic.sh
+          script: NATIVE_V9_POSITIVE_ONLY=1 bash .github/scripts/native-v9-archive-diagnostic.sh
       - name: Preserve raw test, JUnit and exact-source evidence
         if: always()
         uses: actions/upload-artifact@v4

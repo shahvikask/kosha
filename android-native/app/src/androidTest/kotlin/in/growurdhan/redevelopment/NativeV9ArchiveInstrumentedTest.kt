@@ -131,6 +131,9 @@ class NativeV9ArchiveInstrumentedTest {
         db.execSQL("INSERT INTO setting(key,value) VALUES(?,?)",
             arrayOf("m25.terms.accepted_at", "2026-10-21T11:00:00Z"))
     }
+    /** Synthetic-only fixture shared with the real OS picker integration test. */
+    internal fun syntheticAuthenticatedArchive(): ByteArray = verifiedArchive()
+
     private fun verifiedArchive(): ByteArray {
         val origin = sandbox()
         val snapshot = EncryptedVaultStore(origin).createFresh(false).use { db ->
