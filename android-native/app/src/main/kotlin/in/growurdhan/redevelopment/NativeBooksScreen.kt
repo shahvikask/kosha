@@ -934,6 +934,7 @@ private fun NativeCasPdfCard(email: String, imports: NativeStatementImportReposi
     val scope = rememberCoroutineScope()
     var password by remember { mutableStateOf("") }
     var confirmedPan by remember { mutableStateOf("") }
+    var ownerApprovedReview by remember { mutableStateOf(false) }
     var reviewed by remember { mutableStateOf<NativeStatementImportRepository.Review?>(null) }
     var parsed by remember { mutableStateOf<NativeCasPdfEngine.Parsed?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -943,6 +944,7 @@ private fun NativeCasPdfCard(email: String, imports: NativeStatementImportReposi
         confirmedPan = ""
         reviewed = null
         parsed = null
+        ownerApprovedReview = false
         message = ""
     }
     Text("Import a real CAS PDF", style = MaterialTheme.typography.titleLarge)
@@ -964,10 +966,10 @@ private fun NativeCasPdfCard(email: String, imports: NativeStatementImportReposi
             "Confirm the actual statement owner against your encrypted family records; " +
             "this is owner attestation, not independent issuer verification.")
         OutlinedButton(enabled = !busy, onClick = {
-            reviewed = null; parsed = null; password = ""; confirmedPan = ""; discard()
+            reviewed = null; parsed = null; ownerApprovedReview = false; password = ""; confirmedPan = ""; discard()
         }) { Text("Discard PDF and password") }
         Button(enabled = !busy, onClick = {
-            busy = true; message = ""; reviewed = null; parsed = null
+            busy = true; message = ""; reviewed = null; parsed = null; ownerApprovedReview = false
             scope.launch {
                 try {
                     val result = withContext(Dispatchers.IO) {
@@ -999,7 +1001,10 @@ private fun NativeCasPdfCard(email: String, imports: NativeStatementImportReposi
                 }
                 Text("Do not approve if the source, owners, holdings, " +
                     "or totals do not match the PDF. Changes are snapshots, never purchases.")
-                Button(enabled = !busy, onClick = {
+                androidx.compose.material3.Checkbox(checked = ownerApprovedReview,
+                    onCheckedChange = { ownerApprovedReview = it }, enabled = !busy)
+                Text("I checked this statement, owner, exact matched holdings and totals, and approve this snapshot.")
+                Button(enabled = !busy && ownerApprovedReview, onClick = {
                     busy = true
                     scope.launch {
                         try {
@@ -1009,12 +1014,12 @@ private fun NativeCasPdfCard(email: String, imports: NativeStatementImportReposi
                             }
                             val receipt = withContext(Dispatchers.IO) {
                                 imports.approveSnapshot(email, filename, pdf,
-                                    fresh.snapshot, "CAS_PDF", plan, true)
+                                    fresh.snapshot, "CAS_PDF", plan, ownerApprovedReview)
                             }
                             message = if (receipt.duplicate) "Already imported."
                                 else "Approved ${receipt.positions} CAS positions; " +
                                     "${receipt.adjustments} reconciled quantity changes."
-                            reviewed = null; parsed = null; password = ""; confirmedPan = ""; discard()
+                            reviewed = null; parsed = null; ownerApprovedReview = false; password = ""; confirmedPan = ""; discard()
                             onCommitted()
                         } catch (_: Exception) {
                             message = "Import refused: source or ledger changed, " +
