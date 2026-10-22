@@ -5,6 +5,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
+import androidx.lifecycle.Lifecycle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
@@ -66,6 +67,14 @@ class NativeV9RealOsJourneyInstrumentedTest {
         compose.onNodeWithText("Verify this device").performClick()
         waitForOutsideApp("Keyguard confirmation")
         device.pressBack() // genuine OS cancellation, not a synthetic callback
+        // Keyguard can return to the system launcher/transition while our
+        // Activity remains stopped. Re-enter it like the owner would after
+        // cancelling, instead of querying Compose behind an external window.
+        // Neither step grants device admission or bypasses Keyguard.
+        compose.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
+        compose.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        assertTrue("Cancel must return a visible real MainActivity",
+            device.wait(Until.hasObject(By.pkg(appPackage)), 20_000))
         waitForLocked()
         compose.activityRule.scenario.recreate() // new Activity cannot reuse admission
         waitForLocked()
