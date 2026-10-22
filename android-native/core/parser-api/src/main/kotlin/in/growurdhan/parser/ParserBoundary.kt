@@ -8,6 +8,14 @@ object ParserBoundary {
     const val CHAQUOPY_LINKED = false
     const val CALLS_FROZEN_PARSER = false
 
+    /** Executes a parser action only after admissible PDF bytes pass validation. */
+    fun <T> withAdmittedPdf(displayName: String, bytes: ByteArray, action: () -> T): T {
+        require(admit(displayName, bytes) == Admission.Allowed(Format.PDF)) {
+            "CAS PDF refused before parser invocation"
+        }
+        return action()
+    }
+
     enum class Format { PDF, CSV }
     enum class Refusal { EMPTY, TOO_LARGE, BAD_SIGNATURE, BINARY_CSV, UNSUPPORTED_FORMAT }
     sealed interface Admission {
