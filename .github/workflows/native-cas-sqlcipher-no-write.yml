@@ -2,7 +2,10 @@ name: GrowUrDhan CAS SQLCipher no-write proof
 on:
   push:
     branches: [GUD-Android-Redevelopment]
-    paths: [.github/workflows/native-cas-sqlcipher-no-write.yml]
+    paths:
+      - .github/workflows/native-cas-sqlcipher-no-write.yml
+      - android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeStatementImportRepository.kt
+      - android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeAccountRepositoryInstrumentedTest.kt
   workflow_dispatch:
 permissions:
   contents: read
