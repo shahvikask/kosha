@@ -60,15 +60,19 @@ class NativeV9RealSafSelectionInstrumentedTest {
     }
 
     private fun selectRealDocument(filename: String) {
-        assertTrue("Real external DocumentsUI must open",
-            device.wait(Until.gone(By.pkg(appPackage)), 20_000))
-        val entry = device.wait(Until.findObject(By.text(filename)), 10_000)
+        // DocumentsUI can present as a floating/overlay window while the
+        // underlying app remains in the accessibility tree. Its *own* package
+        // and the exact item are mandatory, not disappearance of the app node.
+        val entry = device.wait(Until.findObject(By.text(filename)), 20_000)
             ?: run {
                 device.findObject(By.desc("Show roots"))?.click()
                 device.wait(Until.findObject(By.text("Downloads")), 10_000)?.click()
                 device.wait(Until.findObject(By.text(filename)), 15_000)
             }
         assertNotNull("Synthetic Downloads item must be visible in Android DocumentsUI", entry)
+        val foreground = device.currentPackageName.orEmpty()
+        assertTrue("Selected item must belong to real Android DocumentsUI: " + foreground,
+            foreground != appPackage && foreground.contains("documentsui", ignoreCase = true))
         entry!!.click()
         assertTrue("Document picker must return to MainActivity",
             device.wait(Until.hasObject(By.pkg(appPackage)), 20_000))
