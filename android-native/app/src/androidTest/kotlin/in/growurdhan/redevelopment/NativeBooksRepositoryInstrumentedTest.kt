@@ -510,7 +510,6 @@ class NativeBooksRepositoryInstrumentedTest {
         assertEquals(beforeReplay, counts(accounts))
         accounts.onBackground()
         val reopened = NativeAccountRepository(
-            // Same isolated context is required; see variant below.
             replayContext, gate())
         assertTrue(reopened.login(input.email, input.password))
         assertTrue(NativeStatementImportRepository(reopened).approveSnapshot(
