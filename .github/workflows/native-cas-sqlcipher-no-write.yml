@@ -1,4 +1,4 @@
-name: GrowUrDhan CAS SQLCipher no-write proof
+name: GrowUrDhan CAS SQLCipher consent no-write proof
 on:
   push:
     branches: [GUD-Android-Redevelopment]
