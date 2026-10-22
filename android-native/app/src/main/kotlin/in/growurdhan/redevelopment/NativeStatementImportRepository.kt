@@ -177,6 +177,10 @@ internal class NativeStatementImportRepository(
         if (isDuplicate) return Review(snapshot.sha256, snapshot.date,
             emptyList(), hash("duplicate|" + snapshot.sha256), true)
 
+        // A genuine multi-account CAS must not implicitly pool distinct DP
+        // accounts simply because its positions have the same PAN/ISIN.
+        // Existing folio/ISIN matching remains strict and ambiguous matches
+        // must always be refused before an approval token is generated.
         val rows = snapshot.positions.map { source ->
             // PAN is used only as an exact SQLCipher equality predicate.
             // All matching identifiers must be consistent and unambiguous.
