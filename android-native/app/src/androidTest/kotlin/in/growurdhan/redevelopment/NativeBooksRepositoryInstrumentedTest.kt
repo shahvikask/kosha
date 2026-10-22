@@ -457,7 +457,8 @@ class NativeBooksRepositoryInstrumentedTest {
     }
 
     @Test fun pdfSnapshotAdapterRetainsSourceDigestAndOwnerReviewInsideSqlcipher() {
-        val (accounts, books) = create(sandbox())
+        val replayContext = sandbox()
+        val (accounts, books) = create(replayContext)
         val owner = books.read(input.email).people.single().id
         val h = books.createHolding(input.email, NativeBooksRepository.NewHolding(
             owner, null, "Synthetic source matching", "EQUITY", "Other",
@@ -491,6 +492,30 @@ class NativeBooksRepositoryInstrumentedTest {
         assertEquals(2, books.history(input.email, h).size)
         assertEquals("SNAPSHOT_ADJUSTMENT", books.history(input.email, h).last().kind)
         assertTrue(importer.inspectSnapshot(input.email, source, pdf).duplicate)
+        // Replaying the PREVIOUS owner approval must be idempotent inside the
+        // same encrypted vault, including after a fresh admitted login.
+        fun counts(repo: NativeAccountRepository): List<Long> =
+            repo.withUnlockedVault(input.email) { db ->
+                listOf("source_document", "import_batch", "statement_position",
+                    "ledger_event").map { name ->
+                    db.rawQuery("SELECT COUNT(*) FROM " + name, null).use { cursor ->
+                        assertTrue(cursor.moveToFirst())
+                        cursor.getLong(0)
+                    }
+                }
+            }
+        val beforeReplay = counts(accounts)
+        assertTrue(importer.approveSnapshot(input.email, "example.pdf", pdf,
+            source, "CAS_PDF", plan, true).duplicate)
+        assertEquals(beforeReplay, counts(accounts))
+        accounts.onBackground()
+        val reopened = NativeAccountRepository(
+            // Same isolated context is required; see variant below.
+            replayContext, gate())
+        assertTrue(reopened.login(input.email, input.password))
+        assertTrue(NativeStatementImportRepository(reopened).approveSnapshot(
+            input.email, "example.pdf", pdf, source, "CAS_PDF", plan, true).duplicate)
+        assertEquals(beforeReplay, counts(reopened))
     }
 
     @Test fun pdfSnapshotApprovalRefusesWrongEncryptedFamilyIdentity() {
