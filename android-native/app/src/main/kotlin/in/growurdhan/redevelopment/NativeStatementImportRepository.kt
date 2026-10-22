@@ -290,6 +290,16 @@ internal class NativeStatementImportRepository(
         previouslyReviewed: Review, explicitOwnerApproval: Boolean): Receipt {
         require(explicitOwnerApproval) { "Import requires explicit reviewed approval" }
         require(sourceKind in setOf("CSV_SNAPSHOT", "CAS_PDF"))
+        if (sourceKind == "CAS_PDF") {
+            // Do not allow callers to relabel arbitrary source bytes as a CAS PDF.
+            // This is only a container guard; real frozen parser output must
+            // still be independently admitted by NativeCasOutputReviewGate.
+            require(originalFilename.endsWith(".pdf", ignoreCase = true) &&
+                sourceBytes.size >= 32 &&
+                sourceBytes.copyOfRange(0, 5).contentEquals("%PDF-".toByteArray())) {
+                "CAS approval requires original PDF container"
+            }
+        }
         requireBoundSnapshot(snapshot, sourceBytes)
         require(snapshot.sha256 == previouslyReviewed.sourceSha256) {
             "Statement bytes changed after preview"
