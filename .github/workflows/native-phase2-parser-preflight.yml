@@ -37,7 +37,7 @@ jobs:
           xmls=list(Path('android-native/core/parser-api/build/test-results/test').glob('TEST-*.xml'))
           assert xmls, 'Missing original parser-api XML'
           cases=[c for path in xmls for c in ET.parse(path).getroot().findall('.//testcase')]
-          assert len(cases)>=5,len(cases)
+          assert len(cases)>=7,len(cases)
           assert not [c for c in cases if any(c.find(t) is not None for t in ('error','failure','skipped'))]
           print('PARSER_API_PASS',len(cases))
           PY
