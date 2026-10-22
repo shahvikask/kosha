@@ -5,6 +5,29 @@ import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class ParserBoundaryTest {
+    @Test fun rejectsMalformedPdfBeforeCallback() {
+        var invoked = 0
+        val invalid = listOf(
+            "not-pdf".toByteArray(), byteArrayOf(), byteArrayOf(0, 1, 2)
+        )
+        for (bytes in invalid) {
+            try {
+                ParserBoundary.withAdmittedPdf("source.pdf", bytes) { invoked++ }
+                org.junit.Assert.fail("Malformed CAS entered callback")
+            } catch (_: IllegalArgumentException) {
+                assertEquals(0, invoked)
+            }
+        }
+    }
+
+    @Test fun validPdfInvokesCallbackOnce() {
+        var invoked = 0
+        val answer = ParserBoundary.withAdmittedPdf("source.PDF",
+            "%PDF-1.7".toByteArray()) { invoked++; "parsed" }
+        assertEquals("parsed", answer)
+        assertEquals(1, invoked)
+    }
+
     @Test fun moduleDoesNotLinkChaquopyOrCallTheParser() {
         assertFalse(ParserBoundary.CHAQUOPY_LINKED)
         assertFalse(ParserBoundary.CALLS_FROZEN_PARSER)
