@@ -1,0 +1,99 @@
+name: GrowUrDhan CAS SQLCipher replay proof
+on:
+  push:
+    branches: [GUD-Android-Redevelopment]
+    paths:
+      - .github/workflows/native-cas-replay-proof.yml
+      - android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeStatementImportRepository.kt
+      - android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeBooksRepositoryInstrumentedTest.kt
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  cas-negative:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Exact SHA and frozen source guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code 272a271508d28b5bbcaf724def8e7eb568b38b56 "$GITHUB_SHA" -- src/ src-tauri/ scripts/
+          echo "$GITHUB_SHA" > cas-replay-sha.txt
+          grep -q 'fun pdfSnapshotAdapterRetainsSourceDigestAndOwnerReviewInsideSqlcipher()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeBooksRepositoryInstrumentedTest.kt
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Reuse verified pinned Python wheels
+        uses: actions/download-artifact@v4
+        with:
+          repository: shahvikask/kosha
+          run-id: 39526640647
+          github-token: ${{ github.token }}
+          name: source-pinned-android-python-wheels
+          path: android-native/app/python-wheels
+      - name: Verify wheel integrity
+        run: cd android-native/app/python-wheels && sha256sum --check SHA256SUMS
+      - name: Scoped parser JVM and Android test APK compile
+        working-directory: android-native
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :core:parser-api:test :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --stacktrace
+      - name: Capture exact-source APK hashes
+        run: |
+          set -euo pipefail
+          sha256sum android-native/app/build/outputs/apk/debug/app-debug.apk android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk > cas-replay-apk-sha256.txt
+      - name: Configure emulator acceleration
+        run: if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - name: Real SQLCipher rejected CAS snapshot no-write test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 3072M
+          heap-size: 512M
+          disable-animations: true
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: bash .github/scripts/native-cas-replay-proof.sh
+      - name: Verify original JVM XML before acceptance
+        if: always()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as E
+          files=list(Path('android-native/core/parser-api/build/test-results/test').glob('TEST-*.xml'))
+          if not files: raise SystemExit('Missing original JUnit XML')
+          cases=[c for f in files for c in E.parse(f).getroot().findall('.//testcase')]
+          if len(cases)<7 or any(any(c.find(x) is not None for x in ('failure','error','skipped')) for c in cases):
+              raise SystemExit('Parser JVM test failure/skip')
+          print('PARSER_JVM_PASS',len(cases))
+          PY
+      - name: Preserve evidence, including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-sha-cas-replay-output-proof
+          path: |
+            cas-replay-sha.txt
+            cas-replay-apk-sha256.txt
+            cas-replay-adb.txt
+            android-native/core/parser-api/build/test-results/test/TEST-*.xml
+          if-no-files-found: warn
+          retention-days: 14
