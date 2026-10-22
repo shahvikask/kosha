@@ -1,0 +1,153 @@
+name: GrowUrDhan Phase 1 whole-project build confidence
+on:
+  workflow_dispatch:
+  push:
+    branches: [GUD-Android-Redevelopment]
+    paths:
+      - .github/workflows/native-phase1-build-confidence.yml
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: gud-phase1-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  native-build-confidence:
+    if: github.ref == 'refs/heads/GUD-Android-Redevelopment'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Exact SHA and frozen-source guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$GITHUB_REF" = refs/heads/GUD-Android-Redevelopment
+          git diff --exit-code 272a271508d28b5bbcaf724def8e7eb568b38b56 "$GITHUB_SHA" -- src/ src-tauri/ scripts/
+          printf '%s\n' "$GITHUB_SHA" > phase1-source-sha.txt
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Retrieve existing verified Android ABI wheels
+        uses: actions/download-artifact@v4
+        with:
+          repository: shahvikask/kosha
+          run-id: 39526640647
+          github-token: ${{ github.token }}
+          name: source-pinned-android-python-wheels
+          path: android-native/app/python-wheels
+      - name: Check wheel SHA256, identity and both Android ABIs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd android-native/app/python-wheels
+          sha256sum -c SHA256SUMS
+          python3 - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          p=Path('.')
+          for pkg,version in (('pydantic_core','2.41.5'),('pypdfium2','5.14.0')):
+              for abi in ('arm64_v8a','x86_64'):
+                  files=list(p.glob(f'{pkg}-{version}-*android_*_{abi}.whl'))
+                  assert len(files)==1,(pkg,abi,files)
+                  with ZipFile(files[0]) as z:
+                      assert any(n.endswith('.so') for n in z.namelist()),files[0]
+                  print('ANDROID_WHEEL_OK',pkg,version,abi)
+          PY
+      - name: Compile all five modules and run every declared JVM test suite
+        working-directory: android-native
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :core:model:test :core:database:test :core:parser-api:test :core:designsystem:assembleDebug :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --stacktrace
+      - name: Fail closed on missing, skipped or failed original JVM XML
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          import json
+          roots={
+              'model':Path('android-native/core/model/build/test-results/test'),
+              'database':Path('android-native/core/database/build/test-results/test'),
+              'parser-api':Path('android-native/core/parser-api/build/test-results/test'),
+              'app-debug':Path('android-native/app/build/test-results/testDebugUnitTest'),
+          }
+          result={}
+          for name,root in roots.items():
+              paths=list(root.rglob('TEST-*.xml'))
+              assert paths,f'{name} missing original JUnit XML'
+              cases=[t for p in paths for t in ET.parse(p).getroot().findall('.//testcase')]
+              assert cases,f'{name} missing cases'
+              bad=[t.attrib.get('name') for t in cases if any(t.find(tag) is not None for tag in ('failure','error','skipped'))]
+              result[name]={'tests':len(cases),'bad':bad}
+              assert not bad,(name,bad)
+          Path('phase1-jvm-counts.json').write_text(json.dumps(result,indent=2)+'\n')
+          print('PHASE1_JVM',result)
+          PY
+      - name: Deliberate unsigned native release variant compilation
+        working-directory: android-native
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleRelease :app:bundleRelease --no-daemon --stacktrace
+      - name: Verify release unsigned and required packaged ABI payloads
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from hashlib import sha256
+          from io import BytesIO
+          from pathlib import Path
+          from zipfile import ZipFile
+          import json
+          app=Path('android-native/app/build/outputs/apk/debug/app-debug.apk')
+          test=Path('android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk')
+          releases=list(Path('android-native/app/build/outputs/apk/release').glob('*.apk'))
+          bundles=list(Path('android-native/app/build/outputs/bundle/release').glob('*.aab'))
+          assert app.is_file() and test.is_file() and len(releases)==1 and len(bundles)==1
+          with ZipFile(app) as apk:
+              entries=set(apk.namelist())
+              assert 'assets/chaquopy/requirements-common.imy' in entries
+              for abi,arch,machine in [('arm64-v8a','aarch64',183),('x86_64','x86_64',62)]:
+                  assert f'lib/{abi}/libpython3.13.so' in entries
+                  with ZipFile(BytesIO(apk.read(f'assets/chaquopy/requirements-{abi}.imy'))) as dep:
+                      for member in (f'pydantic_core/_pydantic_core.cpython-313-{arch}-linux-android.so','pypdfium2_raw/libpdfium.so'):
+                          blob=dep.read(member)
+                          assert blob[:4]==bytes((127,69,76,70)) and int.from_bytes(blob[18:20],'little')==machine,(abi,member)
+          # Release packaging is not signing acceptance.
+          for b in bundles:
+              with ZipFile(b) as z:
+                  assert 'base/manifest/AndroidManifest.xml' in z.namelist()
+          paths=[app,test,*releases,*bundles]
+          result={str(x):sha256(x.read_bytes()).hexdigest() for x in paths}
+          Path('phase1-artifact-sha256.json').write_text(json.dumps(result,indent=2)+'\n')
+          print('PHASE1_ARTIFACT_SHA256',result)
+          print('PHASE1_RELEASE_SIGNING_NOT_VERIFIED')
+          PY
+      - name: Preserve exact-source build evidence, including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase1-whole-project-build-evidence
+          path: |
+            phase1-source-sha.txt
+            phase1-jvm-counts.json
+            phase1-artifact-sha256.json
+            android-native/core/model/build/test-results/test/TEST-*.xml
+            android-native/core/database/build/test-results/test/TEST-*.xml
+            android-native/core/parser-api/build/test-results/test/TEST-*.xml
+            android-native/app/build/test-results/testDebugUnitTest/TEST-*.xml
+          if-no-files-found: warn
+          retention-days: 14
