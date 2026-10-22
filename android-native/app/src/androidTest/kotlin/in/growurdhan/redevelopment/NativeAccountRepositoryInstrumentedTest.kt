@@ -439,6 +439,14 @@ class NativeAccountRepositoryInstrumentedTest {
                 fakeReview, true)
         }
         assertEquals(before, financialCounts())
+        // Missing explicit owner approval must be refused even when a CAS
+        // snapshot and claimed preview are supplied; no encrypted writes.
+        val noConsent = assertThrows(IllegalArgumentException::class.java) {
+            imports.approveSnapshot(email, "source.pdf", source, forged,
+                "CAS_PDF", fakeReview, false)
+        }
+        assertEquals("Import requires explicit reviewed approval", noConsent.message)
+        assertEquals(before, financialCounts())
         // The SQLCipher approval boundary must reject source-type relabeling
         // before inspecting any potentially fabricated snapshot contents.
         val mislabeledBytes = ByteArray(64) { 0x41.toByte() }
