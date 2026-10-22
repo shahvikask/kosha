@@ -40,6 +40,7 @@ CORE_CSV=$(IFS=,; echo "${CORE_TESTS[*]}")
 # Real, external Android credential + DocumentsUI boundary coverage.
 # This is a distinct instrumentation launch before costly archive tests.
 OS_TESTS="in.growurdhan.redevelopment.NativeV9RealOsJourneyInstrumentedTest#realSystemCredentialCancellationAndActivityRestartRemainLocked,in.growurdhan.redevelopment.NativeV9RealOsJourneyInstrumentedTest#realDocumentsUiCancellationRevokesFreshOsAdmissionAndPreservesNoArchive"
+SAF_TEST="in.growurdhan.redevelopment.NativeV9RealSafSelectionInstrumentedTest#realDocumentsUiStagesTamperedNativeAndDeniesPreviewAndReplay"
 # Fail immediately on a missing Compose test host. Android's am instrument can
 # exit zero even when JUnit reports FAILURES!!!, so validate raw status codes
 # before spending another 15+ minutes on unrelated encryption tests.
@@ -56,8 +57,10 @@ assert len(codes) == n * 2 and codes.count("0") == n and codes.count("1") == n, 
     f"Compose/OS preflight must be {n}/{n} passing before expensive recovery: {codes}")
 assert "FAILURES!!!" not in data and "INSTRUMENTATION_FAILED" not in data
 assert len(re.findall(r"^OK\s+\(3 tests\)", data, re.M)) == 1
-if n == 5:
+if n >= 5:
     assert len(re.findall(r"^OK\s+\(2 tests\)", data, re.M)) == 1
+if n == 6:
+    assert len(re.findall(r"^OK\s+\(1 test\)", data, re.M)) == 1
 print(f"NATIVE_V9_UI_OS_PREFLIGHT={n}/{n} PASS; encrypted recovery still pending")
 PY
 }
@@ -67,6 +70,12 @@ check_ui_phase 3
 timeout 12m adb shell am instrument -w -r -e class "$OS_TESTS" "$RUNNER" \
   | tee -a native-v9-archive-adb.txt
 check_ui_phase 5
+# Genuine DocumentsUI selection of a synthetic malformed native ciphertext;
+# after a denied preview, a second OS selection must not replace staged
+# encrypted evidence or publish any vault/claim.
+timeout 12m adb shell am instrument -w -r -e class "$SAF_TEST" "$RUNNER" \
+  | tee -a native-v9-archive-adb.txt
+check_ui_phase 6
 timeout 25m adb shell am instrument -w -r -e class "$CORE_CSV" "$RUNNER" \
   | tee -a native-v9-archive-adb.txt
 # Phase I deliberately stops after a verified candidate is sealed, then the
@@ -105,17 +114,18 @@ expected={
  "corruptedNativeCandidateCannotBeOfferedForManualResume",
  "realSystemCredentialCancellationAndActivityRestartRemainLocked",
  "realDocumentsUiCancellationRevokesFreshOsAdmissionAndPreservesNoArchive",
+ "realDocumentsUiStagesTamperedNativeAndDeniesPreviewAndReplay",
  "processBoundaryPhaseOnePreservesVerifiedCandidate",
  "processBoundaryPhaseTwoFreshProcessReauthenticatesAndPublishes",
 }
 codes=re.findall(r"^INSTRUMENTATION_STATUS_CODE: (-?\d+)\s*$",data,re.M)
 assert expected == tests, f"Wrong test set (no financial contents): {tests}"
-assert codes.count("0") == 22 and codes.count("1") == 22, f"Wrong instrumentation status counts: {codes}"
+assert codes.count("0") == 23 and codes.count("1") == 23, f"Wrong instrumentation status counts: {codes}"
 assert all(c in ("0","1") for c in codes), "Failed/ignored instrumentation status"
 assert len(re.findall(r"^OK\s+\(2 tests\)",data,re.M)) == 1, "Missing real OS two-test group"
 assert len(re.findall(r"^OK\s+\(3 tests\)",data,re.M)) == 1, "Missing passing three-case Compose UI suite"
 assert len(re.findall(r"^OK\s+\(15 tests\)",data,re.M)) == 1, "Missing passing fifteen-case archive suite"
-assert len(re.findall(r"^OK\s+\(1 test\)",data,re.M)) == 2, "Missing both independent process terminal results"
+assert len(re.findall(r"^OK\s+\(1 test\)",data,re.M)) == 3, "Missing both process phases plus real SAF selection terminal result"
 assert not any(s in data for s in ("FAILURES!!!","INSTRUMENTATION_FAILED"))
-print("NATIVE_V9_ARCHIVE=22 passed=22 failed=0 skipped=0")
+print("NATIVE_V9_ARCHIVE=23 passed=23 failed=0 skipped=0")
 PY

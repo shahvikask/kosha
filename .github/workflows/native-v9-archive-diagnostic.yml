@@ -19,6 +19,7 @@ on:
       - android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeRestoreScreen.kt
       - android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeV9RestoreUiInstrumentedTest.kt
       - android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeV9RealOsJourneyInstrumentedTest.kt
+      - android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeV9RealSafSelectionInstrumentedTest.kt
       - android-native/app/build.gradle.kts
       - android-native/core/database/src/test/kotlin/in/growurdhan/database/NativeV9ArchiveTest.kt
       - android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeV9ArchiveInstrumentedTest.kt
@@ -72,7 +73,9 @@ jobs:
               "realDocumentsUiCancellationRevokesFreshOsAdmissionAndPreservesNoArchive"
           ):
               assert re.search(r"@Test\s+fun\s+" + method + r"\s*\(", os_text), method
-          print("NATIVE_V9_STATIC_TARGET_INVENTORY=18 grouped + 2 real OS + 2 isolated process phases")
+          saf_source = Path("android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeV9RealSafSelectionInstrumentedTest.kt")
+          assert re.search(r"@Test\s+fun\s+realDocumentsUiStagesTamperedNativeAndDeniesPreviewAndReplay\s*\(", saf_source.read_text()), "Missing real SAF selection regression"
+          print("NATIVE_V9_STATIC_TARGET_INVENTORY=18 grouped + 2 real OS + 1 real SAF selection + 2 isolated process phases")
           PY
       - uses: actions/setup-java@v4
         with:
