@@ -86,6 +86,21 @@ class NativeCasOutputReviewGateInstrumentedTest {
         assertEquals(1, NativeCasOutputReviewGate.verify(source(), "ABCDE1234F").count)
     }
 
+    @Test fun unicodeLookalikeDematIdentifiersCannotPassAccountProvenanceGate() {
+        for (field in listOf("dpId", "clientId")) {
+            val payload = source()
+            // Fullwidth Latin characters are Unicode letters but not the
+            // exact ASCII depository identifiers needed for account binding.
+            payload.getJSONArray("accounts").getJSONObject(0)
+                .put(field, "ＤＰ０００００１")
+            payload.getJSONArray("holdings").getJSONObject(0)
+                .put(field, "ＤＰ０００００１")
+            assertThrows(IllegalArgumentException::class.java) {
+                NativeCasOutputReviewGate.verify(payload, "ABCDE1234F")
+            }
+        }
+    }
+
     @Test fun multipleAccountsCannotAssumeFirstDematOwnerOwnsEverything() {
         val payload = source()
         payload.getJSONArray("accounts").put(JSONObject().put("name", "Second demat"))
