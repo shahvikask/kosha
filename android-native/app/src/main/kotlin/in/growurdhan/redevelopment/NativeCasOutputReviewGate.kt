@@ -61,8 +61,13 @@ internal object NativeCasOutputReviewGate {
             val dp = strictId(account.optString("dpId").trim())
             val client = strictId(account.optString("clientId").trim())
             val sourceHoldings = document.getJSONArray("holdings")
+            val seenIsins = mutableSetOf<String>()
             for (i in 0 until sourceHoldings.length()) {
                 val row = sourceHoldings.getJSONObject(i)
+                val isin = row.optString("isin").trim()
+                require(isin.matches(Regex("[A-Z0-9]{12}")) && seenIsins.add(isin)) {
+                    "Invalid or duplicate demat position identity"
+                }
                 require(row.optString("dpId").trim() == dp &&
                     row.optString("clientId").trim() == client) {
                     "CAS demat row has missing or mismatched account provenance"
