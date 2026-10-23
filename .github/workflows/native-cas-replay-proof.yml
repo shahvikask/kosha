@@ -1,4 +1,4 @@
-name: GrowUrDhan CAS SQLCipher replay proof
+name: GrowUrDhan CAS SQLCipher replay retest proof
 on:
   push:
     branches: [GUD-Android-Redevelopment]
