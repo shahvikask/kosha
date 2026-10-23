@@ -1,4 +1,4 @@
-name: GrowUrDhan CAS two-custody atomic replay proof
+name: GrowUrDhan CAS verified custody-bound positive parser adapter proof
 on:
   push:
     branches: [GUD-Android-Redevelopment]
@@ -27,7 +27,9 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           git diff --exit-code 272a271508d28b5bbcaf724def8e7eb568b38b56 "$GITHUB_SHA" -- src/ src-tauri/ scripts/
           echo "$GITHUB_SHA" > cas-account-sha.txt
-          grep -q 'fun twoDistinctCustodiesCommitExactPositionsAtomicallyAndReplayOnce()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeBooksRepositoryInstrumentedTest.kt
+          grep -q 'fun issuerCustodyBoundSameIsinCommitsBothAndRejectsReplay()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeBooksRepositoryInstrumentedTest.kt
+          grep -q 'fun issuerCustodyChangeAfterReviewCannotCommit()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeBooksRepositoryInstrumentedTest.kt
+          grep -q 'fun multiDematAccountPayloadPreservesPerPositionIssuerIdentity()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeCasOutputReviewGateInstrumentedTest.kt
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -58,7 +60,7 @@ jobs:
           sha256sum android-native/app/build/outputs/apk/debug/app-debug.apk android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk > cas-account-apk-sha256.txt
       - name: Configure emulator acceleration
         run: if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
-      - name: Real SQLCipher rejected CAS snapshot no-write test
+      - name: Grouped issuer custody mapping, atomic SQLCipher approval and replay tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
