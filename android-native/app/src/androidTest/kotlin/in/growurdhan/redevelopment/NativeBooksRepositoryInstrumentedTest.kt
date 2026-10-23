@@ -671,6 +671,53 @@ class NativeBooksRepositoryInstrumentedTest {
         assertEquals(unrelatedBefore, books.history(input.email, untouched).size)
     }
 
+    @Test fun casPdfApprovalRefusesChangedCustodyAfterReviewedPreview() {
+        val (accounts, books) = create(sandbox())
+        val owner = books.read(input.email).people.single().id
+        val firstAccount = books.createCustody(input.email,
+            NativeBooksRepository.NewCustody(owner, "DEMAT", "Synthetic Old DP",
+                identifierMasked = "****1001"))
+        val secondAccount = books.createCustody(input.email,
+            NativeBooksRepository.NewCustody(owner, "DEMAT", "Synthetic New DP",
+                identifierMasked = "****2002"))
+        val holding = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, firstAccount, "Synthetic CAS Custody", "EQUITY", "Other",
+            100_000_000L, 10_000L, "2024-01-01", true, isin = "INE000000001"))
+        val sourceBytes = ("%PDF-1.4\\n" + "artificial-stale-custody-proof".repeat(3))
+            .toByteArray(Charsets.UTF_8)
+        val digest = MessageDigest.getInstance("SHA-256").digest(sourceBytes)
+            .joinToString("") { "%02x".format(it) }
+        val proposed = NativeStatementCsv.Snapshot(digest, sourceBytes.size,
+            "ABCDE1234F", "2025-03-31",
+            listOf(NativeStatementCsv.Position("ABCDE1234F", "2025-03-31",
+                "INE000000001", "", 150_000_000L, 11000L, null)))
+        val importer = NativeStatementImportRepository(accounts)
+        val reviewed = importer.inspectSnapshot(input.email, proposed, sourceBytes)
+        assertEquals(firstAccount, reviewed.matched.single().accountId)
+        books.updateHoldingMetadata(input.email, holding, secondAccount,
+            null, null, null)
+        fun counts(): List<Long> = accounts.withUnlockedVault(input.email) { db ->
+            listOf("source_document", "import_batch", "statement_position",
+                "ledger_event", "holding").map { name ->
+                db.rawQuery("SELECT COUNT(*) FROM " + name, null).use { cursor ->
+                    assertTrue(cursor.moveToFirst())
+                    cursor.getLong(0)
+                }
+            }
+        }
+        val before = counts()
+        assertThrows(IllegalArgumentException::class.java) {
+            importer.approveSnapshot(input.email, "synthetic.pdf", sourceBytes,
+                proposed, "CAS_PDF", reviewed, true)
+        }
+        assertEquals(before, counts())
+        assertEquals(secondAccount,
+            books.read(input.email).holdings.single { it.id == holding }.accountId)
+        assertEquals(100_000_000L,
+            books.read(input.email).holdings.single { it.id == holding }.quantityScaled)
+        assertEquals(0, books.read(input.email).imports.size)
+    }
+
     @Test fun changedCustodyMappingAfterPreviewCannotCommitStaleStatement() {
         val (accounts, books) = create(sandbox())
         val owner = books.read(input.email).people.single().id
