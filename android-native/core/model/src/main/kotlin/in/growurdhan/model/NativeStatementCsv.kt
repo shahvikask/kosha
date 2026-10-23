@@ -22,7 +22,8 @@ object NativeStatementCsv {
     data class DematAccount(val issuer: String, val dpId: String, val clientId: String)
     data class Position(val ownerPan: String, val date: String, val isin: String,
         val folio: String, val quantityScaled: Long, val unitPriceMinor: Long,
-        val currentValueMinor: Long?, val dematAccount: DematAccount? = null)
+        val currentValueMinor: Long?, val dematAccount: DematAccount? = null,
+        val consolidatedFundFolio: Boolean = false)
     /** CSV has no issuer/custody provenance; only the verified CAS bridge sets it. */
     data class Snapshot(val sha256: String, val bytes: Int,
         val ownerPan: String, val date: String, val positions: List<Position>,
