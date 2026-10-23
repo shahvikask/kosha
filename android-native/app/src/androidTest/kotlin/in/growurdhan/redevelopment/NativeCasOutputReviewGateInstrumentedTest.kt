@@ -101,6 +101,18 @@ class NativeCasOutputReviewGateInstrumentedTest {
         }
     }
 
+    @Test fun duplicatedDematIsinCannotPassEvenWhenTotalsAgree() {
+        val payload = source()
+        val holdings = payload.getJSONArray("holdings")
+        holdings.put(JSONObject(holdings.getJSONObject(0).toString()))
+        payload.getJSONObject("parsedTotals")
+            .put("holdingsCount", 2).put("holdingsValue", 2000)
+        payload.getJSONObject("pdfTotals").put("grand", 2000)
+        assertThrows(IllegalArgumentException::class.java) {
+            NativeCasOutputReviewGate.verify(payload, "ABCDE1234F")
+        }
+    }
+
     @Test fun multipleAccountsCannotAssumeFirstDematOwnerOwnsEverything() {
         val payload = source()
         payload.getJSONArray("accounts").put(JSONObject().put("name", "Second demat"))
