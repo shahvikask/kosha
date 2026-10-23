@@ -642,6 +642,26 @@ class NativeBooksRepositoryInstrumentedTest {
         assertEquals(200_000_000L,
             books.read(input.email).holdings.single { it.id == untouched }.quantityScaled)
         assertEquals(unrelatedBefore, books.history(input.email, untouched).size)
+        // Record provenance is written once to encrypted SQLCipher tables;
+        // PDF contents and the attested owner PAN are never stored here.
+        accounts.withUnlockedVault(input.email) { db ->
+            db.rawQuery("SELECT document_kind,sha256,byte_length FROM source_document",
+                null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("CAS_PDF", cursor.getString(0))
+                assertEquals(digest, cursor.getString(1))
+                assertEquals(pdf.size.toLong(), cursor.getLong(2))
+                assertFalse(cursor.moveToNext())
+            }
+            db.rawQuery("SELECT document_kind,sha256,statement_date FROM import_batch",
+                null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("CAS_PDF", cursor.getString(0))
+                assertEquals(digest, cursor.getString(1))
+                assertEquals("2025-03-31", cursor.getString(2))
+                assertFalse(cursor.moveToNext())
+            }
+        }
         assertTrue(imports.approveSnapshot(input.email, "synthetic.pdf", pdf,
             statement, "CAS_PDF", reviewed, true).duplicate)
         assertEquals(unrelatedBefore, books.history(input.email, untouched).size)
