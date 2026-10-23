@@ -994,7 +994,14 @@ private fun NativeCasPdfCard(email: String, imports: NativeStatementImportReposi
             if (plan.duplicate) {
                 Text("Already imported from these exact PDF bytes.")
             } else {
-                plan.matched.forEach { item ->
+                plan.matched.forEachIndexed { index, item ->
+                    val custody = details.snapshot.positions[index].dematAccount
+                    custody?.let {
+                        fun mask(id: String): String = if (id.length > 4)
+                            "****" + id.takeLast(4) else "****"
+                        Text("Demat owner/account review: ${it.issuer}, " +
+                            "DP ${mask(it.dpId)}, client ${mask(it.clientId)}")
+                    }
                     Text("${item.name}: ${NativeBooksRepository.formatMinor(
                         item.storedQuantityScaled, 8)} → ${NativeBooksRepository.formatMinor(
                         item.quantityScaled, 8)} units (${item.action})")
@@ -1003,7 +1010,7 @@ private fun NativeCasPdfCard(email: String, imports: NativeStatementImportReposi
                     "or totals do not match the PDF. Changes are snapshots, never purchases.")
                 androidx.compose.material3.Checkbox(checked = ownerApprovedReview,
                     onCheckedChange = { ownerApprovedReview = it }, enabled = !busy)
-                Text("I checked this statement, owner, exact matched holdings and totals, and approve this snapshot.")
+                Text("I checked the statement owner, each issuer DP/client custody account, matched holding, units and totals. I explicitly approve these source snapshots.")
                 Button(enabled = !busy && ownerApprovedReview, onClick = {
                     busy = true
                     scope.launch {
