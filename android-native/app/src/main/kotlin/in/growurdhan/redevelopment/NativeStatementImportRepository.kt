@@ -27,7 +27,8 @@ internal class NativeStatementImportRepository(
         val sourceIsin: String, val sourceFolio: String,
         val quantityScaled: Long, val storedQuantityScaled: Long,
         val unitPriceMinor: Long, val currentValueMinor: Long?,
-        val action: Action, val stateFingerprint: String
+        val action: Action, val stateFingerprint: String,
+        val sourceDematAccount: NativeStatementCsv.DematAccount? = null
     ) {
         val delta: Long get() = Math.subtractExact(quantityScaled, storedQuantityScaled)
     }
@@ -72,8 +73,25 @@ internal class NativeStatementImportRepository(
                 (it.isin.isEmpty() || it.isin.matches(Regex("[A-Z0-9]{12}"))) &&
                 it.folio.length <= 120 && it.folio.none { c -> c.isISOControl() }
         }) { "Unsupported or mixed statement position" }
-        require(snapshot.positions.map { it.isin to it.folio }.distinct().size ==
-            snapshot.positions.size) { "Duplicate source instrument" }
+        require(snapshot.sourceIssuer == null ||
+            snapshot.sourceIssuer in setOf("CAMS", "KFINTECH", "CDSL", "NSDL", "NPS")) {
+            "Unsupported source issuer"
+        }
+        val demat = snapshot.sourceIssuer in setOf("CDSL", "NSDL")
+        require(snapshot.positions.all { source ->
+            val key = source.dematAccount
+            if (demat) {
+                key != null && key.issuer == snapshot.sourceIssuer &&
+                    key.dpId.matches(Regex("[A-Za-z0-9]{1,32}")) &&
+                    key.clientId.matches(Regex("[A-Za-z0-9]{1,32}")) &&
+                    source.isin.isNotEmpty()
+            } else key == null
+        }) { "Incomplete or mismatched per-position custody provenance" }
+        require(snapshot.positions.map {
+            Triple(it.dematAccount, it.isin, it.folio)
+        }.distinct().size == snapshot.positions.size) {
+            "Duplicate source custody/instrument position"
+        }
     }
 
     private fun SQLiteDatabase.exists(sql: String, vararg args: String): Boolean =
@@ -185,14 +203,22 @@ internal class NativeStatementImportRepository(
             // PAN is used only as an exact SQLCipher equality predicate.
             // All matching identifiers must be consistent and unambiguous.
             val matches = mutableListOf<Array<String?>>()
-            db.rawQuery("SELECT h.holding_id,h.entity_id,h.account_id,i.name," +
+            val dematAccount = source.dematAccount
+            val statementSql = "SELECT h.holding_id,h.entity_id,h.account_id,i.name," +
                 "h.instrument_id,i.category FROM holding h " +
                 "JOIN instrument i ON i.instrument_id=h.instrument_id " +
                 "JOIN entity e ON e.entity_id=h.entity_id " +
                 "WHERE e.is_active=1 AND e.pan_for_statements=? " +
-                "AND (?='' OR i.isin=?) AND (?='' OR i.symbol_or_folio=?)",
-                arrayOf(source.ownerPan, source.isin, source.isin,
-                    source.folio, source.folio)).use { c ->
+                "AND (?='' OR i.isin=?) AND (?='' OR i.symbol_or_folio=?)" +
+                if (dematAccount == null) "" else
+                    " AND h.account_id IN (SELECT a.account_id FROM account a " +
+                    "WHERE a.entity_id=h.entity_id AND a.account_type='DEMAT' " +
+                    "AND a.closed_on IS NULL AND a.dp_id=? AND a.client_id=?)"
+            val statementArgs = arrayOf(source.ownerPan, source.isin,
+                source.isin, source.folio, source.folio)
+            val boundArgs = if (dematAccount == null) statementArgs else
+                statementArgs + arrayOf(dematAccount.dpId, dematAccount.clientId)
+            db.rawQuery(statementSql, boundArgs).use { c ->
                 while (c.moveToNext()) matches += arrayOf(
                     c.getString(0), c.getString(1),
                     if (c.isNull(2)) null else c.getString(2),
@@ -244,7 +270,7 @@ internal class NativeStatementImportRepository(
                 requireNotNull(info[4]), category, source.isin, source.folio,
                 source.quantityScaled,
                 prior, source.unitPriceMinor, source.currentValueMinor, action,
-                fingerprintHoldingState(db, holding))
+                fingerprintHoldingState(db, holding), source.dematAccount)
         }
         require(rows.map { it.holdingId }.distinct().size == rows.size) {
             "One statement may not refer to a holding more than once"
@@ -256,7 +282,10 @@ internal class NativeStatementImportRepository(
                     it.storedQuantityScaled.toString(), it.quantityScaled.toString(),
                     it.unitPriceMinor.toString(),
                     it.currentValueMinor?.toString().orEmpty(), it.action.name,
-                    it.stateFingerprint)
+                    it.stateFingerprint,
+                    it.sourceDematAccount?.issuer.orEmpty(),
+                    it.sourceDematAccount?.dpId.orEmpty(),
+                    it.sourceDematAccount?.clientId.orEmpty())
                     .joinToString(":")
             })
         return Review(snapshot.sha256, snapshot.date, rows, decision, false)
@@ -335,7 +364,7 @@ internal class NativeStatementImportRepository(
                 UUID.randomUUID().toString(), batch, originalFilename, sourceKind,
                 snapshot.sha256, snapshot.bytes, at))
             val sourceByIdentity = snapshot.positions.associateBy {
-                it.isin to it.folio
+                Triple(it.dematAccount, it.isin, it.folio)
             }
             // A single dated statement must not offer contradictory NAVs for
             // the same instrument through separate family holding records.
@@ -346,7 +375,8 @@ internal class NativeStatementImportRepository(
             val observedInBatch = HashSet<String>()
             for (row in current.matched) {
                 val source = requireNotNull(
-                    sourceByIdentity[row.sourceIsin to row.sourceFolio]) {
+                    sourceByIdentity[Triple(row.sourceDematAccount,
+                        row.sourceIsin, row.sourceFolio)]) {
                     "Reviewed source instrument identity disappeared"
                 }
                 // Save the original statement day's NAV/close without
