@@ -63,12 +63,6 @@ internal class NativeCasPdfEngine(private val context: Context) {
             // Verify the REAL frozen sidecar's full response contract
             // independently before interpreting any source holdings.
             val verified = NativeCasOutputReviewGate.verify(document, confirmed)
-            // Do not discard account provenance by converting genuine demat
-            // rows into an account-agnostic Snapshot. The SQLCipher approval
-            // adapter cannot carry DP/client identity yet: fail closed.
-            require(verified.issuer != "CDSL" && verified.issuer != "NSDL") {
-                "Demat CAS requires owner-reviewed account-level reconciliation"
-            }
             val date = verified.date
             val pan = verified.pan
             val rows = document.getJSONArray("holdings")
@@ -86,12 +80,23 @@ internal class NativeCasPdfEngine(private val context: Context) {
                 val q = scaled(holding.get("quantity").toString(), 8)
                 val unit = scaled(holding.get("price").toString(), 4)
                 val value = scaled(holding.get("value").toString(), 4)
-                NativeStatementCsv.Position(pan, date, isin, folio, q, unit, value)
+                val custody = if (verified.issuer in setOf("CDSL", "NSDL")) {
+                    // The output gate has verified this row against an exact
+                    // issuer account record. Never infer DP/client from PAN,
+                    // ISIN, account ordering, filename or password.
+                    NativeStatementCsv.DematAccount(verified.issuer,
+                        holding.getString("dpId").trim(),
+                        holding.getString("clientId").trim())
+                } else null
+                NativeStatementCsv.Position(pan, date, isin, folio, q, unit,
+                    value, custody)
             }
-            require(positions.map { it.isin to it.folio }.distinct().size == positions.size) {
+            require(positions.map { Triple(it.dematAccount, it.isin, it.folio) }
+                .distinct().size == positions.size) {
                 "Ambiguous issuer position identity; manual mapping required"
             }
-            Parsed(NativeStatementCsv.Snapshot(sha, pdf.size, pan, date, positions),
+            Parsed(NativeStatementCsv.Snapshot(sha, pdf.size, pan, date, positions,
+                verified.issuer),
                 verified.issuer, positions.size, verified.warnings)
         }
     }
