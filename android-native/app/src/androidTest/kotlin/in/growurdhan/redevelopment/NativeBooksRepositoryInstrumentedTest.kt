@@ -838,6 +838,73 @@ class NativeBooksRepositoryInstrumentedTest {
         assertEquals(committed, financialCounts())
     }
 
+    @Test fun mixedDepositoryAndFundFolioSnapshotCommitsAtomicallyWithReplayGuard() {
+        val (accounts, books) = create(sandbox())
+        val owner = books.read(input.email).people.single().id
+        val demat = books.createCustody(input.email,
+            NativeBooksRepository.NewCustody(owner, "DEMAT", "Artificial DP",
+                dpId = "DP000001", clientId = "CLIENT01"))
+        val fundAccount = books.createCustody(input.email,
+            NativeBooksRepository.NewCustody(owner, "FOLIO", "Artificial Fund"))
+        val stock = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, demat, "Artificial Shares", "EQUITY", "Other",
+            100_000_000L, 10000L, "2024-01-01", true,
+            isin = "INE000000001"))
+        val mf = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, fundAccount, "Artificial MF Units", "MUTUAL_FUND", "Index / ETF",
+            200_000_000L, 10000L, "2024-01-01", true,
+            isin = "INF000000001", folioForStatements = "DEMO-FOLIO-01"))
+        val bytes = ("%PDF-1.4\\n" + "entirely-fictitious-mixed-statement".repeat(3))
+            .toByteArray(Charsets.UTF_8)
+        val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
+            .joinToString("") { "%02x".format(it) }
+        val date = "2025-03-31"
+        val source = NativeStatementCsv.Snapshot(digest, bytes.size,
+            "ABCDE1234F", date, listOf(
+                NativeStatementCsv.Position("ABCDE1234F", date, "INE000000001",
+                    "", 150_000_000L, 11000L, null,
+                    NativeStatementCsv.DematAccount("CDSL", "DP000001", "CLIENT01")),
+                NativeStatementCsv.Position("ABCDE1234F", date, "INF000000001",
+                    "DEMO-FOLIO-01", 250_000_000L, 12000L, null,
+                    consolidatedFundFolio = true)), "CDSL")
+        val imports = NativeStatementImportRepository(accounts)
+        val review = imports.inspectSnapshot(input.email, source, bytes)
+        assertEquals(listOf(stock, mf), review.matched.map { it.holdingId })
+        assertEquals(listOf(demat, fundAccount), review.matched.map { it.accountId })
+        assertTrue(review.matched[1].consolidatedFundFolio)
+        val receipt = imports.approveSnapshot(input.email, "artificial.pdf", bytes,
+            source, "CAS_PDF", review, true)
+        assertFalse(receipt.duplicate)
+        assertEquals(2, receipt.positions)
+        assertEquals(2, receipt.adjustments)
+        val after = books.read(input.email).holdings.associateBy { it.id }
+        assertEquals(150_000_000L, after.getValue(stock).quantityScaled)
+        assertEquals(250_000_000L, after.getValue(mf).quantityScaled)
+        fun counts(): List<Long> = accounts.withUnlockedVault(input.email) { db ->
+            listOf("source_document", "import_batch", "statement_position",
+                "ledger_event").map { table ->
+                db.rawQuery("SELECT COUNT(*) FROM " + table, null).use { c ->
+                    assertTrue(c.moveToFirst())
+                    c.getLong(0)
+                }
+            }
+        }
+        accounts.withUnlockedVault(input.email) { db ->
+            db.rawQuery("SELECT source_section FROM statement_position " +
+                "WHERE import_batch_id=?",
+                arrayOf(requireNotNull(receipt.batchId))).use { cursor ->
+                val provenance = mutableSetOf<String>()
+                while (cursor.moveToNext()) provenance.add(cursor.getString(0))
+                assertEquals(setOf("CAS_CUSTODY|CDSL|DP000001|CLIENT01",
+                    "CAS_FOLIO|CDSL"), provenance)
+            }
+        }
+        val committed = counts()
+        assertTrue(imports.approveSnapshot(input.email, "artificial.pdf", bytes,
+            source, "CAS_PDF", review, true).duplicate)
+        assertEquals(committed, counts())
+    }
+
     @Test fun issuerCustodyChangeAfterReviewCannotCommit() {
         val (accounts, books) = create(sandbox())
         val owner = books.read(input.email).people.single().id
