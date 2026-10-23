@@ -28,7 +28,8 @@ internal class NativeStatementImportRepository(
         val quantityScaled: Long, val storedQuantityScaled: Long,
         val unitPriceMinor: Long, val currentValueMinor: Long?,
         val action: Action, val stateFingerprint: String,
-        val sourceDematAccount: NativeStatementCsv.DematAccount? = null
+        val sourceDematAccount: NativeStatementCsv.DematAccount? = null,
+        val consolidatedFundFolio: Boolean = false
     ) {
         val delta: Long get() = Math.subtractExact(quantityScaled, storedQuantityScaled)
     }
@@ -81,11 +82,15 @@ internal class NativeStatementImportRepository(
         require(snapshot.positions.all { source ->
             val key = source.dematAccount
             if (demat) {
-                key != null && key.issuer == snapshot.sourceIssuer &&
-                    key.dpId.matches(Regex("[A-Za-z0-9]{1,32}")) &&
-                    key.clientId.matches(Regex("[A-Za-z0-9]{1,32}")) &&
-                    source.isin.isNotEmpty()
-            } else key == null
+                if (source.consolidatedFundFolio) {
+                    key == null && source.folio.isNotBlank()
+                } else {
+                    key != null && key.issuer == snapshot.sourceIssuer &&
+                        key.dpId.matches(Regex("[A-Za-z0-9]{1,32}")) &&
+                        key.clientId.matches(Regex("[A-Za-z0-9]{1,32}")) &&
+                        source.isin.isNotEmpty()
+                }
+            } else key == null && !source.consolidatedFundFolio
         }) { "Incomplete or mismatched per-position custody provenance" }
         require(snapshot.positions.map {
             Triple(it.dematAccount, it.isin, it.folio)
@@ -208,16 +213,29 @@ internal class NativeStatementImportRepository(
             // All matching identifiers must be consistent and unambiguous.
             val matches = mutableListOf<Array<String?>>()
             val dematAccount = source.dematAccount
+            val sourceAccountConstraint = when {
+                dematAccount != null ->
+                    " AND h.account_id IN (SELECT a.account_id FROM account a " +
+                    "WHERE a.entity_id=h.entity_id AND a.account_type='DEMAT' " +
+                    "AND a.closed_on IS NULL AND a.dp_id=? AND a.client_id=?)"
+                source.consolidatedFundFolio ->
+                    // A depository-reported MF folio is NOT a demat holding.
+                    // Exact PAN, ISIN/folio and an existing MF/FOLIO holding
+                    // are mandatory. Unknown/duplicate rows fail closed.
+                    " AND i.category='MUTUAL_FUND' AND " +
+                    "(h.account_id IS NULL OR h.account_id IN (" +
+                    "SELECT a.account_id FROM account a WHERE " +
+                    "a.entity_id=h.entity_id AND a.account_type='FOLIO' " +
+                    "AND a.closed_on IS NULL))"
+                else -> ""
+            }
             val statementSql = "SELECT h.holding_id,h.entity_id,h.account_id,i.name," +
                 "h.instrument_id,i.category FROM holding h " +
                 "JOIN instrument i ON i.instrument_id=h.instrument_id " +
                 "JOIN entity e ON e.entity_id=h.entity_id " +
                 "WHERE e.is_active=1 AND e.pan_for_statements=? " +
                 "AND (?='' OR i.isin=?) AND (?='' OR i.symbol_or_folio=?)" +
-                if (dematAccount == null) "" else
-                    " AND h.account_id IN (SELECT a.account_id FROM account a " +
-                    "WHERE a.entity_id=h.entity_id AND a.account_type='DEMAT' " +
-                    "AND a.closed_on IS NULL AND a.dp_id=? AND a.client_id=?)"
+                sourceAccountConstraint
             val statementArgs = arrayOf(source.ownerPan, source.isin,
                 source.isin, source.folio, source.folio)
             val boundArgs = if (dematAccount == null) statementArgs else
@@ -274,12 +292,14 @@ internal class NativeStatementImportRepository(
                 requireNotNull(info[4]), category, source.isin, source.folio,
                 source.quantityScaled,
                 prior, source.unitPriceMinor, source.currentValueMinor, action,
-                fingerprintHoldingState(db, holding), source.dematAccount)
+                fingerprintHoldingState(db, holding), source.dematAccount,
+                source.consolidatedFundFolio)
         }
         require(rows.map { it.holdingId }.distinct().size == rows.size) {
             "One statement may not refer to a holding more than once"
         }
         val decision = hash(snapshot.sha256 + "|" + snapshot.date + "|" +
+            snapshot.sourceIssuer.orEmpty() + "|" +
             rows.joinToString("|") {
                 listOf(it.holdingId, it.ownerId, it.accountId.orEmpty(),
                     it.instrumentId, it.category, it.sourceIsin, it.sourceFolio,
@@ -289,7 +309,8 @@ internal class NativeStatementImportRepository(
                     it.stateFingerprint,
                     it.sourceDematAccount?.issuer.orEmpty(),
                     it.sourceDematAccount?.dpId.orEmpty(),
-                    it.sourceDematAccount?.clientId.orEmpty())
+                    it.sourceDematAccount?.clientId.orEmpty(),
+                    it.consolidatedFundFolio.toString())
                     .joinToString(":")
             })
         return Review(snapshot.sha256, snapshot.date, rows, decision, false)
@@ -396,7 +417,9 @@ internal class NativeStatementImportRepository(
                 // filenames, application logs, UI notifications or CI.
                 val custodyProvenance = source.dematAccount?.let {
                     "CAS_CUSTODY|${it.issuer}|${it.dpId}|${it.clientId}"
-                }
+                } ?: if (source.consolidatedFundFolio)
+                    "CAS_FOLIO|${requireNotNull(snapshot.sourceIssuer)}"
+                    else null
                 db.execSQL("INSERT INTO statement_position(import_batch_id,holding_id," +
                     "statement_date,quantity_scaled,unit_price_minor,isin,folio," +
                     "current_value_minor,source_section) VALUES(?,?,?,?,?,?,?,?,?)",
