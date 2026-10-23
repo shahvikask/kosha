@@ -583,6 +583,52 @@ class NativeBooksRepositoryInstrumentedTest {
         assertEquals(before, counts())
     }
 
+    @Test fun distinctCustodyIsinsMatchOnlyTheirExactAccountAndReplayWithoutWrites() {
+        val (accounts, books) = create(sandbox())
+        val owner = books.read(input.email).people.single().id
+        val custodyA = books.createCustody(input.email,
+            NativeBooksRepository.NewCustody(owner, "DEMAT", "Synthetic Custody A",
+                identifierMasked = "****1101"))
+        val custodyB = books.createCustody(input.email,
+            NativeBooksRepository.NewCustody(owner, "DEMAT", "Synthetic Custody B",
+                identifierMasked = "****2202"))
+        val selected = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, custodyA, "Synthetic Selected Equity", "EQUITY", "Other",
+            100_000_000L, 10000L, "2024-01-01", true, isin = "INE000000001"))
+        val untouched = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, custodyB, "Synthetic Unrelated Equity", "EQUITY", "Other",
+            200_000_000L, 10000L, "2024-01-01", true, isin = "INE000000002"))
+        val pdf = ("%PDF-1.4\\n" + "synthetic-exact-account-only".repeat(3))
+            .toByteArray(Charsets.UTF_8)
+        val digest = MessageDigest.getInstance("SHA-256").digest(pdf)
+            .joinToString("") { "%02x".format(it) }
+        val statement = NativeStatementCsv.Snapshot(digest, pdf.size,
+            "ABCDE1234F", "2025-03-31",
+            listOf(NativeStatementCsv.Position("ABCDE1234F", "2025-03-31",
+                "INE000000001", "", 150_000_000L, 11000L, null)))
+        val imports = NativeStatementImportRepository(accounts)
+        val reviewed = imports.inspectSnapshot(input.email, statement, pdf)
+        assertEquals(1, reviewed.matched.size)
+        assertEquals(selected, reviewed.matched.single().holdingId)
+        assertEquals(custodyA, reviewed.matched.single().accountId)
+        assertEquals(NativeStatementImportRepository.Action.APPLY_SNAPSHOT,
+            reviewed.matched.single().action)
+        val unrelatedBefore = books.history(input.email, untouched).size
+        val receipt = imports.approveSnapshot(input.email, "synthetic.pdf", pdf,
+            statement, "CAS_PDF", reviewed, true)
+        assertFalse(receipt.duplicate)
+        assertEquals(1, receipt.positions)
+        assertEquals(1, receipt.adjustments)
+        assertEquals(150_000_000L,
+            books.read(input.email).holdings.single { it.id == selected }.quantityScaled)
+        assertEquals(200_000_000L,
+            books.read(input.email).holdings.single { it.id == untouched }.quantityScaled)
+        assertEquals(unrelatedBefore, books.history(input.email, untouched).size)
+        assertTrue(imports.approveSnapshot(input.email, "synthetic.pdf", pdf,
+            statement, "CAS_PDF", reviewed, true).duplicate)
+        assertEquals(unrelatedBefore, books.history(input.email, untouched).size)
+    }
+
     @Test fun changedCustodyMappingAfterPreviewCannotCommitStaleStatement() {
         val (accounts, books) = create(sandbox())
         val owner = books.read(input.email).people.single().id
