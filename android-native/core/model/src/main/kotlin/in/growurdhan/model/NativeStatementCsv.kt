@@ -18,11 +18,15 @@ object NativeStatementCsv {
     private const val MAX_BYTES = 8 * 1024 * 1024
     private val header = listOf("owner_pan", "statement_date", "isin", "folio",
         "quantity_scaled", "unit_price_minor", "current_value_minor")
+    /** Issuer-provided identifiers, not an inferred owner or account label. */
+    data class DematAccount(val issuer: String, val dpId: String, val clientId: String)
     data class Position(val ownerPan: String, val date: String, val isin: String,
         val folio: String, val quantityScaled: Long, val unitPriceMinor: Long,
-        val currentValueMinor: Long?)
+        val currentValueMinor: Long?, val dematAccount: DematAccount? = null)
+    /** CSV has no issuer/custody provenance; only the verified CAS bridge sets it. */
     data class Snapshot(val sha256: String, val bytes: Int,
-        val ownerPan: String, val date: String, val positions: List<Position>)
+        val ownerPan: String, val date: String, val positions: List<Position>,
+        val sourceIssuer: String? = null)
 
     private fun integer(raw: String): Long {
         require(raw.matches(Regex("(0|[1-9][0-9]*)")) &&
