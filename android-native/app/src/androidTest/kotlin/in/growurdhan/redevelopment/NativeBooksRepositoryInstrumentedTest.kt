@@ -662,8 +662,12 @@ class NativeBooksRepositoryInstrumentedTest {
                 assertFalse(cursor.moveToNext())
             }
         }
+        val committedCounts = financialCounts()
         assertTrue(imports.approveSnapshot(input.email, "synthetic.pdf", pdf,
             statement, "CAS_PDF", reviewed, true).duplicate)
+        assertEquals(committedCounts, financialCounts())
+        assertEquals(150_000_000L,
+            books.read(input.email).holdings.single { it.id == selected }.quantityScaled)
         assertEquals(unrelatedBefore, books.history(input.email, untouched).size)
     }
 
