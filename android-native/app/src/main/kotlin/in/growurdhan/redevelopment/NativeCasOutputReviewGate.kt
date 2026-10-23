@@ -42,6 +42,33 @@ internal object NativeCasOutputReviewGate {
         require(accounts.length() <= 1) {
             "Multiple demat accounts require distinct verified account owners"
         }
+        // Every demat row must retain the exact DP/client provenance emitted
+        // by the frozen sidecar. PAN and ISIN alone are not a custody key.
+        // The legacy Snapshot adapter has no account-provenance field, so
+        // this gate may validate demat output but MUST NOT authorize import.
+        if (issuer == "CDSL" || issuer == "NSDL") {
+            require(accounts.length() == 1) {
+                "Demat source needs exactly one account for manual review"
+            }
+            val account = accounts.getJSONObject(0)
+            fun strictId(value: String): String {
+                require(value.isNotBlank() && value.length <= 32 &&
+                    value.all { it.isLetterOrDigit() }) {
+                    "Missing or invalid demat account provenance"
+                }
+                return value
+            }
+            val dp = strictId(account.optString("dpId").trim())
+            val client = strictId(account.optString("clientId").trim())
+            val sourceHoldings = document.getJSONArray("holdings")
+            for (i in 0 until sourceHoldings.length()) {
+                val row = sourceHoldings.getJSONObject(i)
+                require(row.optString("dpId").trim() == dp &&
+                    row.optString("clientId").trim() == client) {
+                    "CAS demat row has missing or mismatched account provenance"
+                }
+            }
+        }
         val holdings = document.getJSONArray("holdings")
         require(holdings.length() in 1..10000)
         val counts = document.getJSONObject("parsedTotals")
