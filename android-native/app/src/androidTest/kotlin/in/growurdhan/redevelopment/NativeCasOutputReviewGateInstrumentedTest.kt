@@ -113,6 +113,39 @@ class NativeCasOutputReviewGateInstrumentedTest {
         }
     }
 
+    @Test fun multiDematAccountPayloadPreservesPerPositionIssuerIdentity() {
+        val document = source().put("fileType", "CDSL")
+        val accounts = document.getJSONArray("accounts")
+        accounts.put(JSONObject().put("name", "Second synthetic custody")
+            .put("dpId", "DP000002").put("clientId", "CLIENT02"))
+        val holdings = document.getJSONArray("holdings")
+        holdings.put(JSONObject().put("kind", "equity")
+            .put("name", "Same synthetic ISIN in second account")
+            .put("isin", "INE000000001").put("dpId", "DP000002")
+            .put("clientId", "CLIENT02")
+            .put("quantity", 5).put("price", 100).put("value", 500))
+        document.getJSONObject("parsedTotals")
+            .put("holdingsCount", 2).put("holdingsValue", 1500)
+        document.getJSONObject("pdfTotals").put("grand", 1500)
+        val approved = NativeCasOutputReviewGate.verify(document, "ABCDE1234F")
+        assertEquals("CDSL", approved.issuer)
+        assertEquals(2, approved.count)
+
+        // No account ordering fallback, and no duplicate custody identities.
+        val swapped = JSONObject(document.toString())
+        swapped.getJSONArray("holdings").getJSONObject(1)
+            .put("clientId", "UNCLAIMED")
+        assertThrows(IllegalArgumentException::class.java) {
+            NativeCasOutputReviewGate.verify(swapped, "ABCDE1234F")
+        }
+        val duplicateAccount = JSONObject(document.toString())
+        duplicateAccount.getJSONArray("accounts").getJSONObject(1)
+            .put("dpId", "DP000001").put("clientId", "CLIENT01")
+        assertThrows(IllegalArgumentException::class.java) {
+            NativeCasOutputReviewGate.verify(duplicateAccount, "ABCDE1234F")
+        }
+    }
+
     @Test fun multipleAccountsCannotAssumeFirstDematOwnerOwnsEverything() {
         val payload = source()
         payload.getJSONArray("accounts").put(JSONObject().put("name", "Second demat"))
