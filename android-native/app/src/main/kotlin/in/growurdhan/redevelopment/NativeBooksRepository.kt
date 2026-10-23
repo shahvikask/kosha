@@ -57,7 +57,8 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
         val accountNumberMasked: String? = null, val maturityDate: String? = null,
         val couponRateBps: Int? = null, val interestRateBps: Int? = null,
         val monthlyEmiMinor: Long? = null, val emiStatus: String? = null,
-        val remainingEmiCount: Int? = null, val location: String? = null)
+        val remainingEmiCount: Int? = null, val location: String? = null,
+        val folioForStatements: String? = null)
     data class NewEvent(val holdingId: String, val kind: String, val date: String,
         val quantityScaled: Long, val unitPriceMinor: Long, val amountMinor: Long,
         val chargesMinor: Long = 0L, val supersedes: String? = null,
@@ -263,6 +264,19 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
             form.remainingEmiCount?.let { require(it >= 0) }
             form.accountNumberMasked?.let { require('*' in it && it.length <= 100) }
             form.isin?.let { require(it.matches(Regex("[A-Z0-9]{12}"))) }
+            form.folioForStatements?.let { folio ->
+                require(form.category == "MUTUAL_FUND" &&
+                    folio.isNotBlank() && folio.length <= 120 &&
+                    folio.none { it.isISOControl() }) {
+                    "Statement folio requires a valid mutual fund holding"
+                }
+                require(form.accountId == null || db.exists(
+                    "SELECT 1 FROM account WHERE account_id=? AND entity_id=? " +
+                        "AND account_type='FOLIO' AND closed_on IS NULL",
+                    form.accountId, form.personId)) {
+                    "Mutual fund folio cannot be assigned to a demat account"
+                }
+            }
             form.location?.let { require(it.length <= 1024) }
             val name = clean(form.name, 240)
             form.detailsJson?.let {
@@ -273,9 +287,9 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
             val holding = newId()
             val timestamp = now()
             db.execSQL("INSERT INTO instrument(instrument_id,name,category,sub_category,isin," +
-                "is_user_created,created_at) VALUES(?,?,?,?,?,1,?)",
+                "symbol_or_folio,is_user_created,created_at) VALUES(?,?,?,?,?,?,1,?)",
                 arrayOf<Any?>(instrument, name, form.category, form.subcategory,
-                    form.isin, timestamp))
+                    form.isin, form.folioForStatements, timestamp))
             db.execSQL("INSERT INTO holding(holding_id,instrument_id,entity_id,account_id," +
                 "current_price_minor,last_price_updated,price_source,acquired_on,notes,details_json," +
                 "institution_name,account_number_masked,maturity_date,coupon_rate_bps," +
