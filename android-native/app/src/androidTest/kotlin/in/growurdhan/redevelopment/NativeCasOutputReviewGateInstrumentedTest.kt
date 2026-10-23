@@ -155,6 +155,57 @@ class NativeCasOutputReviewGateInstrumentedTest {
         }
     }
 
+    private fun mixedDematAndFundFolioSource(): JSONObject {
+        val document = source().put("fileType", "CDSL")
+        document.getJSONArray("accounts").put(JSONObject()
+            .put("name", "Artificial mutual fund folios")
+            .put("type", "Mutual Fund Folios")
+            .put("dpId", JSONObject.NULL).put("clientId", JSONObject.NULL)
+            .put("folios", 1))
+        document.getJSONArray("holdings").put(JSONObject()
+            .put("kind", "mutual_fund").put("accountType", "Mutual Fund Folios")
+            .put("name", "Artificial index fund")
+            .put("isin", "INF000000001").put("folio", "DEMO-FOLIO-01")
+            .put("dpId", JSONObject.NULL).put("clientId", JSONObject.NULL)
+            .put("quantity", 5).put("price", 50).put("value", 250))
+        document.getJSONObject("parsedTotals")
+            .put("holdingsCount", 2).put("holdingsValue", 1250)
+        document.getJSONObject("pdfTotals").put("grand", 1250)
+        return document
+    }
+
+    @Test fun mixedDematAndExplicitFundFolioAdmittedWithoutGuessingCustody() {
+        val admitted = NativeCasOutputReviewGate.verify(
+            mixedDematAndFundFolioSource(), "ABCDE1234F")
+        assertEquals("CDSL", admitted.issuer)
+        assertEquals(2, admitted.count)
+
+        val missingAccountKind = mixedDematAndFundFolioSource()
+        missingAccountKind.getJSONArray("holdings").getJSONObject(1)
+            .remove("accountType")
+        val forgedEquity = mixedDematAndFundFolioSource()
+        forgedEquity.getJSONArray("holdings").getJSONObject(1)
+            .put("kind", "equity")
+        val missingFolio = mixedDematAndFundFolioSource()
+        missingFolio.getJSONArray("holdings").getJSONObject(1)
+            .remove("folio")
+        val forgedDp = mixedDematAndFundFolioSource()
+        forgedDp.getJSONArray("holdings").getJSONObject(1)
+            .put("dpId", "OTHER0001")
+        val missingSummary = mixedDematAndFundFolioSource()
+        missingSummary.getJSONArray("accounts").remove(1)
+        val duplicateSummary = mixedDematAndFundFolioSource()
+        duplicateSummary.getJSONArray("accounts").put(JSONObject()
+            .put("type", "Mutual Fund Folios")
+            .put("dpId", JSONObject.NULL).put("clientId", JSONObject.NULL))
+        for (candidate in listOf(missingAccountKind, forgedEquity,
+            missingFolio, forgedDp, missingSummary, duplicateSummary)) {
+            assertThrows(Exception::class.java) {
+                NativeCasOutputReviewGate.verify(candidate, "ABCDE1234F")
+            }
+        }
+    }
+
     @Test fun multipleAccountsCannotAssumeFirstDematOwnerOwnsEverything() {
         val payload = source()
         payload.getJSONArray("accounts").put(JSONObject().put("name", "Second demat"))
