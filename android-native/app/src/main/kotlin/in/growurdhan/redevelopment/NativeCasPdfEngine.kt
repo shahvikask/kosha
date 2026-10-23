@@ -63,6 +63,12 @@ internal class NativeCasPdfEngine(private val context: Context) {
             // Verify the REAL frozen sidecar's full response contract
             // independently before interpreting any source holdings.
             val verified = NativeCasOutputReviewGate.verify(document, confirmed)
+            // Do not discard account provenance by converting genuine demat
+            // rows into an account-agnostic Snapshot. The SQLCipher approval
+            // adapter cannot carry DP/client identity yet: fail closed.
+            require(verified.issuer != "CDSL" && verified.issuer != "NSDL") {
+                "Demat CAS requires owner-reviewed account-level reconciliation"
+            }
             val date = verified.date
             val pan = verified.pan
             val rows = document.getJSONArray("holdings")
