@@ -614,6 +614,24 @@ class NativeBooksRepositoryInstrumentedTest {
         assertEquals(NativeStatementImportRepository.Action.APPLY_SNAPSHOT,
             reviewed.matched.single().action)
         val unrelatedBefore = books.history(input.email, untouched).size
+        fun financialCounts(): List<Long> =
+            accounts.withUnlockedVault(input.email) { db ->
+                listOf("source_document", "import_batch", "statement_position",
+                    "ledger_event", "holding").map { table ->
+                    db.rawQuery("SELECT COUNT(*) FROM " + table, null).use { cursor ->
+                        assertTrue(cursor.moveToFirst())
+                        cursor.getLong(0)
+                    }
+                }
+            }
+        val beforeConsent = financialCounts()
+        assertThrows(IllegalArgumentException::class.java) {
+            imports.approveSnapshot(input.email, "synthetic.pdf", pdf,
+                statement, "CAS_PDF", reviewed, false)
+        }
+        assertEquals(beforeConsent, financialCounts())
+        assertEquals(100_000_000L,
+            books.read(input.email).holdings.single { it.id == selected }.quantityScaled)
         val receipt = imports.approveSnapshot(input.email, "synthetic.pdf", pdf,
             statement, "CAS_PDF", reviewed, true)
         assertFalse(receipt.duplicate)
