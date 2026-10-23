@@ -466,7 +466,7 @@ class NativeBooksRepositoryInstrumentedTest {
             isin = "INE000000001"))
         // Synthetic snapshot only: exercises transactional PDF-source contract,
         // NOT the actual Chaquopy/PDF parser. Never claim CAS parser passed.
-        val pdf = ("%PDF-" + "synthetic-fingerprint-only").toByteArray()
+        val pdf = ("%PDF-1.4\n" + "synthetic-nonfinancial-replay-container".repeat(2)).toByteArray()
         val sha = MessageDigest.getInstance("SHA-256").digest(pdf)
             .joinToString("") { "%02x".format(it) }
         val source = NativeStatementCsv.Snapshot(
