@@ -537,6 +537,52 @@ class NativeBooksRepositoryInstrumentedTest {
         assertEquals(0, books.read(input.email).imports.size)
     }
 
+    @Test fun sharedPanAndIsinAcrossTwoCustodyAccountsIsAmbiguousAndCannotImport() {
+        val (accounts, books) = create(sandbox())
+        val owner = books.read(input.email).people.single().id
+        val custodyA = books.createCustody(input.email,
+            NativeBooksRepository.NewCustody(owner, "DEMAT", "Synthetic DP A",
+                identifierMasked = "****1101"))
+        val custodyB = books.createCustody(input.email,
+            NativeBooksRepository.NewCustody(owner, "DEMAT", "Synthetic DP B",
+                identifierMasked = "****2202"))
+        for (account in listOf(custodyA, custodyB)) {
+            books.createHolding(input.email, NativeBooksRepository.NewHolding(
+                owner, account, "Duplicated synthetic ISIN", "EQUITY", "Other",
+                0L, 10000L, "2024-01-01", false, isin = "INE000000001"))
+        }
+        val pdf = ("%PDF-1.4\\n" + "synthetic-ambiguous-account-source".repeat(2))
+            .toByteArray(Charsets.UTF_8)
+        val digest = MessageDigest.getInstance("SHA-256").digest(pdf)
+            .joinToString("") { "%02x".format(it) }
+        val proposed = NativeStatementCsv.Snapshot(digest, pdf.size,
+            "ABCDE1234F", "2025-03-31",
+            listOf(NativeStatementCsv.Position("ABCDE1234F", "2025-03-31",
+                "INE000000001", "", 100_000_000L, 10000L, null)))
+        val imports = NativeStatementImportRepository(accounts)
+        fun counts(): List<Long> = accounts.withUnlockedVault(input.email) { db ->
+            listOf("source_document", "import_batch", "statement_position",
+                "ledger_event", "holding").map { name ->
+                db.rawQuery("SELECT COUNT(*) FROM " + name, null).use { cursor ->
+                    assertTrue(cursor.moveToFirst())
+                    cursor.getLong(0)
+                }
+            }
+        }
+        val before = counts()
+        assertThrows(IllegalArgumentException::class.java) {
+            imports.inspectSnapshot(input.email, proposed, pdf)
+        }
+        assertEquals(before, counts())
+        val forgedReview = NativeStatementImportRepository.Review(digest,
+            "2025-03-31", emptyList(), "0".repeat(64), false)
+        assertThrows(IllegalArgumentException::class.java) {
+            imports.approveSnapshot(input.email, "ambiguous.pdf", pdf, proposed,
+                "CAS_PDF", forgedReview, true)
+        }
+        assertEquals(before, counts())
+    }
+
     @Test fun changedCustodyMappingAfterPreviewCannotCommitStaleStatement() {
         val (accounts, books) = create(sandbox())
         val owner = books.read(input.email).people.single().id
