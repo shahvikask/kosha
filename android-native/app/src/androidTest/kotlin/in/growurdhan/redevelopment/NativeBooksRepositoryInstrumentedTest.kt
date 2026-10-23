@@ -718,6 +718,59 @@ class NativeBooksRepositoryInstrumentedTest {
         assertEquals(0, books.read(input.email).imports.size)
     }
 
+    @Test fun twoDistinctCustodiesCommitExactPositionsAtomicallyAndReplayOnce() {
+        val (accounts, books) = create(sandbox())
+        val owner = books.read(input.email).people.single().id
+        val a = books.createCustody(input.email,
+            NativeBooksRepository.NewCustody(owner, "DEMAT", "Artificial Custody One",
+                identifierMasked = "****1101"))
+        val b = books.createCustody(input.email,
+            NativeBooksRepository.NewCustody(owner, "DEMAT", "Artificial Custody Two",
+                identifierMasked = "****2202"))
+        val first = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, a, "Artificial Equity One", "EQUITY", "Other",
+            100_000_000L, 10_000L, "2024-01-01", true, isin = "INE000000001"))
+        val second = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, b, "Artificial Equity Two", "EQUITY", "Other",
+            200_000_000L, 10_000L, "2024-01-01", true, isin = "INE000000002"))
+        val bytes = ("%PDF-1.4\\n" + "artificial-two-position-source".repeat(3))
+            .toByteArray(Charsets.UTF_8)
+        val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
+            .joinToString("") { "%02x".format(it) }
+        val date = "2025-03-31"
+        val source = NativeStatementCsv.Snapshot(digest, bytes.size, "ABCDE1234F",
+            date, listOf(
+                NativeStatementCsv.Position("ABCDE1234F", date, "INE000000001",
+                    "", 150_000_000L, 11_000L, null),
+                NativeStatementCsv.Position("ABCDE1234F", date, "INE000000002",
+                    "", 250_000_000L, 11_000L, null)))
+        val importer = NativeStatementImportRepository(accounts)
+        val review = importer.inspectSnapshot(input.email, source, bytes)
+        assertEquals(setOf(first, second), review.matched.map { it.holdingId }.toSet())
+        assertEquals(setOf(a, b), review.matched.map { it.accountId }.toSet())
+        val receipt = importer.approveSnapshot(input.email, "artificial.pdf", bytes,
+            source, "CAS_PDF", review, true)
+        assertFalse(receipt.duplicate)
+        assertEquals(2, receipt.positions)
+        assertEquals(2, receipt.adjustments)
+        val positions = books.read(input.email).holdings.associateBy { it.id }
+        assertEquals(150_000_000L, positions.getValue(first).quantityScaled)
+        assertEquals(250_000_000L, positions.getValue(second).quantityScaled)
+        fun counts(): List<Long> = accounts.withUnlockedVault(input.email) { db ->
+            listOf("source_document", "import_batch", "statement_position",
+                "ledger_event").map { table ->
+                db.rawQuery("SELECT COUNT(*) FROM " + table, null).use { cur ->
+                    assertTrue(cur.moveToFirst())
+                    cur.getLong(0)
+                }
+            }
+        }
+        val committedCounts = counts()
+        assertTrue(importer.approveSnapshot(input.email, "artificial.pdf", bytes,
+            source, "CAS_PDF", review, true).duplicate)
+        assertEquals(committedCounts, counts())
+    }
+
     @Test fun changedCustodyMappingAfterPreviewCannotCommitStaleStatement() {
         val (accounts, books) = create(sandbox())
         val owner = books.read(input.email).people.single().id
