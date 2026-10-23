@@ -771,6 +771,109 @@ class NativeBooksRepositoryInstrumentedTest {
         assertEquals(committedCounts, counts())
     }
 
+    @Test fun issuerCustodyBoundSameIsinCommitsBothAndRejectsReplay() {
+        val (accounts, books) = create(sandbox())
+        val owner = books.read(input.email).people.single().id
+        val firstAccount = books.createCustody(input.email,
+            NativeBooksRepository.NewCustody(owner, "DEMAT", "Synthetic Depository One",
+                identifierMasked = "****1001", dpId = "DP000001", clientId = "CLIENT01"))
+        val secondAccount = books.createCustody(input.email,
+            NativeBooksRepository.NewCustody(owner, "DEMAT", "Synthetic Depository Two",
+                identifierMasked = "****2002", dpId = "DP000002", clientId = "CLIENT02"))
+        val h1 = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, firstAccount, "Synthetic Same ISIN One", "EQUITY", "Other",
+            100_000_000L, 10000L, "2024-01-01", true, isin = "INE000000001"))
+        val h2 = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, secondAccount, "Synthetic Same ISIN Two", "EQUITY", "Other",
+            200_000_000L, 10000L, "2024-01-01", true, isin = "INE000000001"))
+        val bytes = ("%PDF-1.4\\n" + "synthetic-custody-provenance-only".repeat(3))
+            .toByteArray(Charsets.UTF_8)
+        val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
+            .joinToString("") { "%02x".format(it) }
+        val whenDated = "2025-03-31"
+        val firstSource = NativeStatementCsv.DematAccount("CDSL", "DP000001", "CLIENT01")
+        val secondSource = NativeStatementCsv.DematAccount("CDSL", "DP000002", "CLIENT02")
+        val positions = listOf(
+            NativeStatementCsv.Position("ABCDE1234F", whenDated, "INE000000001",
+                "", 150_000_000L, 11000L, null, firstSource),
+            NativeStatementCsv.Position("ABCDE1234F", whenDated, "INE000000001",
+                "", 250_000_000L, 11000L, null, secondSource))
+        val snapshot = NativeStatementCsv.Snapshot(digest, bytes.size,
+            "ABCDE1234F", whenDated, positions, "CDSL")
+        val importer = NativeStatementImportRepository(accounts)
+        val review = importer.inspectSnapshot(input.email, snapshot, bytes)
+        assertEquals(listOf(firstAccount, secondAccount),
+            review.matched.map { it.accountId })
+        assertEquals(listOf(h1, h2), review.matched.map { it.holdingId })
+        val receipt = importer.approveSnapshot(input.email, "synthetic.pdf", bytes,
+            snapshot, "CAS_PDF", review, true)
+        assertFalse(receipt.duplicate)
+        assertEquals(2, receipt.positions)
+        assertEquals(2, receipt.adjustments)
+        val latest = books.read(input.email).holdings.associateBy { it.id }
+        assertEquals(150_000_000L, latest.getValue(h1).quantityScaled)
+        assertEquals(250_000_000L, latest.getValue(h2).quantityScaled)
+        fun financialCounts() = accounts.withUnlockedVault(input.email) { db ->
+            listOf("source_document", "import_batch", "statement_position",
+                "ledger_event").map { table ->
+                db.rawQuery("SELECT COUNT(*) FROM " + table, null).use { c ->
+                    assertTrue(c.moveToFirst())
+                    c.getLong(0)
+                }
+            }
+        }
+        accounts.withUnlockedVault(input.email) { db ->
+            db.rawQuery("SELECT source_section FROM statement_position " +
+                "WHERE import_batch_id=? ORDER BY holding_id",
+                arrayOf(requireNotNull(receipt.batchId))).use { c ->
+                val sourceRows = mutableSetOf<String>()
+                while (c.moveToNext()) sourceRows.add(c.getString(0))
+                assertEquals(setOf("CAS_CUSTODY|CDSL|DP000001|CLIENT01",
+                    "CAS_CUSTODY|CDSL|DP000002|CLIENT02"), sourceRows)
+            }
+        }
+        val committed = financialCounts()
+        assertTrue(importer.approveSnapshot(input.email, "synthetic.pdf", bytes,
+            snapshot, "CAS_PDF", review, true).duplicate)
+        assertEquals(committed, financialCounts())
+    }
+
+    @Test fun issuerCustodyChangeAfterReviewCannotCommit() {
+        val (accounts, books) = create(sandbox())
+        val owner = books.read(input.email).people.single().id
+        val account = books.createCustody(input.email,
+            NativeBooksRepository.NewCustody(owner, "DEMAT", "Synthetic Depository",
+                dpId = "DP000001", clientId = "CLIENT01"))
+        books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, account, "Synthetic Equity", "EQUITY", "Other",
+            100_000_000L, 10000L, "2024-01-01", true,
+            isin = "INE000000001"))
+        val bytes = ("%PDF-1.4\\n" + "synthetic-custody-change".repeat(4))
+            .toByteArray(Charsets.UTF_8)
+        val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
+            .joinToString("") { "%02x".format(it) }
+        val date = "2025-03-31"
+        val snapshot = NativeStatementCsv.Snapshot(digest, bytes.size,
+            "ABCDE1234F", date, listOf(
+                NativeStatementCsv.Position("ABCDE1234F", date, "INE000000001",
+                    "", 150_000_000L, 11000L, null,
+                    NativeStatementCsv.DematAccount("CDSL", "DP000001", "CLIENT01"))),
+            "CDSL")
+        val imports = NativeStatementImportRepository(accounts)
+        val review = imports.inspectSnapshot(input.email, snapshot, bytes)
+        books.updateCustody(input.email, account,
+            NativeBooksRepository.NewCustody(owner, "DEMAT", "Synthetic Depository",
+                dpId = "DP000001", clientId = "CLIENT99"))
+        val before = books.read(input.email)
+        assertThrows(IllegalArgumentException::class.java) {
+            imports.approveSnapshot(input.email, "synthetic.pdf", bytes,
+                snapshot, "CAS_PDF", review, true)
+        }
+        assertEquals(0, books.read(input.email).imports.size)
+        assertEquals(before.holdings.single().quantityScaled,
+            books.read(input.email).holdings.single().quantityScaled)
+    }
+
     @Test fun changedCustodyMappingAfterPreviewCannotCommitStaleStatement() {
         val (accounts, books) = create(sandbox())
         val owner = books.read(input.email).people.single().id
