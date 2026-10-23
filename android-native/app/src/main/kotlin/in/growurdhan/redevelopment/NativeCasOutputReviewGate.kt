@@ -54,25 +54,58 @@ internal object NativeCasOutputReviewGate {
                 return value
             }
             val accountKeys = mutableSetOf<Pair<String, String>>()
+            var folioSummaryCount = 0
             for (i in 0 until accounts.length()) {
                 val account = accounts.getJSONObject(i)
-                val key = strictId(account.optString("dpId").trim()) to
-                    strictId(account.optString("clientId").trim())
-                require(accountKeys.add(key)) {
-                    "Duplicate source demat account provenance"
+                val type = account.optString("type").trim()
+                    .lowercase(Locale.ROOT)
+                val dp = account.optString("dpId").trim()
+                val client = account.optString("clientId").trim()
+                if ("mutual fund" in type) {
+                    // The frozen sidecar uses an aggregate MF-folio account,
+                    // not a DP/client pair. More than one summary is ambiguous:
+                    // no per-folio source-account key exists to distinguish it.
+                    require(dp.isBlank() && client.isBlank() &&
+                        ++folioSummaryCount == 1) {
+                        "Mixed CAS folio summary has ambiguous account provenance"
+                    }
+                } else {
+                    val key = strictId(dp) to strictId(client)
+                    require(accountKeys.add(key)) {
+                        "Duplicate source demat account provenance"
+                    }
                 }
             }
             val seen = mutableSetOf<Triple<String, String, String>>()
             val sourceHoldings = document.getJSONArray("holdings")
             for (i in 0 until sourceHoldings.length()) {
                 val row = sourceHoldings.getJSONObject(i)
-                val dp = strictId(row.optString("dpId").trim())
-                val client = strictId(row.optString("clientId").trim())
+                val kind = row.optString("kind")
+                val accountType = row.optString("accountType")
+                    .lowercase(Locale.ROOT)
+                val dp = row.optString("dpId").trim()
+                val client = row.optString("clientId").trim()
                 val isin = row.optString("isin").trim()
-                require(isin.matches(Regex("[A-Z0-9]{12}")) &&
-                    (dp to client) in accountKeys &&
-                    seen.add(Triple(dp, client, isin))) {
-                    "Demat row has ambiguous or missing account/ISIN provenance"
+                val folio = row.optString("folio").trim()
+                if ("mutual fund" in accountType) {
+                    // A consolidated MF-folio position is provable only from
+                    // an explicit frozen source account type, its row kind and
+                    // exact folio. Never infer this from a missing DP/client.
+                    require(folioSummaryCount == 1 && kind == "mutual_fund" &&
+                        dp.isBlank() && client.isBlank() &&
+                        folio.isNotBlank() && folio.length <= 120 &&
+                        folio.none { it.isISOControl() } &&
+                        (isin.isBlank() || isin.matches(Regex("[A-Z0-9]{12}"))) &&
+                        seen.add(Triple("FOLIO", isin, folio))) {
+                        "Mixed CAS fund-folio row lacks exact source provenance"
+                    }
+                } else {
+                    val key = strictId(dp) to strictId(client)
+                    require(isin.matches(Regex("[A-Z0-9]{12}")) &&
+                        key in accountKeys &&
+                        seen.add(Triple(key.first, key.second, isin))) {
+                        "Demat row has ambiguous or missing account/ISIN provenance"
+                    }
                 }
             }
         } else {
