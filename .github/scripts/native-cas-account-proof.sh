@@ -8,7 +8,9 @@ for case in \
   'in.growurdhan.redevelopment.NativeCasOutputReviewGateInstrumentedTest#nonDematIssuerCannotInheritMultiAccountDematExemption' \
   'in.growurdhan.redevelopment.NativeCasOutputReviewGateInstrumentedTest#multiDematAccountPayloadPreservesPerPositionIssuerIdentity' \
   'in.growurdhan.redevelopment.NativeBooksRepositoryInstrumentedTest#issuerCustodyBoundSameIsinCommitsBothAndRejectsReplay' \
-  'in.growurdhan.redevelopment.NativeBooksRepositoryInstrumentedTest#issuerCustodyChangeAfterReviewCannotCommit'
+  'in.growurdhan.redevelopment.NativeBooksRepositoryInstrumentedTest#issuerCustodyChangeAfterReviewCannotCommit' \
+  'in.growurdhan.redevelopment.NativeCasOutputReviewGateInstrumentedTest#mixedDematAndExplicitFundFolioAdmittedWithoutGuessingCustody' \
+  'in.growurdhan.redevelopment.NativeBooksRepositoryInstrumentedTest#mixedDepositoryAndFundFolioSnapshotCommitsAtomicallyWithReplayGuard'
 do
   set +e
   adb shell am instrument -w -r -e class "$case" in.growurdhan.redevelopment.test/androidx.test.runner.AndroidJUnitRunner | tee -a cas-account-adb.txt
@@ -16,5 +18,5 @@ do
   set -e
   test "$result" -eq 0
 done
-test "$(grep -c 'OK (1 test)' cas-account-adb.txt)" -eq 4
+test "$(grep -c 'OK (1 test)' cas-account-adb.txt)" -eq 6
 ! grep -Eq 'FAILURES!!!|INSTRUMENTATION_STATUS_CODE: -2|INSTRUMENTATION_FAILED' cas-account-adb.txt
