@@ -1,4 +1,4 @@
-name: GrowUrDhan CAS verified custody-bound positive parser adapter proof
+name: GrowUrDhan mixed CAS demat-folio provenance and SQLCipher proof
 on:
   push:
     branches: [GUD-Android-Redevelopment]
@@ -31,6 +31,8 @@ jobs:
           grep -q 'fun issuerCustodyChangeAfterReviewCannotCommit()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeBooksRepositoryInstrumentedTest.kt
           grep -q 'fun multiDematAccountPayloadPreservesPerPositionIssuerIdentity()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeCasOutputReviewGateInstrumentedTest.kt
           grep -q 'fun nonDematIssuerCannotInheritMultiAccountDematExemption()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeCasOutputReviewGateInstrumentedTest.kt
+          grep -q 'fun mixedDematAndExplicitFundFolioAdmittedWithoutGuessingCustody()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeCasOutputReviewGateInstrumentedTest.kt
+          grep -q 'fun mixedDepositoryAndFundFolioSnapshotCommitsAtomicallyWithReplayGuard()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeBooksRepositoryInstrumentedTest.kt
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
