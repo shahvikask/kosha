@@ -53,14 +53,18 @@ internal object NativeCasOutputReviewGate {
                 }
                 return value
             }
+            // JSON null is distinct from the literal string "null": a
+            // genuine folio summary omits DP/client IDs in the sidecar.
+            fun optionalId(obj: JSONObject, key: String): String =
+                if (obj.isNull(key)) "" else obj.optString(key).trim()
             val accountKeys = mutableSetOf<Pair<String, String>>()
             var folioSummaryCount = 0
             for (i in 0 until accounts.length()) {
                 val account = accounts.getJSONObject(i)
                 val type = account.optString("type").trim()
                     .lowercase(Locale.ROOT)
-                val dp = account.optString("dpId").trim()
-                val client = account.optString("clientId").trim()
+                val dp = optionalId(account, "dpId")
+                val client = optionalId(account, "clientId")
                 if ("mutual fund" in type) {
                     // The frozen sidecar uses an aggregate MF-folio account,
                     // not a DP/client pair. More than one summary is ambiguous:
@@ -83,8 +87,8 @@ internal object NativeCasOutputReviewGate {
                 val kind = row.optString("kind")
                 val accountType = row.optString("accountType")
                     .lowercase(Locale.ROOT)
-                val dp = row.optString("dpId").trim()
-                val client = row.optString("clientId").trim()
+                val dp = optionalId(row, "dpId")
+                val client = optionalId(row, "clientId")
                 val isin = row.optString("isin").trim()
                 val folio = row.optString("folio").trim()
                 if ("mutual fund" in accountType) {
