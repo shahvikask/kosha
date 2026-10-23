@@ -80,16 +80,19 @@ internal class NativeCasPdfEngine(private val context: Context) {
                 val q = scaled(holding.get("quantity").toString(), 8)
                 val unit = scaled(holding.get("price").toString(), 4)
                 val value = scaled(holding.get("value").toString(), 4)
-                val custody = if (verified.issuer in setOf("CDSL", "NSDL")) {
-                    // The output gate has verified this row against an exact
-                    // issuer account record. Never infer DP/client from PAN,
-                    // ISIN, account ordering, filename or password.
+                // This is a source-provided account type, already checked by
+                // the output gate. It must never be inferred from empty DP IDs.
+                val consolidatedFolio = verified.issuer in setOf("CDSL", "NSDL") &&
+                    "mutual fund" in holding.optString("accountType")
+                        .lowercase(java.util.Locale.ROOT)
+                val custody = if (verified.issuer in setOf("CDSL", "NSDL") &&
+                    !consolidatedFolio) {
                     NativeStatementCsv.DematAccount(verified.issuer,
                         holding.getString("dpId").trim(),
                         holding.getString("clientId").trim())
                 } else null
                 NativeStatementCsv.Position(pan, date, isin, folio, q, unit,
-                    value, custody)
+                    value, custody, consolidatedFolio)
             }
             require(positions.map { Triple(it.dematAccount, it.isin, it.folio) }
                 .distinct().size == positions.size) {
