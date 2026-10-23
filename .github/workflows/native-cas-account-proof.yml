@@ -1,4 +1,4 @@
-name: GrowUrDhan CAS exact custody positive adapter proof
+name: GrowUrDhan CAS custody provenance proof
 on:
   push:
     branches: [GUD-Android-Redevelopment]
