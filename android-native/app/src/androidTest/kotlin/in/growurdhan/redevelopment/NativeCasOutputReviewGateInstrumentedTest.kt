@@ -22,10 +22,13 @@ class NativeCasOutputReviewGateInstrumentedTest {
         .put("periodFrom", "2025-02-01").put("periodTo", "2025-02-28")
         .put("skippedNilHoldings", 0)
         .put("accounts", JSONArray().put(JSONObject()
-            .put("name", "Synthetic DP").put("type", "Equities")))
+            .put("name", "Synthetic DP").put("type", "Equities")
+            .put("dpId", "DP000001").put("clientId", "CLIENT01")))
         .put("holdings", JSONArray().put(JSONObject()
             .put("kind", "equity").put("name", "Synthetic holding")
-            .put("isin", "INE000000001").put("quantity", 10)
+            .put("isin", "INE000000001")
+            .put("dpId", "DP000001").put("clientId", "CLIENT01")
+            .put("quantity", 10)
             .put("price", 100).put("value", 1000)))
         .put("warnings", JSONArray())
         .put("pdfTotals", JSONObject().put("demat", 1000)
@@ -60,6 +63,27 @@ class NativeCasOutputReviewGateInstrumentedTest {
         assertEquals("2025-02-28", verified.date)
         assertEquals(1, verified.count)
         assertEquals(0, verified.warnings)
+    }
+
+    @Test fun dematRowsMustCarryExactDpAndClientProvenance() {
+        for (field in listOf("dpId", "clientId")) {
+            val omitted = source()
+            omitted.getJSONArray("holdings").getJSONObject(0).remove(field)
+            assertThrows(IllegalArgumentException::class.java) {
+                NativeCasOutputReviewGate.verify(omitted, "ABCDE1234F")
+            }
+            val altered = source()
+            altered.getJSONArray("holdings").getJSONObject(0).put(field, "OTHER999")
+            assertThrows(IllegalArgumentException::class.java) {
+                NativeCasOutputReviewGate.verify(altered, "ABCDE1234F")
+            }
+            val unboundAccount = source()
+            unboundAccount.getJSONArray("accounts").getJSONObject(0).remove(field)
+            assertThrows(IllegalArgumentException::class.java) {
+                NativeCasOutputReviewGate.verify(unboundAccount, "ABCDE1234F")
+            }
+        }
+        assertEquals(1, NativeCasOutputReviewGate.verify(source(), "ABCDE1234F").count)
     }
 
     @Test fun multipleAccountsCannotAssumeFirstDematOwnerOwnsEverything() {
