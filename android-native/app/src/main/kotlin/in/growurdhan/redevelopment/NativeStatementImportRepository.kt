@@ -134,6 +134,10 @@ internal class NativeStatementImportRepository(
         }
         rows("SELECT h.*,i.* FROM holding h JOIN instrument i " +
             "ON i.instrument_id=h.instrument_id WHERE h.holding_id=?")
+        // Exact DP/client and custody status are part of the owner's reviewed
+        // state. Even a metadata-only custody change invalidates approval.
+        rows("SELECT a.* FROM account a JOIN holding h ON h.account_id=a.account_id " +
+            "WHERE h.holding_id=?")
         rows("SELECT * FROM ledger_event WHERE holding_id=? " +
             "ORDER BY trade_date,ledger_event_id")
         rows("SELECT s.key,s.value FROM setting s JOIN ledger_event l " +
@@ -387,12 +391,20 @@ internal class NativeStatementImportRepository(
                     row.instrumentId, snapshot.date, row.unitPriceMinor,
                     if (sourceKind == "CAS_PDF") "CAS_PDF" else "CSV_STATEMENT",
                     at, persistObservation = observedInBatch.add(row.instrumentId))
+                // Store issuer identifiers only in the encrypted v9
+                // statement_position.source_section; do not expose them in
+                // filenames, application logs, UI notifications or CI.
+                val custodyProvenance = source.dematAccount?.let {
+                    "CAS_CUSTODY|${it.issuer}|${it.dpId}|${it.clientId}"
+                }
                 db.execSQL("INSERT INTO statement_position(import_batch_id,holding_id," +
                     "statement_date,quantity_scaled,unit_price_minor,isin,folio," +
-                    "current_value_minor) VALUES(?,?,?,?,?,?,?,?)", arrayOf<Any?>(
+                    "current_value_minor,source_section) VALUES(?,?,?,?,?,?,?,?,?)",
+                    arrayOf<Any?>(
                     batch, row.holdingId, snapshot.date, row.quantityScaled,
                     row.unitPriceMinor, source.isin.ifEmpty { null },
-                    source.folio.ifEmpty { null }, row.currentValueMinor))
+                    source.folio.ifEmpty { null }, row.currentValueMinor,
+                    custodyProvenance))
                 if (row.action == Action.APPLY_SNAPSHOT) {
                     val delta = row.delta
                     val eventId = UUID.randomUUID().toString()
