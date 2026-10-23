@@ -113,6 +113,15 @@ class NativeCasOutputReviewGateInstrumentedTest {
         }
     }
 
+    @Test fun nonDematIssuerCannotInheritMultiAccountDematExemption() {
+        val payload = source().put("fileType", "CAMS")
+        payload.getJSONArray("accounts").put(JSONObject()
+            .put("name", "Unverified secondary source account"))
+        assertThrows(IllegalArgumentException::class.java) {
+            NativeCasOutputReviewGate.verify(payload, "ABCDE1234F")
+        }
+    }
+
     @Test fun multiDematAccountPayloadPreservesPerPositionIssuerIdentity() {
         val document = source().put("fileType", "CDSL")
         val accounts = document.getJSONArray("accounts")
@@ -158,7 +167,9 @@ class NativeCasOutputReviewGateInstrumentedTest {
         val payload = source()
         payload.getJSONArray("holdings").put(JSONObject()
             .put("kind", "mutual_fund").put("name", "Synthetic fund")
-            .put("isin", "INF000000001").put("quantity", 5)
+            .put("isin", "INF000000001")
+            .put("dpId", "DP000001").put("clientId", "CLIENT01")
+            .put("quantity", 5)
             .put("price", 50).put("value", 250))
         payload.getJSONObject("parsedTotals").put("holdingsCount", 2)
             .put("holdingsValue", 1250)

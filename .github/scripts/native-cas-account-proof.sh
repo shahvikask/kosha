@@ -5,6 +5,7 @@ adb install -r android-native/app/build/outputs/apk/androidTest/debug/app-debug-
 adb shell am force-stop in.growurdhan.redevelopment || true
 : > cas-account-adb.txt
 for case in \
+  'in.growurdhan.redevelopment.NativeCasOutputReviewGateInstrumentedTest#nonDematIssuerCannotInheritMultiAccountDematExemption' \
   'in.growurdhan.redevelopment.NativeCasOutputReviewGateInstrumentedTest#multiDematAccountPayloadPreservesPerPositionIssuerIdentity' \
   'in.growurdhan.redevelopment.NativeBooksRepositoryInstrumentedTest#issuerCustodyBoundSameIsinCommitsBothAndRejectsReplay' \
   'in.growurdhan.redevelopment.NativeBooksRepositoryInstrumentedTest#issuerCustodyChangeAfterReviewCannotCommit'
@@ -15,5 +16,5 @@ do
   set -e
   test "$result" -eq 0
 done
-test "$(grep -c 'OK (1 test)' cas-account-adb.txt)" -eq 3
+test "$(grep -c 'OK (1 test)' cas-account-adb.txt)" -eq 4
 ! grep -Eq 'FAILURES!!!|INSTRUMENTATION_STATUS_CODE: -2|INSTRUMENTATION_FAILED' cas-account-adb.txt

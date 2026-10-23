@@ -75,6 +75,13 @@ internal object NativeCasOutputReviewGate {
                     "Demat row has ambiguous or missing account/ISIN provenance"
                 }
             }
+        } else {
+            // Preserve the previous fail-closed non-demat issuer rule.
+            // Only fully accounted CDSL/NSDL statements support more than
+            // one issuer account; never broaden CAMS/KFINTECH/NPS implicitly.
+            require(accounts.length() <= 1) {
+                "Multiple non-demat accounts require separate owner review"
+            }
         }
         val holdings = document.getJSONArray("holdings")
         require(holdings.length() in 1..10000)

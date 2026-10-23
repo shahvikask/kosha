@@ -30,6 +30,7 @@ jobs:
           grep -q 'fun issuerCustodyBoundSameIsinCommitsBothAndRejectsReplay()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeBooksRepositoryInstrumentedTest.kt
           grep -q 'fun issuerCustodyChangeAfterReviewCannotCommit()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeBooksRepositoryInstrumentedTest.kt
           grep -q 'fun multiDematAccountPayloadPreservesPerPositionIssuerIdentity()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeCasOutputReviewGateInstrumentedTest.kt
+          grep -q 'fun nonDematIssuerCannotInheritMultiAccountDematExemption()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeCasOutputReviewGateInstrumentedTest.kt
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
