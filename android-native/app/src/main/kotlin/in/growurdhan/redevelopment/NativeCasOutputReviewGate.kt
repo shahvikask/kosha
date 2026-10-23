@@ -53,7 +53,7 @@ internal object NativeCasOutputReviewGate {
             val account = accounts.getJSONObject(0)
             fun strictId(value: String): String {
                 require(value.isNotBlank() && value.length <= 32 &&
-                    value.all { it.isLetterOrDigit() }) {
+                    value.matches(Regex("[A-Za-z0-9]{1,32}"))) {
                     "Missing or invalid demat account provenance"
                 }
                 return value
