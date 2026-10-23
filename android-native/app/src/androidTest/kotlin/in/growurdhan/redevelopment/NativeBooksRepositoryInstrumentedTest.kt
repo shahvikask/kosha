@@ -739,6 +739,51 @@ class NativeBooksRepositoryInstrumentedTest {
         assertEquals(1, books.history(input.email, holdingId).size)
     }
 
+    @Test fun pdfAdapterStaleCustodyReviewRefusesApprovedSqlcipherWrites() {
+        val (accounts, books) = create(sandbox())
+        val owner = books.read(input.email).people.single().id
+        val originalCustody = books.createCustody(input.email,
+            NativeBooksRepository.NewCustody(owner, "DEMAT", "Synthetic custody A"))
+        val holding = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, originalCustody, "Synthetic source equity", "EQUITY", "Other",
+            100_000_000L, 10_000L, "2024-01-01", true,
+            isin = "INE000000001"))
+        val sourceBytes = ("%PDF-1.4\\n" + "artificial-stale-review-only".repeat(3))
+            .toByteArray(Charsets.UTF_8)
+        val sourceSha = MessageDigest.getInstance("SHA-256").digest(sourceBytes)
+            .joinToString("") { "%02x".format(it) }
+        val snapshot = NativeStatementCsv.Snapshot(sourceSha, sourceBytes.size,
+            "ABCDE1234F", "2025-03-31",
+            listOf(NativeStatementCsv.Position("ABCDE1234F", "2025-03-31",
+                "INE000000001", "", 150_000_000L, 11_000L, null)))
+        val imports = NativeStatementImportRepository(accounts)
+        val reviewed = imports.inspectSnapshot(input.email, snapshot, sourceBytes)
+        assertEquals(originalCustody, reviewed.matched.single().accountId)
+        val replacementCustody = books.createCustody(input.email,
+            NativeBooksRepository.NewCustody(owner, "DEMAT", "Synthetic custody B"))
+        books.updateHoldingMetadata(input.email, holding, replacementCustody,
+            null, null, null)
+        fun counts(): List<Long> = accounts.withUnlockedVault(input.email) { db ->
+            listOf("source_document", "import_batch", "statement_position",
+                "ledger_event").map { table ->
+                db.rawQuery("SELECT COUNT(*) FROM " + table, null).use { cursor ->
+                    assertTrue(cursor.moveToFirst())
+                    cursor.getLong(0)
+                }
+            }
+        }
+        val before = counts()
+        assertThrows(IllegalArgumentException::class.java) {
+            imports.approveSnapshot(input.email, "synthetic.pdf", sourceBytes,
+                snapshot, "CAS_PDF", reviewed, true)
+        }
+        assertEquals(before, counts())
+        assertEquals(100_000_000L,
+            books.read(input.email).holdings.single().quantityScaled)
+        assertEquals(replacementCustody,
+            books.read(input.email).holdings.single().accountId)
+    }
+
     @Test fun unsafeLedgerHistoryCannotBeHealedByImportingAReducedSnapshot() {
         val (accounts, books) = create(sandbox())
         val owner = books.read(input.email).people.single().id
