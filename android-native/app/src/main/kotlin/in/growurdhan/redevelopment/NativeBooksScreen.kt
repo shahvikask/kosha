@@ -487,6 +487,7 @@ private fun HoldingForm(people: List<NativeBooksRepository.Person>,
     var date by remember { mutableStateOf(LocalDate.now().toString()) }
     var notes by remember { mutableStateOf("") }
     var isin by remember { mutableStateOf("") }
+    var folioForStatements by remember { mutableStateOf("") }
     var openingPrice by remember { mutableStateOf("") }
     var institution by remember { mutableStateOf("") }
     var accountMasked by remember { mutableStateOf("") }
@@ -523,6 +524,12 @@ private fun HoldingForm(people: List<NativeBooksRepository.Person>,
     OutlinedTextField(notes, { notes = it }, label = { Text("Notes") }, modifier = Modifier.fillMaxWidth())
     OutlinedTextField(isin, { isin = it }, label = { Text("ISIN (optional, 12 characters)") },
         modifier = Modifier.fillMaxWidth())
+    if (category == "MUTUAL_FUND") {
+        OutlinedTextField(folioForStatements, { folioForStatements = it },
+            label = { Text("Exact MF folio for statement matching (optional)") },
+            modifier = Modifier.fillMaxWidth())
+        Text("Enter only the folio shown on your statement. Never substitute a DP/client or masked reference.")
+    }
     OutlinedTextField(openingPrice, { openingPrice = it },
         label = { Text("Opening cost per unit ₹ (optional; distinct from current price)") },
         modifier = Modifier.fillMaxWidth())
@@ -569,6 +576,8 @@ private fun HoldingForm(people: List<NativeBooksRepository.Person>,
             save(NativeBooksRepository.NewHolding(owner, account.ifBlank { null }, name,
                 category, sub, qty, minor, date, knownCost == "Known",
                 isin = isin.ifBlank { null }, notes = notes.ifBlank { null },
+                folioForStatements = if (category == "MUTUAL_FUND")
+                    folioForStatements.ifBlank { null } else null,
                 detailsJson = specialistJson.ifBlank { null },
                 openingUnitPriceMinor = opened,
                 institutionName = institution.ifBlank { null },
