@@ -1,4 +1,4 @@
-name: GrowUrDhan CAS demat provenance refusal proof
+name: GrowUrDhan CAS ASCII custody provenance proof
 on:
   push:
     branches: [GUD-Android-Redevelopment]
@@ -24,7 +24,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           git diff --exit-code 272a271508d28b5bbcaf724def8e7eb568b38b56 "$GITHUB_SHA" -- src/ src-tauri/ scripts/
           echo "$GITHUB_SHA" > cas-provenance-sha.txt
-          grep -q 'fun dematRowsMustCarryExactDpAndClientProvenance()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeCasOutputReviewGateInstrumentedTest.kt
+          grep -q 'fun unicodeLookalikeDematIdentifiersCannotPassAccountProvenanceGate()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeCasOutputReviewGateInstrumentedTest.kt
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
