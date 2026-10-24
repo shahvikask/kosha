@@ -18,3 +18,11 @@ set -e
 test "$archive_status" -eq 0
 grep -q 'OK (1 test)' m26-archive-adb.txt
 ! grep -Eq 'FAILURES!!!|INSTRUMENTATION_STATUS_CODE: -2|INSTRUMENTATION_FAILED' m26-archive-adb.txt
+
+set +e
+adb shell am instrument -w -r -e class 'in.growurdhan.redevelopment.NativeM26OwnerLensNavigationInstrumentedTest#selectedMemberLensScopesFamilyAccountsGoalsAndHoldings' in.growurdhan.redevelopment.test/androidx.test.runner.AndroidJUnitRunner | tee m26-compose-adb.txt
+compose_status=${PIPESTATUS[0]}
+set -e
+test "$compose_status" -eq 0
+grep -q 'OK (1 test)' m26-compose-adb.txt
+! grep -Eq 'FAILURES!!!|INSTRUMENTATION_STATUS_CODE: -2|INSTRUMENTATION_FAILED' m26-compose-adb.txt
