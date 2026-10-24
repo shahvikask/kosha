@@ -176,7 +176,14 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
                 "PRIVATE_TRUST", "PARTNERSHIP_FIRM"))
             if (form.kind == "HUF") require(form.relation == "HUF")
             val birth = optionalDate(form.dob)
-            form.guardianId?.let { requirePerson(db, it) }
+            form.guardianId?.let { guardian ->
+                requirePerson(db, guardian)
+                require(db.exists("SELECT 1 FROM entity WHERE entity_id=? " +
+                    "AND entity_type='INDIVIDUAL' AND relation!='Child' " +
+                    "AND is_active=1", guardian)) {
+                    "Guardian must be an active adult-eligible person"
+                }
+            }
             if (form.relation == "Child" && birth != null &&
                 LocalDate.parse(birth).isAfter(LocalDate.now().minusYears(18))) {
                 require(form.guardianId != null) { "Minor requires a guardian" }
