@@ -146,10 +146,15 @@ internal object NativeCasOutputReviewGate {
             val position = holdings.getJSONObject(index)
             // Each actual source position must have real, bounded numeric
             // units/NAV/value. No null, string or guessed replacement value.
-            finiteAmount(position.get("quantity"))
+            val units = finiteAmount(position.get("quantity"))
             finiteAmount(position.get("price"))
-            positionsSubtotal = positionsSubtotal.add(
-                finiteAmount(position.get("value")))
+            val value = finiteAmount(position.get("value"))
+            // A zero-unit closing position must never silently claim value.
+            // Preserve explicit zero rows for owner review; reject contradictory totals.
+            require(units.signum() != 0 || value.signum() == 0) {
+                "Zero-unit CAS position has nonzero value"
+            }
+            positionsSubtotal = positionsSubtotal.add(value)
         }
         val parsed = finiteAmount(counts.get("holdingsValue"))
         require(positionsSubtotal.subtract(parsed).abs() <= BigDecimal("0.02")) {
