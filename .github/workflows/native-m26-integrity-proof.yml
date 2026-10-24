@@ -27,6 +27,7 @@ jobs:
           for method in custodyIdentifiersAndNomineeAreNeverSilentlyTruncated guardianMustNotBeChildOrNonindividualAndFailurePreservesFamily custodyEditRejectsTruncatedIdentifiersWithoutChangingEncryptedAccount editingExistingMinorRefusesIneligibleGuardianWithoutWrites nomineeGoalAndCustodyLifecycleSurviveEncryptedRestartWithoutOwnerLeakage; do
             grep -q "fun ${method}()" android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeBooksRepositoryInstrumentedTest.kt
           done
+          grep -q 'fun m26FamilyCustodyNomineeGoalsRoundtripIntoIndependentSqlcipher()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeV9ArchiveInstrumentedTest.kt
           bash -n .github/scripts/native-m26-integrity-proof.sh
           # Compile-checked UI owner-lens invariant; full Compose navigation test remains separate.
           grep -Fq 'active.filter { ownerFilter.isEmpty() || it.id == ownerFilter }' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksScreen.kt
@@ -81,6 +82,7 @@ jobs:
             m26-source-sha.txt
             m26-apk-sha256.txt
             m26-adb.txt
+            m26-archive-adb.txt
             android-native/app/build/outputs/androidTest-results/**/*.xml
           if-no-files-found: warn
           retention-days: 14
