@@ -82,7 +82,7 @@ class NativeBooksRepositoryInstrumentedTest {
         }
         assertThrows(IllegalArgumentException::class.java) {
             books.createCustody(input.email, NativeBooksRepository.NewCustody(
-                person, "DEMAT", "Artificial Depository", clientId = "123\\n456"))
+                person, "DEMAT", "Artificial Depository", clientId = "123" + 10.toChar() + "456"))
         }
         assertEquals(before, books.read(input.email).custody.size)
     }
