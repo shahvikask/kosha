@@ -628,6 +628,49 @@ class NativeV9ArchiveInstrumentedTest {
         }
     }
 
+    @Test fun m26FamilyCustodyNomineeGoalsRoundtripIntoIndependentSqlcipher() {
+        val context = sandbox()
+        val store = EncryptedVaultStore(context)
+        val source = store.createFresh(false).use { db ->
+            seed(db)
+            db.execSQL("UPDATE entity SET relation='Self',is_primary=1 WHERE entity_id='owner'")
+            db.execSQL("INSERT INTO entity(entity_id,entity_type,display_name,relation," +
+                "guardian_id,created_at) VALUES('minor','INDIVIDUAL','Synthetic Minor'," +
+                "'Child','owner','2026-10-21')")
+            db.execSQL("UPDATE account SET nominee='Synthetic Nominee'," +
+                "identifier_masked='****1234',dp_id='DP1234',client_id='CL5678' WHERE account_id='acc'")
+            db.execSQL("UPDATE goal SET name='Education',target_minor=500000," +
+                "target_date='2032-01-01',priority='HIGH' WHERE goal_id='goal'")
+            db.execSQL("UPDATE holding SET tag='goal' WHERE holding_id='holding'")
+            NativeV9SnapshotReader.capture(db)
+        }
+        val encrypted = NativeV9Archive.encrypt(source, email, pass)
+        candidate(context, store) { destination ->
+            NativeV9CandidateRestorer.restoreIntoFreshCandidate(
+                destination, encrypted, email, pass, true)
+            assertEquals(source, NativeV9SnapshotReader.capture(destination))
+            destination.rawQuery("SELECT entity_id FROM entity WHERE guardian_id='owner'", null).use {
+                assertTrue(it.moveToFirst())
+                assertEquals("minor", it.getString(0))
+            }
+            destination.rawQuery("SELECT nominee,dp_id,client_id FROM account WHERE account_id='acc'", null).use {
+                assertTrue(it.moveToFirst())
+                assertEquals("Synthetic Nominee", it.getString(0))
+                assertEquals("DP1234", it.getString(1))
+                assertEquals("CL5678", it.getString(2))
+            }
+            destination.rawQuery("SELECT h.entity_id,g.entity_id FROM holding h " +
+                "JOIN goal g ON h.tag=g.goal_id WHERE h.holding_id='holding'", null).use {
+                assertTrue(it.moveToFirst())
+                assertEquals("owner", it.getString(0))
+                assertEquals(it.getString(0), it.getString(1))
+            }
+        }
+        assertThrows(Exception::class.java) {
+            NativeV9Archive.decrypt(encrypted, email, "Wrong synthetic password".toCharArray())
+        }
+    }
+
     @Test fun wrongPasswordTamperedCipherAndDuplicateRowsNeverPartiallyImport() {
         val ctx = sandbox()
         val store = EncryptedVaultStore(ctx)
