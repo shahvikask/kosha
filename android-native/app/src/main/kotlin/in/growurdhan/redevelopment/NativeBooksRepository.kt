@@ -542,6 +542,11 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
             if (form.guardianId != null) {
                 require(form.guardianId != personId) { "A member cannot be their own guardian" }
                 requirePerson(db, form.guardianId)
+                require(db.exists("SELECT 1 FROM entity WHERE entity_id=? " +
+                    "AND entity_type='INDIVIDUAL' AND relation!='Child' " +
+                    "AND is_active=1", form.guardianId)) {
+                    "Guardian must be an active adult-eligible person"
+                }
             }
             if (form.relation == "Child" && birth != null &&
                 LocalDate.parse(birth).isAfter(LocalDate.now().minusYears(18))) {
