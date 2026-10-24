@@ -50,10 +50,16 @@ class NativeM26OwnerLensNavigationInstrumentedTest {
         val primary = books.read(credentials.email).people.single().id
         val other = books.createPerson(credentials.email,
             NativeBooksRepository.NewPerson("Member Alpha", "Spouse"))
-        books.createCustody(credentials.email, NativeBooksRepository.NewCustody(
+        val ownerCustody = books.createCustody(credentials.email, NativeBooksRepository.NewCustody(
             primary, "DEMAT", "Owner Custodian"))
-        books.createCustody(credentials.email, NativeBooksRepository.NewCustody(
+        val otherCustody = books.createCustody(credentials.email, NativeBooksRepository.NewCustody(
             other, "DEMAT", "Other Custodian"))
+        books.createHolding(credentials.email, NativeBooksRepository.NewHolding(
+            primary, ownerCustody, "Owner Index", "MUTUAL_FUND", "Index / ETF",
+            0L, 10000L, "2024-01-01", false))
+        books.createHolding(credentials.email, NativeBooksRepository.NewHolding(
+            other, otherCustody, "Alpha Index", "MUTUAL_FUND", "Index / ETF",
+            0L, 10000L, "2024-01-01", false))
         books.createGoal(credentials.email, primary, "Owner Goal", 100000L,
             "2032-01-01", "HIGH")
         books.createGoal(credentials.email, other, "Other Goal", 200000L,
@@ -72,6 +78,13 @@ class NativeM26OwnerLensNavigationInstrumentedTest {
         }
         compose.onNodeWithText("Whole household").performClick()
         compose.onNodeWithText("Member Alpha").performClick()
+        compose.onAllNodes(hasText("Alpha Index", substring = true)).assertCountEquals(1)
+        compose.onAllNodes(hasText("Owner Index", substring = true)).assertCountEquals(0)
+        compose.onNodeWithText("Holdings").performClick()
+        compose.onAllNodes(hasText("Alpha Index", substring = true)).assertCountEquals(1)
+        compose.onAllNodes(hasText("Owner Index", substring = true)).assertCountEquals(0)
+        compose.onNodeWithText("Records").performClick()
+        compose.onNodeWithText("Money events and manual prices").assertExists()
         compose.onNodeWithText("Family").performClick()
         compose.onAllNodes(hasText("Member Alpha •", substring = true)).assertCountEquals(1)
         compose.onAllNodes(hasText("Owner Family •", substring = true)).assertCountEquals(0)
@@ -84,5 +97,8 @@ class NativeM26OwnerLensNavigationInstrumentedTest {
         compose.onNodeWithText("Member Alpha").performClick()
         compose.onNodeWithText("Whole household").performClick()
         compose.onAllNodes(hasText("Owner Goal", substring = true)).assertCountEquals(1)
+        compose.onNodeWithText("Home").performClick()
+        compose.onAllNodes(hasText("Owner Index", substring = true)).assertCountEquals(1)
+        compose.onAllNodes(hasText("Alpha Index", substring = true)).assertCountEquals(1)
     }
 }
