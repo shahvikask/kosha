@@ -67,6 +67,26 @@ class NativeBooksRepositoryInstrumentedTest {
         }
     }
 
+    @Test fun custodyIdentifiersAndNomineeAreNeverSilentlyTruncated() {
+        val (_, books) = create(sandbox())
+        val person = books.read(input.email).people.single().id
+        val before = books.read(input.email).custody.size
+        assertThrows(IllegalArgumentException::class.java) {
+            books.createCustody(input.email, NativeBooksRepository.NewCustody(
+                person, "DEMAT", "Artificial Depository", dpId = "A".repeat(101),
+                clientId = "12345678"))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            books.createCustody(input.email, NativeBooksRepository.NewCustody(
+                person, "DEMAT", "Artificial Depository", nominee = "N".repeat(129)))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            books.createCustody(input.email, NativeBooksRepository.NewCustody(
+                person, "DEMAT", "Artificial Depository", clientId = "123\\n456"))
+        }
+        assertEquals(before, books.read(input.email).custody.size)
+    }
+
     @Test fun familyCustodyHoldingLedgerAndPriceSurviveEncryptedReopen() {
         val context = sandbox()
         val (accounts, books) = create(context)
