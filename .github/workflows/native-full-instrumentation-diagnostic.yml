@@ -2,6 +2,7 @@ name: GrowUrDhan full Android instrumentation diagnostic
 
 # Source-corrected, exact-SHA rebuild using previously audited Android wheels.
 # Diagnostic only. P01-P34 remains fail-closed until source parity is complete.
+# M26 exact-SHA candidate full-suite gate: preserve original evidence and fail closed.
 on:
   workflow_dispatch:
   push:
