@@ -84,6 +84,25 @@ class NativeBooksRepositoryInstrumentedTest {
         assertEquals(initial, books.read(input.email).people.size)
     }
 
+    @Test fun custodyEditRejectsTruncatedIdentifiersWithoutChangingEncryptedAccount() {
+        val (_, books) = create(sandbox())
+        val owner = books.read(input.email).people.single().id
+        val account = books.createCustody(input.email, NativeBooksRepository.NewCustody(
+            owner, "DEMAT", "Synthetic Custodian", identifierMasked = "****6789",
+            dpId = "DP123", clientId = "CLIENT123", nominee = "Example"))
+        assertThrows(IllegalArgumentException::class.java) {
+            books.updateCustody(input.email, account, NativeBooksRepository.NewCustody(
+                owner, "DEMAT", "Changed Custodian", dpId = "A".repeat(101)))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            books.updateCustody(input.email, account, NativeBooksRepository.NewCustody(
+                owner, "DEMAT", "Changed Custodian", nominee = "N".repeat(129)))
+        }
+        val original = books.read(input.email).custody.single { it.id == account }
+        assertEquals("Synthetic Custodian", original.custodian)
+        assertEquals("Example", original.nominee)
+    }
+
     @Test fun custodyIdentifiersAndNomineeAreNeverSilentlyTruncated() {
         val (_, books) = create(sandbox())
         val person = books.read(input.email).people.single().id
