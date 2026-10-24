@@ -135,12 +135,14 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                     }
                     "Family" -> {
                         Text("Family members", style = MaterialTheme.typography.titleLarge)
-                        active.forEach { m ->
+                        active.filter { ownerFilter.isEmpty() || it.id == ownerFilter }
+                            .forEach { m ->
                             Text("${m.name} • ${m.relation} • ${m.kind}" +
                                 (if (m.isPrimary) " (Primary)" else "") +
                                 (m.maskedPan?.let { " • $it" } ?: ""))
                         }
-                        NativeEmergencyDossierCard(data)
+                        if (ownerFilter.isEmpty()) NativeEmergencyDossierCard(data)
+                        else Text("Household-wide emergency dossier is available in Whole household lens.")
                         PersonForm(active, busy) { form ->
                             persist { books.createPerson(email, form) }
                         }
