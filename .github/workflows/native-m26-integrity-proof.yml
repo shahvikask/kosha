@@ -28,6 +28,8 @@ jobs:
             grep -q "fun ${method}()" android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeBooksRepositoryInstrumentedTest.kt
           done
           bash -n .github/scripts/native-m26-integrity-proof.sh
+          # Compile-checked UI owner-lens invariant; full Compose navigation test remains separate.
+          grep -Fq 'active.filter { ownerFilter.isEmpty() || it.id == ownerFilter }' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksScreen.kt
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
