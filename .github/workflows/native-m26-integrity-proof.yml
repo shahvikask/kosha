@@ -28,7 +28,8 @@ jobs:
             grep -q "fun ${method}()" android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeBooksRepositoryInstrumentedTest.kt
           done
           grep -q 'fun m26FamilyCustodyNomineeGoalsRoundtripIntoIndependentSqlcipher()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeV9ArchiveInstrumentedTest.kt
-          ! grep -q '^import androidx.compose.ui.test.onAllNodes android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM26OwnerLensNavigationInstrumentedTest.kt
+          ! grep -q '^import androidx.compose.ui.test.onAllNodes$' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM26OwnerLensNavigationInstrumentedTest.kt
+          grep -q 'fun selectedMemberLensScopesFamilyAccountsGoalsAndHoldings()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM26OwnerLensNavigationInstrumentedTest.kt
           bash -n .github/scripts/native-m26-integrity-proof.sh
           # Compile-checked UI owner-lens invariant; full Compose navigation test remains separate.
           grep -Fq 'active.filter { ownerFilter.isEmpty() || it.id == ownerFilter }' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksScreen.kt
