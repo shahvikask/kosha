@@ -9,3 +9,12 @@ set -e
 test "$status" -eq 0
 grep -q 'OK (5 tests)' m26-adb.txt
 ! grep -Eq 'FAILURES!!!|INSTRUMENTATION_STATUS_CODE: -2|INSTRUMENTATION_FAILED' m26-adb.txt
+
+# Separate original ADB transcript for independent encrypted native archive roundtrip.
+set +e
+adb shell am instrument -w -r -e class 'in.growurdhan.redevelopment.NativeV9ArchiveInstrumentedTest#m26FamilyCustodyNomineeGoalsRoundtripIntoIndependentSqlcipher' in.growurdhan.redevelopment.test/androidx.test.runner.AndroidJUnitRunner | tee m26-archive-adb.txt
+archive_status=${PIPESTATUS[0]}
+set -e
+test "$archive_status" -eq 0
+grep -q 'OK (1 test)' m26-archive-adb.txt
+! grep -Eq 'FAILURES!!!|INSTRUMENTATION_STATUS_CODE: -2|INSTRUMENTATION_FAILED' m26-archive-adb.txt
