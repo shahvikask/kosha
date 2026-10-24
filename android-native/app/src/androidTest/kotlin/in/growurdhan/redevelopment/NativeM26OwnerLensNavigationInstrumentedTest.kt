@@ -82,7 +82,7 @@ class NativeM26OwnerLensNavigationInstrumentedTest {
         compose.onNodeWithText("Goals").performClick()
         compose.onAllNodes(hasText("Other Goal", substring = true)).assertCountEquals(1)
         compose.onAllNodes(hasText("Owner Goal", substring = true)).assertCountEquals(0)
-        compose.onNodeWithText("Whole household").performClick()
+        compose.onNodeWithText("Member Alpha").performClick()
         compose.onNodeWithText("Whole household").performClick()
         compose.onAllNodes(hasText("Owner Goal", substring = true)).assertCountEquals(1)
     }
