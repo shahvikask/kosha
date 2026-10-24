@@ -67,6 +67,23 @@ class NativeBooksRepositoryInstrumentedTest {
         }
     }
 
+    @Test fun guardianMustNotBeChildOrNonindividualAndFailurePreservesFamily() {
+        val (_, books) = create(sandbox())
+        val adult = books.read(input.email).people.single().id
+        val child = books.createPerson(input.email, NativeBooksRepository.NewPerson(
+            "Synthetic Child", "Child", dob = "2020-01-01", guardianId = adult))
+        val huf = books.createPerson(input.email, NativeBooksRepository.NewPerson(
+            "Synthetic HUF", "HUF", kind = "HUF"))
+        val initial = books.read(input.email).people.size
+        for (guardian in listOf(child, huf)) {
+            assertThrows(IllegalArgumentException::class.java) {
+                books.createPerson(input.email, NativeBooksRepository.NewPerson(
+                    "Second Minor", "Child", dob = "2021-01-01", guardianId = guardian))
+            }
+        }
+        assertEquals(initial, books.read(input.email).people.size)
+    }
+
     @Test fun custodyIdentifiersAndNomineeAreNeverSilentlyTruncated() {
         val (_, books) = create(sandbox())
         val person = books.read(input.email).people.single().id
