@@ -67,6 +67,29 @@ class NativeBooksRepositoryInstrumentedTest {
         }
     }
 
+    @Test fun editingExistingMinorRefusesIneligibleGuardianWithoutWrites() {
+        val (_, books) = create(sandbox())
+        val primary = books.read(input.email).people.single().id
+        val minor = books.createPerson(input.email, NativeBooksRepository.NewPerson(
+            "Synthetic Minor", "Child", dob = "2020-02-01", guardianId = primary))
+        val huf = books.createPerson(input.email, NativeBooksRepository.NewPerson(
+            "Synthetic HUF", "HUF", kind = "HUF"))
+        val otherMinor = books.createPerson(input.email, NativeBooksRepository.NewPerson(
+            "Other Minor", "Child", dob = "2021-02-01", guardianId = primary))
+        for (guardian in listOf(huf, otherMinor)) {
+            assertThrows(IllegalArgumentException::class.java) {
+                books.updatePerson(input.email, minor, NativeBooksRepository.NewPerson(
+                    "Changed Minor", "Child", dob = "2020-02-01", guardianId = guardian))
+            }
+        }
+        val same = books.read(input.email).people.single { it.id == minor }
+        assertEquals("Synthetic Minor", same.name)
+        assertTrue(same.active)
+        books.updatePerson(input.email, minor, NativeBooksRepository.NewPerson(
+            "Renamed Minor", "Child", guardianId = primary))
+        assertEquals("Renamed Minor", books.read(input.email).people.single { it.id == minor }.name)
+    }
+
     @Test fun guardianMustNotBeChildOrNonindividualAndFailurePreservesFamily() {
         val (_, books) = create(sandbox())
         val adult = books.read(input.email).people.single().id
