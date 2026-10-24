@@ -271,6 +271,52 @@ class NativeBooksRepositoryInstrumentedTest {
         }
     }
 
+    @Test fun nomineeGoalAndCustodyLifecycleSurviveEncryptedRestartWithoutOwnerLeakage() {
+        val context = sandbox()
+        val (accounts, books) = create(context)
+        val primary = books.read(input.email).people.single().id
+        val other = books.createPerson(input.email, NativeBooksRepository.NewPerson(
+            "Synthetic Relative", "Parent"))
+        val custody = books.createCustody(input.email, NativeBooksRepository.NewCustody(
+            primary, "DEMAT", "Original Custodian", nominee = "Initial Nominee"))
+        books.updateCustody(input.email, custody, NativeBooksRepository.NewCustody(
+            primary, "DEMAT", "Updated Custodian", nominee = "Updated Nominee"))
+        val goal = books.createGoal(input.email, primary, "Synthetic Goal", 200000L,
+            "2032-01-01", "HIGH")
+        val holding = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            primary, custody, "Synthetic Holding", "MUTUAL_FUND", "Index / ETF",
+            0L, 10000L, "2024-01-01", false))
+        books.assignGoal(input.email, holding, goal)
+        val foreign = books.createGoal(input.email, other, "Foreign Goal", 100000L,
+            "2032-01-01", "LOW")
+        assertThrows(IllegalArgumentException::class.java) {
+            books.assignGoal(input.email, holding, foreign)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            books.removeUnlinkedGoal(input.email, goal)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            books.closeCustody(input.email, other, custody, "2026-10-24")
+        }
+        accounts.onBackground()
+        val reopened = NativeAccountRepository(context, gate())
+        assertTrue(reopened.login(input.email, input.password))
+        val reopenedBooks = NativeBooksRepository(reopened)
+        val before = reopenedBooks.read(input.email)
+        assertEquals("Updated Nominee", before.custody.single { it.id == custody }.nominee)
+        assertEquals("Updated Custodian", before.custody.single { it.id == custody }.custodian)
+        assertEquals(primary, before.holdings.single { it.id == holding }.personId)
+        assertEquals(primary, before.goals.single { it.id == goal }.personId)
+        assertEquals(2, before.goals.size)
+        reopenedBooks.closeCustody(input.email, primary, custody, "2026-10-24")
+        assertThrows(IllegalArgumentException::class.java) {
+            reopenedBooks.createHolding(input.email, NativeBooksRepository.NewHolding(
+                primary, custody, "New Holding", "MUTUAL_FUND", "Index / ETF",
+                0L, 10000L, "2024-01-01", false))
+        }
+        assertEquals(1, reopenedBooks.read(input.email).holdings.size)
+    }
+
     @Test fun identityEditsGoalsAndCustodyClosureNeverReassignExistingBooks() {
         val (_, books) = create(sandbox())
         val primary = books.read(input.email).people.single().id
