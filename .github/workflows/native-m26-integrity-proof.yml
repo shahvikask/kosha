@@ -24,7 +24,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           git diff --exit-code 272a271508d28b5bbcaf724def8e7eb568b38b56 "$GITHUB_SHA" -- src/ src-tauri/ scripts/
           printf '%s\n' "$GITHUB_SHA" > m26-source-sha.txt
-          for method in custodyIdentifiersAndNomineeAreNeverSilentlyTruncated guardianMustNotBeChildOrNonindividualAndFailurePreservesFamily custodyEditRejectsTruncatedIdentifiersWithoutChangingEncryptedAccount editingExistingMinorRefusesIneligibleGuardianWithoutWrites; do
+          for method in custodyIdentifiersAndNomineeAreNeverSilentlyTruncated guardianMustNotBeChildOrNonindividualAndFailurePreservesFamily custodyEditRejectsTruncatedIdentifiersWithoutChangingEncryptedAccount editingExistingMinorRefusesIneligibleGuardianWithoutWrites nomineeGoalAndCustodyLifecycleSurviveEncryptedRestartWithoutOwnerLeakage; do
             grep -q "fun ${method}()" android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeBooksRepositoryInstrumentedTest.kt
           done
           bash -n .github/scripts/native-m26-integrity-proof.sh
