@@ -574,13 +574,20 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
             val visible = form.identifierMasked?.takeIf { it.isNotBlank() }?.also {
                 require(it.length <= 80 && '*' in it) { "Visible account ID must be masked" }
             }
+            // Editing must obey the same no-truncation identity rule as account creation.
+            for (value in listOf(form.dpId, form.clientId, form.boId)) {
+                if (value != null) require(value.isNotBlank() && value.length <= 100 &&
+                    value.none { it.isISOControl() }) { "Invalid custody identifier" }
+            }
+            form.nominee?.let { require(it.length <= 128 &&
+                it.none { char -> char.isISOControl() }) { "Invalid nominee field" } }
             db.execSQL("UPDATE account SET custodian=?,account_type=?," +
                 "identifier_masked=COALESCE(?,identifier_masked)," +
                 "dp_id=COALESCE(?,dp_id),client_id=COALESCE(?,client_id)," +
                 "bo_id=COALESCE(?,bo_id),nominee=COALESCE(?,nominee) WHERE account_id=?",
                 arrayOf<Any?>(clean(form.custodian), form.type, visible,
-                    form.dpId?.take(100), form.clientId?.take(100), form.boId?.take(100),
-                    form.nominee?.take(128), accountId))
+                    form.dpId, form.clientId, form.boId,
+                    form.nominee, accountId))
         }
 
     /** Closing is a dated operation, not deletion of history or a financial transaction. */
