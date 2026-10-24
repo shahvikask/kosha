@@ -260,6 +260,24 @@ class NativeCasOutputReviewGateInstrumentedTest {
         }
     }
 
+    @Test fun zeroUnitCasPositionsCannotConcealNonzeroPortfolioValue() {
+        val contradictory = source()
+        contradictory.getJSONArray("holdings").getJSONObject(0)
+            .put("quantity", 0).put("value", 1000)
+        // Even though parser and reported grand totals are unchanged,
+        // zero units must not carry a positive closing holding valuation.
+        assertThrows(IllegalArgumentException::class.java) {
+            NativeCasOutputReviewGate.verify(contradictory, "ABCDE1234F")
+        }
+        val legitimateZero = source()
+        legitimateZero.getJSONArray("holdings").getJSONObject(0)
+            .put("quantity", 0).put("value", 0)
+        legitimateZero.getJSONObject("parsedTotals").put("holdingsValue", 0)
+        legitimateZero.getJSONObject("pdfTotals").put("grand", 0)
+        assertEquals(1,
+            NativeCasOutputReviewGate.verify(legitimateZero, "ABCDE1234F").count)
+    }
+
     @Test fun reportIntegrityAndFullOwnerPanAreMandatoryBeforePreview() {
         for (modified in listOf(
             source().put("engine", "NOT_CASPARSER"),
