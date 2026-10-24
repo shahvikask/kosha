@@ -220,13 +220,20 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
             val identifier = form.identifierMasked?.takeIf { it.isNotBlank() }?.also {
                 require(it.length <= 80 && '*' in it) { "Visible account ID must be masked" }
             }
+            // Account identities participate in exact custody reconciliation. Never truncate
+            // identifiers: two different accounts can otherwise become the same key.
+            for (value in listOf(form.dpId, form.clientId, form.boId)) {
+                if (value != null) require(value.isNotBlank() && value.length <= 100 &&
+                    value.none { it.isISOControl() }) { "Invalid custody identifier" }
+            }
+            form.nominee?.let { require(it.length <= 128 &&
+                it.none { char -> char.isISOControl() }) { "Invalid nominee field" } }
             val id = newId()
             db.execSQL("INSERT INTO account(account_id,entity_id,account_type,custodian," +
                 "identifier_masked,dp_id,client_id,bo_id,nominee,created_at) " +
                 "VALUES(?,?,?,?,?,?,?,?,?,?)", arrayOf<Any?>(
-                id, form.personId, type, custodian, identifier, form.dpId?.take(100),
-                form.clientId?.take(100), form.boId?.take(100),
-                form.nominee?.take(128), now()))
+                id, form.personId, type, custodian, identifier, form.dpId, form.clientId, form.boId,
+                form.nominee, now()))
             id
         }
 
