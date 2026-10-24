@@ -1,0 +1,84 @@
+name: GrowUrDhan M26 focused custody and guardian integrity
+on:
+  push:
+    branches: [GUD-Android-Redevelopment]
+    paths: [.github/workflows/native-m26-integrity-proof.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  m26-integrity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Exact SHA, frozen source and test preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code 272a271508d28b5bbcaf724def8e7eb568b38b56 "$GITHUB_SHA" -- src/ src-tauri/ scripts/
+          printf '%s\n' "$GITHUB_SHA" > m26-source-sha.txt
+          for method in custodyIdentifiersAndNomineeAreNeverSilentlyTruncated guardianMustNotBeChildOrNonindividualAndFailurePreservesFamily custodyEditRejectsTruncatedIdentifiersWithoutChangingEncryptedAccount; do
+            grep -q "fun ${method}()" android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeBooksRepositoryInstrumentedTest.kt
+          done
+          bash -n .github/scripts/native-m26-integrity-proof.sh
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Reuse verified pinned Android Python wheels
+        uses: actions/download-artifact@v4
+        with:
+          repository: shahvikask/kosha
+          run-id: 39526640647
+          github-token: ${{ github.token }}
+          name: source-pinned-android-python-wheels
+          path: android-native/app/python-wheels
+      - name: Targeted Android app/test compile
+        working-directory: android-native
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd app/python-wheels && sha256sum --check SHA256SUMS)
+          chmod +x gradlew
+          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --stacktrace
+      - name: Preserve original APK hashes
+        run: sha256sum android-native/app/build/outputs/apk/debug/app-debug.apk android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk > m26-apk-sha256.txt
+      - name: Configure emulator
+        run: if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - name: Focused M26 encrypted custody and guardian instrumentation
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 3072M
+          heap-size: 512M
+          disable-animations: true
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: bash .github/scripts/native-m26-integrity-proof.sh
+      - name: Archive original test evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-sha-m26-custody-guardian-proof
+          path: |
+            m26-source-sha.txt
+            m26-apk-sha256.txt
+            m26-adb.txt
+            android-native/app/build/outputs/androidTest-results/**/*.xml
+          if-no-files-found: warn
+          retention-days: 14
