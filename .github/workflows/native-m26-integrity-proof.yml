@@ -24,7 +24,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           git diff --exit-code 272a271508d28b5bbcaf724def8e7eb568b38b56 "$GITHUB_SHA" -- src/ src-tauri/ scripts/
           printf '%s\n' "$GITHUB_SHA" > m26-source-sha.txt
-          for method in custodyIdentifiersAndNomineeAreNeverSilentlyTruncated guardianMustNotBeChildOrNonindividualAndFailurePreservesFamily custodyEditRejectsTruncatedIdentifiersWithoutChangingEncryptedAccount; do
+          for method in custodyIdentifiersAndNomineeAreNeverSilentlyTruncated guardianMustNotBeChildOrNonindividualAndFailurePreservesFamily custodyEditRejectsTruncatedIdentifiersWithoutChangingEncryptedAccount editingExistingMinorRefusesIneligibleGuardianWithoutWrites; do
             grep -q "fun ${method}()" android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeBooksRepositoryInstrumentedTest.kt
           done
           bash -n .github/scripts/native-m26-integrity-proof.sh
@@ -56,7 +56,7 @@ jobs:
         run: sha256sum android-native/app/build/outputs/apk/debug/app-debug.apk android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk > m26-apk-sha256.txt
       - name: Configure emulator
         run: if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
-      - name: Focused M26 encrypted custody and guardian instrumentation
+      - name: Focused M26 encrypted custody, guardian and edit instrumentation
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
