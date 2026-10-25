@@ -24,8 +24,8 @@ data = Path("full-android-adb.txt").read_text(encoding="utf-8", errors="replace"
 isolated = Path("full-android-cas-isolated-adb.txt").read_text(encoding="utf-8", errors="replace")
 codes = re.findall(r"^INSTRUMENTATION_STATUS_CODE:\s*(-?\d+)\s*$", data, re.M)
 completed = sum(code == "0" for code in codes)
-iso_codes = re.findall(r"^INSTRUMENTATION_STATUS_CODE:\\s*(-?\\d+)\\s*$", isolated, re.M)
-iso_ok = re.search(r"^OK\\s+\\((\\d+)\\s+tests?\\)", isolated, re.M)
+iso_codes = re.findall(r"^INSTRUMENTATION_STATUS_CODE:\s*(-?\d+)\s*$", isolated, re.M)
+iso_ok = re.search(r"^OK\s+\((\d+)\s+tests?\)", isolated, re.M)
 iso_completed = sum(code == "0" for code in iso_codes)
 bad = [code for code in codes if code not in ("0", "1")]
 ok = re.search(r"^OK\s+\((\d+)\s+tests?\)", data, re.M)
