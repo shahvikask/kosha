@@ -2,7 +2,10 @@
 
 **Re-read this file before every prompt, code change, test, troubleshooting session, and GitHub Actions decision.** Chat memory is not a source of requirements.
 
-Authoritative requirements live in [docs/GROK-FULL-NATIVE-REDEVELOPMENT-SPEC.md](docs/GROK-FULL-NATIVE-REDEVELOPMENT-SPEC.md) (GrowUrDhan Grok Specification **v1.2**). If this file and the specification conflict, the specification wins. Rules **G01–G15**, requirements **P01–P39** and **E01–E18**, **Section 6A**, and **Section 17** are binding.
+Authoritative requirements live in [docs/GROK-FULL-NATIVE-REDEVELOPMENT-SPEC.md](docs/GROK-FULL-NATIVE-REDEVELOPMENT-SPEC.md) (GrowUrDhan Grok Specification **v1.3**). If this file and the specification conflict, the specification wins. Rules **G01–G15**, requirements **P01–P39** and **E01–E18**, **Section 6A**, and **Section 17** are binding.
+
+
+> **OWNER-APPROVED BASE RELEASE CHANGE — 2026-10-26 / D57.** The original backup/financial-recovery parity contract is superseded for the first market release. See [BASE-RELEASE-SCOPE.md](docs/implementation/BASE-RELEASE-SCOPE.md) and the authoritative spec v1.3. **P03, P28, P29, E05 financial-data recovery, E12 and archive-only M24/M25/M26/M31/M34 gates are DEFERRED to a next-upgrade project, not passed.** No financial backup, export, SAF backup scheduler or archive restore is exposed by the first release. Keep Android app data auto-backup disabled. Preserve offline account-password reset, ordinary statement import, historical source and immutable prior evidence. Do not resurrect old archive UI/gates while working Phase 3; do not weaken remaining data security or CAS acceptance. Warn about permanent data loss upon device loss/uninstall without financial backup.
 
 ## Repository boundaries
 
@@ -19,7 +22,7 @@ Do not merge the separate native repository `vikaskunjbiharishah-ui/GUD` into th
 
 - **G01** Build independently from the frozen legacy source. Never commit on the reference branch.
 - **G02** Treat original `src/`, `src-tauri/`, tests, fixtures, documents, and branded assets as read-only parity evidence. New native source goes under `android-native/`. Preserve `src/casparser-main/**` and the protected parser scripts **byte-for-byte**. Do not edit parser algorithms to fix a parse bug.
-- **G03** P01–P39 and E01–E18 are compulsory. Map every original screen, field, table, command, and error state. A mismatch needs an owner-approved deviation in `docs/implementation/DECISION-LOG.md`.
+- **G03** P01–P39 and E01–E18 are compulsory except the explicit D57 base-market-release deferrals, which remain deferred (not passed). Map every original screen, field, table, command, and error state. A mismatch needs an owner-approved deviation in `docs/implementation/DECISION-LOG.md`.
 - **G04** Production UI is Kotlin + Jetpack Compose + Material 3. No WebView financial UI and no new Tauri/Capacitor shell. Python stays only as the frozen CASPARSER via Chaquopy. No cloud book of household finances.
 - **G05** Scaled-integer money (scale 10,000) and quantity (scale 100,000,000). Append-only ledger. Do not invent costs, prices, tax law, ownership, or purchases.
 - **G06** Evidence cycle: audit, checklist, implement the whole scope, local tests, diff review, integration tests, coherent commit, then a deliberately dispatched workflow on the exact SHA. Watch that run to a terminal result.
