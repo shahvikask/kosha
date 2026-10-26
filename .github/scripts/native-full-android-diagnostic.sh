@@ -2,20 +2,25 @@
 # Diagnostic only: does not certify P01-P34 functional parity.
 set -euo pipefail
 test "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" = "35"
-# Configure a real lockscreen credential; fail closed if Android cannot confirm it.
-adb shell locksettings set-pin 2468
-adb shell dumpsys trust > full-android-device-trust.txt
-grep -Eq 'isDeviceSecure=(true|1)|deviceSecure=(true|1)' full-android-device-trust.txt || { echo "Secure Android lock not confirmed" >&2; exit 1; }
+# Provision the synthetic credential expected by real OS-journey tests.
+adb shell locksettings set-pin 246810
 adb install -r "$APP_APK"
 adb install -r "$TEST_APK"
+RUNNER=in.growurdhan.redevelopment.test/androidx.test.runner.AndroidJUnitRunner
+PREFLIGHT=in.growurdhan.redevelopment.NativeM26SecureDevicePreflightInstrumentedTest#actualAndroidDeviceIsSecure
+timeout 3m adb shell am instrument -w -r -e class "$PREFLIGHT" "$RUNNER" | tee full-android-device-secure-adb.txt
+python3 - <<'PY'
+from pathlib import Path
+s = Path("full-android-device-secure-adb.txt").read_text()
+assert "OK (1 test)" in s and "INSTRUMENTATION_STATUS_CODE: 0" in s and "FAILURES!!!" not in s, "Android secure-device preflight failed"
+PY
 # Run the pre-Python CAS assertion alone in a fresh app process.
 # A combined suite can start Chaquopy in another case, invalidating this test.
-RUNNER=in.growurdhan.redevelopment.test/androidx.test.runner.AndroidJUnitRunner
 CAS=in.growurdhan.redevelopment.NativeCasPdfEngineInstrumentedTest#malformedCasContainerNeverStartsChaquopyOnFreshProcess
 timeout 6m adb shell am instrument -w -r -e class "$CAS" "$RUNNER" | tee full-android-cas-isolated-adb.txt
 # Explicit process termination before the remainder; do not alter the test itself.
 adb shell am force-stop in.growurdhan.redevelopment
-timeout 45m adb shell am instrument -w -r -e notClass "$CAS" "$RUNNER" | tee full-android-adb.txt
+timeout 45m adb shell am instrument -w -r -e notClass "$CAS,in.growurdhan.redevelopment.NativeM26SecureDevicePreflightInstrumentedTest" "$RUNNER" | tee full-android-adb.txt
 python3 - <<'PY'
 from pathlib import Path
 import json
