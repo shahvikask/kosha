@@ -1,5 +1,11 @@
 # GrowUrDhan implementation status
 
+## 2026-10-26 — Phase 3 base-scope and owner-lens checkpoint (newest)
+- First-release D57 financial backup disabled **CI TESTED** on [run 40355395880](https://github.com/shahvikask/kosha/actions/runs/40355395880), source `29b743b8f1907a2bcb0be2ddd63a9561c4393ae8`: 144/144 original JVM XML, 1/1 API35 original ADB, original APK SHA evidence; scope feature removal verified, **not the complete release**.
+- M26/P06/P07/P08/E03 **source strengthened**: selected member lens now limits family edits, custody owner choices, goal creation/edits, holding creation; keyed forms reset stale owner selections on lens changes. Shared household goal read-only in member lens; person creation requires Whole household. Pickers carry TalkBack state descriptions (P33/E02 partial). New exact-source focused [40358536400](https://github.com/shahvikask/kosha/actions/runs/40358536400), source `5a719583e4042ad88d81a0ef94cbd8aaae0a981a`, **RUNNING NOT VERIFIED** at handoff; M26 NOT ACCEPTED; further form-choice UI checks/360dp/200% font/real-device review OPEN.
+- P18/P19 actual issuer CAS financial reconciliation **OPEN**, source/synthetic is not positive private evidence. See [PHASE3-CAS-ACCEPTANCE.md](PHASE3-CAS-ACCEPTANCE.md). D57 P03/P28/P29/financial E05/E12 **DEFERRED**, not passed. Frozen parser/legacy source not edited.
+
+
 - Latest compile finding (2026-10-26): D57 focused scope run 40354325389 FAILED `compileDebugAndroidTestKotlin` (invalid `assertDoesNotExist` import, test mock still passed removed `onStartRestore`). Both targeted source defects corrected after that SHA at commits `305a4b4edf95ab523472453087712de63f3cbe51` and `77def38d9b51ba54794fae8e6d3a876378669ed7`; **corrected source NOT YET TESTED**. New focused exact-SHA CI required; base scope not accepted.
 
 
