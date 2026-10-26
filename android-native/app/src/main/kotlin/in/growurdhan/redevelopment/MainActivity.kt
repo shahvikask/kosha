@@ -237,7 +237,7 @@ class MainActivity : ComponentActivity() {
                     },
                     onLock = { lockCompletely() },
                     onOpenBooks = { if (unlocked && admission.valid() && activeEmail.isNotEmpty()) booksOpen = true },
-                    onDeclineTerms = { lockCompletely(); finish() },
+                    onDeclineTerms = { lockCompletely(); finish() }
                 )
             }
         }
@@ -269,7 +269,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun lockCompletely(preservePendingChallenge: Boolean = false,
-                               preserveStagedArchive: Boolean = false,
                                preserveCsvForFreshLogin: Boolean = false,
                                preservePdfForFreshLogin: Boolean = false) {
         if (::accounts.isInitialized) accounts.lock()
