@@ -144,6 +144,15 @@ jobs:
             grep -Fxq 'INSTRUMENTATION_STATUS_CODE: 0' "$transcript"
             if grep -Eq 'FAILURES!!!|INSTRUMENTATION_FAILED' "$transcript"; then exit 1; fi
           done
+      - name: Collect Android OS boundary diagnostics
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          adb devices -l > full-android-device-state.txt || true
+          adb shell dumpsys activity activities >> full-android-device-state.txt || true
+          adb shell dumpsys window windows >> full-android-device-state.txt || true
+          adb logcat -d -v threadtime > full-android-os-logcat.txt || true
       - name: Preserve original test, JUnit, new APK and provenance
         if: always()
         uses: actions/upload-artifact@v4
@@ -159,6 +168,8 @@ jobs:
             full-android-adb.txt
             full-android-diagnostic-summary.json
             full-android-provenance.txt
+            full-android-device-state.txt
+            full-android-os-logcat.txt
             android-native/core/model/build/test-results/test/TEST-*.xml
             android-native/core/database/build/test-results/test/TEST-*.xml
             android-native/app/build/outputs/apk/debug/*.apk
