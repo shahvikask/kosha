@@ -18,9 +18,28 @@ PY
 # A combined suite can start Chaquopy in another case, invalidating this test.
 CAS=in.growurdhan.redevelopment.NativeCasPdfEngineInstrumentedTest#malformedCasContainerNeverStartsChaquopyOnFreshProcess
 timeout 6m adb shell am instrument -w -r -e class "$CAS" "$RUNNER" | tee full-android-cas-isolated-adb.txt
-# Explicit process termination before the remainder; do not alter the test itself.
+# Run cross-process publication in a deliberate phase order, preserving
+# candidate evidence across process boundaries. Clear only before phase one.
+adb shell pm clear in.growurdhan.redevelopment
+PHASE_ONE=in.growurdhan.redevelopment.NativeV9ArchiveInstrumentedTest#processBoundaryPhaseOnePreservesVerifiedCandidate
+PHASE_TWO=in.growurdhan.redevelopment.NativeV9ArchiveInstrumentedTest#processBoundaryPhaseTwoFreshProcessReauthenticatesAndPublishes
+timeout 8m adb shell am instrument -w -r -e class "$PHASE_ONE" "$RUNNER" | tee full-android-recovery-phase-one-adb.txt
 adb shell am force-stop in.growurdhan.redevelopment
-timeout 45m adb shell am instrument -w -r -e notClass "$CAS,in.growurdhan.redevelopment.NativeM26SecureDevicePreflightInstrumentedTest" "$RUNNER" | tee full-android-adb.txt
+timeout 8m adb shell am instrument -w -r -e class "$PHASE_TWO" "$RUNNER" | tee full-android-recovery-phase-two-adb.txt
+
+# These OS UI journeys require separate, genuinely empty app storage.
+# Never remove immutable recovery evidence during a single test.
+POSITIVE=in.growurdhan.redevelopment.NativeV9RealPositiveRestoreInstrumentedTest
+NEGATIVE=in.growurdhan.redevelopment.NativeV9RealSafSelectionInstrumentedTest
+adb shell pm clear in.growurdhan.redevelopment
+timeout 12m adb shell am instrument -w -r -e class "$POSITIVE" "$RUNNER" | tee full-android-positive-restore-adb.txt
+adb shell pm clear in.growurdhan.redevelopment
+timeout 12m adb shell am instrument -w -r -e class "$NEGATIVE" "$RUNNER" | tee full-android-negative-saf-adb.txt
+
+# Remaining regression tests cannot accidentally consume these isolated fixtures.
+adb shell pm clear in.growurdhan.redevelopment
+EXCLUSIONS="$CAS,in.growurdhan.redevelopment.NativeM26SecureDevicePreflightInstrumentedTest,$PHASE_ONE,$PHASE_TWO,$POSITIVE,$NEGATIVE"
+timeout 45m adb shell am instrument -w -r -e notClass "$EXCLUSIONS" "$RUNNER" | tee full-android-adb.txt
 python3 - <<'PY'
 from pathlib import Path
 import json
