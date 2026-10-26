@@ -1,6 +1,6 @@
 name: GrowUrDhan first-market-release backup-disabled acceptance
 # Owner D57: financial vault archive backup/restore is a next-upgrade feature.
-# Only current release scope is tested; historic archive tests are not marked PASS.
+# D57 exact-SHA retry: compile repaired Compose source and run base-release one-case UI acceptance.
 on:
   push:
     branches: [GUD-Android-Redevelopment]
