@@ -1,5 +1,9 @@
 # GrowUrDhan — mandatory freshest handoff
 
+## FRESHEST OWNER DECISION — 2026-10-26 — FIRST MARKET RELEASE SCOPE
+D57 expressly **defers financial backup/export/restore and encrypted financial recovery to the next upgrade**. Binding source: [BASE-RELEASE-SCOPE.md](BASE-RELEASE-SCOPE.md); redevelopment spec bumped to v1.3; AGENTS amended. Native `MainActivity` archive picker, native/legacy restore navigation and publication no longer reachable; authentication restore action removed; Android manifest keeps auto-backup disabled. New base-release instrumentation asserts UI absence and `FLAG_ALLOW_BACKUP` false. Retain old archive source/tests only as deferred upgrade evidence, **do not count skipped/old evidence as release acceptance**. Active next work: verify exact-SHA Android compile and base scope acceptance, then resume Phase 3 in-scope family/UI/ledger/CAS acceptance. P18/P19 genuine CAS still OPEN; M26 family/owner lens remains NOT ACCEPTED until in-scope evidence, G14 and security checks. Historic handoff below predates D57; it must not resurrect archived backup requirements. Working tree only GitHub API-visible; local cleanliness UNVERIFIED.
+
+
 **UTC date:** 2026-10-16. **Remote:** `https://github.com/shahvikask/kosha.git`. **Working branch:** `GUD-Android-Redevelopment` only. **Starting HEAD:** `7a1bd1cd2e51ac0b09c7832e824dfbce950482bc`. After committing, resolve GitHub live SHA rather than assuming the current document includes its own hash. **Frozen branch:** `GUD-Android-Gmail@af96dcc8967ab595e1d9acee78e29e500cb99a9e`; original React/Tauri/parser/brand untouched. Git working tree CLEAN/dirty **UNVERIFIED** via API-only editing.
 
 ## Required start for every subsequent prompt
