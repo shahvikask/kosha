@@ -1,5 +1,8 @@
 # CI runs
 
+- **2026-10-26 focused base-release scope run [40354325389](https://github.com/shahvikask/kosha/actions/runs/40354325389) FAILED** on exact `6d7fd8f9c72e7553c393b6471bb23ca337edad3a`, job AndroidTest Kotlin compile. Two original diagnostics: invalid import `androidx.compose.ui.test.assertDoesNotExist` in new base-release UI test; and stale removed named callback `onStartRestore` in `NativeRecoveryCodeUiInstrumentedTest.kt`. Production `MainActivity` compile had completed with only deprecation warning. Corrected source commits `305a4b4edf95ab523472453087712de63f3cbe51` and `77def38d9b51ba54794fae8e6d3a876378669ed7`; no emulator result or APK artifacts from failed compile. New exact-SHA scoped CI required. Historical archive-only M26 tests remain deferred D57.
+
+
 ### Latest CI handoff
 - 2026-10-26: New owner-D57 **base-release scoped** exact-SHA run [40354325389](https://github.com/shahvikask/kosha/actions/runs/40354325389), tested source `6d7fd8f9c72e7553c393b6471bb23ca337edad3a`, **RUNNING — NOT VERIFIED** at last inspection (JVM/app/test compile active, original evidence not uploaded). Deliberately different from deprecated full archive gate. Later live native-settings text commit `606ee2812d5b0690e1ff07607a92a0854766503d` means new full HEAD is **NOT** equivalent to tested source; further exact-SHA check required before release acceptance.
 
