@@ -1,5 +1,8 @@
 # GrowUrDhan implementation status
 
+- Latest compile finding (2026-10-26): D57 focused scope run 40354325389 FAILED `compileDebugAndroidTestKotlin` (invalid `assertDoesNotExist` import, test mock still passed removed `onStartRestore`). Both targeted source defects corrected after that SHA at commits `305a4b4edf95ab523472453087712de63f3cbe51` and `77def38d9b51ba54794fae8e6d3a876378669ed7`; **corrected source NOT YET TESTED**. New focused exact-SHA CI required; base scope not accepted.
+
+
 ### Latest CI handoff
 - 2026-10-26 proof in progress: scoped owner D57 workflow [40354325389](https://github.com/shahvikask/kosha/actions/runs/40354325389) on exact source `6d7fd8f9c72e7553c393b6471bb23ca337edad3a` RUNNING / NOT VERIFIED. Later code/UI word change at `606ee2812d5b0690e1ff07607a92a0854766503d` and docs commits are not covered by that run. Preserve upgrade-only source/tests; base-release scope still NOT ACCEPTED without a final exact-SHA gate.
 
