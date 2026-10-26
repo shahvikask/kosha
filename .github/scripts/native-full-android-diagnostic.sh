@@ -2,6 +2,13 @@
 # Diagnostic only: does not certify P01-P34 functional parity.
 set -euo pipefail
 test "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" = "35"
+capture_os_diagnostics() {
+  adb shell dumpsys activity activities > full-android-device-state.txt 2>/dev/null || true
+  adb shell dumpsys window windows >> full-android-device-state.txt 2>/dev/null || true
+  adb logcat -d -v threadtime > full-android-os-logcat.txt 2>/dev/null || true
+}
+trap capture_os_diagnostics EXIT
+
 # Provision the synthetic credential expected by real OS-journey tests.
 adb shell locksettings set-pin 246810
 adb install -r "$APP_APK"
