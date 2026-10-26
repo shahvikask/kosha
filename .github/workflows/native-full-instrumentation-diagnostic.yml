@@ -2,7 +2,7 @@ name: GrowUrDhan full Android instrumentation diagnostic
 
 # Source-corrected, exact-SHA rebuild using previously audited Android wheels.
 # Diagnostic only. P01-P34 remains fail-closed until source parity is complete.
-# M26 exact-source candidate: emulator lock, independent CAS process, strict transcript parser; fail closed.
+# M26 exact-SHA secure-device instrumentation preflight, isolated CAS and full matrix; fail closed.
 on:
   workflow_dispatch:
   push:
@@ -140,7 +140,7 @@ jobs:
         with:
           name: api35-corrected-source-full-android-evidence
           path: |
-            full-android-device-trust.txt
+            full-android-device-secure-adb.txt
             full-android-cas-isolated-adb.txt
             full-android-adb.txt
             full-android-diagnostic-summary.json
