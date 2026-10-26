@@ -134,6 +134,16 @@ jobs:
           emulator-boot-timeout: 900
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: bash .github/scripts/native-full-android-diagnostic.sh
+      - name: Enforce separated recovery and OS test results
+        shell: bash
+        run: |
+          set -euo pipefail
+          for transcript in full-android-recovery-phase-one-adb.txt full-android-recovery-phase-two-adb.txt full-android-positive-restore-adb.txt full-android-negative-saf-adb.txt; do
+            test -s "$transcript"
+            grep -Fxq 'OK (1 test)' "$transcript"
+            grep -Fxq 'INSTRUMENTATION_STATUS_CODE: 0' "$transcript"
+            if grep -Eq 'FAILURES!!!|INSTRUMENTATION_FAILED' "$transcript"; then exit 1; fi
+          done
       - name: Preserve original test, JUnit, new APK and provenance
         if: always()
         uses: actions/upload-artifact@v4
