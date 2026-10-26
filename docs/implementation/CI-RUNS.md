@@ -1,5 +1,9 @@
 # CI runs
 
+## 2026-10-26 D57 base-release gate policy
+Owner explicitly **deferred financial vault backup and restore** to next upgrade. Existing full M26 diagnostic gate with isolated real-OS archive tests is a **historical upgrade-only diagnostic**, not a base-release gate. Full run [40320546765](https://github.com/shahvikask/kosha/actions/runs/40320546765) failed at old real-OS positive/negative archive journeys (JVM 144/144; broad Android 186/186, original artifact 12650524867); do not relabel it passed. The prior [40333111356](https://github.com/shahvikask/kosha/actions/runs/40333111356) was queued before D57 and must not gate new release scope. New base-release source changes require a new exact-SHA compile/in-scope test, with original logs and APK hashes. Preserved history below remains factual. See [base scope](BASE-RELEASE-SCOPE.md).
+
+
 GitHub Actions were not dispatched by hand. Pushes to `GUD-Android-Redevelopment` start the workflows whose `on.push` filters match.
 
 The AAB workflow file was invalid. GitHub created a failed run with zero jobs on every push, including commits that are not on `GUD-Android`. Run `38909206998` is that failure on `7ac5e95`. The file was corrected in `9906463`. That commit did not start an AAB run, which is what the `GUD-Android` branch filter is supposed to do. The AAB job itself was not executed.
