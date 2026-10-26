@@ -35,8 +35,7 @@ class NativeRecoveryCodeUiInstrumentedTest {
                     onReplaceRecoveryCode = { "GUD-SYNTHETIC-TEST-ONLY" },
                     onLock = { locked = true; admitted = false; unlocked = false },
                     onOpenBooks = {},
-                    onDeclineTerms = {},
-                    onStartRestore = {}
+                    onDeclineTerms = {}
                 )
             }
         }
