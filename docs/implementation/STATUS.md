@@ -1,5 +1,9 @@
 # GrowUrDhan implementation status
 
+## CURRENT BASE RELEASE STATUS — 2026-10-26 (D57 / spec v1.3)
+Owner explicitly removed all financial archive backup/export and restore/recovery from first market release. P03, P28, P29, financial recovery E05, E12 and dependent archive-only milestone gates are **DEFERRED TO NEXT UPGRADE — NOT PASSED**. `MainActivity` no longer registers restore picker, shows restore screens or publishes archives; authentication UI has no archive restore action. Android `allowBackup=false`. Independent offline account recovery code, ordinary financial statement imports, CAS P18/P19, family/custody/goals and remaining Phase 3 stay in scope. Archived content below is historical evidence, NOT base-release requirements; see [scope](BASE-RELEASE-SCOPE.md) and decision D57. Source verification for the scope removal is PENDING new exact-SHA build/test; M26 remains NOT ACCEPTED. Prior full gate [40320546765](https://github.com/shahvikask/kosha/actions/runs/40320546765) FAILED under old archive gate; no inference about new scope.
+
+
 Updated: 2026-10-16. M24 is started and not accepted. New Android SQLCipher source exists but is not compiled, wired to UI or verified on a device.
 
 ## Repository
