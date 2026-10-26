@@ -1,5 +1,8 @@
 # GrowUrDhan — mandatory freshest handoff
 
+- New source repair checkpoint 2026-10-26: scoped base-release [40354325389](https://github.com/shahvikask/kosha/actions/runs/40354325389) terminal FAILED AndroidTest Kotlin compilation (invalid imported Compose test extension and stale `onStartRestore` mock). Both defects fixed at source commits `305a4b4edf95ab523472453087712de63f3cbe51` / `77def38d9b51ba54794fae8e6d3a876378669ed7`. New focused exact-SHA source build/emulator run needed. Never claim earlier job passed; do not resurrect deferred archive test suite. M26 in-scope, genuine CAS P18/P19 and first market release acceptance all OPEN.
+
+
 ### Latest CI handoff
 - 2026-10-26 D57 test dispatch: new focused base-release scope workflow [40354325389](https://github.com/shahvikask/kosha/actions/runs/40354325389) at source `6d7fd8f9c72e7553c393b6471bb23ca337edad3a` is **RUNNING — NOT VERIFIED** (initial CI source/preflight PASS; Gradle compile active; no evidence artifact yet). The native book-settings wording commit `606ee2812d5b0690e1ff07607a92a0854766503d` and subsequent specification updates are later than that tested SHA; don't mislabel CI green on new HEAD. First release financial backup and financial restore removed from accessible UI; historical implementation retained only for future upgrade. Next: audit this run's exact XML/ADB/APK SHA, repair any scope-test defect, reverify the final source candidate, then resume M26 family/owner-lens and P18/P19 genuine-CAS in-scope Phase 3. No archive acceptance gate.
 
