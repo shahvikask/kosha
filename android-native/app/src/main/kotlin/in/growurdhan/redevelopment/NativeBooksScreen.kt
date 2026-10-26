@@ -280,43 +280,41 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                         }
                     }
                     "Documents" -> {
-                        if (ownerFilter.isNotEmpty()) {
-                            Text("Statement imports and document history span the whole household. Switch to Whole household to import or review original sources.")
-                        } else {
-                        NativeCasPdfCard(email, imports, casPdf, pendingPdf,
-                            pendingPdfFilename, onSelectPdf, onDiscardPdf) {
-                            scope.launch {
-                                try { refresh() } catch (_: Exception) {
-                                    error = "Cannot refresh encrypted document history"
+                        NativeHouseholdDocumentAccessGate(ownerFilter) {
+                            NativeCasPdfCard(email, imports, casPdf, pendingPdf,
+                                pendingPdfFilename, onSelectPdf, onDiscardPdf) {
+                                scope.launch {
+                                    try { refresh() } catch (_: Exception) {
+                                        error = "Cannot refresh encrypted document history"
+                                    }
                                 }
                             }
-                        }
-                        NativeCsvImportCard(email, imports, pendingCsv, pendingCsvFilename,
-                            onSelectCsv, onDiscardCsv) {
-                            scope.launch {
-                                try { refresh() } catch (_: Exception) {
-                                    error = "Could not refresh encrypted import history"
+                            NativeCsvImportCard(email, imports, pendingCsv, pendingCsvFilename,
+                                onSelectCsv, onDiscardCsv) {
+                                scope.launch {
+                                    try { refresh() } catch (_: Exception) {
+                                        error = "Could not refresh encrypted import history"
+                                    }
                                 }
                             }
-                        }
-                        Text("Statement and import history", style = MaterialTheme.typography.titleLarge)
-                        Text("Records below are read from the encrypted database, not from an email server.")
-                        if (data.imports.isEmpty()) Text("No statement imports recorded.")
-                        data.imports.forEach { batch ->
-                            HorizontalDivider()
-                            Text("${batch.filename} • ${batch.documentKind}",
-                                style = MaterialTheme.typography.titleMedium)
-                            Text("Statement date: ${batch.statementDate ?: "not provided"}")
-                            Text("Approved new rows: ${batch.newRows} • duplicates: ${batch.duplicateRows}" +
-                                " • conflicts: ${batch.conflicts}")
-                            Text("Imported ${batch.committedAt}")
-                        }
-                        if (data.documents.isEmpty()) Text("No source-document fingerprints recorded.")
-                        data.documents.forEach { document ->
-                            Text("${document.filename} • ${document.kind} • ${document.byteLength} bytes")
-                            Text("Source SHA-256 ${document.sha256.take(16)}…",
-                                style = MaterialTheme.typography.bodySmall)
-                        }
+                            Text("Statement and import history", style = MaterialTheme.typography.titleLarge)
+                            Text("Records below are read from the encrypted database, not from an email server.")
+                            if (data.imports.isEmpty()) Text("No statement imports recorded.")
+                            data.imports.forEach { batch ->
+                                HorizontalDivider()
+                                Text("${batch.filename} • ${batch.documentKind}",
+                                    style = MaterialTheme.typography.titleMedium)
+                                Text("Statement date: ${batch.statementDate ?: "not provided"}")
+                                Text("Approved new rows: ${batch.newRows} • duplicates: ${batch.duplicateRows}" +
+                                    " • conflicts: ${batch.conflicts}")
+                                Text("Imported ${batch.committedAt}")
+                            }
+                            if (data.documents.isEmpty()) Text("No source-document fingerprints recorded.")
+                            data.documents.forEach { document ->
+                                Text("${document.filename} • ${document.kind} • ${document.byteLength} bytes")
+                                Text("Source SHA-256 ${document.sha256.take(16)}…",
+                                    style = MaterialTheme.typography.bodySmall)
+                            }
                         Text("Original PDF bytes are not represented by these fingerprint records.")
                         }
                     }
