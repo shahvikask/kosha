@@ -280,6 +280,9 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                         }
                     }
                     "Documents" -> {
+                        if (ownerFilter.isNotEmpty()) {
+                            Text("Statement imports and document history span the whole household. Switch to Whole household to import or review original sources.")
+                        } else {
                         NativeCasPdfCard(email, imports, casPdf, pendingPdf,
                             pendingPdfFilename, onSelectPdf, onDiscardPdf) {
                             scope.launch {
@@ -315,8 +318,10 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                                 style = MaterialTheme.typography.bodySmall)
                         }
                         Text("Original PDF bytes are not represented by these fingerprint records.")
+                        }
                     }
                     "Settings" -> {
+                        if (ownerFilter.isNotEmpty()) Text("Device settings apply to the whole household, regardless of the selected member lens.")
                         NativeAmfiNavCard(email, books) {
                             scope.launch {
                                 try { refresh() } catch (_: Exception) {
