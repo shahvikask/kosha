@@ -23,11 +23,13 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import `in`.growurdhan.designsystem.GUDBrandLockup
 import `in`.growurdhan.model.NativeAssetTaxonomy
@@ -106,6 +108,8 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                 Text(if (error.isEmpty()) "Opening encrypted records…" else error)
             } else {
                 val active = data.people.filter { it.active }
+                val lensPeople = active.filter { ownerFilter.isEmpty() || it.id == ownerFilter }
+                val lensCustody = data.custody.filter { ownerFilter.isEmpty() || it.personId == ownerFilter }
                 OwnerPicker(active, ownerFilter) { ownerFilter = it }
                 Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                     listOf("Home", "Holdings", "Family").forEach { label ->
@@ -143,12 +147,16 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                         }
                         if (ownerFilter.isEmpty()) NativeEmergencyDossierCard(data)
                         else Text("Household-wide emergency dossier is available in Whole household lens.")
-                        PersonForm(active, busy) { form ->
-                            persist { books.createPerson(email, form) }
+                        if (ownerFilter.isEmpty()) {
+                            PersonForm(active, busy) { form ->
+                                persist { books.createPerson(email, form) }
+                            }
+                        } else Text("Switch to Whole household to add a family member.")
+                        key(ownerFilter) {
+                            PersonEditForm(lensPeople, busy,
+                                update = { id, form -> persist { books.updatePerson(email, id, form) } },
+                                archive = { id -> persist { books.archivePerson(email, id) } })
                         }
-                        PersonEditForm(active, busy,
-                            update = { id, form -> persist { books.updatePerson(email, id, form) } },
-                            archive = { id -> persist { books.archivePerson(email, id) } })
                     }
                     "Accounts" -> {
                         Text("Custody accounts", style = MaterialTheme.typography.titleLarge)
@@ -158,15 +166,17 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                                 Text("${a.custodian} • ${a.type} • $name" +
                                     (a.maskedReference?.let { " • $it" } ?: ""))
                             }
-                        CustodyForm(active, busy) { form ->
-                            persist { books.createCustody(email, form) }
+                        key(ownerFilter) {
+                            CustodyForm(lensPeople, busy) { form ->
+                                if (ownerFilter.isEmpty() || form.personId == ownerFilter)
+                                    persist { books.createCustody(email, form) }
+                            }
+                            CustodyEditForm(lensCustody, busy,
+                                update = { id, form -> persist { books.updateCustody(email, id, form) } },
+                                close = { a -> persist {
+                                    books.closeCustody(email, a.personId, a.id, LocalDate.now().toString())
+                                } })
                         }
-                        CustodyEditForm(data.custody.filter { ownerFilter.isEmpty() ||
-                            it.personId == ownerFilter }, busy,
-                            update = { id, form -> persist { books.updateCustody(email, id, form) } },
-                            close = { a -> persist {
-                                books.closeCustody(email, a.personId, a.id, LocalDate.now().toString())
-                            } })
                     }
                     "Goals" -> {
                         Text("Family goals", style = MaterialTheme.typography.titleLarge)
@@ -176,15 +186,18 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                                 "₹" + NativeBooksRepository.formatMinor(it, 4)
                             } ?: "Target not recorded"} • ${g.targetDate.orEmpty()}")
                         }
-                        GoalForm(active, busy) { id, name, minor, day, priority ->
-                            persist { books.createGoal(email, id, name, minor, day, priority) }
+                        key(ownerFilter) {
+                            GoalForm(lensPeople, busy, ownerFilter) { id, name, minor, day, priority ->
+                                if (ownerFilter.isEmpty() || id == ownerFilter)
+                                    persist { books.createGoal(email, id, name, minor, day, priority) }
+                            }
+                            GoalEditForm(data.goals.filter { ownerFilter.isEmpty() ||
+                                it.personId == ownerFilter }, busy,
+                                update = { goal, name, amount, day, priority -> persist {
+                                    books.updateGoal(email, goal.id, goal.personId, name, amount, day, priority)
+                                } },
+                                remove = { id -> persist { books.removeUnlinkedGoal(email, id) } })
                         }
-                        GoalEditForm(data.goals.filter { ownerFilter.isEmpty() ||
-                            it.personId == ownerFilter || it.personId == null }, busy,
-                            update = { goal, name, amount, day, priority -> persist {
-                                books.updateGoal(email, goal.id, goal.personId, name, amount, day, priority)
-                            } },
-                            remove = { id -> persist { books.removeUnlinkedGoal(email, id) } })
                     }
                     "Holdings" -> {
                         Text("Holdings", style = MaterialTheme.typography.titleLarge)
@@ -251,15 +264,18 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                                 Text("Close history")
                             }
                         }
-                        HoldingForm(active, data.custody, busy) { form ->
-                            persist { books.createHolding(email, form) }
+                        key(ownerFilter) {
+                            HoldingForm(lensPeople, lensCustody, busy) { form ->
+                                if (ownerFilter.isEmpty() || form.personId == ownerFilter)
+                                    persist { books.createHolding(email, form) }
+                            }
+                            HoldingEditForm(list, lensCustody, data.goals, busy,
+                                update = { id, account, notes, details, location -> persist {
+                                    books.updateHoldingMetadata(email, id, account, notes, details, location)
+                                } },
+                                assign = { id, goal -> persist { books.assignGoal(email, id, goal) } },
+                                archive = { id, value -> persist { books.setHoldingArchived(email, id, value) } })
                         }
-                        HoldingEditForm(list, data.custody, data.goals, busy,
-                            update = { id, account, notes, details, location -> persist {
-                                books.updateHoldingMetadata(email, id, account, notes, details, location)
-                            } },
-                            assign = { id, goal -> persist { books.assignGoal(email, id, goal) } },
-                            archive = { id, value -> persist { books.setHoldingArchived(email, id, value) } })
                     }
                     "Documents" -> {
                         NativeCasPdfCard(email, imports, casPdf, pendingPdf,
@@ -357,7 +373,8 @@ private fun Choice(label: String, choices: List<Pair<String, String>>,
     selected: String, enabled: Boolean = true, onSelect: (String) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Text(label, style = MaterialTheme.typography.labelMedium)
-    OutlinedButton(onClick = { expanded = true }, enabled = enabled) {
+    OutlinedButton(onClick = { expanded = true }, enabled = enabled,
+        modifier = Modifier.testTag("choice-$label")) {
         Text(choices.firstOrNull { it.first == selected }?.second ?: "Choose")
     }
     DropdownMenu(expanded, onDismissRequest = { expanded = false }) {
@@ -447,15 +464,20 @@ private fun CustodyForm(people: List<NativeBooksRepository.Person>, busy: Boolea
 
 @Composable
 private fun GoalForm(people: List<NativeBooksRepository.Person>, busy: Boolean,
-    save: (String?, String, Long, String, String) -> Unit) {
+    selectedOwnerId: String, save: (String?, String, Long, String, String) -> Unit) {
     var owner by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
     var target by remember { mutableStateOf("") }
     var day by remember { mutableStateOf("") }
     var priority by remember { mutableStateOf("MEDIUM") }
     Text("Create goal", style = MaterialTheme.typography.titleMedium)
-    Choice("Goal owner", listOf("" to "Household") +
-        people.map { it.id to it.name }, owner, !busy) { owner = it }
+    if (selectedOwnerId.isEmpty()) {
+        Choice("Goal owner", listOf("" to "Household") +
+            people.map { it.id to it.name }, owner, !busy) { owner = it }
+    } else {
+        Text("Goal owner: " + (people.firstOrNull { it.id == selectedOwnerId }?.name
+            ?: "Selected member unavailable"))
+    }
     OutlinedTextField(name, { name = it }, label = { Text("Goal") },
         modifier = Modifier.fillMaxWidth())
     OutlinedTextField(target, { target = it }, label = { Text("Target ₹") },
@@ -468,7 +490,8 @@ private fun GoalForm(people: List<NativeBooksRepository.Person>, busy: Boolean,
         onClick = {
             val minor = runCatching { NativeBooksRepository.parseMinor(target, 4) }.getOrNull()
             if (minor != null) {
-                save(owner.ifBlank { null }, name, minor, day, priority)
+                save(if (selectedOwnerId.isEmpty()) owner.ifBlank { null }
+                    else selectedOwnerId, name, minor, day, priority)
                 name = ""; target = ""; day = ""
             }
         }) { Text("Save goal") }
