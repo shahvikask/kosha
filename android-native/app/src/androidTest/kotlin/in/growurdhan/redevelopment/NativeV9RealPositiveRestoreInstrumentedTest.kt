@@ -79,7 +79,10 @@ class NativeV9RealPositiveRestoreInstrumentedTest {
         System.out.println("NATIVE_V9_POSITIVE_CREDENTIAL_BEFORE osPackage=" +
             device.currentPackageName.orEmpty() + ", pinInputWidget=" +
             device.hasObject(By.clazz("android.widget.EditText")))
-        device.executeShellCommand("input text 246810")
+        val pinField = device.wait(Until.findObject(By.clazz("android.widget.EditText")), 10_000)
+        assertNotNull("Real Android credential PIN input did not become interactive", pinField)
+        assertTrue("PIN entry must remain outside the application", device.currentPackageName != appPackage)
+        pinField!!.setText("246810")
         device.pressKeyCode(KeyEvent.KEYCODE_ENTER)
         // Do NOT change Activity lifecycle after PIN success: onStop revokes
         // admission. Only the real Android ActivityResult may grant admission.
