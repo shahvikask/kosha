@@ -1,5 +1,9 @@
 # CI runs
 
+### Latest CI handoff
+- 2026-10-26: New owner-D57 **base-release scoped** exact-SHA run [40354325389](https://github.com/shahvikask/kosha/actions/runs/40354325389), tested source `6d7fd8f9c72e7553c393b6471bb23ca337edad3a`, **RUNNING — NOT VERIFIED** at last inspection (JVM/app/test compile active, original evidence not uploaded). Deliberately different from deprecated full archive gate. Later live native-settings text commit `606ee2812d5b0690e1ff07607a92a0854766503d` means new full HEAD is **NOT** equivalent to tested source; further exact-SHA check required before release acceptance.
+
+
 ## 2026-10-26 D57 base-release gate policy
 Owner explicitly **deferred financial vault backup and restore** to next upgrade. Existing full M26 diagnostic gate with isolated real-OS archive tests is a **historical upgrade-only diagnostic**, not a base-release gate. Full run [40320546765](https://github.com/shahvikask/kosha/actions/runs/40320546765) failed at old real-OS positive/negative archive journeys (JVM 144/144; broad Android 186/186, original artifact 12650524867); do not relabel it passed. The prior [40333111356](https://github.com/shahvikask/kosha/actions/runs/40333111356) was queued before D57 and must not gate new release scope. New base-release source changes require a new exact-SHA compile/in-scope test, with original logs and APK hashes. Preserved history below remains factual. See [base scope](BASE-RELEASE-SCOPE.md).
 
