@@ -23,7 +23,7 @@ jobs:
     if: github.ref == 'refs/heads/GUD-Android-Redevelopment'
     name: API35 x86_64 full native Android regression on corrected source
     runs-on: ubuntu-latest
-    timeout-minutes: 58
+    timeout-minutes: 90
     steps:
       - name: Checkout exact triggering source SHA
         uses: actions/checkout@v4
@@ -142,6 +142,10 @@ jobs:
           path: |
             full-android-device-secure-adb.txt
             full-android-cas-isolated-adb.txt
+            full-android-recovery-phase-one-adb.txt
+            full-android-recovery-phase-two-adb.txt
+            full-android-positive-restore-adb.txt
+            full-android-negative-saf-adb.txt
             full-android-adb.txt
             full-android-diagnostic-summary.json
             full-android-provenance.txt
