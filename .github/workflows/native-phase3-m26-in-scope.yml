@@ -1,0 +1,100 @@
+name: GrowUrDhan Phase 3 in-scope M26 family owner-lens acceptance
+on:
+  push:
+    branches: [GUD-Android-Redevelopment]
+    paths: [.github/workflows/native-phase3-m26-in-scope.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  m26-base-family:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Exact SHA, frozen source and test preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code 272a271508d28b5bbcaf724def8e7eb568b38b56 "$GITHUB_SHA" -- src/ src-tauri/ scripts/
+          printf '%s\n' "$GITHUB_SHA" > phase3-m26-source-sha.txt
+          for method in custodyIdentifiersAndNomineeAreNeverSilentlyTruncated guardianMustNotBeChildOrNonindividualAndFailurePreservesFamily custodyEditRejectsTruncatedIdentifiersWithoutChangingEncryptedAccount editingExistingMinorRefusesIneligibleGuardianWithoutWrites nomineeGoalAndCustodyLifecycleSurviveEncryptedRestartWithoutOwnerLeakage; do
+            grep -q "fun ${method}()" android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeBooksRepositoryInstrumentedTest.kt
+          done
+          # Owner D57: archive backup/restore tests are deferred, not green or silently included.
+          grep -Fq 'GoalForm(lensPeople, busy, ownerFilter)' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksScreen.kt
+          grep -Fq 'CustodyForm(lensPeople, busy)' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksScreen.kt
+          grep -Fq 'HoldingForm(lensPeople, lensCustody, busy)' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksScreen.kt
+          grep -Fq 'stateDescription = "$label: "' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksScreen.kt
+          ! grep -q 'restorePicker' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/MainActivity.kt
+          ! grep -q '^import androidx.compose.ui.test.onAllNodes$' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM26OwnerLensNavigationInstrumentedTest.kt
+          grep -q 'fun selectedMemberLensScopesFamilyAccountsGoalsAndHoldings()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM26OwnerLensNavigationInstrumentedTest.kt
+          bash -n .github/scripts/native-phase3-m26-base-gate.sh
+          # Compile and instrument the six destination owner-lens navigation coverage.
+          grep -Fq 'active.filter { ownerFilter.isEmpty() || it.id == ownerFilter }' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksScreen.kt
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Reuse verified pinned Android Python wheels
+        uses: actions/download-artifact@v4
+        with:
+          repository: shahvikask/kosha
+          run-id: 39526640647
+          github-token: ${{ github.token }}
+          name: source-pinned-android-python-wheels
+          path: android-native/app/python-wheels
+      - name: Targeted Android app/test compile
+        working-directory: android-native
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd app/python-wheels && sha256sum --check SHA256SUMS)
+          chmod +x gradlew
+          ./gradlew :core:model:test :core:database:test :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --stacktrace
+      - name: Preserve original APK hashes
+        run: sha256sum android-native/app/build/outputs/apk/debug/app-debug.apk android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk > phase3-m26-apk-sha256.txt
+      - name: Configure emulator
+        run: if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - name: Verify M26 in-scope custody, owner lens and disabled financial backup
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 3072M
+          heap-size: 512M
+          disable-animations: true
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: bash .github/scripts/native-phase3-m26-base-gate.sh
+      - name: Archive original test evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-sha-phase3-m26-base-family-proof
+          path: |
+            m26-source-sha.txt
+            m26-apk-sha256.txt
+            phase3-m26-integrity-adb.txt
+            phase3-m26-navigation-adb.txt
+            phase3-base-scope-adb.txt
+            android-native/core/model/build/test-results/test/TEST-*.xml
+            android-native/core/database/build/test-results/test/TEST-*.xml
+            android-native/app/build/outputs/apk/debug/app-debug.apk
+            android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            android-native/app/build/outputs/androidTest-results/**/*.xml
+          if-no-files-found: warn
+          retention-days: 14
