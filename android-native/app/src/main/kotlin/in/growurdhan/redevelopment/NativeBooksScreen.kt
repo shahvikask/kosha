@@ -30,6 +30,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import `in`.growurdhan.designsystem.GUDBrandLockup
 import `in`.growurdhan.model.NativeAssetTaxonomy
@@ -374,7 +376,10 @@ private fun Choice(label: String, choices: List<Pair<String, String>>,
     var expanded by remember { mutableStateOf(false) }
     Text(label, style = MaterialTheme.typography.labelMedium)
     OutlinedButton(onClick = { expanded = true }, enabled = enabled,
-        modifier = Modifier.testTag("choice-$label")) {
+        modifier = Modifier.testTag("choice-$label").semantics {
+            stateDescription = "$label: " +
+                (choices.firstOrNull { it.first == selected }?.second ?: "Choose")
+        }) {
         Text(choices.firstOrNull { it.first == selected }?.second ?: "Choose")
     }
     DropdownMenu(expanded, onDismissRequest = { expanded = false }) {
