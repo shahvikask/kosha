@@ -1234,7 +1234,7 @@ private fun NativePrivateDiagnosticsSettings(email: String,
         }) { Text("Opt out and clear local diagnostics") }
         if (report.isNotEmpty()) Text(report, style = MaterialTheme.typography.bodySmall)
         if (message.isNotEmpty()) Text(message)
-        Text("Other appearance, family, backup, market and account settings " +
+        Text("Other appearance, family, market and account settings " +
             "are not yet implemented in this native section.")
     }
 }
