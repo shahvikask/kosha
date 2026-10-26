@@ -1,5 +1,7 @@
 # Native GUDNAT01 typed archive v1 — implementation contract
 
+> **GrowUrDhan first market release — owner decision D57 (2026-10-26):** Financial vault backup/export, automated SAF backup, backup-file import and financial-data recovery/restore are **not available in the initial release**. They belong to the next upgrade. This note supersedes any older proposed screens, flows, requirements or tests in this document; those descriptions are retained only as legacy/future-upgrade references. Offline account-password recovery and standard CAS/CSV/PDF statement imports remain in scope. No backup or recovery must be advertised as active. See [base-release scope](BASE-RELEASE-SCOPE.md) and spec v1.3.
+
 **Status:** Test-backed internal primitive, NOT a production recovery/export acceptance or authorization to automatically back up.
 
 **Format:** Binary `GUDNAT01` is distinct from legacy `GUDVLT01` and `KOSHA1`. Header: 8-byte ASCII magic; 4-byte big-endian PBKDF2-SHA256 rounds (600,000); 16-byte random salt; 12-byte random nonce. AES-256-GCM authenticates the 40-byte header as AAD and ciphertext with 128-bit tag. PBKDF2 input domain is `GrowUrDhan-Native-v1\n` + trimmed lowercase owner email + `\n` + **separate owner-chosen backup password**, distinct from Android account password. No password or source plaintext is persisted by this codec.
