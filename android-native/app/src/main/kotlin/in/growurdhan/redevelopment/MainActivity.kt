@@ -120,37 +120,12 @@ class MainActivity : ComponentActivity() {
     private var unlocked by mutableStateOf(false)
     private var deviceMessage by mutableStateOf("")
     private var lifecycleEpoch = 0
-    private var restoreActive by mutableStateOf(false)
-    private var restoreStaged by mutableStateOf(false)
-    private var nativeRestoreMode by mutableStateOf(false)
-    private var nativeRestoreStaged by mutableStateOf(false)
-    private var restorePickerPending = false
-    private var nativePickerPending = false
-    private val restoreFlow by lazy { NativeRestoreFlow(applicationContext) }
-    private val nativeRestoreFlow by lazy { NativeV9RestoreFlow(applicationContext) }
-    private val restorePicker = registerForActivityResult(OpenDocument()) { uri ->
-        if (!restorePickerPending) return@registerForActivityResult
-        restorePickerPending = false
-        if (uri != null) {
-            if (nativePickerPending) {
-                nativeRestoreStaged = runCatching {
-                    nativeRestoreFlow.stage(uri); true
-                }.getOrDefault(false)
-            } else restoreStaged = runCatching {
-                restoreFlow.stage(uri); true
-            }.getOrDefault(false)
-        }
-        nativePickerPending = false
-        // Third-party SAF round trip revokes admission even on cancellation.
-        lockCompletely(preserveStagedArchive = true)
-    }
     private val admission = NativeDeviceAdmission()
 
     private val osChallenge = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()) { result ->
         deviceVerified = admission.complete(result.resultCode == Activity.RESULT_OK)
         deviceMessage = if (deviceVerified) "" else "Device authentication was not completed"
-        if (deviceVerified && (restoreStaged || nativeRestoreStaged)) restoreActive = true
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -166,123 +141,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             GudTheme {
-                if (restoreActive && deviceVerified) {
-                    if (nativeRestoreMode) NativeV9RestoreScreen(
-                        deviceVerified = deviceVerified,
-                        staged = nativeRestoreStaged,
-                        selectEncryptedFile = {
-                            if (admission.valid() && deviceVerified && !unlocked &&
-                                !restorePickerPending) {
-                                nativePickerPending = true
-                                restorePickerPending = true
-                                restorePicker.launch(arrayOf("application/octet-stream", "*/*"))
-                            }
-                        },
-                        previewAction = { proof, password, consent ->
-                            try {
-                                if (!admission.valid() || !deviceVerified || unlocked) null
-                                else withContext(Dispatchers.IO) {
-                                    runCatching { nativeRestoreFlow.preview(proof, password, consent) }
-                                        .getOrNull()
-                                }
-                            } finally { password.fill('\u0000') }
-                        },
-                        publishAction = { proof, password, consent, review ->
-                            try {
-                                // The same Keyguard challenge must remain admitted at
-                                // publication boundaries inside VaultLifecycleLock.
-                                val ticket = admission.ticket()
-                                val ok = if (ticket == null || !deviceVerified || unlocked ||
-                                    !review.ownerApproved) false
-                                else withContext(Dispatchers.IO) {
-                                    runCatching {
-                                        nativeRestoreFlow.publish(proof, password, consent,
-                                            review) { admission.validTicket(ticket) }
-                                        true
-                                    }.getOrDefault(false)
-                                }
-                                lockCompletely()
-                                ok
-                            } finally { password.fill('\u0000') }
-                        },
-                        forensicAction = { proof, password, consent ->
-                            try {
-                                if (!admission.valid() || !deviceVerified || unlocked) null
-                                else withContext(Dispatchers.IO) {
-                                    runCatching { nativeRestoreFlow.forensic(proof, password, consent) }
-                                        .getOrNull()
-                                }
-                            } finally { password.fill('\u0000') }
-                        },
-                        resumePreviewAction = { proof, password, consent ->
-                            try {
-                                if (!admission.valid() || !deviceVerified || unlocked) null
-                                else withContext(Dispatchers.IO) {
-                                    runCatching {
-                                        nativeRestoreFlow.prepareManualResume(proof, password, consent)
-                                    }.getOrNull()
-                                }
-                            } finally { password.fill('\u0000') }
-                        },
-                        resumePublishAction = { proof, password, consent, offer ->
-                            try {
-                                // Bind authorization to the precise foreground OS challenge.
-                                // A picker/background/onStop invalidates this ticket, including
-                                // while the restore is running on Dispatchers.IO.
-                                val ticket = admission.ticket()
-                                val ok = if (ticket == null || !deviceVerified || unlocked ||
-                                    !offer.ownerApproved) false
-                                else withContext(Dispatchers.IO) {
-                                    runCatching {
-                                        nativeRestoreFlow.publishManualResume(proof, password,
-                                            consent, offer) { admission.validTicket(ticket) }
-                                        true
-                                    }.getOrDefault(false)
-                                }
-                                lockCompletely()
-                                ok
-                            } finally { password.fill('\u0000') }
-                        },
-                        onBack = {
-                            nativeRestoreMode = false
-                            nativeRestoreStaged = false
-                            restoreActive = false
-                            lockCompletely()
-                        }
-                    ) else NativeRestoreScreen(
-                        deviceVerified = deviceVerified,
-                        staged = restoreStaged,
-                        previewAction = { proof ->
-                            if (!admission.valid() || !deviceVerified) null
-                            else withContext(Dispatchers.IO) {
-                                runCatching { restoreFlow.preview(proof) }.getOrNull()
-                            }
-                        },
-                        publishAction = { proof, preview, consent ->
-                            if (!admission.valid() || !deviceVerified || unlocked) false
-                            else {
-                                val ok = withContext(Dispatchers.IO) {
-                                    runCatching { restoreFlow.publish(proof, preview, consent); true }
-                                        .getOrDefault(false)
-                                }
-                                lockCompletely()
-                                restoreActive = false
-                                ok
-                            }
-                        },
-                        selectEncryptedFile = {
-                            if (admission.valid() && deviceVerified) {
-                                restorePickerPending = true
-                                restorePicker.launch(arrayOf("application/octet-stream", "application/json", "*/*"))
-                            }
-                        },
-                        onOpenNativeRestore = {
-                            if (deviceVerified && admission.valid() && !unlocked && !restoreStaged)
-                                nativeRestoreMode = true
-                        },
-                        onBack = { restoreActive = false; restoreStaged = false; lockCompletely() }
-                    )
-                } else if (booksOpen && unlocked && deviceVerified) {
+                if (booksOpen && unlocked && deviceVerified) {
                     NativeBooksScreen(email = activeEmail, books = books,
                         imports = statementImports, payouts = interestPayouts,
                         annualCredits = annualCredits,
@@ -379,19 +238,13 @@ class MainActivity : ComponentActivity() {
                     onLock = { lockCompletely() },
                     onOpenBooks = { if (unlocked && admission.valid() && activeEmail.isNotEmpty()) booksOpen = true },
                     onDeclineTerms = { lockCompletely(); finish() },
-                    onStartRestore = {
-                        if (deviceVerified && admission.valid() && !unlocked) {
-                            restoreActive = true
-                        }
-                    }
                 )
             }
         }
     }
 
     private fun requestDeviceChallenge() {
-        lockCompletely(preserveStagedArchive = restoreStaged || nativeRestoreStaged,
-            preserveCsvForFreshLogin = stagedCsv != null,
+        lockCompletely(preserveCsvForFreshLogin = stagedCsv != null,
             preservePdfForFreshLogin = stagedPdf != null)
         val guard = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
         if (!guard.isDeviceSecure) {
@@ -424,12 +277,6 @@ class MainActivity : ComponentActivity() {
         booksOpen = false
         activeEmail = ""
         deviceVerified = false
-        restoreActive = false
-        if (!preserveStagedArchive && !restorePickerPending) {
-            restoreStaged = false
-            nativeRestoreStaged = false
-            nativeRestoreMode = false
-        }
         if (!preserveCsvForFreshLogin && !csvPickerPending) discardCsv()
         if (!preservePdfForFreshLogin && !pdfPickerPending) discardPdf()
         if (!preservePendingChallenge) admission.cancel()
@@ -450,7 +297,6 @@ class MainActivity : ComponentActivity() {
         admission.onStop()
         lifecycleEpoch++
         lockCompletely(preservePendingChallenge = true,
-            preserveStagedArchive = restorePickerPending || restoreStaged || nativeRestoreStaged,
             preserveCsvForFreshLogin = csvPickerPending || stagedCsv != null,
             preservePdfForFreshLogin = pdfPickerPending || stagedPdf != null)
         if (::accounts.isInitialized) accounts.onBackground()
