@@ -1,4 +1,4 @@
-name: GrowUrDhan M27 P11 property identity JVM
+name: GrowUrDhan M27 P11 property source JVM and Android Kotlin compile
 on:
   push:
     branches: [GUD-Android-Redevelopment]
@@ -28,11 +28,14 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Target only property identity JVM
+      - name: Scoped P11 JVM and Android app/androidTest Kotlin compile (not an APK packaging gate)
         working-directory: android-native
         run: |
+          set -euo pipefail
           chmod +x gradlew
-          ./gradlew :core:model:test --tests 'in.growurdhan.model.NativeSharedPropertyAggregationTest' --no-daemon --stacktrace
+          ./gradlew :core:model:test --tests 'in.growurdhan.model.NativeSharedPropertyAggregationTest' \
+            :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin \
+            -x :app:installDebugPythonRequirements --no-daemon --stacktrace
       - name: Verify original JUnit XML 7 of 7
         run: |
           python3 - <<'PY'
