@@ -64,6 +64,7 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
     val scope = rememberCoroutineScope()
     var snapshot by remember { mutableStateOf<NativeBooksRepository.Snapshot?>(null) }
     var busy by remember { mutableStateOf(false) }
+    var ledgerRevision by remember { mutableIntStateOf(0) }
     var error by remember { mutableStateOf("") }
     var tab by remember { mutableStateOf("Home") }
     var ownerFilter by remember { mutableStateOf("") }
@@ -88,6 +89,7 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
             try {
                 withContext(Dispatchers.IO) { task() }
                 refresh()
+                ledgerRevision += 1 // Refresh correction choices only after a committed edit.
             } catch (_: Exception) {
                 error = "Cannot save. The vault may have locked or this record is invalid. No partial edit was committed."
             } finally { busy = false }
@@ -367,6 +369,7 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                         Text("Money events and manual prices", style = MaterialTheme.typography.titleLarge)
                         EventForm(data.holdings.filter { ownerFilter.isEmpty() ||
                             it.personId == ownerFilter }, busy,
+                            historyRevision = ledgerRevision,
                             loadHistory = { id -> books.history(email, id) },
                             add = { form -> persist { books.appendUserEvent(email, form) } },
                             price = { id, value, day ->
@@ -733,6 +736,7 @@ internal fun HoldingForm(people: List<NativeBooksRepository.Person>,
 
 @Composable
 internal fun EventForm(holdings: List<NativeBooksRepository.Holding>, busy: Boolean,
+    historyRevision: Int = 0,
     loadHistory: suspend (String) -> List<NativeBooksRepository.EventRow>,
     add: (NativeBooksRepository.NewEvent) -> Unit,
     price: (String, Long, String) -> Unit) {
@@ -752,7 +756,8 @@ internal fun EventForm(holdings: List<NativeBooksRepository.Holding>, busy: Bool
     var inputError by remember { mutableStateOf("") }
     val selectedHoldingInLens = holdings.any { it.id == holding }
 
-    LaunchedEffect(holding) {
+    LaunchedEffect(holding, historyRevision, selectedHoldingInLens) {
+        // Do not keep correction candidates after a lens switch or stale save.
         history = emptyList()
         if (selectedHoldingInLens) {
             history = runCatching { withContext(Dispatchers.IO) { loadHistory(holding) } }
