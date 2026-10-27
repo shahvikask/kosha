@@ -106,6 +106,29 @@ class NativeBooksRepositoryInstrumentedTest {
         }
     }
 
+    @Test fun listedReitCannotBeMisrepresentedAsRegisteredRealProperty() {
+        val context = sandbox()
+        val (_, books) = create(context)
+        val owner = books.read(input.email).people.single().id
+        val reit = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, null, "Fictional listed REIT", "REAL_ESTATE", "REIT",
+            0L, 0L, "2025-01-01", false))
+        val claim = `in`.growurdhan.model.NativeSharedPropertyAggregation.Claim(
+            reit, owner, "fictional-land-registry", "fictional-document",
+            "b".repeat(64), LocalDate.parse("2025-01-01"), "100",
+            100_000L, "unsupported-valuation", LocalDate.parse("2025-02-01"))
+        val before = books.read(input.email).holdings
+        try {
+            books.inspectPropertyClaims(input.email, listOf(claim),
+                LocalDate.parse("2025-03-01"))
+            fail("A listed REIT is not authenticated direct real estate title")
+        } catch (expected: IllegalArgumentException) {
+            assertTrue(expected.message!!.contains("not real estate"))
+        }
+        assertEquals(before, books.read(input.email).holdings)
+        assertTrue(books.history(input.email, reit).isEmpty())
+    }
+
     @Test fun genuineEncryptedRegistrationStoresCurrentVersionedTermsAndPrimaryOwner() {
         val context = sandbox()
         val (accounts, books) = create(context)
