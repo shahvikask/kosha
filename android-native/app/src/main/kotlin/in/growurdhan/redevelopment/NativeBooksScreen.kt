@@ -125,13 +125,18 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                 val lensPeople = active.filter { ownerFilter.isEmpty() || it.id == ownerFilter }
                 val lensCustody = data.custody.filter { ownerFilter.isEmpty() || it.personId == ownerFilter }
                 OwnerPicker(active, ownerFilter) { ownerFilter = it }
+                NativeOwnerLensStatus(
+                    if (ownerFilter.isEmpty()) null
+                    else active.firstOrNull { it.id == ownerFilter }?.name
+                        ?: "Selected member unavailable"
+                )
                 NativeBooksNavigation(tab) { tab = it }
                 if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
                 when (tab) {
                     "Home" -> {
                         val selected = data.holdings.filter { ownerFilter.isEmpty() || it.personId == ownerFilter }
                         val warnings = selected.count { it.unknownCost || it.needsReview || it.priceDate == null }
-                        Text("${selected.size} holdings • ${active.size} active members",
+                        Text("${selected.size} holdings • ${lensPeople.size} active ${if (lensPeople.size == 1) "member" else "members"} in view",
                             style = MaterialTheme.typography.titleLarge)
                         Text("$warnings holding(s) need review or cost/price confirmation")
                         Text("Home displays book records. No market value is calculated from an absent quote.")
