@@ -44,6 +44,11 @@ jobs:
           grep -Fq 'NativeBooksNavigation(tab) { tab = it }' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksScreen.kt
           grep -Fq 'selected = activeTab == key' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksNavigation.kt
           grep -q 'fun compactPhoneTwoHundredPercentTextWrapsAndAnnouncesSelectedTab()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeBooksNavigationAccessibilityInstrumentedTest.kt
+          grep -Fq 'NativeOwnerLensStatus(' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksScreen.kt
+          grep -Fq 'liveRegion = LiveRegionMode.Polite' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeOwnerLensStatus.kt
+          grep -q 'fun syntheticLight360dpTwoHundredPercentScreenshot()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM26VisualEvidenceInstrumentedTest.kt
+          grep -q 'fun syntheticDark360dpTwoHundredPercentScreenshot()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM26VisualEvidenceInstrumentedTest.kt
+          grep -q 'fun memberLensAnnouncementUpdatesForTalkBack()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM26VisualEvidenceInstrumentedTest.kt
           bash -n .github/scripts/native-phase3-m26-base-gate.sh
           # Compile and instrument the six destination owner-lens navigation coverage.
           grep -Fq 'active.filter { ownerFilter.isEmpty() || it.id == ownerFilter }' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksScreen.kt
@@ -75,7 +80,7 @@ jobs:
         run: sha256sum android-native/app/build/outputs/apk/debug/app-debug.apk android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk > phase3-m26-apk-sha256.txt
       - name: Configure emulator
         run: if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
-      - name: Verify M26 owner-lens, 200-percent navigation and privacy on API35
+      - name: Verify M26 owner scope and safe G14 light-dark 200-percent screen captures
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -103,6 +108,8 @@ jobs:
             phase3-m26-document-access-adb.txt
             phase3-m26-mutation-adb.txt
             phase3-m26-navigation-accessibility-adb.txt
+            phase3-m26-visual-adb.txt
+            phase3-m26-visual-evidence/*.png
             android-native/core/model/build/test-results/test/TEST-*.xml
             android-native/core/database/build/test-results/test/TEST-*.xml
             android-native/app/build/outputs/apk/debug/app-debug.apk
