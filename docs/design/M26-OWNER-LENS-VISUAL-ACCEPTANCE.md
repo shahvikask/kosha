@@ -1,5 +1,9 @@
 # M26 owner-lens visual and accessibility acceptance — first market release
 
+## 2026-10-27 superseding automated evidence — manual acceptance still OPEN
+- Full M26/G14 isolated automated gate [40457888895](https://github.com/shahvikask/kosha/actions/runs/40457888895) source `26ffcea1aa470af97565d3768540b19d58bf536c`, original artifact 12714530051: 144/144 JVM, 73/73 API35, original APK SHA and safe fictional 360dp/200% font light/dark images checked. The prior synthetic dark contrast issue was repaired; rendered isolated text was legible. Actual real-books compact light/dark navigation semantics tests pass; **full real-screen screenshot matrix, physical TalkBack, independent contrast review, owner design signoff are NOT accepted**. This section supersedes older RUNNING and NOT CAPTURED descriptions for the two isolated synthetic PNGs only.
+
+
 ## Source implementation checkpoint — 2026-10-26
 - `NativeBooksNavigation.kt` replaces fixed horizontal destination rows with FlowRow wrapping, includes all 8 genuine encrypted-book destinations and exposes `selected` semantics to TalkBack. `NativeBooksScreen.kt` also wraps lock/password-recovery action buttons at large font.
 - `NativeBooksNavigationAccessibilityInstrumentedTest.kt` asserts each destination stays inside a 360dp root at 200% font and selected-state semantics update after a click. Synthetic, no private data.
