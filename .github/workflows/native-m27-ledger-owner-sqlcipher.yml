@@ -1,0 +1,96 @@
+name: GrowUrDhan M27 P13 P14 owner FIFO SQLCipher rollback proof
+on:
+  push:
+    branches: [GUD-Android-Redevelopment]
+    paths: [.github/workflows/native-m27-ledger-owner-sqlcipher.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  m27-ledger-owner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Exact SHA immutable reference and D57 preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/GUD-Android-Redevelopment
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code c34952391c72afdd18f25856d6b0ee6dbc004628 "$GITHUB_SHA" -- src/ src-tauri/ scripts/ public/brand/
+          grep -Fq 'android:allowBackup="false"' android-native/app/src/main/AndroidManifest.xml
+          grep -Fq 'Ledger owner does not match holding owner' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksRepository.kt
+          grep -Fq 'SNAPSHOT_ADJUSTMENT" -> false' android-native/core/model/src/main/kotlin/in/growurdhan/model/NativeCostProvenance.kt
+          test "$(grep -c '@Test fun' android-native/core/model/src/test/kotlin/in/growurdhan/model/NativeM27LedgerIntegrityGoldenTest.kt)" -eq 6
+          test "$(grep -c '@Test fun' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM27FinancialIntegrityInstrumentedTest.kt)" -eq 2
+          echo "$GITHUB_SHA" > m27-owner-fifo-source-sha.txt
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/download-artifact@v4
+        with:
+          repository: shahvikask/kosha
+          run-id: 39526640647
+          github-token: ${{ github.token }}
+          name: source-pinned-android-python-wheels
+          path: android-native/app/python-wheels
+      - name: JVM original goldens and source Android app/test compile
+        working-directory: android-native
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd app/python-wheels && sha256sum --check SHA256SUMS)
+          chmod +x gradlew
+          ./gradlew :core:model:test :core:database:test :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --stacktrace
+      - name: Original debug APK checksums
+        shell: bash
+        run: |
+          sha256sum android-native/app/build/outputs/apk/debug/app-debug.apk android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk > m27-owner-fifo-apk-sha256.txt
+      - name: Allow Android emulator acceleration
+        run: if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - name: Source provenance and member FIFO real encrypted restart cases
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 3072M
+          heap-size: 512M
+          disable-animations: true
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: |
+            set -eu
+            adb install -r android-native/app/build/outputs/apk/debug/app-debug.apk
+            adb install -r android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            adb shell am instrument -w -r -e class in.growurdhan.redevelopment.NativeM27FinancialIntegrityInstrumentedTest in.growurdhan.redevelopment.test/androidx.test.runner.AndroidJUnitRunner | tee m27-owner-fifo-adb.txt
+            grep -Fq 'OK (2 tests)' m27-owner-fifo-adb.txt
+            grep -Fq 'INSTRUMENTATION_CODE: -1' m27-owner-fifo-adb.txt
+      - name: Retain actual JUnit APK ADB SHA even after failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-sha-m27-p13-p14-owner-fifo
+          path: |
+            m27-owner-fifo-source-sha.txt
+            m27-owner-fifo-apk-sha256.txt
+            m27-owner-fifo-adb.txt
+            android-native/core/model/build/test-results/test/TEST-*.xml
+            android-native/core/database/build/test-results/test/TEST-*.xml
+            android-native/app/build/outputs/apk/debug/app-debug.apk
+            android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          if-no-files-found: warn
+          retention-days: 14
