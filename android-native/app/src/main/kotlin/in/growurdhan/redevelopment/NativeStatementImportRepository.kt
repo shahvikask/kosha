@@ -1,6 +1,7 @@
 package `in`.growurdhan.redevelopment
 
 import `in`.growurdhan.model.NativePortfolioMath
+import `in`.growurdhan.model.NativeCostProvenance
 import `in`.growurdhan.model.NativeStatementCsv
 import java.security.MessageDigest
 import java.nio.ByteBuffer
@@ -172,13 +173,8 @@ internal class NativeStatementImportRepository(
                     arrayOf("native.ledger.cost_source.$eventId")).use { cur ->
                     if (cur.moveToFirst()) cur.getString(0) else null
                 }
-                val known = when (provenance) {
-                    "KNOWN" -> true
-                    "UNKNOWN" -> false
-                    else -> !(kind in setOf("OPENING_BALANCE", "SNAPSHOT_ADJUSTMENT") &&
-                        ((price == 0L && amount == 0L) ||
-                            note.contains("unknown", ignoreCase = true)))
-                }
+                val known = NativeCostProvenance.knownCost(
+                    kind, price, amount, note, provenance)
                 events += NativePortfolioMath.Event(eventId, ownerId, holdingId,
                     kind, c.getString(3), c.getLong(4), price, amount,
                     c.getLong(7), if (c.isNull(8)) null else c.getString(8),

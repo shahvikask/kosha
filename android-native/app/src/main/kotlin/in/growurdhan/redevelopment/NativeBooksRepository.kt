@@ -2,6 +2,7 @@ package `in`.growurdhan.redevelopment
 
 import `in`.growurdhan.model.NativeAssetTaxonomy
 import `in`.growurdhan.model.NativePortfolioMath
+import `in`.growurdhan.model.NativeCostProvenance
 import `in`.growurdhan.model.NativeEmiPlanner
 import `in`.growurdhan.model.NativeMoneyWeightedReturn
 import `in`.growurdhan.model.NativeTaxLotTrace
@@ -516,12 +517,23 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
     }
 
     private fun readRawEvents(db: SQLiteDatabase, holdingId: String): List<NativePortfolioMath.Event> {
+        // Verify each stored ledger owner against the holding itself, not just
+        // against the first event in the fold. Fail closed on legacy/corrupt rows.
+        val actualOwner = db.rawQuery(
+            "SELECT entity_id FROM holding WHERE holding_id=?", arrayOf(holdingId)
+        ).use { cur ->
+            require(cur.moveToFirst()) { "Holding missing from encrypted books" }
+            cur.getString(0)
+        }
         val rows = mutableListOf<NativePortfolioMath.Event>()
         db.rawQuery("SELECT ledger_event_id,entity_id,holding_id,event_type,trade_date," +
             "quantity_scaled,unit_price_minor,total_amount_minor,charges_minor," +
             "supersedes_event_id,notes FROM ledger_event WHERE holding_id=?",
             arrayOf(holdingId)).use { c ->
             while (c.moveToNext()) {
+                require(c.getString(1) == actualOwner) {
+                    "Ledger owner does not match holding owner"
+                }
                 val kind = c.getString(3)
                 val price = c.getLong(6)
                 val note = if (c.isNull(10)) "" else c.getString(10)
@@ -536,13 +548,8 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
                     // Explicit SQLCipher provenance distinguishes true zero cost from unknown.
                     // For historical files without provenance, an absent price/amount
                     // or documented unknown-cost note is conservatively unknown.
-                    when (provenance) {
-                        "KNOWN" -> true
-                        "UNKNOWN" -> false
-                        else -> !(kind in setOf("OPENING_BALANCE", "SNAPSHOT_ADJUSTMENT") &&
-                            ((price == 0L && c.getLong(7) == 0L) ||
-                                note.contains("unknown", ignoreCase = true)))
-                    })
+                    NativeCostProvenance.knownCost(kind, price, c.getLong(7),
+                        note, provenance))
             }
         }
         return rows
@@ -629,17 +636,22 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
 
     fun history(email: String, holdingId: String): List<EventRow> =
         accounts.withUnlockedVault(email) { db ->
-            requireHoldingOwner(db, holdingId)
+            val (expectedOwner, _) = requireHoldingOwner(db, holdingId)
             val rows = mutableListOf<EventRow>()
             db.rawQuery("SELECT ledger_event_id,entity_id,event_type,trade_date," +
                 "quantity_scaled,unit_price_minor,total_amount_minor,charges_minor," +
                 "supersedes_event_id,notes FROM ledger_event WHERE holding_id=? " +
                 "ORDER BY trade_date,ledger_event_id", arrayOf(holdingId)).use { c ->
-                while (c.moveToNext()) rows += EventRow(c.getString(0), holdingId,
+                while (c.moveToNext()) {
+                    require(c.getString(1) == expectedOwner) {
+                        "Ledger history owner does not match holding owner"
+                    }
+                    rows += EventRow(c.getString(0), holdingId,
                     c.getString(1), c.getString(2), c.getString(3), c.getLong(4),
                     c.getLong(5), c.getLong(6), c.getLong(7),
                     if (c.isNull(8)) null else c.getString(8),
                     if (c.isNull(9)) null else c.getString(9))
+                }
             }
             rows
         }
