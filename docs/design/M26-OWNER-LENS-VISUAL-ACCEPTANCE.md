@@ -1,5 +1,10 @@
 # M26 owner-lens visual and accessibility acceptance — first market release
 
+## Source implementation checkpoint — 2026-10-26
+- `NativeBooksNavigation.kt` replaces fixed horizontal destination rows with FlowRow wrapping, includes all 8 genuine encrypted-book destinations and exposes `selected` semantics to TalkBack. `NativeBooksScreen.kt` also wraps lock/password-recovery action buttons at large font.
+- `NativeBooksNavigationAccessibilityInstrumentedTest.kt` asserts each destination stays inside a 360dp root at 200% font and selected-state semantics update after a click. Synthetic, no private data.
+- First source-verification run [40441608989](https://github.com/shahvikask/kosha/actions/runs/40441608989) exact `df12285f0fc32455935f6e4acc56c53d2e0c6c3b` **RUNNING / NOT VERIFIED** when entered; separate screenshot/contrast/voice/manual checks remain PENDING. Test evidence alone does not satisfy G14/owner acceptance.
+
 **2026-10-26 status: SPECIFIED, NOT CAPTURED, NOT OWNER ACCEPTED.** GrowUrDhan specification v1.3 Section 6A and rules G06/G14 govern. This contract applies to the real `NativeBooksScreen`, not the three M00 synthetic `ConceptScreens`. Financial vault backup/recovery is **deferred D57** and must never be introduced into these screenshots.
 
 ## Target states (all synthetic owner/account/amount examples)
