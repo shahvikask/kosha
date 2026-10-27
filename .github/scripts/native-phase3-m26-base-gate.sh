@@ -17,10 +17,12 @@ DOCS=in.growurdhan.redevelopment.NativeHouseholdDocumentAccessGateInstrumentedTe
 timeout 5m adb shell am instrument -w -r -e class "$DOCS" "$RUNNER" | tee phase3-m26-document-access-adb.txt
 MUTATION=in.growurdhan.redevelopment.NativeM26OwnerLensMutationInstrumentedTest#ownerSwitchRevokesStaleMoneyEventAndManualPriceSelection
 timeout 8m adb shell am instrument -w -r -e class "$MUTATION" "$RUNNER" | tee phase3-m26-mutation-adb.txt
+ACCESSIBILITY=in.growurdhan.redevelopment.NativeBooksNavigationAccessibilityInstrumentedTest#compactPhoneTwoHundredPercentTextWrapsAndAnnouncesSelectedTab
+timeout 5m adb shell am instrument -w -r -e class "$ACCESSIBILITY" "$RUNNER" | tee phase3-m26-navigation-accessibility-adb.txt
 python3 - <<'PY'
 from pathlib import Path
 import re
-for filename, expected in (("phase3-m26-integrity-adb.txt", 5), ("phase3-m26-navigation-adb.txt", 1), ("phase3-base-scope-adb.txt", 1), ("phase3-m26-document-access-adb.txt", 1), ("phase3-m26-mutation-adb.txt", 1)):
+for filename, expected in (("phase3-m26-integrity-adb.txt", 5), ("phase3-m26-navigation-adb.txt", 1), ("phase3-base-scope-adb.txt", 1), ("phase3-m26-document-access-adb.txt", 1), ("phase3-m26-mutation-adb.txt", 1), ("phase3-m26-navigation-accessibility-adb.txt", 1)):
     s = Path(filename).read_text(encoding="utf-8", errors="replace")
     codes = re.findall(r"^INSTRUMENTATION_STATUS_CODE:\s*(-?\d+)\s*$", s, re.M)
     passed = sum(c == "0" for c in codes)
@@ -28,5 +30,5 @@ for filename, expected in (("phase3-m26-integrity-adb.txt", 5), ("phase3-m26-nav
     assert summary is not None and int(summary.group(1)) == expected, filename + " runner failed"
     assert passed == expected and all(c in ("0","1") for c in codes), filename + " contains nonpassing instrumentation"
     assert "FAILURES!!!" not in s and "INSTRUMENTATION_FAILED" not in s, filename + " failed"
-print("M26_BASE_FAMILY_SCOPE=9 passed=9 failed=0 skipped=0")
+print("M26_BASE_FAMILY_SCOPE=10 passed=10 failed=0 skipped=0")
 PY
