@@ -7,7 +7,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -118,13 +118,13 @@ class NativeM27ComposeSqlCipherJourneyInstrumentedTest {
             NativeBooksRepository.NewHolding(owner, null, "Fictional equity", "EQUITY",
                 "Other", 0L, 10_000L, "2024-01-01", false)) }
         val shown = io { books.read(credentials.email).holdings.single() }
-        val revision = mutableIntStateOf(0)
+        val revision = mutableStateOf(0)
         val written = mutableListOf<Pair<String, String>>()
         compose.setContent {
             MaterialTheme {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
-                    key(revision.intValue) {
-                        EventForm(listOf(shown), false, historyRevision = revision.intValue,
+                    key(revision.value) {
+                        EventForm(listOf(shown), false, historyRevision = revision.value,
                             loadHistory = { h -> books.history(credentials.email, h) },
                             add = { form ->
                                 val key = io { books.appendUserEvent(credentials.email, form) }
@@ -148,12 +148,12 @@ class NativeM27ComposeSqlCipherJourneyInstrumentedTest {
             }
             if (kind == "CORRECTION") {
                 val valuation = written.single { it.first == "VALUATION_UPDATE" }.second
+                compose.onNodeWithTag("choice-Recorded event to correct").performScrollTo()
+                    .performClick()
                 compose.waitUntil(15_000) {
                     compose.onAllNodesWithText(" • VALUATION_UPDATE • " + valuation,
                         substring = true).fetchSemanticsNodes().isNotEmpty()
                 }
-                compose.onNodeWithTag("choice-Recorded event to correct").performScrollTo()
-                    .performClick()
                 compose.onNodeWithText(" • VALUATION_UPDATE • " + valuation,
                     substring = true).performClick()
             }
@@ -174,7 +174,7 @@ class NativeM27ComposeSqlCipherJourneyInstrumentedTest {
             assertEquals(before, written.size)
             compose.onNodeWithTag("m27-confirm-event").performScrollTo().performClick()
             assertEquals(before + 1, written.size)
-            compose.runOnUiThread { revision.intValue += 1 }
+            compose.runOnUiThread { revision.value += 1 }
         }
         execute("OPENING_BALANCE", qty="1", price="10", amount="10")
         execute("BUY", qty="2", price="10", amount="20", fee="0.2")
@@ -213,17 +213,17 @@ class NativeM27ComposeSqlCipherJourneyInstrumentedTest {
         val holdingId = io { books.createHolding(credentials.email,
             NativeBooksRepository.NewHolding(owner, null, "Fictional savings", "CASH_BANK",
                 "Other", 0L, 0L, "2024-01-01", false)) }
-        val revision = mutableIntStateOf(0)
+        val revision = mutableStateOf(0)
         var saved: String? = null
         compose.setContent {
             MaterialTheme {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
                     EventForm(listOf(io { books.read(credentials.email).holdings.single() }),
-                        false, historyRevision = revision.intValue,
+                        false, historyRevision = revision.value,
                         loadHistory = { h -> books.history(credentials.email, h) },
                         add = { form ->
                             saved = io { books.appendUserEvent(credentials.email, form) }
-                            revision.intValue += 1
+                            revision.value += 1
                         }, price = { _, _, _ -> })
                 }
             }
@@ -241,12 +241,12 @@ class NativeM27ComposeSqlCipherJourneyInstrumentedTest {
         assertNotNull(saved)
         compose.onNodeWithTag("choice-Event kind").performScrollTo().performClick()
         compose.onNodeWithText("CORRECTION").performClick()
+        compose.onNodeWithTag("choice-Recorded event to correct").performScrollTo()
+            .performClick()
         compose.waitUntil(15_000) {
             compose.onAllNodesWithText(" • DIVIDEND • " + saved,
                 substring = true).fetchSemanticsNodes().isNotEmpty()
         }
-        compose.onNodeWithTag("choice-Recorded event to correct").performScrollTo()
-            .performClick()
         compose.onNodeWithText(" • DIVIDEND • " + saved, substring = true).performClick()
         compose.onNodeWithTag("m27-event-amount").performScrollTo()
             .performTextReplacement("3")

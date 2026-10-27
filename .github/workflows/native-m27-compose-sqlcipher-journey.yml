@@ -17,6 +17,7 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
           fetch-depth: 0
+      # CI repair: Kotlin state import and test correction-dropdown ordering.
       - name: Exact SHA, protected source, D57 and test preflight
         shell: bash
         run: |
