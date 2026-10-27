@@ -120,18 +120,7 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                 val lensPeople = active.filter { ownerFilter.isEmpty() || it.id == ownerFilter }
                 val lensCustody = data.custody.filter { ownerFilter.isEmpty() || it.personId == ownerFilter }
                 OwnerPicker(active, ownerFilter) { ownerFilter = it }
-                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    listOf("Home", "Holdings", "Family").forEach { label ->
-                        OutlinedButton(onClick = { tab = label }) { Text(label) }
-                    }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    listOf("Accounts", "Goals", "Records").forEach { label ->
-                        OutlinedButton(onClick = { tab = label }) { Text(label) }
-                    }
-                }
-                OutlinedButton(onClick = { tab = "Documents" }) { Text("Documents and imports") }
-                OutlinedButton(onClick = { tab = "Settings" }) { Text("Settings and privacy") }
+                NativeBooksNavigation(tab) { tab = it }
                 if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
                 when (tab) {
                     "Home" -> {
