@@ -68,6 +68,9 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
     var tab by remember { mutableStateOf("Home") }
     var ownerFilter by remember { mutableStateOf("") }
     var categoryFilter by remember { mutableStateOf("All") }
+    var holdingAccountFilter by remember { mutableStateOf("") }
+    var holdingStatusFilter by remember { mutableStateOf("All") }
+    var holdingSort by remember { mutableStateOf("Name") }
     var search by remember { mutableStateOf("") }
     var historyId by remember { mutableStateOf("") }
     var history by remember { mutableStateOf<List<NativeBooksRepository.EventRow>>(emptyList()) }
@@ -96,6 +99,8 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
         historyId = ""
         history = emptyList()
         xirrResults = emptyMap()
+        // A member switch must revoke even the account filter selection.
+        holdingAccountFilter = ""
     }
     LaunchedEffect(email) {
         xirrResults = emptyMap()
@@ -211,13 +216,20 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                     "Holdings" -> {
                         Text("Holdings", style = MaterialTheme.typography.titleLarge)
                         CategoryPicker(categoryFilter) { categoryFilter = it }
+                        Choice("Account filter", listOf("" to "All custody accounts",
+                            NativeHoldingListFilter.NO_ACCOUNT to "No account") +
+                            lensCustody.map { it.id to it.custodian },
+                            holdingAccountFilter) { holdingAccountFilter = it }
+                        Choice("Archive status", listOf("All", "Active", "Archived").map { it to it },
+                            holdingStatusFilter) { holdingStatusFilter = it }
+                        Choice("Sort holdings", listOf("Name", "Recorded value", "Recent price",
+                            "Category").map { it to it }, holdingSort) { holdingSort = it }
                         OutlinedTextField(search, { search = it }, label = { Text("Search holdings") },
                             modifier = Modifier.fillMaxWidth())
-                        val list = data.holdings.filter {
-                            (ownerFilter.isEmpty() || it.personId == ownerFilter) &&
-                                (categoryFilter == "All" || it.category == categoryFilter) &&
-                                (it.name.contains(search, true) || it.personName.contains(search, true))
-                        }
+                        val list = NativeHoldingListFilter.apply(data.holdings, ownerFilter,
+                            categoryFilter, holdingAccountFilter, holdingStatusFilter, search,
+                            holdingSort)
+                        Text("${list.size} holding(s) in filtered view — archived and zero-unit history retained")
                         list.forEach { h ->
                             HorizontalDivider()
                             Text("${h.name} • ${h.personName}", style = MaterialTheme.typography.titleMedium)
@@ -278,7 +290,8 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                             Text("Append-only event history", style = MaterialTheme.typography.titleMedium)
                             history.forEach { e ->
                                 Text("${e.date} • ${e.kind} • ${NativeBooksRepository.formatMinor(e.quantityScaled, 8)} " +
-                                    "units • ${e.id.take(8)}")
+                                    "units • event ID ${e.id}" +
+                                    (e.supersedes?.let { " • corrects ${it}" } ?: ""))
                             }
                             TextButton(onClick = { historyId = ""; history = emptyList() }) {
                                 Text("Close history")
@@ -893,10 +906,12 @@ private fun HoldingEditForm(holdings: List<NativeBooksRepository.Holding>,
     var specialistError by remember { mutableStateOf("") }
     var location by remember { mutableStateOf("") }
     var goalId by remember { mutableStateOf("") }
+    var pendingArchive by remember { mutableStateOf<String?>(null) }
     val holding = holdings.firstOrNull { it.id == id }
     Text("Holding details / status", style = MaterialTheme.typography.titleMedium)
     Choice("Holding to edit", holdings.map { it.id to it.name }, id, !busy) {
         id = it
+        pendingArchive = null
         account = holdings.firstOrNull { h -> h.id == it }?.accountId.orEmpty()
         notes = holdings.firstOrNull { h -> h.id == it }?.notes.orEmpty()
         val chosen = holdings.firstOrNull { h -> h.id == it }
@@ -936,10 +951,24 @@ private fun HoldingEditForm(holdings: List<NativeBooksRepository.Holding>,
         Button(enabled = !busy, onClick = { assign(id, goalId.ifBlank { null }) }) {
             Text("Set linked goal")
         }
-        OutlinedButton(enabled = !busy, onClick = {
-            archive(id, !holding.archived)
-            id = ""
-        }) { Text(if (holding.archived) "Reopen archived holding" else "Archive only if quantity is zero") }
+        if (pendingArchive == id && !holding.archived) {
+            Text("Confirm archive: only a zero-unit reconciled holding can close. " +
+                "All original financial events and source history remain permanently recorded.",
+                color = MaterialTheme.colorScheme.error)
+            Button(enabled = !busy, onClick = {
+                archive(id, true)
+                pendingArchive = null
+                id = ""
+            }) { Text("Confirm archive with immutable history retained") }
+            OutlinedButton(enabled = !busy, onClick = { pendingArchive = null }) {
+                Text("Cancel archive")
+            }
+        } else OutlinedButton(enabled = !busy, onClick = {
+            if (holding.archived) {
+                archive(id, false)
+                id = ""
+            } else pendingArchive = id
+        }) { Text(if (holding.archived) "Reopen archived holding" else "Review archive and close") }
     }
 }
 
