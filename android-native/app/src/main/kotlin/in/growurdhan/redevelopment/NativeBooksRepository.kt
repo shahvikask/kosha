@@ -101,6 +101,61 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
             owner to custody
         }
 
+    /**
+     * Read-only SQLCipher admission boundary for proposed P11 property claims.
+     * This is deliberately NOT a public household/net-worth preview: an imported
+     * document hash does not prove registered title, ownership percentage, or
+     * the gross appraisal amount. The source-specific provenance verifier and
+     * immutable property registry must be implemented before publication.
+     *
+     * Callers cannot bypass the logged-in vault, active holding ownership,
+     * current custody, or existing source-document digest checks.
+     * No financial tables or settings are written on success or rejection.
+     */
+    fun inspectPropertyClaims(email: String,
+        claims: List<`in`.growurdhan.model.NativeSharedPropertyAggregation.Claim>,
+        asOf: LocalDate = LocalDate.now()
+    ): Nothing = accounts.withUnlockedVault(email) { db ->
+        require(claims.isNotEmpty() && claims.size <= 200) {
+            "Property claims are required"
+        }
+        // Validate arithmetic, evidence consistency, duplicate registered
+        // property identities and owner shares before any other use.
+        `in`.growurdhan.model.NativeSharedPropertyAggregation.compare(claims, asOf)
+        for (claim in claims) {
+            val (owner, account) = requireHoldingOwner(db, claim.holdingId)
+            require(owner == claim.ownerId) {
+                "Claimed property owner does not match encrypted holding"
+            }
+            require(account == null || db.exists(
+                "SELECT 1 FROM account WHERE account_id=? AND entity_id=? AND closed_on IS NULL",
+                account, owner
+            )) { "Inactive or foreign property custody" }
+            require(db.exists("SELECT 1 FROM holding h JOIN instrument i " +
+                "ON i.instrument_id=h.instrument_id WHERE h.holding_id=? " +
+                "AND h.entity_id=? AND i.category='REAL_ESTATE' " +
+                "AND h.needs_review=0", claim.holdingId, owner)) {
+                "Property holding is missing, unreviewed, or not real estate"
+            }
+            require(!db.exists("SELECT 1 FROM setting WHERE key=? AND value='1'",
+                "native.holding.archived.${claim.holdingId}")) {
+                "Archived property claims cannot enter household preview"
+            }
+            // A source_document is a recorded import, not a registry certificate.
+            // Even a matching immutable digest is insufficient to authorize
+            // a monetary property claim.
+            require(db.exists("SELECT 1 FROM source_document WHERE " +
+                "source_document_id=? AND lower(sha256)=?",
+                claim.identitySourceRef, claim.sourceDigest.lowercase())) {
+                "Missing or mismatched immutable property source"
+            }
+        }
+        throw IllegalStateException(
+            "Property title, source-row ownership and independent dated valuation " +
+                "are not yet authenticated: comparison must not be published"
+        )
+    }
+
     fun read(email: String): Snapshot = accounts.withUnlockedVault(email) { db ->
         val people = mutableListOf<Person>()
         db.rawQuery("SELECT entity_id,display_name,relation,entity_type,is_primary,is_active,pan_masked " +
