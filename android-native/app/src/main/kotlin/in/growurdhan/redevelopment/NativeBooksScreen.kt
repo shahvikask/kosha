@@ -905,16 +905,19 @@ internal fun EventForm(holdings: List<NativeBooksRepository.Holding>, busy: Bool
                 modifier = Modifier.testTag("m27-trade-cash-review"))
             Text("Recorded charges: ₹" +
                 NativeBooksRepository.formatMinor(cashReview.chargesMinor, 4))
-            if (cashReview.recordedSignedCashMinor == null)
+            // Cross-module model properties cannot be smart-cast by Compose Kotlin:
+            // snapshot the optional Long before branching.
+            val recordedCash = cashReview.recordedSignedCashMinor
+            if (recordedCash == null)
                 Text("No nonzero transaction total recorded. A price-based cash flow is " +
                     "only a calculation fallback, not an attested receipt.",
                     color = MaterialTheme.colorScheme.error)
             else Text("Signed cash after charges from your recorded total: ₹" +
-                NativeBooksRepository.formatMinor(cashReview.recordedSignedCashMinor, 4))
-            if (cashReview.grossDifferenceMinor != null &&
-                cashReview.grossDifferenceMinor != 0L)
+                NativeBooksRepository.formatMinor(recordedCash, 4))
+            val difference = cashReview.grossDifferenceMinor
+            if (difference != null && difference != 0L)
                 Text("Recorded total differs from price × units by ₹" +
-                    NativeBooksRepository.formatMinor(cashReview.grossDifferenceMinor, 4) +
+                    NativeBooksRepository.formatMinor(difference, 4) +
                     ". Verify your transaction evidence before confirming.",
                     color = MaterialTheme.colorScheme.error)
         }

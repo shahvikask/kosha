@@ -45,6 +45,7 @@ jobs:
           github-token: ${{ github.token }}
           name: source-pinned-android-python-wheels
           path: android-native/app/python-wheels
+      # Corrected-source targeted retry after Compose cross-module nullable smart-cast repair.
       - name: Targeted six original source vectors and affected Android compilation
         working-directory: android-native
         shell: bash
