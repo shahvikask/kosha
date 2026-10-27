@@ -1,0 +1,51 @@
+package `in`.growurdhan.redevelopment
+
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
+import org.json.JSONObject
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Rule
+import org.junit.Test
+
+/** Real holding wizard Compose interactions; synthetic data only. */
+class NativeM27SpecialistFormInstrumentedTest {
+    @get:Rule val compose = createComposeRule()
+
+    @Test fun mutualFundTypedPlanIsReviewedAndSubmittedWithoutRawJsonEditor() {
+        var saved: NativeBooksRepository.NewHolding? = null
+        val owner = NativeBooksRepository.Person("fictional-owner", "Fictional Owner",
+            "Self", "INDIVIDUAL", true, true, null)
+        compose.setContent {
+            MaterialTheme {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    HoldingForm(listOf(owner), emptyList(), false) { saved = it }
+                }
+            }
+        }
+        compose.onNodeWithTag("choice-Owner").performClick()
+        compose.onNodeWithText("Fictional Owner").performClick()
+        compose.onNodeWithTag("choice-Asset category").performScrollTo().performClick()
+        compose.onNodeWithText("MUTUAL_FUND").performClick()
+        compose.onNodeWithTag("choice-MF plan").performScrollTo().performClick()
+        compose.onNodeWithText("DIRECT").performClick()
+        compose.onNodeWithTag("m27-holding-name").performScrollTo().performTextInput("Synthetic MF")
+        compose.onNodeWithTag("m27-holding-units").performScrollTo().performTextReplacement("0")
+        compose.onNodeWithTag("m27-review-holding").performScrollTo().performClick()
+        compose.onNodeWithText("Confirm holding before saving").assertExists()
+        compose.onNodeWithTag("m27-confirm-holding").performScrollTo().performClick()
+        assertNotNull(saved)
+        assertEquals("MUTUAL_FUND", saved!!.category)
+        assertEquals("DIRECT", JSONObject(saved!!.detailsJson!!).getString("mfPlan"))
+    }
+}
