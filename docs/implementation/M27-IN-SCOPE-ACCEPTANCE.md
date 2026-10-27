@@ -2,6 +2,11 @@
 
 **2026-10-27 UTC status: SOURCE PARTIAL / NOT ACCEPTED.** Binding: specification v1.3 §§4.1–4.3, 6A, 12, 17, owner D57. This document does not change the frozen reference or approve a parity deviation.
 
+## Verified focused P10 Compose result — supersedes earlier pending entry
+- [40466737522](https://github.com/shahvikask/kosha/actions/runs/40466737522): **144 JVM + 2 API35 Compose PASS**, exact `d725fced059bf63ca72fc34b90493c34b00c7fb5`, independently audited ZIP 12717087163 with both APK SHA and original ADB/JUnit. No failed/skipped tests.
+- Real reviewed form accepts Unknown without inventing purchase cost, requires explicitly entered verified acquisition unit price for Known, cannot save before review, and revokes stale reviewed data when a field changes. Tested at default emulator theme/font (not full 360dp/2x/light+dark matrix). No genuine/private owner data; callback asserted, not full UI→SQLCipher persistence.
+- M27 P09–P15 **STILL SOURCE PARTIAL / NOT ACCEPTED**, especially P11 typed specialist fields, P13 kind-specific money events, P14 original correction/FIFO golden, P15 archived/account/status filtering and G14 manual acceptance.
+
 ## Original evidence that must be preserved
 
 - Full in-scope M26/G14 automated source gate [40457888895](https://github.com/shahvikask/kosha/actions/runs/40457888895), tested `26ffcea1aa470af97565d3768540b19d58bf536c`: 144 JVM / 73 API35 passed; **not a current-SHA M27 gate or manual G14 signoff**.
