@@ -2,6 +2,7 @@ package `in`.growurdhan.redevelopment
 
 import android.content.Context
 import android.content.ContextWrapper
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -73,7 +74,7 @@ class NativeM26OwnerLensMutationInstrumentedTest {
                 null, "", {}, {}, null, "", {}, {}, {}, {})
         }
         compose.waitUntil(30000) {
-            compose.onAllNodesWithText("Whole household").fetchSemanticsNodes().isNotEmpty()
+            compose.onAllNodes(hasText("Whole household")).fetchSemanticsNodes().isNotEmpty()
         }
         compose.onNodeWithText("Records").performClick()
         compose.onNodeWithTag("choice-Holding").performClick()
