@@ -39,7 +39,7 @@ internal fun NativeBooksNavigation(activeTab: String, onNavigate: (String) -> Un
         destinations.forEach { (key, label) ->
             OutlinedButton(
                 onClick = { onNavigate(key) },
-                modifier = Modifier.heightIn(min = 48.dp).testTag("books-tab-$key")
+                modifier = Modifier.heightIn(min = 56.dp).testTag("books-tab-$key")
                     .semantics { selected = activeTab == key }
             ) {
                 Text(label)
