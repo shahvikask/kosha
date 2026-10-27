@@ -35,6 +35,9 @@ jobs:
           ! grep -q 'restorePicker' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/MainActivity.kt
           grep -Fq 'NativeHouseholdDocumentAccessGate(ownerFilter)' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksScreen.kt
           grep -q 'fun memberLensCannotDisplayOrStartHouseholdDocumentReview()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeHouseholdDocumentAccessGateInstrumentedTest.kt
+          grep -q 'fun ownerSwitchRevokesStaleMoneyEventAndManualPriceSelection()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM26OwnerLensMutationInstrumentedTest.kt
+          grep -Fq 'selectedHoldingInLens' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksScreen.kt
+          grep -Fq '"Records" -> key(ownerFilter)' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksScreen.kt
           ! grep -q '^import androidx.compose.ui.test.onAllNodes$' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM26OwnerLensNavigationInstrumentedTest.kt
           grep -q 'fun selectedMemberLensScopesFamilyAccountsGoalsAndHoldings()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM26OwnerLensNavigationInstrumentedTest.kt
           bash -n .github/scripts/native-phase3-m26-base-gate.sh
@@ -68,7 +71,7 @@ jobs:
         run: sha256sum android-native/app/build/outputs/apk/debug/app-debug.apk android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk > phase3-m26-apk-sha256.txt
       - name: Configure emulator
         run: if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
-      - name: Verify M26 custody owner lens document privacy and disabled financial backup
+      - name: Verify M26 owner-lens stale mutation and audit protection on API35
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -94,6 +97,7 @@ jobs:
             phase3-m26-navigation-adb.txt
             phase3-base-scope-adb.txt
             phase3-m26-document-access-adb.txt
+            phase3-m26-mutation-adb.txt
             android-native/core/model/build/test-results/test/TEST-*.xml
             android-native/core/database/build/test-results/test/TEST-*.xml
             android-native/app/build/outputs/apk/debug/app-debug.apk
