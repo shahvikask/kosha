@@ -526,7 +526,7 @@ private fun GoalForm(people: List<NativeBooksRepository.Person>, busy: Boolean,
 }
 
 @Composable
-private fun HoldingForm(people: List<NativeBooksRepository.Person>,
+internal fun HoldingForm(people: List<NativeBooksRepository.Person>,
     custody: List<NativeBooksRepository.Custody>, busy: Boolean,
     save: (NativeBooksRepository.NewHolding) -> Unit) {
     var owner by remember { mutableStateOf("") }
@@ -536,7 +536,7 @@ private fun HoldingForm(people: List<NativeBooksRepository.Person>,
     var sub by remember { mutableStateOf("Other") }
     var quantity by remember { mutableStateOf("0") }
     var price by remember { mutableStateOf("0") }
-    var knownCost by remember { mutableStateOf("Known") }
+    var knownCost by remember { mutableStateOf("Unknown") }
     var date by remember { mutableStateOf(LocalDate.now().toString()) }
     var notes by remember { mutableStateOf("") }
     var isin by remember { mutableStateOf("") }
@@ -552,6 +552,8 @@ private fun HoldingForm(people: List<NativeBooksRepository.Person>,
     var emiCount by remember { mutableStateOf("") }
     var location by remember { mutableStateOf("") }
     var specialistJson by remember { mutableStateOf("") }
+    var reviewed by remember { mutableStateOf<NativeBooksRepository.NewHolding?>(null) }
+    var reviewedSignature by remember { mutableStateOf<String?>(null) }
     Text("New holding — review fields before saving", style = MaterialTheme.typography.titleMedium)
     Choice("Owner", people.map { it.id to it.name }, owner, !busy) { owner = it; account = "" }
     Choice("Custody account", listOf("" to "No custody account") +
@@ -565,15 +567,18 @@ private fun HoldingForm(people: List<NativeBooksRepository.Person>,
     Choice("Subcategory", NativeAssetTaxonomy.subcategories.getValue(category).map { it to it },
         sub, !busy) { sub = it }
     OutlinedTextField(name, { name = it }, label = { Text("Instrument / holding name") },
-        modifier = Modifier.fillMaxWidth())
+        modifier = Modifier.fillMaxWidth().testTag("m27-holding-name"))
     OutlinedTextField(quantity, { quantity = it }, label = { Text("Opening units (may be 0)") },
-        modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(price, { price = it }, label = { Text("Price / unit ₹ (last known/manual)") },
+        modifier = Modifier.fillMaxWidth().testTag("m27-holding-units"))
+    OutlinedTextField(price, { price = it }, label = { Text("Current / last price per unit ₹ (valuation only)") },
         modifier = Modifier.fillMaxWidth())
     OutlinedTextField(date, { date = it }, label = { Text("Acquisition date YYYY-MM-DD") },
         modifier = Modifier.fillMaxWidth())
-    Choice("Opening cost", listOf("Known" to "Known", "Unknown" to "Unknown"), knownCost,
-        !busy) { knownCost = it }
+    Choice("Opening cost", listOf("Unknown" to "Unknown", "Known" to "Known"), knownCost,
+        !busy) {
+        knownCost = it
+        if (it == "Unknown") openingPrice = ""
+    }
     OutlinedTextField(notes, { notes = it }, label = { Text("Notes") }, modifier = Modifier.fillMaxWidth())
     OutlinedTextField(isin, { isin = it }, label = { Text("ISIN (optional, 12 characters)") },
         modifier = Modifier.fillMaxWidth())
@@ -583,9 +588,14 @@ private fun HoldingForm(people: List<NativeBooksRepository.Person>,
             modifier = Modifier.fillMaxWidth())
         Text("Enter only the folio shown on your statement. Never substitute a DP/client or masked reference.")
     }
-    OutlinedTextField(openingPrice, { openingPrice = it },
-        label = { Text("Opening cost per unit ₹ (optional; distinct from current price)") },
-        modifier = Modifier.fillMaxWidth())
+    if (knownCost == "Known") {
+        OutlinedTextField(openingPrice, { openingPrice = it },
+            label = { Text("Verified acquisition cost per unit ₹ (required)") },
+            modifier = Modifier.fillMaxWidth().testTag("m27-opening-cost"))
+        Text("Enter a verified acquisition cost. Current market price is never used as cost.")
+    } else {
+        Text("Opening acquisition cost: Unknown. No purchase price or gain will be inferred.")
+    }
     OutlinedTextField(institution, { institution = it }, label = { Text("Institution / issuer") },
         modifier = Modifier.fillMaxWidth())
     OutlinedTextField(accountMasked, { accountMasked = it },
@@ -609,10 +619,17 @@ private fun HoldingForm(people: List<NativeBooksRepository.Person>,
         modifier = Modifier.fillMaxWidth())
     OutlinedTextField(specialistJson, { specialistJson = it },
         label = { Text("Additional specialist details JSON") }, modifier = Modifier.fillMaxWidth())
-    Button(enabled = !busy && owner.isNotBlank() && name.isNotBlank(), onClick = {
+    // Any edited field invalidates an earlier review, including hidden category details.
+    val currentSignature = listOf(owner, account, name, category, sub, quantity, price,
+        knownCost, date, notes, isin, folioForStatements, openingPrice, institution,
+        accountMasked, maturity, couponBps, interestBps, emiMinor, emiState, emiCount,
+        location, specialistJson).joinToString("\u001f")
+    Button(enabled = !busy && owner.isNotBlank() && name.isNotBlank() &&
+        (knownCost == "Unknown" || openingPrice.isNotBlank()),
+        modifier = Modifier.testTag("m27-review-holding"), onClick = {
         val qty = runCatching { NativeBooksRepository.parseMinor(quantity, 8) }.getOrNull()
         val minor = runCatching { NativeBooksRepository.parseMinor(price, 4) }.getOrNull()
-        val opened = if (openingPrice.isBlank()) minor else runCatching {
+        val opened = if (knownCost == "Unknown") null else runCatching {
             NativeBooksRepository.parseMinor(openingPrice, 4)
         }.getOrNull()
         val emi = if (emiMinor.isBlank()) null else runCatching {
@@ -621,12 +638,13 @@ private fun HoldingForm(people: List<NativeBooksRepository.Person>,
         val coupon = couponBps.toIntOrNull()
         val interest = interestBps.toIntOrNull()
         val count = emiCount.toIntOrNull()
-        if (qty != null && minor != null && opened != null &&
+        if (qty != null && minor != null &&
+            (knownCost == "Unknown" || opened != null) &&
             (emiMinor.isBlank() || emi != null) &&
             (couponBps.isBlank() || coupon != null) &&
             (interestBps.isBlank() || interest != null) &&
             (emiCount.isBlank() || count != null)) {
-            save(NativeBooksRepository.NewHolding(owner, account.ifBlank { null }, name,
+            reviewed = NativeBooksRepository.NewHolding(owner, account.ifBlank { null }, name,
                 category, sub, qty, minor, date, knownCost == "Known",
                 isin = isin.ifBlank { null }, notes = notes.ifBlank { null },
                 folioForStatements = if (category == "MUTUAL_FUND")
@@ -638,10 +656,30 @@ private fun HoldingForm(people: List<NativeBooksRepository.Person>,
                 maturityDate = maturity.ifBlank { null },
                 couponRateBps = coupon, interestRateBps = interest,
                 monthlyEmiMinor = emi, emiStatus = emiState.ifBlank { null },
-                remainingEmiCount = count, location = location.ifBlank { null }))
-            name = ""; notes = ""; quantity = "0"; price = "0"; openingPrice = ""
+                remainingEmiCount = count, location = location.ifBlank { null })
+            reviewedSignature = currentSignature
         }
-    }) { Text("Review and save holding") }
+    }) { Text("Review holding details (no data saved)") }
+    val approved = reviewed
+    if (approved != null && reviewedSignature == currentSignature) {
+        Text("Confirm holding before saving", style = MaterialTheme.typography.titleMedium)
+        Text("Owner: " + (people.firstOrNull { it.id == approved.personId }?.name ?: "Unknown"))
+        Text("Instrument: " + approved.name + " • " + approved.category + " / " + approved.subcategory)
+        Text("Opening quantity: " + NativeBooksRepository.formatMinor(approved.quantityScaled, 8))
+        Text("Current price (not acquisition cost): ₹" +
+            NativeBooksRepository.formatMinor(approved.priceMinor, 4))
+        Text(if (approved.knownOpeningCost) "Verified acquisition cost: ₹" +
+            NativeBooksRepository.formatMinor(approved.openingUnitPriceMinor!!, 4) +
+            " per unit" else "Acquisition cost: Unknown (no inferred basis)")
+        Text("Confirming will append an immutable opening event only for nonzero units.")
+        Button(enabled = !busy, modifier = Modifier.testTag("m27-confirm-holding"),
+            onClick = {
+                // Preserve input for correction if asynchronous SQLCipher save is rejected.
+                reviewed = null
+                reviewedSignature = null
+                save(approved)
+            }) { Text("Confirm save holding") }
+    }
 }
 
 @Composable
