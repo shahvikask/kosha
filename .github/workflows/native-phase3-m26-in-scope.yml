@@ -1,5 +1,5 @@
 name: GrowUrDhan Phase 3 in-scope M26 family owner-lens acceptance
-# In-scope M26 + G14 360dp/200-percent font-scoped navigation regression; D57 archive excluded.
+# In-scope M26/G14 15-case gate: real SQLCipher-backed responsive screen, synthetic PNG contrast, D57 archive excluded.
 on:
   push:
     branches: [GUD-Android-Redevelopment]
@@ -49,6 +49,10 @@ jobs:
           grep -q 'fun syntheticLight360dpTwoHundredPercentScreenshot()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM26VisualEvidenceInstrumentedTest.kt
           grep -q 'fun syntheticDark360dpTwoHundredPercentScreenshot()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM26VisualEvidenceInstrumentedTest.kt
           grep -q 'fun memberLensAnnouncementUpdatesForTalkBack()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM26VisualEvidenceInstrumentedTest.kt
+          grep -Fq 'color = MaterialTheme.colorScheme.onBackground' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeOwnerLensStatus.kt
+          grep -q 'fun realBooksCompactLightTwoHundredPercentOwnerLensAccessible()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM26RealBooksAccessibilityInstrumentedTest.kt
+          grep -q 'fun realBooksCompactDarkTwoHundredPercentOwnerLensAccessible()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM26RealBooksAccessibilityInstrumentedTest.kt
+          grep -q 'Owner-lens label has low rendered contrast' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM26VisualEvidenceInstrumentedTest.kt
           bash -n .github/scripts/native-phase3-m26-base-gate.sh
           # Compile and instrument the six destination owner-lens navigation coverage.
           grep -Fq 'active.filter { ownerFilter.isEmpty() || it.id == ownerFilter }' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksScreen.kt
@@ -80,7 +84,7 @@ jobs:
         run: sha256sum android-native/app/build/outputs/apk/debug/app-debug.apk android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk > phase3-m26-apk-sha256.txt
       - name: Configure emulator
         run: if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
-      - name: Verify M26 owner scope and safe G14 light-dark 200-percent screen captures
+      - name: Verify M26 real-screen 360dp/2x and dark-mode contrast plus safe PNG captures
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -109,6 +113,7 @@ jobs:
             phase3-m26-mutation-adb.txt
             phase3-m26-navigation-accessibility-adb.txt
             phase3-m26-visual-adb.txt
+            phase3-m26-real-books-a11y-adb.txt
             phase3-m26-visual-evidence/*.png
             android-native/core/model/build/test-results/test/TEST-*.xml
             android-native/core/database/build/test-results/test/TEST-*.xml
