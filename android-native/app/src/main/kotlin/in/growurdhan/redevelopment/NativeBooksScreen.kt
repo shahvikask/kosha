@@ -657,6 +657,8 @@ private fun EventForm(holdings: List<NativeBooksRepository.Holding>, busy: Boole
     var charges by remember { mutableStateOf("0") }
     var note by remember { mutableStateOf("") }
     var correctionId by remember { mutableStateOf("") }
+    // Reject a stale selected holding even if form state survives a fast data refresh.
+    val selectedHoldingInLens = holdings.any { it.id == holding }
     Choice("Holding", holdings.map { it.id to "${it.name} • ${it.personName}" },
         holding, !busy) { holding = it }
     Choice("Event kind", listOf("BUY", "SELL", "DIVIDEND", "INTEREST", "BONUS", "SPLIT",
@@ -681,7 +683,7 @@ private fun EventForm(holdings: List<NativeBooksRepository.Holding>, busy: Boole
             modifier = Modifier.fillMaxWidth())
         Text("A correction is a new immutable event. It inherits the original event kind.")
     }
-    Button(enabled = !busy && holding.isNotBlank() &&
+    Button(enabled = !busy && selectedHoldingInLens &&
         (kind != "CORRECTION" || correctionId.isNotBlank()), onClick = {
         val q = runCatching {
             if (kind == "SPLIT") units.toLong() else NativeBooksRepository.parseMinor(units, 8)
@@ -701,7 +703,7 @@ private fun EventForm(holdings: List<NativeBooksRepository.Holding>, busy: Boole
     }) { Text("Append money event") }
     HorizontalDivider()
     Text("Record manual dated price", style = MaterialTheme.typography.titleMedium)
-    Button(enabled = !busy && holding.isNotBlank(), onClick = {
+    Button(enabled = !busy && selectedHoldingInLens, onClick = {
         val p = runCatching { NativeBooksRepository.parseMinor(unitPrice, 4) }.getOrNull()
         if (p != null) price(holding, p, day)
     }) { Text("Save manual price and source date") }
