@@ -1,5 +1,11 @@
 # CI runs
 
+## 2026-10-27 — M27 holding-cost UI two-case source candidate (DO NOT CLAIM PASS UNTIL TERMINAL)
+- Source [461c2d5](https://github.com/shahvikask/kosha/commit/461c2d5b36471b0f4b74555b6cc2e8fe78b8b11c), first focused [40466003658](https://github.com/shahvikask/kosha/actions/runs/40466003658) terminal FAILED before compile/emulator: original job log `grep: Unmatched ( or \\` due ERE double-backslash in mandatory test count. **0 Android cases run.**
+- Workflow fix [291f3bd](https://github.com/shahvikask/kosha/commit/291f3bd92acb7cf48db828931c330309afed9d7b) only corrects pattern, test assertions unchanged. Replacement exact-source [40466067201](https://github.com/shahvikask/kosha/actions/runs/40466067201) RUNNING—NOT VERIFIED at entry; preflight succeeded, compilation in progress. Original evidence and APK hashes not yet available; do not inherit the older M26 or custody-provenance green source.
+- This focused UI proof is not full M27. D57 excluded. Local `git status` and native Gradle NOT RUN; GitHub source compare checked, not an independent full local build.
+
+
 ## 2026-10-27 — M27 targeted accepted on exact source; full Phase 3 NOT accepted
 - [First M27 run 40462234316](https://github.com/shahvikask/kosha/actions/runs/40462234316), source `002dbb25ddc0934b96acaadbd40e59712364ecea`, failed **before executing instrumentation** due `/bin/sh` rejecting Bash-only `pipefail` (original emulator job log). JVM/app/test compile succeeded, but **zero Android cases executed**; never count this run green.
 - [Corrected M27 run 40463137619](https://github.com/shahvikask/kosha/actions/runs/40463137619), exact source `d6fadea9b1c8b5e6ae9bbff183673483b11a1da3`, independently verified SUCCESS. Original artifact `12716415027`, ZIP SHA256 `fabd5be3377a399370c0db6bfbbed43c91e894b9ebc1f5aca4a090a538d787bd`: **144/144 JVM tests** from 29 original XML suites, **3/3 API35 SQLCipher** from original `m27-custody-adb.txt`, `INSTRUMENTATION_CODE: -1`, zero failures/errors/skips; exact source TXT matches. Application APK `6606335b516bdd45d0a9d8c7f68ab72744291a94608702139e4c6ddee9ff9c81` and test APK `465ab7ac0e2f3e1c93b8d00907d1459f9e74c8bb9231b82f515af77fdb24363a` SHA256 independently recalculated from ZIP, both match original TXT.
