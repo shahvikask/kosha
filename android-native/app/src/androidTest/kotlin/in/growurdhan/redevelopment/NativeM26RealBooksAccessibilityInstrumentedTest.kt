@@ -92,7 +92,8 @@ class NativeM26RealBooksAccessibilityInstrumentedTest {
                 .fetchSemanticsNode().boundsInRoot
             assertTrue("$tab is clipped on the compact books screen",
                 bounds.left >= nav.left - 1f && bounds.right <= nav.right + 1f)
-            assertTrue("$tab has less than a 48dp touch target",
+            assertTrue("$tab has less than a 48dp touch target: " +
+                "measured height=${bounds.height}px at synthetic density=1",
                 bounds.height >= 48f)
         }
 
