@@ -1,0 +1,92 @@
+name: GrowUrDhan M27 P15 virtualized audit history
+on:
+  push:
+    branches: [GUD-Android-Redevelopment]
+    paths: [.github/workflows/native-m27-lazy-audit-history.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  lazy-audit-history:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Exact source and D57/protected-scope preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/GUD-Android-Redevelopment
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code ba52cc599efa62ccf009394b15e8deb64afb5e47 "$GITHUB_SHA" -- src/ src-tauri/ scripts/ public/brand/
+          test "$(grep -c '@Test fun' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM27LazyAuditHistoryInstrumentedTest.kt)" -eq 2
+          grep -Fq 'android:allowBackup="false"' android-native/app/src/main/AndroidManifest.xml
+          grep -Fq 'LazyColumn(' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeHoldingAuditHistory.kt
+          echo "$GITHUB_SHA" > m27-lazy-audit-source-sha.txt
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/download-artifact@v4
+        with:
+          repository: shahvikask/kosha
+          run-id: 39526640647
+          github-token: ${{ github.token }}
+          name: source-pinned-android-python-wheels
+          path: android-native/app/python-wheels
+      - name: Targeted JVM regression and Android APK compilation
+        working-directory: android-native
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd app/python-wheels && sha256sum --check SHA256SUMS)
+          chmod +x gradlew
+          ./gradlew :core:model:test :core:database:test :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --stacktrace
+      - name: APK SHA256 receipts
+        run: sha256sum android-native/app/build/outputs/apk/debug/app-debug.apk android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk > m27-lazy-audit-apk-sha256.txt
+      - name: Configure Android acceleration
+        run: if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - name: Virtualized audit 200 rows, 360dp, 200 percent text dark-mode Android tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 3072M
+          heap-size: 512M
+          disable-animations: true
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: |
+            set -eu
+            adb install -r android-native/app/build/outputs/apk/debug/app-debug.apk
+            adb install -r android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            adb shell am instrument -w -r -e class in.growurdhan.redevelopment.NativeM27LazyAuditHistoryInstrumentedTest in.growurdhan.redevelopment.test/androidx.test.runner.AndroidJUnitRunner | tee m27-lazy-audit-adb.txt
+            grep -Fq 'OK (2 tests)' m27-lazy-audit-adb.txt
+            grep -Fq 'INSTRUMENTATION_CODE: -1' m27-lazy-audit-adb.txt
+      - name: Retain original JVM, ADB, APK and source evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-sha-m27-lazy-audit
+          path: |
+            m27-lazy-audit-source-sha.txt
+            m27-lazy-audit-apk-sha256.txt
+            m27-lazy-audit-adb.txt
+            android-native/core/model/build/test-results/test/TEST-*.xml
+            android-native/core/database/build/test-results/test/TEST-*.xml
+            android-native/app/build/outputs/apk/debug/app-debug.apk
+            android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          if-no-files-found: warn
+          retention-days: 14

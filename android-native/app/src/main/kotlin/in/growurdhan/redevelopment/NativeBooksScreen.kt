@@ -289,12 +289,7 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                             }
                         }
                         if (historyId.isNotEmpty() && list.any { it.id == historyId }) {
-                            Text("Append-only event history", style = MaterialTheme.typography.titleMedium)
-                            history.forEach { e ->
-                                Text("${e.date} • ${e.kind} • ${NativeBooksRepository.formatMinor(e.quantityScaled, 8)} " +
-                                    "units • event ID ${e.id}" +
-                                    (e.supersedes?.let { " • corrects ${it}" } ?: ""))
-                            }
+                            NativeHoldingAuditHistory(history)
                             TextButton(onClick = { historyId = ""; history = emptyList() }) {
                                 Text("Close history")
                             }
