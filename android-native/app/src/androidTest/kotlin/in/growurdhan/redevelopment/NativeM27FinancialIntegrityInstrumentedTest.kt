@@ -142,4 +142,39 @@ class NativeM27FinancialIntegrityInstrumentedTest {
         assertEquals(before, data.history(input.email, a).map { it.id })
         assertEquals(listOf(foreignOpening), data.history(input.email, b).map { it.id })
     }
+
+    @Test fun invalidManualCashAndBonusCannotPostPartialTradesAcrossEncryptedRestart() {
+        val ctx = context()
+        val (account, books) = open(ctx)
+        val primary = books.read(input.email).people.single().id
+        val holding = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            primary, null, "Fictional cash review", "EQUITY", "Other",
+            100_000_000L, 10_000L, "2024-01-01", true))
+        val before = books.history(input.email, holding).map { it.id }
+        val invalid = listOf(
+            NativeBooksRepository.NewEvent(holding, "BUY", "2025-01-01",
+                100_000_000L, 10_000L, -10_000L),
+            NativeBooksRepository.NewEvent(holding, "SELL", "2025-01-01",
+                50_000_000L, 11_000L, -5_500L),
+            NativeBooksRepository.NewEvent(holding, "BONUS", "2025-01-01",
+                25_000_000L, 0L, 100L),
+            NativeBooksRepository.NewEvent(holding, "BONUS", "2025-01-01",
+                25_000_000L, 0L, 0L, 50L))
+        for (form in invalid) {
+            assertThrows(IllegalArgumentException::class.java) {
+                books.appendUserEvent(input.email, form)
+            }
+            assertEquals(before, books.history(input.email, holding).map { it.id })
+        }
+        val snapshot = books.read(input.email).holdings.single()
+        assertEquals(100_000_000L, snapshot.quantityScaled)
+        assertEquals(10_000L, snapshot.knownCostMinor)
+        account.onBackground()
+        val again = NativeAccountRepository(ctx, gate())
+        assertTrue(again.login(input.email, input.password))
+        val persisted = NativeBooksRepository(again)
+        assertEquals(before, persisted.history(input.email, holding).map { it.id })
+        assertEquals(10_000L,
+            persisted.read(input.email).holdings.single().knownCostMinor)
+    }
 }

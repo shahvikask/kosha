@@ -1,0 +1,78 @@
+name: GrowUrDhan M27 recorded-vs-modeled transaction cash review JVM and compile
+on:
+  push:
+    branches: [GUD-Android-Redevelopment]
+    paths: [.github/workflows/native-m27-trade-cash-review.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  trade-cash:
+    runs-on: ubuntu-latest
+    timeout-minutes: 38
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Exact SHA, frozen source and D57 preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/GUD-Android-Redevelopment
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code 6a15402a7ce5f5f8b9aed7198c97aaa7ec45d0a4 "$GITHUB_SHA" -- src/ src-tauri/ scripts/ public/brand/
+          grep -Fq 'export function buildCashFlows(' src/lib/returns.ts
+          grep -Fq 'amt = total !== 0' src/lib/returns.ts
+          grep -Fq 'android:allowBackup="false"' android-native/app/src/main/AndroidManifest.xml
+          test "$(grep -c '@Test fun' android-native/core/model/src/test/kotlin/in/growurdhan/model/NativeTradeCashReviewTest.kt)" -eq 6
+          test "$(grep -c '@Test fun' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM27FinancialIntegrityInstrumentedTest.kt)" -eq 3
+          echo "$GITHUB_SHA" > m27-cash-review-source-sha.txt
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/download-artifact@v4
+        with:
+          repository: shahvikask/kosha
+          run-id: 39526640647
+          github-token: ${{ github.token }}
+          name: source-pinned-android-python-wheels
+          path: android-native/app/python-wheels
+      - name: Targeted six original source vectors and affected Android compilation
+        working-directory: android-native
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd app/python-wheels && sha256sum --check SHA256SUMS)
+          chmod +x gradlew
+          ./gradlew :core:model:test --tests 'in.growurdhan.model.NativeTradeCashReviewTest' :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin --no-daemon --stacktrace
+      - name: Assert six real tests without skips
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          p='android-native/core/model/build/test-results/test/TEST-in.growurdhan.model.NativeTradeCashReviewTest.xml'
+          x=ET.parse(p).getroot()
+          assert int(x.attrib['tests']) == 6
+          assert len(x.findall('testcase')) == 6
+          assert all(int(x.attrib.get(k, '0')) == 0 for k in ('errors','failures','skipped'))
+          print(x.attrib)
+          PY
+      - name: Preserve original exact source and JUnit XML including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-sha-m27-trade-cash-jvm-compile
+          path: |
+            m27-cash-review-source-sha.txt
+            android-native/core/model/build/test-results/test/TEST-in.growurdhan.model.NativeTradeCashReviewTest.xml
+          if-no-files-found: warn
+          retention-days: 14

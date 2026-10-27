@@ -40,6 +40,7 @@ import `in`.growurdhan.designsystem.GUDBrandLockup
 import `in`.growurdhan.model.NativeAssetTaxonomy
 import `in`.growurdhan.model.NativeInterestPayoutPlanner
 import `in`.growurdhan.model.NativeTaxLotTrace
+import `in`.growurdhan.model.NativeTradeCashReview
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -876,7 +877,7 @@ internal fun EventForm(holdings: List<NativeBooksRepository.Holding>, busy: Bool
             } else 0L
             val m = if (cashField) NativeBooksRepository.parseMinor(amount, 4) else 0L
             val fee = if (feeField) NativeBooksRepository.parseMinor(charges, 4) else 0L
-            require(p >= 0L && fee >= 0L && (!cashOnly || m >= 0L))
+            require(p >= 0L && fee >= 0L && m >= 0L)
             require(!split || (q > 0 && p > 0))
             NativeBooksRepository.NewEvent(holding, kind, day, q, p, m, fee,
                 supersedes = if (kind == "CORRECTION") correctionId else null,
@@ -893,6 +894,30 @@ internal fun EventForm(holdings: List<NativeBooksRepository.Holding>, busy: Bool
         Text("Units ${NativeBooksRepository.formatMinor(pending.quantityScaled, 8)} • " +
             "price ₹${NativeBooksRepository.formatMinor(pending.unitPriceMinor, 4)} • " +
             "amount ₹${NativeBooksRepository.formatMinor(pending.amountMinor, 4)}")
+        val cashReview = runCatching {
+            NativeTradeCashReview.preview(effectiveKind ?: pending.kind,
+                pending.quantityScaled, pending.unitPriceMinor,
+                pending.amountMinor, pending.chargesMinor)
+        }.getOrNull()
+        if (cashReview != null) {
+            Text("Price × units (computed gross, not proof of payment): ₹" +
+                NativeBooksRepository.formatMinor(cashReview.computedGrossMinor, 4),
+                modifier = Modifier.testTag("m27-trade-cash-review"))
+            Text("Recorded charges: ₹" +
+                NativeBooksRepository.formatMinor(cashReview.chargesMinor, 4))
+            if (cashReview.recordedSignedCashMinor == null)
+                Text("No nonzero transaction total recorded. A price-based cash flow is " +
+                    "only a calculation fallback, not an attested receipt.",
+                    color = MaterialTheme.colorScheme.error)
+            else Text("Signed cash after charges from your recorded total: ₹" +
+                NativeBooksRepository.formatMinor(cashReview.recordedSignedCashMinor, 4))
+            if (cashReview.grossDifferenceMinor != null &&
+                cashReview.grossDifferenceMinor != 0L)
+                Text("Recorded total differs from price × units by ₹" +
+                    NativeBooksRepository.formatMinor(cashReview.grossDifferenceMinor, 4) +
+                    ". Verify your transaction evidence before confirming.",
+                    color = MaterialTheme.colorScheme.error)
+        }
         Text("Cash/lot effects will be verified inside SQLCipher before commit.")
         Button(enabled = !busy, modifier = Modifier.testTag("m27-confirm-event"), onClick = {
             reviewed = null; reviewedSignature = null

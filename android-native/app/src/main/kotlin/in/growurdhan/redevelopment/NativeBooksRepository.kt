@@ -454,11 +454,19 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
             }
         }
         when (effectiveKind) {
-            "BUY", "OPENING_BALANCE", "BONUS" ->
-                require(form.quantityScaled > 0L) { "Positive units required" }
+            "BUY", "OPENING_BALANCE" ->
+                require(form.quantityScaled > 0L && form.amountMinor >= 0L) {
+                    "Acquisition requires positive units and nonnegative recorded amount"
+                }
+            "BONUS" ->
+                require(form.quantityScaled > 0L && form.unitPriceMinor == 0L &&
+                    form.amountMinor == 0L && form.chargesMinor == 0L) {
+                    "Bonus must not invent a cash payment, fees or acquisition price"
+                }
             "SELL" ->
-                require(form.quantityScaled != 0L && form.quantityScaled != Long.MIN_VALUE) {
-                    "Sale units invalid"
+                require(form.quantityScaled != 0L && form.quantityScaled != Long.MIN_VALUE &&
+                    form.amountMinor >= 0L) {
+                    "Sale units or recorded cash invalid"
                 }
             "SPLIT" ->
                 require(form.quantityScaled > 0L && form.unitPriceMinor > 0L &&
