@@ -29,7 +29,7 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
         val category: String, val subcategory: String, val quantityScaled: Long,
         val marketPriceMinor: Long, val priceDate: String?, val priceSource: String?,
         val knownCostMinor: Long, val unknownCost: Boolean, val needsReview: Boolean,
-        val archived: Boolean, val notes: String?)
+        val archived: Boolean, val notes: String?, val detailsJson: String? = null)
     data class EventRow(val id: String, val holdingId: String, val ownerId: String,
         val kind: String, val date: String, val quantityScaled: Long, val unitPriceMinor: Long,
         val amountMinor: Long, val chargesMinor: Long, val supersedes: String?, val notes: String?)
@@ -126,7 +126,7 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
         val holdings = mutableListOf<Holding>()
         db.rawQuery("SELECT h.holding_id,h.entity_id,e.display_name,h.account_id,h.instrument_id," +
             "i.name,i.category,i.sub_category,h.current_price_minor,h.last_price_updated," +
-            "h.price_source,h.needs_review,h.notes " +
+            "h.price_source,h.needs_review,h.notes,h.details_json " +
             "FROM holding h JOIN instrument i ON i.instrument_id=h.instrument_id " +
             "JOIN entity e ON e.entity_id=h.entity_id ORDER BY i.name", null).use { c ->
             while (c.moveToNext()) {
@@ -144,7 +144,8 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
                     db.rawQuery("SELECT value FROM setting WHERE key=?",
                         arrayOf("native.holding.archived.$id")).use { archived ->
                             archived.moveToFirst() && archived.getString(0) == "1"
-                        }, if (c.isNull(12)) null else c.getString(12))
+                        }, if (c.isNull(12)) null else c.getString(12),
+                    if (c.isNull(13)) null else c.getString(13))
             }
         }
         val imports = mutableListOf<ImportBatch>()
@@ -258,6 +259,19 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
             id
         }
 
+    private fun requireSpecialistLink(db: SQLiteDatabase, owner: String,
+        holdingId: String?, detailsJson: String?) {
+        if (detailsJson.isNullOrBlank()) return
+        val details = org.json.JSONObject(detailsJson)
+        val linked = details.optString("linkedHoldingId").trim()
+        if (linked.isNotEmpty()) {
+            require(linked != holdingId && db.exists(
+                "SELECT 1 FROM holding WHERE holding_id=? AND entity_id=?", linked, owner)) {
+                "Specialist linked holding must belong to the same owner"
+            }
+        }
+    }
+
     fun createHolding(email: String, form: NewHolding): String =
         accounts.withUnlockedVault(email) { db ->
             requirePerson(db, form.personId)
@@ -297,6 +311,7 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
                 require(it.length <= 32768)
                 org.json.JSONObject(it) // Do not silently replace malformed specialist metadata.
             }
+            requireSpecialistLink(db, form.personId, null, form.detailsJson)
             val instrument = newId()
             val holding = newId()
             val timestamp = now()
@@ -729,6 +744,7 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
             if (detailsJson != null) {
                 require(detailsJson.length <= 32768)
                 org.json.JSONObject(detailsJson)
+                requireSpecialistLink(db, owner, holdingId, detailsJson)
             }
             db.execSQL("UPDATE holding SET account_id=?,notes=COALESCE(?,notes)," +
                 "details_json=COALESCE(?,details_json),location=COALESCE(?,location) " +

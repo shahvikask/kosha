@@ -526,6 +526,30 @@ private fun GoalForm(people: List<NativeBooksRepository.Person>, busy: Boolean,
 }
 
 @Composable
+private fun SpecialistFields(category: String, subcategory: String,
+    values: Map<String, String>, onChange: (String, String) -> Unit) {
+    val fields = NativeHoldingSpecialist.fields(category, subcategory)
+    if (fields.isEmpty()) return
+    Text("Asset-specific details (only relevant fields)",
+        style = MaterialTheme.typography.titleMedium)
+    fields.forEach { field ->
+        val current = values[field.key].orEmpty()
+        when (field.kind) {
+            NativeHoldingSpecialist.Kind.ENUM, NativeHoldingSpecialist.Kind.BOOLEAN -> {
+                val items = if (field.kind == NativeHoldingSpecialist.Kind.BOOLEAN)
+                    listOf("true" to "Yes", "false" to "No")
+                else field.options.map { it to it }
+                Choice(field.label, listOf("" to "Not recorded") + items,
+                    current, onSelect = { onChange(field.key, it) })
+            }
+            else -> OutlinedTextField(current, { onChange(field.key, it) },
+                label = { Text(field.label) },
+                modifier = Modifier.fillMaxWidth().testTag("m27-specialist-${field.key}"))
+        }
+    }
+}
+
+@Composable
 internal fun HoldingForm(people: List<NativeBooksRepository.Person>,
     custody: List<NativeBooksRepository.Custody>, busy: Boolean,
     save: (NativeBooksRepository.NewHolding) -> Unit) {
@@ -551,7 +575,8 @@ internal fun HoldingForm(people: List<NativeBooksRepository.Person>,
     var emiState by remember { mutableStateOf("") }
     var emiCount by remember { mutableStateOf("") }
     var location by remember { mutableStateOf("") }
-    var specialistJson by remember { mutableStateOf("") }
+    var specialistValues by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var specialistError by remember { mutableStateOf("") }
     var reviewed by remember { mutableStateOf<NativeBooksRepository.NewHolding?>(null) }
     var reviewedSignature by remember { mutableStateOf<String?>(null) }
     Text("New holding — review fields before saving", style = MaterialTheme.typography.titleMedium)
@@ -563,9 +588,11 @@ internal fun HoldingForm(people: List<NativeBooksRepository.Person>,
         !busy) {
         category = it
         sub = NativeAssetTaxonomy.subcategories.getValue(it).first()
+        specialistValues = emptyMap()
+        specialistError = ""
     }
     Choice("Subcategory", NativeAssetTaxonomy.subcategories.getValue(category).map { it to it },
-        sub, !busy) { sub = it }
+        sub, !busy) { sub = it; specialistValues = emptyMap(); specialistError = "" }
     OutlinedTextField(name, { name = it }, label = { Text("Instrument / holding name") },
         modifier = Modifier.fillMaxWidth().testTag("m27-holding-name"))
     OutlinedTextField(quantity, { quantity = it }, label = { Text("Opening units (may be 0)") },
@@ -617,13 +644,17 @@ internal fun HoldingForm(people: List<NativeBooksRepository.Person>,
         label = { Text("Remaining installments") }, modifier = Modifier.fillMaxWidth())
     OutlinedTextField(location, { location = it }, label = { Text("Property/location") },
         modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(specialistJson, { specialistJson = it },
-        label = { Text("Additional specialist details JSON") }, modifier = Modifier.fillMaxWidth())
+    SpecialistFields(category, sub, specialistValues) { key, value ->
+        specialistValues = specialistValues + (key to value)
+        specialistError = ""
+    }
+    if (specialistError.isNotEmpty())
+        Text(specialistError, color = MaterialTheme.colorScheme.error)
     // Any edited field invalidates an earlier review, including hidden category details.
     val currentSignature = listOf(owner, account, name, category, sub, quantity, price,
         knownCost, date, notes, isin, folioForStatements, openingPrice, institution,
         accountMasked, maturity, couponBps, interestBps, emiMinor, emiState, emiCount,
-        location, specialistJson).joinToString("\u001f")
+        location, specialistValues.toSortedMap().toString()).joinToString("\u001f")
     Button(enabled = !busy && owner.isNotBlank() && name.isNotBlank() &&
         (knownCost == "Unknown" || openingPrice.isNotBlank()),
         modifier = Modifier.testTag("m27-review-holding"), onClick = {
@@ -638,7 +669,11 @@ internal fun HoldingForm(people: List<NativeBooksRepository.Person>,
         val coupon = couponBps.toIntOrNull()
         val interest = interestBps.toIntOrNull()
         val count = emiCount.toIntOrNull()
-        if (qty != null && minor != null &&
+        val specialist = runCatching {
+            NativeHoldingSpecialist.merge(null, category, sub, specialistValues)
+        }
+        if (specialist.isFailure) specialistError = "Check the asset-specific fields before saving."
+        if (specialist.isSuccess && qty != null && minor != null &&
             (knownCost == "Unknown" || opened != null) &&
             (emiMinor.isBlank() || emi != null) &&
             (couponBps.isBlank() || coupon != null) &&
@@ -649,7 +684,7 @@ internal fun HoldingForm(people: List<NativeBooksRepository.Person>,
                 isin = isin.ifBlank { null }, notes = notes.ifBlank { null },
                 folioForStatements = if (category == "MUTUAL_FUND")
                     folioForStatements.ifBlank { null } else null,
-                detailsJson = specialistJson.ifBlank { null },
+                detailsJson = specialist.getOrNull(),
                 openingUnitPriceMinor = opened,
                 institutionName = institution.ifBlank { null },
                 accountNumberMasked = accountMasked.ifBlank { null },
@@ -854,7 +889,8 @@ private fun HoldingEditForm(holdings: List<NativeBooksRepository.Holding>,
     var id by remember { mutableStateOf("") }
     var account by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
-    var specialistJson by remember { mutableStateOf("") }
+    var specialistValues by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var specialistError by remember { mutableStateOf("") }
     var location by remember { mutableStateOf("") }
     var goalId by remember { mutableStateOf("") }
     val holding = holdings.firstOrNull { it.id == id }
@@ -863,7 +899,11 @@ private fun HoldingEditForm(holdings: List<NativeBooksRepository.Holding>,
         id = it
         account = holdings.firstOrNull { h -> h.id == it }?.accountId.orEmpty()
         notes = holdings.firstOrNull { h -> h.id == it }?.notes.orEmpty()
-        specialistJson = ""
+        val chosen = holdings.firstOrNull { h -> h.id == it }
+        specialistValues = if (chosen == null) emptyMap() else runCatching {
+            NativeHoldingSpecialist.read(chosen.detailsJson, chosen.category, chosen.subcategory)
+        }.getOrDefault(emptyMap())
+        specialistError = ""
         location = ""
         goalId = ""
     }
@@ -875,12 +915,20 @@ private fun HoldingEditForm(holdings: List<NativeBooksRepository.Holding>,
             modifier = Modifier.fillMaxWidth())
         OutlinedTextField(location, { location = it }, label = { Text("Property/location (optional)") },
             modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(specialistJson, { specialistJson = it },
-            label = { Text("Specialist metadata JSON (leave empty to preserve)") },
-            modifier = Modifier.fillMaxWidth())
+        SpecialistFields(holding.category, holding.subcategory, specialistValues) { key, value ->
+            specialistValues = specialistValues + (key to value)
+            specialistError = ""
+        }
+        if (specialistError.isNotEmpty())
+            Text(specialistError, color = MaterialTheme.colorScheme.error)
         Button(enabled = !busy, onClick = {
-            update(id, account.ifBlank { null }, notes.ifBlank { null },
-                specialistJson.ifBlank { null }, location.ifBlank { null })
+            val typed = runCatching {
+                NativeHoldingSpecialist.merge(holding.detailsJson, holding.category,
+                    holding.subcategory, specialistValues)
+            }
+            if (typed.isFailure) specialistError = "Invalid asset-specific details. No edits saved."
+            else update(id, account.ifBlank { null }, notes.ifBlank { null },
+                typed.getOrNull(), location.ifBlank { null })
         }) { Text("Save non-ledger metadata") }
         Choice("Linked goal", listOf("" to "No linked goal") +
             goals.filter { it.personId == null || it.personId == holding.personId }
