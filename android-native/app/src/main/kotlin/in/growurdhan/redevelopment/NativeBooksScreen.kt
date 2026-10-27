@@ -64,7 +64,7 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
     val scope = rememberCoroutineScope()
     var snapshot by remember { mutableStateOf<NativeBooksRepository.Snapshot?>(null) }
     var busy by remember { mutableStateOf(false) }
-    var ledgerRevision by remember { mutableIntStateOf(0) }
+    var ledgerRevision by remember { mutableStateOf(0) }
     var error by remember { mutableStateOf("") }
     var tab by remember { mutableStateOf("Home") }
     var ownerFilter by remember { mutableStateOf("") }
