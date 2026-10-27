@@ -25,10 +25,12 @@ timeout 8m adb shell am instrument -w -r -e class "$VISUAL" "$RUNNER" | tee phas
 mkdir -p phase3-m26-visual-evidence
 adb exec-out run-as in.growurdhan.redevelopment cat cache/g14-nav-light-360dp-2x.png > phase3-m26-visual-evidence/g14-nav-light-360dp-2x.png
 adb exec-out run-as in.growurdhan.redevelopment cat cache/g14-nav-dark-360dp-2x.png > phase3-m26-visual-evidence/g14-nav-dark-360dp-2x.png
+REAL_SCREEN=in.growurdhan.redevelopment.NativeM26RealBooksAccessibilityInstrumentedTest
+timeout 12m adb shell am instrument -w -r -e class "$REAL_SCREEN" "$RUNNER" | tee phase3-m26-real-books-a11y-adb.txt
 python3 - <<'PY'
 from pathlib import Path
 import re
-for filename, expected in (("phase3-m26-integrity-adb.txt", 5), ("phase3-m26-navigation-adb.txt", 1), ("phase3-base-scope-adb.txt", 1), ("phase3-m26-document-access-adb.txt", 1), ("phase3-m26-mutation-adb.txt", 1), ("phase3-m26-navigation-accessibility-adb.txt", 1), ("phase3-m26-visual-adb.txt", 3)):
+for filename, expected in (("phase3-m26-integrity-adb.txt", 5), ("phase3-m26-navigation-adb.txt", 1), ("phase3-base-scope-adb.txt", 1), ("phase3-m26-document-access-adb.txt", 1), ("phase3-m26-mutation-adb.txt", 1), ("phase3-m26-navigation-accessibility-adb.txt", 1), ("phase3-m26-visual-adb.txt", 3), ("phase3-m26-real-books-a11y-adb.txt", 2)):
     s = Path(filename).read_text(encoding="utf-8", errors="replace")
     codes = re.findall(r"^INSTRUMENTATION_STATUS_CODE:\s*(-?\d+)\s*$", s, re.M)
     passed = sum(c == "0" for c in codes)
@@ -44,5 +46,5 @@ for theme in ("light", "dark"):
     assert len(raw) > 512 and raw.startswith(bytes.fromhex("89504e470d0a1a0a")), name
     width, height = struct.unpack(">II", raw[16:24])
     assert width == 360 and height > 100, (name, width, height)
-print("M26_BASE_FAMILY_SCOPE=13 passed=13 failed=0 skipped=0")
+print("M26_BASE_FAMILY_SCOPE=15 passed=15 failed=0 skipped=0")
 PY
