@@ -26,6 +26,9 @@ Financial vault backup/export/import, automated SAF financial archive and financ
 | M31–M33 | Settings/privacy/legal/data loss warning, background lifecycle, Gmail consent/multi-account, Play Billing trial/entitlement and release-signing preparation | Real OAuth/Billing/provider tests owner credentials required; OPEN |
 | M34 final technical + external | ONE consolidated exact-source **G11/G14** full in-scope regression after fixes, no P0, checked original XML/ADB/APK/AAB and independent AppSec; Android API/ABI/device matrix incl physical ARM64, low-storage, lock/restart, security/privacy; owner signs release | NOT RUN / external signoff OPEN |
 
+## Additional verified market-release configuration blockers
+The current `android-native/app/build.gradle.kts` still configures `applicationId = "in.growurdhan.redevelopment"`, `versionName = "0.0.1-m00"`, and `release.isMinifyEnabled = false`. The authoritative v1.3 specification requires production application ID **`in.growurdhan.app`**, a production release pipeline and signed/minified AAB acceptance. Existing emulator instrumentation has been proven against the *redevelopment* package, not the required production application ID. **DO NOT RELEASE or claim full Phase 3 market acceptance** without an owner-reviewed release-variant identity/version/signing/minification change and corresponding exact-SHA compilation/security/Play verification. Do not silently change debug package IDs mid-M26 focused tests, because this would invalidate original test harness assumptions and APK provenance; treat this as a separate M33/M34 release task.
+
 ## Gate discipline
 - Never call a queued, skipped, failed, older-source, or visually defective gate “PASS” for the new source.
 - Preserve frozen legacy source and CASPARSER byte-for-byte; do not change another branch.
