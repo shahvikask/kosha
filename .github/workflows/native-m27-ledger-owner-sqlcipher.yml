@@ -27,7 +27,7 @@ jobs:
           grep -Fq 'android:allowBackup="false"' android-native/app/src/main/AndroidManifest.xml
           grep -Fq 'Ledger owner does not match holding owner' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksRepository.kt
           grep -Fq 'SNAPSHOT_ADJUSTMENT" -> false' android-native/core/model/src/main/kotlin/in/growurdhan/model/NativeCostProvenance.kt
-          test "$(grep -c '@Test fun' android-native/core/model/src/test/kotlin/in/growurdhan/model/NativeM27LedgerIntegrityGoldenTest.kt)" -eq 6
+          test "$(grep -c '@Test fun' android-native/core/model/src/test/kotlin/in/growurdhan/model/NativeM27LedgerIntegrityGoldenTest.kt)" -eq 7
           test "$(grep -c '@Test fun' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM27FinancialIntegrityInstrumentedTest.kt)" -eq 2
           echo "$GITHUB_SHA" > m27-owner-fifo-source-sha.txt
       - uses: actions/setup-java@v4

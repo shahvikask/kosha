@@ -26,27 +26,27 @@ jobs:
           grep -Fq 'android:allowBackup="false"' android-native/app/src/main/AndroidManifest.xml
           grep -Fq 'foldHolding(' src/lib/lots.ts
           grep -Fq 'NativeCostProvenance.knownCost' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksRepository.kt
-          test "$(grep -c '@Test fun' android-native/core/model/src/test/kotlin/in/growurdhan/model/NativeM27LedgerIntegrityGoldenTest.kt)" -eq 6
+          test "$(grep -c '@Test fun' android-native/core/model/src/test/kotlin/in/growurdhan/model/NativeM27LedgerIntegrityGoldenTest.kt)" -eq 7
           echo "$GITHUB_SHA" > m27-ledger-golden-source-sha.txt
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Run only six new JVM source and integrity vectors
+      - name: Run only seven JVM source and integrity vectors
         working-directory: android-native
         shell: bash
         run: |
           set -euo pipefail
           chmod +x gradlew
           ./gradlew :core:model:test --tests 'in.growurdhan.model.NativeM27LedgerIntegrityGoldenTest' --no-daemon --stacktrace
-      - name: Verify real XML six tests zero failures/errors/skips
+      - name: Verify real XML seven tests zero failures/errors/skips
         run: |
           python3 - <<'PY'
           import xml.etree.ElementTree as ET
           p='android-native/core/model/build/test-results/test/TEST-in.growurdhan.model.NativeM27LedgerIntegrityGoldenTest.xml'
           x=ET.parse(p).getroot()
-          assert int(x.attrib['tests']) == len(x.findall('testcase')) == 6
+          assert int(x.attrib['tests']) == len(x.findall('testcase')) == 7
           assert all(int(x.attrib.get(k, '0'))==0 for k in ('failures','errors','skipped'))
           print(x.attrib)
           PY

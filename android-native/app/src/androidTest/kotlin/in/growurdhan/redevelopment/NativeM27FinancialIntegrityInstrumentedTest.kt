@@ -108,14 +108,18 @@ class NativeM27FinancialIntegrityInstrumentedTest {
             fee: Long = 0L) = books.appendUserEvent(input.email,
             NativeBooksRepository.NewEvent(a, kind, "2025-01-15",
                 quantity, unit, amount, fee))
-        append("BUY", 100_000_000L, 30_000L, 30_000L, 100L)
-        append("BUY", 200_000_000L, 40_000L, 80_000L, 200L)
+        val firstBuyId = append("BUY", 100_000_000L, 30_000L, 30_000L, 100L)
+        val secondBuyId = append("BUY", 200_000_000L, 40_000L, 80_000L, 200L)
+        // Frozen src/lib/lots.ts orders same-day BUY parcels by immutable event
+        // ID, NOT by insert call order. The two UUIDs can sort either way.
+        // Both outcomes have exact, independent FIFO cost vectors.
+        val expectedCost = if (firstBuyId < secondBuyId) 53_467L else 43_467L
         append("SPLIT", 3L, 2L, 0L)
         append("SELL", 250_000_000L, 60_000L, 150_000L, 101L)
         val before = books.history(input.email, a).map { it.id }
         val ownerBooks = books.read(input.email).holdings.associateBy { it.id }
         assertEquals(200_000_000L, ownerBooks.getValue(a).quantityScaled)
-        assertEquals(53_467L, ownerBooks.getValue(a).knownCostMinor)
+        assertEquals(expectedCost, ownerBooks.getValue(a).knownCostMinor)
         assertEquals(100_000_000L, ownerBooks.getValue(b).quantityScaled)
         assertEquals(50_000L, ownerBooks.getValue(b).knownCostMinor)
         assertThrows(IllegalArgumentException::class.java) {
@@ -133,7 +137,7 @@ class NativeM27FinancialIntegrityInstrumentedTest {
         val data = NativeBooksRepository(reopened)
         val persisted = data.read(input.email).holdings.associateBy { it.id }
         assertEquals(200_000_000L, persisted.getValue(a).quantityScaled)
-        assertEquals(53_467L, persisted.getValue(a).knownCostMinor)
+        assertEquals(expectedCost, persisted.getValue(a).knownCostMinor)
         assertEquals(100_000_000L, persisted.getValue(b).quantityScaled)
         assertEquals(before, data.history(input.email, a).map { it.id })
         assertEquals(listOf(foreignOpening), data.history(input.email, b).map { it.id })

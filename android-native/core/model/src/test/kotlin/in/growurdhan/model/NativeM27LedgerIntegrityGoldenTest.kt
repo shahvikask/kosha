@@ -101,4 +101,22 @@ class NativeM27LedgerIntegrityGoldenTest {
                 "SNAPSHOT_ADJUSTMENT", 27_500L, 27_500L, "", "bad-provenance")
         }
     }
+
+    @Test fun sameDayFifoTieBreaksOnImmutableEventIdEvenWhenInsertedReverseOrder() {
+        val reversed = NativePortfolioMath.fold(listOf(
+            // BUY 'z' was inserted first, but the original source sorts 'a'
+            // before 'z' when both BUY dates are identical.
+            event("z-first", "BUY", "2025-01-15", 100_000_000L, 30_000L, fee = 100L),
+            event("a-second", "BUY", "2025-01-15", 200_000_000L, 40_000L, fee = 200L),
+            event("split", "SPLIT", "2025-01-15", 3L, 2L),
+            event("sale", "SELL", "2025-01-15", 250_000_000L, 60_000L, fee = 101L)
+        ), "EQUITY")
+        assertTrue(reversed.errors.isEmpty())
+        assertEquals(200_000_000L, reversed.quantityScaled)
+        assertEquals(43_467L, reversed.knownCostMinor)
+        assertEquals(listOf("a-second"), reversed.disposals.map { it.purchaseId })
+        assertEquals(149_899L, reversed.disposals.single().proceedsMinor)
+        assertEquals(83_066L, reversed.disposals.single().gainMinor)
+    }
+
 }
