@@ -47,6 +47,41 @@ class NativeBooksRepositoryInstrumentedTest {
         return accounts to NativeBooksRepository(accounts)
     }
 
+    @Test fun propertyPreviewFailsClosedWithoutAuthenticatedRegistryAndValuation() {
+        val context = sandbox()
+        val (accounts, books) = create(context)
+        val owner = books.read(input.email).people.single().id
+        val holding = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, null, "Synthetic residential property", "REAL_ESTATE", "Residential",
+            0L, 0L, "2025-01-01", false))
+        val claim = `in`.growurdhan.model.NativeSharedPropertyAggregation.Claim(
+            holding, owner, "synthetic-registry-1", "missing-source-document",
+            "a".repeat(64), LocalDate.parse("2025-01-01"), "50",
+            100_000L, "unsupported-appraisal", LocalDate.parse("2025-02-01"))
+        val before = books.read(input.email)
+        val beforeHistory = books.history(input.email, holding)
+        try {
+            books.inspectPropertyClaims(input.email, listOf(claim),
+                LocalDate.parse("2025-03-01"))
+            fail("Unsupported title and appraisal must not publish a property preview")
+        } catch (expected: IllegalArgumentException) {
+            assertTrue(expected.message!!.contains("source"))
+        }
+        try {
+            books.inspectPropertyClaims(input.email, listOf(claim.copy(ownerId="foreign-owner")),
+                LocalDate.parse("2025-03-01"))
+            fail("Cross-owner property claim must be refused")
+        } catch (expected: IllegalArgumentException) {
+            assertTrue(expected.message!!.contains("owner"))
+        }
+        val after = books.read(input.email)
+        assertEquals(before.holdings, after.holdings)
+        assertEquals(beforeHistory, books.history(input.email, holding))
+        // The actual encrypted close/reopen exercises read persistence without
+        // introducing fabricated property identity or market valuation records.
+        accounts.lock()
+    }
+
     @Test fun genuineEncryptedRegistrationStoresCurrentVersionedTermsAndPrimaryOwner() {
         val context = sandbox()
         val (accounts, books) = create(context)
