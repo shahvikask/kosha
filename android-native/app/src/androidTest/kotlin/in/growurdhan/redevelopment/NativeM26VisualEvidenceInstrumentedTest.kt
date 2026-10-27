@@ -63,6 +63,24 @@ class NativeM26VisualEvidenceInstrumentedTest {
         val screenshot = java.io.File(target.cacheDir, file)
         val image = compose.onNodeWithTag("g14-visual-content")
             .captureToImage().asAndroidBitmap()
+        // Assert *rendered* scope-text contrast, not just theme-token contrast.
+        // These pixels are above the first navigation button: no golden buttons
+        // can accidentally mask a black-on-black scope label regression.
+        var readableForeground = 0
+        for (y in 0 until minOf(70, image.height)) {
+            for (x in 0 until image.width) {
+                val pixel = image.getPixel(x, y)
+                val r = android.graphics.Color.red(pixel)
+                val g = android.graphics.Color.green(pixel)
+                val b = android.graphics.Color.blue(pixel)
+                val total = r + g + b
+                if ((dark && total >= 480) || (!dark && total <= 225)) {
+                    readableForeground++
+                }
+            }
+        }
+        assertTrue("Owner-lens label has low rendered contrast in " +
+            (if (dark) "dark" else "light") + " mode", readableForeground >= 80)
         screenshot.outputStream().use {
             assertTrue("Could not create safe PNG evidence", image.compress(
                 Bitmap.CompressFormat.PNG, 100, it))
