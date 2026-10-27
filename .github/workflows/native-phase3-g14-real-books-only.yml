@@ -1,5 +1,5 @@
 name: GrowUrDhan focused real-books G14 accessibility repair proof
-# Two actual SQLCipher-backed 360dp/2x tests only; no duplicate comprehensive run.
+# Exact-SHA two-case rerun after correcting off-screen 0px semantics measurement; 48dp threshold intact.
 on:
   push:
     branches: [GUD-Android-Redevelopment]
@@ -54,6 +54,7 @@ jobs:
           grep -q 'fun realBooksCompactDarkTwoHundredPercentOwnerLensAccessible()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM26RealBooksAccessibilityInstrumentedTest.kt
           grep -q 'Owner-lens label has low rendered contrast' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM26VisualEvidenceInstrumentedTest.kt
           grep -Fq 'heightIn(min = 56.dp)' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksNavigation.kt
+          grep -q 'performScrollTo()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM26RealBooksAccessibilityInstrumentedTest.kt
           bash -n .github/scripts/native-phase3-m26-real-a11y-only.sh
           # Compile and instrument the six destination owner-lens navigation coverage.
           grep -Fq 'active.filter { ownerFilter.isEmpty() || it.id == ownerFilter }' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksScreen.kt
