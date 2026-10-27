@@ -1,4 +1,4 @@
-name: GrowUrDhan M27 P11 owner-scoped passbook API35 SQLCipher
+name: GrowUrDhan M27 P11 withdrawals and journal-collision API35 SQLCipher
 on:
   push:
     branches: [GUD-Android-Redevelopment]
@@ -26,8 +26,8 @@ jobs:
           git diff --exit-code 89b75c53cd042c32acde6198376e2af76b135d90 "$GITHUB_SHA" -- src/ src-tauri/ scripts/ public/brand/
           grep -Fq 'android:allowBackup="false"' android-native/app/src/main/AndroidManifest.xml
           grep -Fq 'Passbook owner/holding does not match encrypted custody' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksRepository.kt
-          test "$(grep -c '@Test fun' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM27PpfPassbookInstrumentedTest.kt)" -eq 2
-          test "$(grep -c '@Test fun' android-native/core/model/src/test/kotlin/in/growurdhan/model/NativePpfSsyPassbookAccrualTest.kt)" -eq 9
+          test "$(grep -c '@Test fun' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM27PpfPassbookInstrumentedTest.kt)" -eq 4
+          test "$(grep -c '@Test fun' android-native/core/model/src/test/kotlin/in/growurdhan/model/NativePpfSsyPassbookAccrualTest.kt)" -eq 15
           echo "$GITHUB_SHA" > m27-p11-passbook-sqlcipher-source-sha.txt
       - uses: actions/setup-java@v4
         with:
@@ -76,7 +76,7 @@ jobs:
             adb install -r android-native/app/build/outputs/apk/debug/app-debug.apk
             adb install -r android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell am instrument -w -r -e class in.growurdhan.redevelopment.NativeM27PpfPassbookInstrumentedTest in.growurdhan.redevelopment.test/androidx.test.runner.AndroidJUnitRunner | tee m27-p11-passbook-adb.txt
-            grep -Fq 'OK (2 tests)' m27-p11-passbook-adb.txt
+            grep -Fq 'OK (4 tests)' m27-p11-passbook-adb.txt
             grep -Fq 'INSTRUMENTATION_CODE: -1' m27-p11-passbook-adb.txt
       - name: Preserve original JUnit ADB source and APKs even on failure
         if: always()
