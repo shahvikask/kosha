@@ -1,0 +1,116 @@
+name: GrowUrDhan focused real-books G14 accessibility repair proof
+# Two actual SQLCipher-backed 360dp/2x tests only; no duplicate comprehensive run.
+on:
+  push:
+    branches: [GUD-Android-Redevelopment]
+    paths: [.github/workflows/native-phase3-g14-real-books-only.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  real-books-accessibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Exact SHA, frozen source and test preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code 272a271508d28b5bbcaf724def8e7eb568b38b56 "$GITHUB_SHA" -- src/ src-tauri/ scripts/
+          printf '%s\n' "$GITHUB_SHA" > phase3-m26-source-sha.txt
+          for method in custodyIdentifiersAndNomineeAreNeverSilentlyTruncated guardianMustNotBeChildOrNonindividualAndFailurePreservesFamily custodyEditRejectsTruncatedIdentifiersWithoutChangingEncryptedAccount editingExistingMinorRefusesIneligibleGuardianWithoutWrites nomineeGoalAndCustodyLifecycleSurviveEncryptedRestartWithoutOwnerLeakage; do
+            grep -q "fun ${method}()" android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeBooksRepositoryInstrumentedTest.kt
+          done
+          # Owner D57: archive backup/restore tests are deferred, not green or silently included.
+          grep -Fq 'GoalForm(lensPeople, busy, ownerFilter)' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksScreen.kt
+          grep -Fq 'CustodyForm(lensPeople, busy)' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksScreen.kt
+          grep -Fq 'HoldingForm(lensPeople, lensCustody, busy)' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksScreen.kt
+          grep -Fq 'stateDescription = "$label: "' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksScreen.kt
+          ! grep -q 'restorePicker' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/MainActivity.kt
+          grep -Fq 'NativeHouseholdDocumentAccessGate(ownerFilter)' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksScreen.kt
+          grep -q 'fun memberLensCannotDisplayOrStartHouseholdDocumentReview()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeHouseholdDocumentAccessGateInstrumentedTest.kt
+          grep -q 'fun ownerSwitchRevokesStaleMoneyEventAndManualPriceSelection()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM26OwnerLensMutationInstrumentedTest.kt
+          grep -Fq 'selectedHoldingInLens' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksScreen.kt
+          grep -Fq '"Records" -> key(ownerFilter)' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksScreen.kt
+          ! grep -q '^import androidx.compose.ui.test.onAllNodes$' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM26OwnerLensNavigationInstrumentedTest.kt
+          grep -q 'fun selectedMemberLensScopesFamilyAccountsGoalsAndHoldings()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM26OwnerLensNavigationInstrumentedTest.kt
+          grep -Fq 'NativeBooksNavigation(tab) { tab = it }' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksScreen.kt
+          grep -Fq 'selected = activeTab == key' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksNavigation.kt
+          grep -q 'fun compactPhoneTwoHundredPercentTextWrapsAndAnnouncesSelectedTab()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeBooksNavigationAccessibilityInstrumentedTest.kt
+          grep -Fq 'NativeOwnerLensStatus(' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksScreen.kt
+          grep -Fq 'liveRegion = LiveRegionMode.Polite' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeOwnerLensStatus.kt
+          grep -q 'fun syntheticLight360dpTwoHundredPercentScreenshot()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM26VisualEvidenceInstrumentedTest.kt
+          grep -q 'fun syntheticDark360dpTwoHundredPercentScreenshot()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM26VisualEvidenceInstrumentedTest.kt
+          grep -q 'fun memberLensAnnouncementUpdatesForTalkBack()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM26VisualEvidenceInstrumentedTest.kt
+          grep -Fq 'color = MaterialTheme.colorScheme.onBackground' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeOwnerLensStatus.kt
+          grep -q 'fun realBooksCompactLightTwoHundredPercentOwnerLensAccessible()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM26RealBooksAccessibilityInstrumentedTest.kt
+          grep -q 'fun realBooksCompactDarkTwoHundredPercentOwnerLensAccessible()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM26RealBooksAccessibilityInstrumentedTest.kt
+          grep -q 'Owner-lens label has low rendered contrast' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM26VisualEvidenceInstrumentedTest.kt
+          grep -Fq 'heightIn(min = 56.dp)' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksNavigation.kt
+          bash -n .github/scripts/native-phase3-m26-real-a11y-only.sh
+          # Compile and instrument the six destination owner-lens navigation coverage.
+          grep -Fq 'active.filter { ownerFilter.isEmpty() || it.id == ownerFilter }' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksScreen.kt
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Reuse verified pinned Android Python wheels
+        uses: actions/download-artifact@v4
+        with:
+          repository: shahvikask/kosha
+          run-id: 39526640647
+          github-token: ${{ github.token }}
+          name: source-pinned-android-python-wheels
+          path: android-native/app/python-wheels
+      - name: Targeted Android app/test compile
+        working-directory: android-native
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd app/python-wheels && sha256sum --check SHA256SUMS)
+          chmod +x gradlew
+          ./gradlew :core:model:test :core:database:test :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --stacktrace
+      - name: Preserve original APK hashes
+        run: sha256sum android-native/app/build/outputs/apk/debug/app-debug.apk android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk > phase3-m26-apk-sha256.txt
+      - name: Configure emulator
+        run: if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - name: Verify only two real encrypted-books 360dp/2x accessibility cases
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 3072M
+          heap-size: 512M
+          disable-animations: true
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: bash .github/scripts/native-phase3-m26-real-a11y-only.sh
+      - name: Archive original test evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-sha-m26-real-books-a11y-focused-evidence
+          path: |
+            phase3-m26-source-sha.txt
+            phase3-m26-apk-sha256.txt
+            phase3-m26-real-books-a11y-adb.txt
+            android-native/core/model/build/test-results/test/TEST-*.xml
+            android-native/core/database/build/test-results/test/TEST-*.xml
+            android-native/app/build/outputs/apk/debug/app-debug.apk
+            android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          if-no-files-found: warn
+          retention-days: 14
