@@ -11,3 +11,5 @@ m26-documents,light,360dp,2.0,member-lens household history hidden,NOT CAPTURED,
 m26-settings,dark,412dp,2.0,household-global settings and no backup,NOT CAPTURED,D57 backup-disabled PASS 40360310128/PENDING visual,PENDING
 m26-home,light,360dp,2.0,owner-lens holdings/unknown cost/no prices inferred,NOT CAPTURED,M26 owner-lens navigation PASS 40360310128/PENDING visual,PENDING
 m26-navigation,light,360dp,2.0,all-eight-tabs-wrap-and-selected-announce,NOT CAPTURED,NativeBooksNavigationAccessibilityInstrumentedTest on 40441608989 RUNNING NOT VERIFIED,PENDING
+m26-safe-nav-synthetic-light,light,360dp,2.0,standalone-fictitious-nav-and-whole-household-scope,NOT CAPTURED,NativeM26VisualEvidenceInstrumentedTest light screenshot 40442928626 RUNNING NOT VERIFIED,PENDING
+m26-safe-nav-synthetic-dark,dark,360dp,2.0,standalone-fictitious-nav-and-member-scope,NOT CAPTURED,NativeM26VisualEvidenceInstrumentedTest dark screenshot 40442928626 RUNNING NOT VERIFIED,PENDING
