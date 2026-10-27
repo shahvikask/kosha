@@ -86,6 +86,13 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
             } finally { busy = false }
         }
     }
+    LaunchedEffect(ownerFilter) {
+        // Never show a previous member's audit history or calculated return
+        // after switching the active lens.
+        historyId = ""
+        history = emptyList()
+        xirrResults = emptyMap()
+    }
     LaunchedEffect(email) {
         xirrResults = emptyMap()
         try { refresh() } catch (_: Exception) {
@@ -223,27 +230,38 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                             if (h.needsReview) Text("Reconciliation review needed",
                                 color = MaterialTheme.colorScheme.error)
                             OutlinedButton(onClick = {
-                                historyId = h.id
+                                val requestedLens = ownerFilter
+                                val requestedHolding = h.id
+                                historyId = requestedHolding
+                                history = emptyList()
                                 busy = true
                                 scope.launch {
                                     try {
-                                        history = withContext(Dispatchers.IO) { books.history(email, h.id) }
+                                        val loaded = withContext(Dispatchers.IO) {
+                                            books.history(email, requestedHolding)
+                                        }
+                                        if (ownerFilter == requestedLens &&
+                                            historyId == requestedHolding) history = loaded
                                     } catch (_: Exception) {
-                                        error = "Event history unavailable. Verify the vault again."
+                                        if (ownerFilter == requestedLens)
+                                            error = "Event history unavailable. Verify the vault again."
                                     } finally { busy = false }
                                 }
                             }) { Text("View audit history") }
                             OutlinedButton(enabled = !busy, onClick = {
+                                val requestedLens = ownerFilter
                                 busy = true
                                 scope.launch {
                                     try {
                                         val result = withContext(Dispatchers.IO) {
                                             books.moneyWeightedReturn(email, h.id)
                                         }
-                                        xirrResults = xirrResults + (h.id to result)
+                                        if (ownerFilter == requestedLens)
+                                            xirrResults = xirrResults + (h.id to result)
                                     } catch (_: Exception) {
-                                        error = "Money-weighted return unavailable. " +
-                                            "Review the ledger and recorded price."
+                                        if (ownerFilter == requestedLens)
+                                            error = "Money-weighted return unavailable. " +
+                                                "Review the ledger and recorded price."
                                     } finally { busy = false }
                                 }
                             }) { Text("Calculate money-weighted return (XIRR)") }
@@ -256,7 +274,7 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                                     " (recorded last price, not a live quote)")
                             }
                         }
-                        if (historyId.isNotEmpty()) {
+                        if (historyId.isNotEmpty() && list.any { it.id == historyId }) {
                             Text("Append-only event history", style = MaterialTheme.typography.titleMedium)
                             history.forEach { e ->
                                 Text("${e.date} • ${e.kind} • ${NativeBooksRepository.formatMinor(e.quantityScaled, 8)} " +
@@ -330,7 +348,9 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                         NativeGmailOptInCard(email, books, data.people)
                         NativePrivateDiagnosticsSettings(email, diagnostics)
                     }
-                    "Records" -> {
+                    "Records" -> key(ownerFilter) {
+                        // User-selected holding/correction/payment form state cannot
+                        // survive a change from one member's lens to another.
                         Text("Money events and manual prices", style = MaterialTheme.typography.titleLarge)
                         EventForm(data.holdings.filter { ownerFilter.isEmpty() ||
                             it.personId == ownerFilter }, busy,
