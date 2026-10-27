@@ -1022,6 +1022,11 @@ internal fun HoldingEditForm(holdings: List<NativeBooksRepository.Holding>,
     var goalId by remember { mutableStateOf("") }
     var pendingArchive by remember { mutableStateOf<String?>(null) }
     val holding = holdings.firstOrNull { it.id == id }
+    // An async SQLCipher failure must leave the owner's confirmation on screen.
+    // Clear it only once the refreshed encrypted snapshot confirms closure.
+    LaunchedEffect(id, holding?.archived) {
+        if (pendingArchive == id && holding?.archived == true) pendingArchive = null
+    }
     Text("Holding details / status", style = MaterialTheme.typography.titleMedium)
     Choice("Holding to edit", holdings.map { it.id to it.name }, id, !busy) {
         id = it
@@ -1080,8 +1085,8 @@ internal fun HoldingEditForm(holdings: List<NativeBooksRepository.Holding>,
                     holding.subcategory, specialistValues)
             }
             if (typed.isFailure) specialistError = "Invalid asset-specific details. No edits saved."
-            else update(id, account.ifBlank { null }, notes.ifBlank { null },
-                typed.getOrNull(), location.ifBlank { null })
+            else update(id, account.ifBlank { null }, notes,
+                typed.getOrNull(), location)
         }) { Text("Save non-ledger metadata") }
         Choice("Linked goal", listOf("" to "No linked goal") +
             goals.filter { it.personId == null || it.personId == holding.personId }
@@ -1096,8 +1101,7 @@ internal fun HoldingEditForm(holdings: List<NativeBooksRepository.Holding>,
                 color = MaterialTheme.colorScheme.error)
             Button(enabled = !busy, onClick = {
                 archive(id, true)
-                pendingArchive = null
-                // Do not discard the selected holding before SQLCipher confirms the write.
+                // Selection and confirmation survive until the committed snapshot arrives.
             }, modifier = Modifier.testTag("m27-archive-confirm")) { Text("Confirm archive with immutable history retained") }
             OutlinedButton(enabled = !busy, onClick = { pendingArchive = null }) {
                 Text("Cancel archive")

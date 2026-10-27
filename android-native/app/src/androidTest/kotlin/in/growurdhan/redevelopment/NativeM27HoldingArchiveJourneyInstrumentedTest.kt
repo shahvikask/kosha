@@ -148,6 +148,28 @@ class NativeM27HoldingArchiveJourneyInstrumentedTest {
         }
         compose.onNodeWithTag("m27-archive-action").performScrollTo().performClick()
         assertFalse(reopened.read(credential.email).holdings.single().archived)
+        // Previously COALESCE silently retained both fields after the editor
+        // submitted blanks. Explicit clearing must persist through encryption.
+        compose.onNodeWithTag("m27-edit-notes").performScrollTo()
+            .performTextReplacement("")
+        compose.onNodeWithTag("m27-edit-location").performScrollTo()
+            .performTextReplacement("")
+        compose.onNodeWithText("Save non-ledger metadata").performScrollTo().performClick()
+        val cleared = reopened.read(credential.email).holdings.single()
+        assertNull(cleared.notes)
+        assertNull(cleared.location)
+        assertEquals(goal, cleared.goalId)
+        assertEquals(custody, cleared.accountId)
+        assertEquals(beforeIds, reopened.history(credential.email, holdingId).map { it.id })
+        restarted.onBackground()
+        val relog = NativeAccountRepository(ctx, gate())
+        assertTrue(relog.login(credential.email, credential.password))
+        val afterSecondRestart = NativeBooksRepository(relog)
+            .read(credential.email).holdings.single()
+        assertNull(afterSecondRestart.notes)
+        assertNull(afterSecondRestart.location)
+        assertFalse(afterSecondRestart.archived)
+        assertEquals(goal, afterSecondRestart.goalId)
     }
 
     @Test fun openPositionAndForeignGoalAndCustodyFailWithoutDataLossOrReassignment() {

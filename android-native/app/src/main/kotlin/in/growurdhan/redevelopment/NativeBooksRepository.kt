@@ -798,10 +798,15 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
                 org.json.JSONObject(detailsJson)
                 requireSpecialistLink(db, owner, holdingId, detailsJson)
             }
-            db.execSQL("UPDATE holding SET account_id=?,notes=COALESCE(?,notes)," +
-                "details_json=COALESCE(?,details_json),location=COALESCE(?,location) " +
+            // null means preserve an omitted update; an explicit empty string
+            // clears optional text. COALESCE alone made the editor unable to
+            // remove a saved note or property location.
+            db.execSQL("UPDATE holding SET account_id=?," +
+                "notes=CASE WHEN ? IS NULL THEN notes ELSE NULLIF(?, '') END," +
+                "details_json=COALESCE(?,details_json)," +
+                "location=CASE WHEN ? IS NULL THEN location ELSE NULLIF(?, '') END " +
                 "WHERE holding_id=?", arrayOf<Any?>(
-                    accountId, notes, detailsJson, location, holdingId))
+                    accountId, notes, notes, detailsJson, location, location, holdingId))
         }
 
     /** Only an owner-consistent goal can tag a holding; its original ledger is untouched. */

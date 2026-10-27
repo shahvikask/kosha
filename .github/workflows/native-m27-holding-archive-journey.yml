@@ -27,6 +27,8 @@ jobs:
           grep -Fq 'android:allowBackup="false"' android-native/app/src/main/AndroidManifest.xml
           grep -Fq 'h.details_json,h.tag,h.location' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksRepository.kt
           grep -Fq 'fun setHoldingArchived(' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksRepository.kt
+          grep -Fq 'notes=CASE WHEN ? IS NULL' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksRepository.kt
+          grep -Fq 'LaunchedEffect(id, holding?.archived)' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksScreen.kt
           test "$(grep -c '@Test fun' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM27HoldingArchiveJourneyInstrumentedTest.kt)" -eq 2
           echo "$GITHUB_SHA" > m27-p12-archive-source-sha.txt
       - uses: actions/setup-java@v4
