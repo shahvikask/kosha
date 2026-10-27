@@ -6,6 +6,7 @@ import `in`.growurdhan.model.NativeCostProvenance
 import `in`.growurdhan.model.NativeEmiPlanner
 import `in`.growurdhan.model.NativeMoneyWeightedReturn
 import `in`.growurdhan.model.NativeTaxLotTrace
+import `in`.growurdhan.model.NativePpfSsyPassbookAccrual
 import java.math.BigDecimal
 import java.math.BigInteger
 import java.time.Instant
@@ -640,6 +641,52 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
             }
             NativeTaxLotTrace.trace(readRawEvents(db, holdingId), category,
                 assessmentYear)
+        }
+
+    /**
+     * Authenticated, owner-and-holding-scoped, READ-ONLY user-entered passbook
+     * comparison. Never treats these typed references as issuer authentication,
+     * never infers deposit history from market price or creates a ledger entry.
+     * A foreign-owner ledger row renders the holding untrustworthy for comparison.
+     */
+    fun previewPpfSsyPassbook(email: String, holdingId: String,
+        years: List<NativePpfSsyPassbookAccrual.YearEvidence>,
+        asOf: LocalDate = LocalDate.now()): NativePpfSsyPassbookAccrual.Series =
+        accounts.withUnlockedVault(email) { db ->
+            val (owner, custody) = requireHoldingOwner(db, holdingId)
+            require(years.isNotEmpty() && years.all {
+                it.ownerId == owner && it.holdingId == holdingId
+            }) { "Passbook owner/holding does not match encrypted custody" }
+            val (category, subcategory, needsReview) = db.rawQuery(
+                "SELECT i.category,i.sub_category,h.needs_review FROM holding h " +
+                    "JOIN instrument i ON i.instrument_id=h.instrument_id " +
+                    "WHERE h.holding_id=?", arrayOf(holdingId)
+            ).use { c ->
+                require(c.moveToFirst()) { "Unknown holding" }
+                Triple(c.getString(0), c.getString(1).uppercase(), c.getInt(2) == 1)
+            }
+            require(category == "FIXED_INCOME" && !needsReview &&
+                !db.exists("SELECT 1 FROM setting WHERE key=? AND value='1'",
+                    "native.holding.archived.$holdingId")) {
+                "Only active reconciled fixed-income records allow comparison"
+            }
+            require(years.all { when(it.scheme) {
+                NativePpfSsyPassbookAccrual.Scheme.PPF ->
+                    subcategory == "PPF" || subcategory.contains("PUBLIC PROVIDENT")
+                NativePpfSsyPassbookAccrual.Scheme.SSY ->
+                    subcategory.contains("SSY") || subcategory.contains("SUKANYA")
+            } }) { "Passbook scheme conflicts with encrypted holding category" }
+            custody?.let { account ->
+                require(db.exists("SELECT 1 FROM account WHERE account_id=? " +
+                    "AND entity_id=? AND closed_on IS NULL", account, owner)) {
+                    "Closed or foreign custody"
+                }
+            }
+            require(!db.exists("SELECT 1 FROM ledger_event WHERE holding_id=? " +
+                "AND entity_id<>?", holdingId, owner)) {
+                "Foreign owner event means provenance cannot be trusted"
+            }
+            NativePpfSsyPassbookAccrual.compare(years, asOf)
         }
 
     fun history(email: String, holdingId: String): List<EventRow> =

@@ -413,6 +413,9 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                                 error = "Cannot refresh annual interest records"
                             } }
                         }
+                        NativePpfSsyPassbookCard(email, books, data.holdings.filter {
+                            ownerFilter.isEmpty() || it.personId == ownerFilter
+                        }, busy)
                         NativeInterestPayoutForm(email, payouts, data.holdings.filter {
                             (it.category == "FIXED_INCOME" || it.category == "GOLD_SGB") &&
                                 (ownerFilter.isEmpty() || it.personId == ownerFilter)
