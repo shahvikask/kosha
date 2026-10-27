@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -114,8 +115,8 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()) {
-                Button(onClick = onLock) { Text("Lock vault") }
-                OutlinedButton(onClick = onReplaceRecovery) { Text("Recovery code") }
+                Button(onClick = onLock, modifier = Modifier.heightIn(min = 48.dp)) { Text("Lock vault") }
+                OutlinedButton(onClick = onReplaceRecovery, modifier = Modifier.heightIn(min = 48.dp)) { Text("Recovery code") }
             }
             val data = snapshot
             if (data == null) {
@@ -398,7 +399,7 @@ private fun Choice(label: String, choices: List<Pair<String, String>>,
     var expanded by remember { mutableStateOf(false) }
     Text(label, style = MaterialTheme.typography.labelMedium)
     OutlinedButton(onClick = { expanded = true }, enabled = enabled,
-        modifier = Modifier.testTag("choice-$label").semantics {
+        modifier = Modifier.heightIn(min = 48.dp).testTag("choice-$label").semantics {
             stateDescription = "$label: " +
                 (choices.firstOrNull { it.first == selected }?.second ?: "Choose")
         }) {
