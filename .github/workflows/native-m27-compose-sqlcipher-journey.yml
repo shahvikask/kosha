@@ -18,6 +18,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       # CI repair: Kotlin state import and test correction-dropdown ordering.
+      # Same-day FIFO split-before-sale and full owner-label test correction.
       - name: Exact SHA, protected source, D57 and test preflight
         shell: bash
         run: |

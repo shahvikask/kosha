@@ -189,7 +189,7 @@ class NativeM27ComposeSqlCipherJourneyInstrumentedTest {
         val events = io { books.history(credentials.email, id) }
         assertEquals(10, events.size)
         assertEquals(10, written.map { it.first }.distinct().size)
-        assertEquals(600_000_000L, io {
+        assertEquals(700_000_000L, io {
             books.read(credentials.email).holdings.single().quantityScaled
         })
         assertEquals(300_000L, io {
@@ -203,7 +203,7 @@ class NativeM27ComposeSqlCipherJourneyInstrumentedTest {
         assertTrue(reopened.login(credentials.email, credentials.password))
         val other = NativeBooksRepository(reopened)
         assertEquals(10, other.history(credentials.email, id).size)
-        assertEquals(600_000_000L, other.read(credentials.email).holdings.single().quantityScaled)
+        assertEquals(700_000_000L, other.read(credentials.email).holdings.single().quantityScaled)
         assertEquals(300_000L, other.read(credentials.email).holdings.single().marketPriceMinor)
     }
 
@@ -229,7 +229,8 @@ class NativeM27ComposeSqlCipherJourneyInstrumentedTest {
             }
         }
         compose.onNodeWithTag("choice-Holding").performClick()
-        compose.onNodeWithText("Fictional savings • Fictional").performClick()
+        compose.onNodeWithText("Fictional savings • " +
+            io { books.read(credentials.email).people.single().name }).performClick()
         compose.onNodeWithTag("choice-Event kind").performScrollTo().performClick()
         compose.onNodeWithText("DIVIDEND").performClick()
         compose.onNodeWithTag("m27-event-date").performScrollTo()
