@@ -648,8 +648,17 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
     fun updateHoldingMetadata(email: String, holdingId: String, accountId: String?,
         notes: String?, detailsJson: String?, location: String?) =
         accounts.withUnlockedVault(email) { db ->
-            val (owner, _) = requireHoldingOwner(db, holdingId)
+            val (owner, originalAccount) = requireHoldingOwner(db, holdingId)
             requireCustody(db, owner, accountId)
+            // A custody switch must never relabel immutable trades or reviewed CAS/CSV
+            // positions to another account. Moving invested assets needs a separate,
+            // provenance-preserving transfer flow, not a metadata edit.
+            if (accountId != originalAccount) {
+                require(!db.exists("SELECT 1 FROM ledger_event WHERE holding_id=?", holdingId) &&
+                    !db.exists("SELECT 1 FROM statement_position WHERE holding_id=?", holdingId)) {
+                    "Custody cannot change after a ledger event or reviewed statement position"
+                }
+            }
             require(notes == null || notes.length <= 2048)
             require(location == null || location.length <= 1024)
             if (detailsJson != null) {
