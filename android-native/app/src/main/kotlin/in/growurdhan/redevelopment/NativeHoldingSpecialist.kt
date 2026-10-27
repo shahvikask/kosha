@@ -23,6 +23,66 @@ internal object NativeHoldingSpecialist {
     private fun choice(k: String, title: String, vararg values: String) =
         Field(k, title, Kind.ENUM, values.toList())
 
+    /** Defaults are taken from frozen AddHoldingModal, never inferred from market data. */
+    fun defaults(category: String, subcategory: String): Map<String, String> = when {
+        category == "FIXED_INCOME" && subcategory == "Bank FD" ->
+            mapOf("compounding" to "CUMULATIVE")
+        category == "FIXED_INCOME" && subcategory == "NPS" ->
+            mapOf("npsTier" to "I")
+        category == "GOLD_SGB" && subcategory == "Physical gold (24K)" ->
+            mapOf("goldPurity" to "24K")
+        category == "REAL_ESTATE" && subcategory in setOf("REIT", "InvIT") ->
+            mapOf("altHoldMode" to "DEMAT")
+        else -> emptyMap()
+    }
+
+    data class MonthlyIncomeSchedule(
+        val amountMinor: Long, val scheduledThroughAsOf: Int,
+        val scheduledTotalMinor: Long, val nextDate: String?
+    )
+
+    /**
+     * Frozen src/lib/interest.ts monthlyIncomeDates semantics: day 1..28,
+     * no posting, no tax or interest assumption, at most 480 months.
+     * All arithmetic below is exact scaled-minor money.
+     */
+    fun monthlyIncomeDates(startIso: String, recordedDay: Int,
+        asOfIso: String, endIso: String? = null): List<String> {
+        val start = LocalDate.parse(startIso)
+        val asOf = LocalDate.parse(asOfIso)
+        val end = endIso?.takeIf { it.isNotBlank() }?.let(LocalDate::parse)
+        val day = recordedDay.coerceIn(1, 28) // legacy clamp for older saved records
+        var cursor = start.withDayOfMonth(day)
+        if (cursor < start) cursor = cursor.plusMonths(1)
+        val dates = mutableListOf<String>()
+        var guard = 0
+        while (cursor <= asOf && guard < 480) {
+            if (end != null && cursor > end) break
+            dates += cursor.toString()
+            cursor = cursor.plusMonths(1)
+            guard++
+        }
+        return dates
+    }
+
+    fun monthlyIncomeSchedule(json: String?, acquiredOn: String,
+        asOf: String): MonthlyIncomeSchedule? {
+        if (json.isNullOrBlank()) return null
+        val data = JSONObject(json)
+        if (!data.has("monthlyIncomeMinor") || data.isNull("monthlyIncomeMinor")) return null
+        val amount = data.getString("monthlyIncomeMinor").toLong()
+        if (amount <= 0L) return null
+        val start = data.optString("incomeStart").takeIf { it.isNotBlank() } ?: acquiredOn
+        val end = data.optString("incomeEnd").takeIf { it.isNotBlank() }
+        val day = data.optInt("incomeDay", 1)
+        val past = monthlyIncomeDates(start, day, asOf, end)
+        val horizon = LocalDate.parse(asOf).plusMonths(36).toString()
+        val next = monthlyIncomeDates(start, day, horizon, end)
+            .firstOrNull { it >= asOf }
+        return MonthlyIncomeSchedule(amount, past.size,
+            Math.multiplyExact(amount, past.size.toLong()), next)
+    }
+
     fun fields(category: String, subcategory: String): List<Field> = when (category) {
         "EQUITY" -> listOf(choice("depository", "Depository", "CDSL", "NSDL"),
             text("dpId", "DP identifier"), text("clientId", "Client identifier"),
@@ -68,7 +128,10 @@ internal object NativeHoldingSpecialist {
             money("capitalCalledMinor", "Capital called ₹"),
             text("strategyName", "Investment strategy"),
             text("custodian", "Custodian"),
-            choice("altHoldMode", "Alternative holding mode", "DEMAT", "LUMPSUM"))
+            choice("altHoldMode", "Alternative holding mode", "DEMAT", "LUMPSUM"),
+            money("monthlyIncomeMinor", "Monthly distribution ₹"),
+            integer("incomeDay", "Income payment day"),
+            date("incomeStart", "Income start"), date("incomeEnd", "Income end"))
         "CASH_BANK" -> listOf(text("ifsc", "IFSC"))
         "LIABILITY" -> listOf(integer("originalTenorMonths", "Original tenor (months)"),
             choice("rateType", "Loan interest rate", "FLOATING", "FIXED"),
@@ -131,7 +194,7 @@ internal object NativeHoldingSpecialist {
                     }
                     Kind.INTEGER -> {
                         val integer = value.toInt()
-                        require(integer >= 0 && (key != "incomeDay" || integer in 1..31))
+                        require(integer >= 0 && (key != "incomeDay" || integer in 1..28))
                         data.put(key, integer)
                     }
                     Kind.BOOLEAN -> {
@@ -139,6 +202,13 @@ internal object NativeHoldingSpecialist {
                         data.put(key, value == "true")
                     }
                 }
+            }
+        }
+        if (input.keys.any { it == "incomeStart" || it == "incomeEnd" }) {
+            val start = data.optString("incomeStart").takeIf { it.isNotBlank() }
+            val end = data.optString("incomeEnd").takeIf { it.isNotBlank() }
+            if (start != null && end != null) require(LocalDate.parse(end) >= LocalDate.parse(start)) {
+                "Income end cannot precede income start"
             }
         }
         val result = data.toString()

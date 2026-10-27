@@ -118,4 +118,96 @@ class NativeM27SpecialistMetadataInstrumentedTest {
         }
         assertEquals(2, books.read(credentials.email).holdings.size)
     }
+
+    @Test fun originalMonthlyIncomeDatesClampHistoricalDayAndRespectStartEndAndLeapYear() {
+        // Golden source: frozen src/lib/interest.ts monthlyIncomeDates + clampIncomeDay.
+        assertEquals(listOf("2024-02-28", "2024-03-28"),
+            NativeHoldingSpecialist.monthlyIncomeDates(
+                "2024-01-30", 31, "2024-04-30", "2024-03-28"))
+        assertEquals(listOf("2024-02-01", "2024-03-01"),
+            NativeHoldingSpecialist.monthlyIncomeDates(
+                "2024-01-31", 0, "2024-03-01"))
+        assertEquals(emptyList<String>(), NativeHoldingSpecialist.monthlyIncomeDates(
+            "2024-06-01", 15, "2024-05-31"))
+        // Schedule is explanatory only; there are no fabricated actual receipts.
+        val details = NativeHoldingSpecialist.merge(null, "REAL_ESTATE", "REIT",
+            mapOf("monthlyIncomeMinor" to "12.50", "incomeDay" to "28",
+                "incomeStart" to "2024-01-30", "incomeEnd" to "2024-04-28"))
+        val projected = NativeHoldingSpecialist.monthlyIncomeSchedule(
+            details, "2024-01-01", "2024-03-28")!!
+        assertEquals(125_000L, projected.amountMinor)
+        assertEquals(2, projected.scheduledThroughAsOf)
+        assertEquals(250_000L, projected.scheduledTotalMinor)
+        assertEquals("2024-03-28", projected.nextDate)
+    }
+
+    @Test fun frozenSchemeDefaultsAndInvalidScheduleFailClosedWithoutSilentClamping() {
+        assertEquals("CUMULATIVE",
+            NativeHoldingSpecialist.defaults("FIXED_INCOME", "Bank FD")["compounding"])
+        assertEquals("I", NativeHoldingSpecialist.defaults("FIXED_INCOME", "NPS")["npsTier"])
+        assertEquals("24K",
+            NativeHoldingSpecialist.defaults("GOLD_SGB", "Physical gold (24K)")["goldPurity"])
+        assertEquals("DEMAT",
+            NativeHoldingSpecialist.defaults("REAL_ESTATE", "REIT")["altHoldMode"])
+        assertTrue(NativeHoldingSpecialist.fields("SPECIALISED", "AIF")
+            .any { it.key == "monthlyIncomeMinor" })
+        assertThrows(IllegalArgumentException::class.java) {
+            NativeHoldingSpecialist.merge(null, "SPECIALISED", "AIF",
+                mapOf("incomeDay" to "31"))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            NativeHoldingSpecialist.merge(null, "REAL_ESTATE", "REIT",
+                mapOf("incomeStart" to "2025-02-10", "incomeEnd" to "2025-02-09"))
+        }
+        val full = NativeHoldingSpecialist.merge(
+            """{"historicalSpecialist":"keep"}""", "REAL_ESTATE", "REIT",
+            mapOf("ownership" to "JOINT", "ownershipPercent" to "37.5",
+                "areaSqFt" to "1250", "incomeDay" to "28"))
+        val decoded = NativeHoldingSpecialist.read(full, "REAL_ESTATE", "REIT")
+        assertEquals("37.5", decoded["ownershipPercent"])
+        assertEquals("28", decoded["incomeDay"])
+        assertEquals("keep", JSONObject(full!!).getString("historicalSpecialist"))
+    }
+
+    @Test fun aifCommitmentAndMonthlySchedulePersistWithoutCreatingIncomeEventsAfterRestart() {
+        val ctx = context()
+        val (accounts, books) = open(ctx)
+        val member = books.read(credentials.email).people.single().id
+        val first = NativeHoldingSpecialist.merge(
+            """{"legacyOptional":"retain"}""", "SPECIALISED", "AIF",
+            mapOf("aifCategory" to "II", "commitmentMinor" to "250000.10",
+                "capitalCalledMinor" to "125000.05", "altHoldMode" to "LUMPSUM",
+                "monthlyIncomeMinor" to "125.50", "incomeDay" to "28",
+                "incomeStart" to "2024-01-30", "incomeEnd" to "2024-03-28"))
+        val holding = books.createHolding(credentials.email, NativeBooksRepository.NewHolding(
+            member, null, "Fictional AIF", "SPECIALISED", "AIF",
+            0L, 0L, "2024-01-01", false, detailsJson = first))
+        assertTrue(books.history(credentials.email, holding).isEmpty())
+        val edited = NativeHoldingSpecialist.merge(
+            books.read(credentials.email).holdings.single().detailsJson, "SPECIALISED", "AIF",
+            mapOf("monthlyIncomeMinor" to "150.75"))
+        books.updateHoldingMetadata(credentials.email, holding, null, null, edited, null)
+        val schedule = NativeHoldingSpecialist.monthlyIncomeSchedule(
+            books.read(credentials.email).holdings.single().detailsJson,
+            "2024-01-01", "2024-03-31")!!
+        assertEquals(1_507_500L, schedule.amountMinor)
+        assertEquals(2, schedule.scheduledThroughAsOf)
+        assertEquals(3_015_000L, schedule.scheduledTotalMinor)
+        assertNull(schedule.nextDate)
+        assertThrows(IllegalArgumentException::class.java) {
+            NativeHoldingSpecialist.merge(edited, "SPECIALISED", "AIF",
+                mapOf("incomeDay" to "29"))
+        }
+        assertEquals(0, books.history(credentials.email, holding).size)
+        accounts.onBackground()
+        val unlocked = NativeAccountRepository(ctx, gate())
+        assertTrue(unlocked.login(credentials.email, credentials.password))
+        val reopened = NativeBooksRepository(unlocked).read(credentials.email).holdings.single()
+        val obj = JSONObject(reopened.detailsJson!!)
+        assertEquals("2500001000", obj.getString("commitmentMinor"))
+        assertEquals("1250000500", obj.getString("capitalCalledMinor"))
+        assertEquals("retain", obj.getString("legacyOptional"))
+        assertEquals("1507500", obj.getString("monthlyIncomeMinor"))
+        assertEquals(0, NativeBooksRepository(unlocked).history(credentials.email, holding).size)
+    }
 }

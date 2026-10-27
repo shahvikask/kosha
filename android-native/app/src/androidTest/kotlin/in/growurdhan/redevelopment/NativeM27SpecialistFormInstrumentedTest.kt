@@ -48,4 +48,33 @@ class NativeM27SpecialistFormInstrumentedTest {
         assertEquals("MUTUAL_FUND", saved!!.category)
         assertEquals("DIRECT", JSONObject(saved!!.detailsJson!!).getString("mfPlan"))
     }
+
+    @Test fun bankFdWizardPreloadsSourceCumulativeQuarterlyCompounding() {
+        var saved: NativeBooksRepository.NewHolding? = null
+        val member = NativeBooksRepository.Person("fd-owner", "Fictional Depositor",
+            "Self", "INDIVIDUAL", true, true, null)
+        compose.setContent {
+            MaterialTheme {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    HoldingForm(listOf(member), emptyList(), false) { saved = it }
+                }
+            }
+        }
+        compose.onNodeWithTag("choice-Owner").performClick()
+        compose.onNodeWithText("Fictional Depositor").performClick()
+        compose.onNodeWithTag("choice-Asset category").performScrollTo().performClick()
+        compose.onNodeWithText("FIXED_INCOME").performClick()
+        compose.onNodeWithTag("choice-Subcategory").performScrollTo().performClick()
+        compose.onNodeWithText("Bank FD").performClick()
+        compose.onNodeWithText("CUMULATIVE").assertExists()
+        compose.onNodeWithTag("m27-holding-name").performScrollTo()
+            .performTextInput("Fictional bank FD")
+        compose.onNodeWithTag("m27-holding-units").performScrollTo()
+            .performTextReplacement("0")
+        compose.onNodeWithTag("m27-review-holding").performScrollTo().performClick()
+        compose.onNodeWithTag("m27-confirm-holding").performScrollTo().performClick()
+        assertNotNull(saved)
+        assertEquals("FIXED_INCOME", saved!!.category)
+        assertEquals("CUMULATIVE", JSONObject(saved!!.detailsJson!!).getString("compounding"))
+    }
 }

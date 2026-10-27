@@ -605,11 +605,15 @@ internal fun HoldingForm(people: List<NativeBooksRepository.Person>,
         !busy) {
         category = it
         sub = NativeAssetTaxonomy.subcategories.getValue(it).first()
-        specialistValues = emptyMap()
+        specialistValues = NativeHoldingSpecialist.defaults(category, sub)
         specialistError = ""
     }
     Choice("Subcategory", NativeAssetTaxonomy.subcategories.getValue(category).map { it to it },
-        sub, !busy) { sub = it; specialistValues = emptyMap(); specialistError = "" }
+        sub, !busy) {
+        sub = it
+        specialistValues = NativeHoldingSpecialist.defaults(category, sub)
+        specialistError = ""
+    }
     OutlinedTextField(name, { name = it }, label = { Text("Instrument / holding name") },
         modifier = Modifier.fillMaxWidth().testTag("m27-holding-name"))
     OutlinedTextField(quantity, { quantity = it }, label = { Text("Opening units (may be 0)") },
@@ -667,6 +671,21 @@ internal fun HoldingForm(people: List<NativeBooksRepository.Person>,
     }
     if (specialistError.isNotEmpty())
         Text(specialistError, color = MaterialTheme.colorScheme.error)
+    val incomeDraft = runCatching {
+        val details = NativeHoldingSpecialist.merge(null, category, sub, specialistValues)
+        NativeHoldingSpecialist.monthlyIncomeSchedule(
+            details, date, LocalDate.now().toString())
+    }.getOrNull()
+    if (incomeDraft != null) {
+        Text("Monthly income schedule (not booked): ₹" +
+            NativeBooksRepository.formatMinor(incomeDraft.amountMinor, 4) +
+            " per scheduled date; " + incomeDraft.scheduledThroughAsOf +
+            " dates through today, ₹" +
+            NativeBooksRepository.formatMinor(incomeDraft.scheduledTotalMinor, 4) +
+            " projected only. Next: " + (incomeDraft.nextDate ?: "none"))
+        Text("This preview never creates dividend, interest, cash or valuation events. " +
+            "Record actual receipts only after owner review.")
+    }
     // Any edited field invalidates an earlier review, including hidden category details.
     val currentSignature = listOf(owner, account, name, category, sub, quantity, price,
         knownCost, date, notes, isin, folioForStatements, openingPrice, institution,
@@ -1036,6 +1055,20 @@ private fun HoldingEditForm(holdings: List<NativeBooksRepository.Holding>,
         }
         if (specialistError.isNotEmpty())
             Text(specialistError, color = MaterialTheme.colorScheme.error)
+        val explicitIncomeStart = specialistValues["incomeStart"]
+        val incomePreview = if (explicitIncomeStart.isNullOrBlank()) null else runCatching {
+            val details = NativeHoldingSpecialist.merge(
+                holding.detailsJson, holding.category, holding.subcategory, specialistValues)
+            NativeHoldingSpecialist.monthlyIncomeSchedule(
+                details, explicitIncomeStart, LocalDate.now().toString())
+        }.getOrNull()
+        if (incomePreview != null) {
+            Text("Unposted income schedule: ₹" +
+                NativeBooksRepository.formatMinor(incomePreview.amountMinor, 4) +
+                " monthly, " + incomePreview.scheduledThroughAsOf +
+                " dates through today. Next: " + (incomePreview.nextDate ?: "none"))
+            Text("This is a schedule preview, not received income or an automatic ledger event.")
+        }
         Button(enabled = !busy, onClick = {
             val typed = runCatching {
                 NativeHoldingSpecialist.merge(holding.detailsJson, holding.category,
