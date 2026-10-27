@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import `in`.growurdhan.designsystem.GUDBrandLockup
 import `in`.growurdhan.model.NativeAssetTaxonomy
 import `in`.growurdhan.model.NativeInterestPayoutPlanner
+import `in`.growurdhan.model.NativeOwnershipEconomicShare
 import `in`.growurdhan.model.NativeTaxLotTrace
 import `in`.growurdhan.model.NativeTradeCashReview
 import kotlinx.coroutines.Dispatchers
@@ -241,6 +242,35 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                                 else "Recorded FIFO cost: ₹${NativeBooksRepository.formatMinor(h.knownCostMinor, 4)}")
                             Text("Manual/last price: ₹${NativeBooksRepository.formatMinor(h.marketPriceMinor, 4)} " +
                                 "as of ${h.priceDate ?: "unknown"} (${h.priceSource ?: "no source"})")
+                            if (h.category == "REAL_ESTATE") {
+                                // Ownership metadata is NOT a legal title check
+                                // and does not rewrite family balance, owner, or ledger.
+                                val share = runCatching {
+                                    val info = NativeHoldingSpecialist.read(
+                                        h.detailsJson, h.category, h.subcategory)
+                                    NativeOwnershipEconomicShare.preview(h.category,
+                                        info["ownership"], info["ownershipPercent"],
+                                        h.quantityScaled, h.marketPriceMinor)
+                                }.getOrNull()
+                                if (share == null)
+                                    Text("Owner economic share N/A — recorded ownership " +
+                                        "percent and a nonzero price are required.",
+                                        modifier = Modifier.testTag("m27-owner-share-unverified"))
+                                else Text("Indicative owner's ${share.fractionPercent}% share " +
+                                    "of last recorded gross value: ₹" +
+                                    NativeBooksRepository.formatMinor(
+                                        share.indicativeOwnerValueMinor, 4) +
+                                    " (not proof of title or a separate family total)",
+                                    modifier = Modifier.testTag("m27-owner-share-indicative"))
+                            }
+                            if (h.category == "FIXED_INCOME" &&
+                                h.subcategory in setOf("PPF", "Sukanya Samriddhi (SSY)")) {
+                                Text("PPF/SSY historic interest not verified: each FY " +
+                                    "requires its own rate, dated deposits and passbook " +
+                                    "reconciliation. Current rate is not back-applied; " +
+                                    "no interest or contribution is auto-posted.",
+                                    modifier = Modifier.testTag("m27-ppf-ssy-history-warning"))
+                            }
                             if (h.archived) Text("Archived (history retained)")
                             if (h.needsReview) Text("Reconciliation review needed",
                                 color = MaterialTheme.colorScheme.error)

@@ -1,0 +1,83 @@
+name: GrowUrDhan M27 P11 PPF SSY dated FY and ownership share goldens
+on:
+  push:
+    branches: [GUD-Android-Redevelopment]
+    paths: [.github/workflows/native-m27-p11-history-ownership-goldens.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  p11-history:
+    runs-on: ubuntu-latest
+    timeout-minutes: 36
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Preflight exact SHA frozen boundaries and D57
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/GUD-Android-Redevelopment
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code 8d50e509caaf9843b256f28ebdf48d81248f897e "$GITHUB_SHA" -- src/ src-tauri/ scripts/ public/brand/
+          grep -Fq 'android:allowBackup="false"' android-native/app/src/main/AndroidManifest.xml
+          grep -Fq 'function contributionThisFy(' src/lib/interest.ts
+          grep -Fq 'function monthsHeldInFy(' src/lib/interest.ts
+          grep -Fq 'function interestMinor(' src/lib/interest.ts
+          test "$(grep -c '@Test fun' android-native/core/model/src/test/kotlin/in/growurdhan/model/NativePpfSsyHistoryTest.kt)" -eq 5
+          test "$(grep -c '@Test fun' android-native/core/model/src/test/kotlin/in/growurdhan/model/NativeOwnershipEconomicShareTest.kt)" -eq 4
+          echo "$GITHUB_SHA" > m27-p11-history-owner-source-sha.txt
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/download-artifact@v4
+        with:
+          repository: shahvikask/kosha
+          run-id: 39526640647
+          github-token: ${{ github.token }}
+          name: source-pinned-android-python-wheels
+          path: android-native/app/python-wheels
+      - name: Two new P11 model JUnit classes and real Android Compose compile
+        working-directory: android-native
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd app/python-wheels && sha256sum --check SHA256SUMS)
+          chmod +x gradlew
+          ./gradlew :core:model:test --tests 'in.growurdhan.model.NativePpfSsyHistoryTest' --tests 'in.growurdhan.model.NativeOwnershipEconomicShareTest' :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin --no-daemon --stacktrace
+      - name: Assert original XML nine tests no errors failures skips
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          root='android-native/core/model/build/test-results/test/'
+          classes=['NativePpfSsyHistoryTest','NativeOwnershipEconomicShareTest']
+          total=0
+          for cls, expected in zip(classes, [5,4]):
+              x=ET.parse(root+'TEST-in.growurdhan.model.'+cls+'.xml').getroot()
+              assert int(x.attrib['tests']) == len(x.findall('testcase')) == expected
+              assert all(int(x.attrib.get(k,'0'))==0 for k in ('errors','failures','skipped'))
+              print(cls,x.attrib)
+              total+=int(x.attrib['tests'])
+          assert total==9
+          PY
+      - name: Preserve raw exact SHA JUnit and compiler failure evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-sha-m27-p11-fy-owner-goldens
+          path: |
+            m27-p11-history-owner-source-sha.txt
+            android-native/core/model/build/test-results/test/TEST-in.growurdhan.model.NativePpfSsyHistoryTest.xml
+            android-native/core/model/build/test-results/test/TEST-in.growurdhan.model.NativeOwnershipEconomicShareTest.xml
+          if-no-files-found: warn
+          retention-days: 14

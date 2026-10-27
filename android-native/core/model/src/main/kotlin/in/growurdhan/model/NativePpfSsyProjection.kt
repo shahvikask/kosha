@@ -74,4 +74,50 @@ object NativePpfSsyProjection {
             .add(BigInteger.valueOf(interest)).longValueExact()
         return Preview(months, eligible, base.longValueExact(), interest, closing)
     }
+
+    /** Year-by-year owner-attested scenario, not a statement-backed passbook. */
+    data class YearPreview(val financialYearEnd: LocalDate, val rateBps: Int,
+        val annualContributionMinor: Long, val result: Preview)
+    data class HistoryPreview(val years: List<YearPreview>,
+        val projectedInterestMinor: Long, val projectedClosingMinor: Long)
+
+    /**
+     * Each FY has an explicit opening balance, rate and contribution date.
+     * Never silently apply today's scheme rate or repeated annual contribution
+     * to an older year, or treat the source's day-five simplification as real
+     * monthly-minimum bank-passbook interest. A missing FY stops the scenario.
+     * The caller must separately attest the very first opening balance.
+     */
+    fun previewHistory(years: List<Input>, asOf: LocalDate): HistoryPreview {
+        require(years.isNotEmpty() && years.size <= 80) {
+            "Explicit per-year inputs required"
+        }
+        val first = years.first()
+        var preceding: Input? = null
+        var priorClosing: Long? = null
+        val results = mutableListOf<YearPreview>()
+        var projectedInterest = 0L
+        for (input in years) {
+            require(input.scheme == first.scheme && input.acquiredOn == first.acquiredOn) {
+                "Mixed scheme or acquisition provenance in one scenario"
+            }
+            require(!input.fyEnd.isAfter(asOf)) { "Future FY cannot be projected as earned" }
+            val previous = preceding
+            if (previous != null) {
+                require(input.fyEnd == previous.fyEnd.plusYears(1)) {
+                    "A missing financial year requires its own attested rate and deposits"
+                }
+                require(input.openingBalanceMinor == priorClosing) {
+                    "Unreconciled opening amount; never bridge an unknown cash flow"
+                }
+            }
+            val result = preview(input)
+            results += YearPreview(input.fyEnd, input.annualRateBps,
+                input.annualContributionMinor, result)
+            projectedInterest = Math.addExact(projectedInterest, result.projectedInterestMinor)
+            priorClosing = result.projectedClosingBalanceMinor
+            preceding = input
+        }
+        return HistoryPreview(results, projectedInterest, requireNotNull(priorClosing))
+    }
 }
