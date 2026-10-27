@@ -10,3 +10,4 @@ m26-records,light,360dp,2.0,owner switch invalidates selected holding/event/pric
 m26-documents,light,360dp,2.0,member-lens household history hidden,NOT CAPTURED,M26 Documents privacy PASS 40360310128/PENDING visual,PENDING
 m26-settings,dark,412dp,2.0,household-global settings and no backup,NOT CAPTURED,D57 backup-disabled PASS 40360310128/PENDING visual,PENDING
 m26-home,light,360dp,2.0,owner-lens holdings/unknown cost/no prices inferred,NOT CAPTURED,M26 owner-lens navigation PASS 40360310128/PENDING visual,PENDING
+m26-navigation,light,360dp,2.0,all-eight-tabs-wrap-and-selected-announce,NOT CAPTURED,NativeBooksNavigationAccessibilityInstrumentedTest on 40441608989 RUNNING NOT VERIFIED,PENDING
