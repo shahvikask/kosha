@@ -14,6 +14,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import `in`.growurdhan.designsystem.GudTheme
@@ -85,18 +86,24 @@ class NativeM26RealBooksAccessibilityInstrumentedTest {
         }
         compose.onNodeWithText("Viewing Whole household financial records").assertExists()
         compose.onNodeWithTag("books-tab-Home").assertIsSelected()
-        val nav = compose.onNodeWithTag("books-nav").fetchSemanticsNode().boundsInRoot
         for (tab in listOf("Home", "Holdings", "Family", "Accounts",
             "Goals", "Records", "Documents", "Settings")) {
+            // At 200% text scale the nav begins below the viewport. A clipped
+            // off-screen Compose semantics node returns a 0px bound, which is
+            // NOT the button's physical touch-target size.
+            compose.onNodeWithTag("books-tab-$tab").performScrollTo()
+            val nav = compose.onNodeWithTag("books-nav")
+                .fetchSemanticsNode().boundsInRoot
             val bounds = compose.onNodeWithTag("books-tab-$tab")
                 .fetchSemanticsNode().boundsInRoot
-            assertTrue("$tab is clipped on the compact books screen",
+            assertTrue("$tab is clipped horizontally on the compact books screen",
                 bounds.left >= nav.left - 1f && bounds.right <= nav.right + 1f)
-            assertTrue("$tab has less than a 48dp touch target: " +
-                "measured height=${bounds.height}px at synthetic density=1",
+            assertTrue("$tab has less than a 48dp touch target after scrolling: " +
+                "height=${bounds.height}px at synthetic density=1",
                 bounds.height >= 48f)
         }
 
+        compose.onNodeWithText("Whole household").performScrollTo()
         compose.onNodeWithText("Whole household").performClick()
         compose.onNodeWithText("Member Alpha").performClick()
         compose.onNodeWithText("Viewing Member: Member Alpha financial records")
