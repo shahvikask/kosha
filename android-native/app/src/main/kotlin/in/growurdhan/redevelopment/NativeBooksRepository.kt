@@ -29,7 +29,8 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
         val category: String, val subcategory: String, val quantityScaled: Long,
         val marketPriceMinor: Long, val priceDate: String?, val priceSource: String?,
         val knownCostMinor: Long, val unknownCost: Boolean, val needsReview: Boolean,
-        val archived: Boolean, val notes: String?, val detailsJson: String? = null)
+        val archived: Boolean, val notes: String?, val detailsJson: String? = null,
+        val goalId: String? = null, val location: String? = null)
     data class EventRow(val id: String, val holdingId: String, val ownerId: String,
         val kind: String, val date: String, val quantityScaled: Long, val unitPriceMinor: Long,
         val amountMinor: Long, val chargesMinor: Long, val supersedes: String?, val notes: String?)
@@ -126,7 +127,7 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
         val holdings = mutableListOf<Holding>()
         db.rawQuery("SELECT h.holding_id,h.entity_id,e.display_name,h.account_id,h.instrument_id," +
             "i.name,i.category,i.sub_category,h.current_price_minor,h.last_price_updated," +
-            "h.price_source,h.needs_review,h.notes,h.details_json " +
+            "h.price_source,h.needs_review,h.notes,h.details_json,h.tag,h.location " +
             "FROM holding h JOIN instrument i ON i.instrument_id=h.instrument_id " +
             "JOIN entity e ON e.entity_id=h.entity_id ORDER BY i.name", null).use { c ->
             while (c.moveToNext()) {
@@ -145,7 +146,9 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
                         arrayOf("native.holding.archived.$id")).use { archived ->
                             archived.moveToFirst() && archived.getString(0) == "1"
                         }, if (c.isNull(12)) null else c.getString(12),
-                    if (c.isNull(13)) null else c.getString(13))
+                    if (c.isNull(13)) null else c.getString(13),
+                    if (c.isNull(14)) null else c.getString(14),
+                    if (c.isNull(15)) null else c.getString(15))
             }
         }
         val imports = mutableListOf<ImportBatch>()

@@ -1,0 +1,93 @@
+name: GrowUrDhan M27 P12 holding archive and owner link journey
+on:
+  push:
+    branches: [GUD-Android-Redevelopment]
+    paths: [.github/workflows/native-m27-holding-archive-journey.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  p12-holding-archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Original source, branch, D57 and test preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/GUD-Android-Redevelopment
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code fa69639217c22a79ed925d8ed650b1fa90a8a05b "$GITHUB_SHA" -- src/ src-tauri/ scripts/ public/brand/
+          grep -Fq 'android:allowBackup="false"' android-native/app/src/main/AndroidManifest.xml
+          grep -Fq 'h.details_json,h.tag,h.location' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksRepository.kt
+          grep -Fq 'fun setHoldingArchived(' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksRepository.kt
+          test "$(grep -c '@Test fun' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM27HoldingArchiveJourneyInstrumentedTest.kt)" -eq 2
+          echo "$GITHUB_SHA" > m27-p12-archive-source-sha.txt
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/download-artifact@v4
+        with:
+          repository: shahvikask/kosha
+          run-id: 39526640647
+          github-token: ${{ github.token }}
+          name: source-pinned-android-python-wheels
+          path: android-native/app/python-wheels
+      - name: Targeted JVM regression plus Android app and tests compilation
+        working-directory: android-native
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd app/python-wheels && sha256sum --check SHA256SUMS)
+          chmod +x gradlew
+          ./gradlew :core:model:test :core:database:test :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --stacktrace
+      - name: Original app and test APK hashes
+        run: sha256sum android-native/app/build/outputs/apk/debug/app-debug.apk android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk > m27-p12-archive-apk-sha256.txt
+      - name: Allow Android emulator acceleration
+        run: if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - name: Real Compose archive and SQLCipher restart positive and negative cases
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 3072M
+          heap-size: 512M
+          disable-animations: true
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: |
+            set -eu
+            adb install -r android-native/app/build/outputs/apk/debug/app-debug.apk
+            adb install -r android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            adb shell am instrument -w -r -e class in.growurdhan.redevelopment.NativeM27HoldingArchiveJourneyInstrumentedTest in.growurdhan.redevelopment.test/androidx.test.runner.AndroidJUnitRunner | tee m27-p12-archive-adb.txt
+            grep -Fq 'OK (2 tests)' m27-p12-archive-adb.txt
+            grep -Fq 'INSTRUMENTATION_CODE: -1' m27-p12-archive-adb.txt
+      - name: Preserve original JUnit, ADB and APK evidence on pass and failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-sha-m27-p12-archive
+          path: |
+            m27-p12-archive-source-sha.txt
+            m27-p12-archive-apk-sha256.txt
+            m27-p12-archive-adb.txt
+            android-native/core/model/build/test-results/test/TEST-*.xml
+            android-native/core/database/build/test-results/test/TEST-*.xml
+            android-native/app/build/outputs/apk/debug/app-debug.apk
+            android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          if-no-files-found: warn
+          retention-days: 14

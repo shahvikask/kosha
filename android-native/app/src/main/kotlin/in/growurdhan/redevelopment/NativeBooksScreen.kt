@@ -1009,7 +1009,7 @@ private fun GoalEditForm(goals: List<NativeBooksRepository.Goal>, busy: Boolean,
 }
 
 @Composable
-private fun HoldingEditForm(holdings: List<NativeBooksRepository.Holding>,
+internal fun HoldingEditForm(holdings: List<NativeBooksRepository.Holding>,
     accounts: List<NativeBooksRepository.Custody>, goals: List<NativeBooksRepository.Goal>,
     busy: Boolean, update: (String, String?, String?, String?, String?) -> Unit,
     assign: (String, String?) -> Unit, archive: (String, Boolean) -> Unit) {
@@ -1033,17 +1033,27 @@ private fun HoldingEditForm(holdings: List<NativeBooksRepository.Holding>,
             NativeHoldingSpecialist.read(chosen.detailsJson, chosen.category, chosen.subcategory)
         }.getOrDefault(emptyMap())
         specialistError = ""
-        location = ""
-        goalId = ""
+        location = chosen?.location.orEmpty()
+        goalId = chosen?.goalId.orEmpty()
     }
     if (holding != null) {
+        Text("${holding.name} • ${holding.personName} • ${holding.category} / ${holding.subcategory}",
+            style = MaterialTheme.typography.titleMedium)
+        Text("Recorded position: " +
+            NativeBooksRepository.formatMinor(holding.quantityScaled, 8) +
+            " units. All prior ledger event IDs and corrections remain immutable.")
+        Text("Current custody: " +
+            (accounts.firstOrNull { it.id == holding.accountId }?.custodian ?: "No account") +
+            "; linked goal: " +
+            (goals.firstOrNull { it.id == holding.goalId }?.name ?: "None"))
+        if (holding.archived) Text("Closed to new financial events; reopen explicitly before a new entry.")
         Choice("Custody", listOf("" to "No account") + accounts.filter {
             it.personId == holding.personId }.map { it.id to it.custodian },
             account, !busy) { account = it }
         OutlinedTextField(notes, { notes = it }, label = { Text("Notes") },
-            modifier = Modifier.fillMaxWidth())
+            modifier = Modifier.fillMaxWidth().testTag("m27-edit-notes"))
         OutlinedTextField(location, { location = it }, label = { Text("Property/location (optional)") },
-            modifier = Modifier.fillMaxWidth())
+            modifier = Modifier.fillMaxWidth().testTag("m27-edit-location"))
         SpecialistFields(holding.category, holding.subcategory, specialistValues) { key, value ->
             specialistValues = specialistValues + (key to value)
             specialistError = ""
@@ -1080,23 +1090,26 @@ private fun HoldingEditForm(holdings: List<NativeBooksRepository.Holding>,
             Text("Set linked goal")
         }
         if (pendingArchive == id && !holding.archived) {
-            Text("Confirm archive: only a zero-unit reconciled holding can close. " +
+            Text("Confirm archive for ${holding.name} (${holding.personName}): " +
+                "only a zero-unit reconciled holding can close. " +
                 "All original financial events and source history remain permanently recorded.",
                 color = MaterialTheme.colorScheme.error)
             Button(enabled = !busy, onClick = {
                 archive(id, true)
                 pendingArchive = null
-                id = ""
-            }) { Text("Confirm archive with immutable history retained") }
+                // Do not discard the selected holding before SQLCipher confirms the write.
+            }, modifier = Modifier.testTag("m27-archive-confirm")) { Text("Confirm archive with immutable history retained") }
             OutlinedButton(enabled = !busy, onClick = { pendingArchive = null }) {
                 Text("Cancel archive")
             }
         } else OutlinedButton(enabled = !busy, onClick = {
             if (holding.archived) {
                 archive(id, false)
-                id = ""
+                // Retain the selection if the repository rejects reopening.
             } else pendingArchive = id
-        }) { Text(if (holding.archived) "Reopen archived holding" else "Review archive and close") }
+        }, modifier = Modifier.testTag("m27-archive-action")) {
+            Text(if (holding.archived) "Reopen archived holding" else "Review archive and close")
+        }
     }
 }
 
