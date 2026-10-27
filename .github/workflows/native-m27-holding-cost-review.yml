@@ -17,6 +17,7 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
           fetch-depth: 0
+      # Compilation correction: assertExists/assertDoesNotExist are SemanticsNodeInteraction methods.
       - name: Exact SHA, protected source, D57 and UI preflight
         shell: bash
         run: |
