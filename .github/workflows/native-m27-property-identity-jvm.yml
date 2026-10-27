@@ -1,0 +1,53 @@
+name: GrowUrDhan M27 P11 property identity JVM
+on:
+  push:
+    branches: [GUD-Android-Redevelopment]
+    paths: [.github/workflows/native-m27-property-identity-jvm.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  property-identity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Exact SHA D57 immutable reference preflight
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          grep -Fq 'android:allowBackup="false"' android-native/app/src/main/AndroidManifest.xml
+          test "$(grep -c '@Test fun' android-native/core/model/src/test/kotlin/in/growurdhan/model/NativeSharedPropertyAggregationTest.kt)" -eq 7
+          echo "$GITHUB_SHA" > property-source-sha.txt
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Target only property identity JVM
+        working-directory: android-native
+        run: |
+          chmod +x gradlew
+          ./gradlew :core:model:test --tests 'in.growurdhan.model.NativeSharedPropertyAggregationTest' --no-daemon --stacktrace
+      - name: Verify original JUnit XML 7 of 7
+        run: |
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          p='android-native/core/model/build/test-results/test/TEST-in.growurdhan.model.NativeSharedPropertyAggregationTest.xml'
+          r=ET.parse(p).getroot()
+          assert int(r.attrib['tests']) == len(r.findall('testcase')) == 7
+          assert all(int(r.attrib.get(k,'0'))==0 for k in ('failures','errors','skipped'))
+          PY
+      - name: Original artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m27-property-identity-exact-sha
+          path: |
+            property-source-sha.txt
+            android-native/core/model/build/test-results/test/TEST-in.growurdhan.model.NativeSharedPropertyAggregationTest.xml
+          if-no-files-found: warn
