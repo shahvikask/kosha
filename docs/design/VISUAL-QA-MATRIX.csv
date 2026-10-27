@@ -2,3 +2,11 @@ screen,theme,viewport,font_scale,state,screenshot,test,owner_acceptance
 unlock,light,360dp,default,locked,NOT CAPTURED,ConceptVisualTest.lockedScreenHasNoVaultAction PASS 2026-10-16,PENDING
 home,dark,360dp,default,sample-locked,NOT CAPTURED,ConceptVisualTest.sampleHomeKeepsTheLockVisible PASS 2026-10-16,PENDING
 holding-detail,light,360dp,default,unknown-cost,NOT CAPTURED,ConceptVisualTest.sampleHoldingDoesNotInventACost PASS 2026-10-16,PENDING
+m26-family,light,360dp,2.0,whole-household family/edit forms,NOT CAPTURED,M26 live Compose member-lens UI source partial,PENDING
+m26-family,dark,360dp,2.0,selected-member family edits/no new member,NOT CAPTURED,M26 owner-scoped forms focused PASS 40360310128/PENDING visual,PENDING
+m26-custody,light,360dp,2.0,selected-member nominees/edit/close,NOT CAPTURED,M26 custody repository 5-case PASS 40360310128/PENDING visual,PENDING
+m26-goals,dark,360dp,2.0,member goal owner bound and household read-only,NOT CAPTURED,M26 owner-lens navigation PASS 40360310128/PENDING visual,PENDING
+m26-records,light,360dp,2.0,owner switch invalidates selected holding/event/price,NOT CAPTURED,M26 mutation test 40432617649 RUNNING NOT VERIFIED,PENDING
+m26-documents,light,360dp,2.0,member-lens household history hidden,NOT CAPTURED,M26 Documents privacy PASS 40360310128/PENDING visual,PENDING
+m26-settings,dark,412dp,2.0,household-global settings and no backup,NOT CAPTURED,D57 backup-disabled PASS 40360310128/PENDING visual,PENDING
+m26-home,light,360dp,2.0,owner-lens holdings/unknown cost/no prices inferred,NOT CAPTURED,M26 owner-lens navigation PASS 40360310128/PENDING visual,PENDING
