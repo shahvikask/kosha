@@ -137,6 +137,7 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
             require(db.exists("SELECT 1 FROM holding h JOIN instrument i " +
                 "ON i.instrument_id=h.instrument_id WHERE h.holding_id=? " +
                 "AND h.entity_id=? AND i.category='REAL_ESTATE' " +
+                "AND i.sub_category IN ('Residential','Commercial','Land') " +
                 "AND h.needs_review=0", claim.holdingId, owner)) {
                 "Property holding is missing, unreviewed, or not real estate"
             }
