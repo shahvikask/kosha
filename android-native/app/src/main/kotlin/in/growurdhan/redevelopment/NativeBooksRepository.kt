@@ -351,6 +351,18 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
                 arrayOf(form.holdingId)).use { c -> check(c.moveToFirst()); c.getString(0) }
             val fold = NativePortfolioMath.fold(readRawEvents(db, form.holdingId), category)
             require(fold.errors.isEmpty()) { "Event breaks quantity/history invariants: ${fold.errors}" }
+            // Valuation events are dated price evidence, not purchases or tax lots.
+            // Publish the observed owner price in the SAME SQLCipher transaction.
+            if (form.kind == "VALUATION_UPDATE") {
+                val instrument = db.rawQuery(
+                    "SELECT instrument_id FROM holding WHERE holding_id=?",
+                    arrayOf(form.holdingId)).use { c ->
+                    check(c.moveToFirst())
+                    c.getString(0)
+                }
+                NativeDatedPriceRecorder.record(db, form.holdingId, instrument,
+                    form.date, form.unitPriceMinor, "USER_OVERRIDE", now())
+            }
             id
         }
 
@@ -360,17 +372,70 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
         require(form.kind in NativePortfolioMath.eventTypes)
         require(form.chargesMinor >= 0L && form.unitPriceMinor >= 0L) { "Negative charges/price" }
         val settled = date(form.date)
+        // Resolve a correction's entire immutable lineage. A user must not
+        // replace imported registrar snapshots, CAS-sourced transactions or
+        // automatically scheduled EMI evidence using a manual correction.
+        var effectiveKind = form.kind
         if (form.kind == "CORRECTION") {
-            require(form.supersedes != null && db.exists(
-                "SELECT 1 FROM ledger_event WHERE ledger_event_id=? AND holding_id=? AND entity_id=?",
-                form.supersedes, holding, owner)) { "Unverified correction target" }
-        } else require(form.supersedes == null)
-        when (form.kind) {
-            "BUY", "OPENING_BALANCE", "BONUS" -> require(form.quantityScaled > 0L)
-            "SELL" -> require(form.quantityScaled != 0L && form.quantityScaled != Long.MIN_VALUE)
-            "SPLIT" -> require(form.quantityScaled > 0L && form.unitPriceMinor > 0L)
-            "CORRECTION" -> require(form.supersedes != null)
-            else -> Unit
+            var target = requireNotNull(form.supersedes) { "Missing correction target" }
+            val visited = mutableSetOf<String>()
+            while (true) {
+                require(visited.add(target)) { "Correction lineage cycle" }
+                val prior = db.rawQuery(
+                    "SELECT event_type,supersedes_event_id,entered_by,source_ref " +
+                        "FROM ledger_event WHERE ledger_event_id=? AND holding_id=? AND entity_id=?",
+                    arrayOf(target, holding, owner)).use { cur ->
+                    require(cur.moveToFirst()) { "Unverified correction target" }
+                    val type = cur.getString(0)
+                    val parent = if (cur.isNull(1)) null else cur.getString(1)
+                    val enteredBy = cur.getString(2)
+                    val sourced = !cur.isNull(3)
+                    require(enteredBy == "owner" && !sourced &&
+                        type != "SNAPSHOT_ADJUSTMENT") {
+                        "Imported or automatic financial evidence cannot be manually corrected"
+                    }
+                    type to parent
+                }
+                if (prior.first != "CORRECTION") {
+                    effectiveKind = prior.first
+                    break
+                }
+                target = requireNotNull(prior.second) { "Broken correction lineage" }
+            }
+        } else require(form.supersedes == null) { "Non-correction cannot supersede" }
+        when (effectiveKind) {
+            "BUY", "OPENING_BALANCE", "BONUS" ->
+                require(form.quantityScaled > 0L) { "Positive units required" }
+            "SELL" ->
+                require(form.quantityScaled != 0L && form.quantityScaled != Long.MIN_VALUE) {
+                    "Sale units invalid"
+                }
+            "SPLIT" ->
+                require(form.quantityScaled > 0L && form.unitPriceMinor > 0L &&
+                    form.amountMinor == 0L && form.chargesMinor == 0L) {
+                    "Split requires positive integer ratio and no cash flow"
+                }
+            "DIVIDEND", "INTEREST" ->
+                require(form.quantityScaled == 0L && form.unitPriceMinor == 0L &&
+                    form.chargesMinor == 0L && form.amountMinor >= 0L) {
+                    "Cash income cannot change units or a quoted price"
+                }
+            "REPAYMENT" -> {
+                // Existing native EMI scheduler records installment amount as
+                // unit price for its immutable system-sourced journal; keep that
+                // verified contract, but prohibit these fields in manual entries.
+                if (sourceRef == null) require(form.quantityScaled == 0L &&
+                    form.unitPriceMinor == 0L && form.chargesMinor == 0L &&
+                    form.amountMinor >= 0L) { "Manual repayment is cash-only" }
+            }
+            "VALUATION_UPDATE" ->
+                require(form.quantityScaled == 0L && form.amountMinor == 0L &&
+                    form.chargesMinor == 0L) {
+                    "Valuation updates must not create units, cash flow or fees"
+                }
+            "SNAPSHOT_ADJUSTMENT" ->
+                require(sourceRef != null) { "Registrar-only snapshot event" }
+            else -> error("Unrecognized financial event")
         }
         val id = newId()
         db.execSQL("INSERT INTO ledger_event(ledger_event_id,entity_id,holding_id,holding_name," +
