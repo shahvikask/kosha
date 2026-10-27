@@ -686,6 +686,20 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
                 "AND entity_id<>?", holdingId, owner)) {
                 "Foreign owner event means provenance cannot be trusted"
             }
+            // Neither an owner-typed passbook row ID nor its source reference
+            // authenticates an existing immutable ledger movement. Until
+            // source-document row linkage is independently implemented, fail
+            // closed on any overlapping financial journal activity. A quote
+            // update is not a deposit or interest posting.
+            require(years.none { year ->
+                val start = year.fyEnd.minusYears(1).plusDays(1).toString()
+                db.exists("SELECT 1 FROM ledger_event WHERE holding_id=? " +
+                    "AND trade_date>=? AND trade_date<=? " +
+                    "AND event_type<>'VALUATION_UPDATE'",
+                    holdingId, start, year.fyEnd.toString())
+            }) {
+                "Financial ledger activity lacks passbook source-row reconciliation"
+            }
             NativePpfSsyPassbookAccrual.compare(years, asOf)
         }
 

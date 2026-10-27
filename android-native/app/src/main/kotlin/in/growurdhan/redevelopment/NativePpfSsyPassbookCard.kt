@@ -54,13 +54,16 @@ internal fun NativePpfSsyPassbookCard(email: String,
     var closingRef by remember { mutableStateOf("") }
     var rates by remember { mutableStateOf("") }
     var deposits by remember { mutableStateOf("") }
+    var withdrawals by remember { mutableStateOf("") }
+    var contributionLimit by remember { mutableStateOf("") }
+    var contributionLimitRef by remember { mutableStateOf("") }
     var message by remember { mutableStateOf("") }
     var result by remember {
         mutableStateOf<NativePpfSsyPassbookAccrual.Series?>(null)
     }
     var working by remember { mutableStateOf(false) }
     LaunchedEffect(holdingId, fyEnd, opening, openingRef, closing, closingRef,
-        rates, deposits) {
+        rates, deposits, withdrawals, contributionLimit, contributionLimitRef) {
         result = null
     }
     Column(Modifier.fillMaxWidth().padding(vertical = 8.dp),
@@ -72,9 +75,12 @@ internal fun NativePpfSsyPassbookCard(email: String,
             "actual quarter-start rates, EVERY dated contribution, and opening/" +
             "closing values from your passbook. References are owner-entered, " +
             "not independently verified by the issuer. An undisclosed " +
-            "withdrawal, adjustment or missing deposit makes the estimate invalid.")
+            "adjustment or missing transaction makes the estimate invalid. " +
+            "This is not a statutory entitlement or verified issuer statement.")
         Text("Monthly calculation uses the balance on the 5th (including that " +
             "day's deposits), with interest summed in scaled minor units. " +
+            "Sourced withdrawals lower eligible month balances; " +
+            "same-day mixed deposits/withdrawals cannot be safely ordered. " +
             "Issuer rounding or posting may differ. No automatic ledger posting.")
         eligible.forEach { h ->
             OutlinedButton(enabled = !working && !busyParent,
@@ -110,6 +116,17 @@ internal fun NativePpfSsyPassbookCard(email: String,
                 label = { Text("Deposits: YYYY-MM-DD,amount-rupees,row-id,passbook-ref " +
                     "(one row each; blank only when none)") },
                 modifier = Modifier.fillMaxWidth().testTag("m27-passbook-deposits"))
+            OutlinedTextField(withdrawals, { withdrawals = it },
+                label = { Text("Withdrawals: YYYY-MM-DD,amount-rupees,row-id,passbook-ref " +
+                    "(one row per withdrawal)") },
+                modifier = Modifier.fillMaxWidth().testTag("m27-passbook-withdrawals"))
+            OutlinedTextField(contributionLimit, { contributionLimit = it },
+                label = { Text("Optional OWNER-SOURCED annual contribution limit ₹") },
+                modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(contributionLimitRef, { contributionLimitRef = it },
+                label = { Text("Limit source reference (required with a limit)") },
+                modifier = Modifier.fillMaxWidth())
+            Text("Any limit is owner-entered, NOT a verified scheme-year statutory cap.")
             Button(enabled = !working && !busyParent, onClick = {
                 result = null
                 message = ""
@@ -134,12 +151,22 @@ internal fun NativePpfSsyPassbookCard(email: String,
                             NativeBooksRepository.parseMinor(line[1], 4),
                             line[2], line[3])
                     }
+                    val w = rows(withdrawals, 4).map { line ->
+                        NativePpfSsyPassbookAccrual.Withdrawal(
+                            chosen.personId, chosen.id, LocalDate.parse(line[0]),
+                            NativeBooksRepository.parseMinor(line[1], 4),
+                            line[2], line[3])
+                    }
                     NativePpfSsyPassbookAccrual.YearEvidence(chosen.personId,
                         chosen.id, kind, LocalDate.parse(fyEnd),
                         NativeBooksRepository.parseMinor(opening, 4),
                         openingRef.trim(), d, q,
                         NativeBooksRepository.parseMinor(closing, 4),
-                        closingRef.trim())
+                        closingRef.trim(), w,
+                        contributionLimit.takeIf { it.isNotBlank() }?.let {
+                            NativeBooksRepository.parseMinor(it, 4)
+                        },
+                        contributionLimitRef.trim().takeIf { it.isNotBlank() })
                 }
                 if (year.isFailure) message =
                     "Invalid evidence rows, dates or amounts. No comparison produced."
@@ -165,6 +192,9 @@ internal fun NativePpfSsyPassbookCard(email: String,
                 Text("Calculated FY interest ₹" +
                     NativeBooksRepository.formatMinor(
                         value.calculatedInterestMinor, 4))
+                Text("Owner-referenced withdrawals ₹" +
+                    NativeBooksRepository.formatMinor(
+                        value.withdrawalsMinor, 4))
                 Text("Calculated closing ₹" +
                     NativeBooksRepository.formatMinor(
                         value.calculatedClosingMinor, 4))

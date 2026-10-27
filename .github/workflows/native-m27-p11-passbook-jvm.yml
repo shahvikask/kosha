@@ -1,4 +1,4 @@
-name: GrowUrDhan M27 P11 dated passbook accrual JVM and Compose
+name: GrowUrDhan M27 P11 withdrawal source and FY accuracy JVM and Compose
 on:
   push:
     branches: [GUD-Android-Redevelopment]
@@ -26,8 +26,8 @@ jobs:
           git diff --exit-code 89b75c53cd042c32acde6198376e2af76b135d90 "$GITHUB_SHA" -- src/ src-tauri/ scripts/ public/brand/
           grep -Fq 'android:allowBackup="false"' android-native/app/src/main/AndroidManifest.xml
           grep -Fq 'function contributionThisFy(' src/lib/interest.ts
-          test "$(grep -c '@Test fun' android-native/core/model/src/test/kotlin/in/growurdhan/model/NativePpfSsyPassbookAccrualTest.kt)" -eq 9
-          test "$(grep -c '@Test fun' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM27PpfPassbookInstrumentedTest.kt)" -eq 2
+          test "$(grep -c '@Test fun' android-native/core/model/src/test/kotlin/in/growurdhan/model/NativePpfSsyPassbookAccrualTest.kt)" -eq 15
+          test "$(grep -c '@Test fun' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM27PpfPassbookInstrumentedTest.kt)" -eq 4
           echo "$GITHUB_SHA" > m27-p11-passbook-source-sha.txt
       - uses: actions/setup-java@v4
         with:
@@ -44,7 +44,7 @@ jobs:
           github-token: ${{ github.token }}
           name: source-pinned-android-python-wheels
           path: android-native/app/python-wheels
-      - name: New P11 nine cases and affected Android main/test compilation
+      - name: P11 15 dated withdrawal/source cases and affected Android app/test compile
         shell: bash
         working-directory: android-native
         run: |
@@ -52,14 +52,14 @@ jobs:
           (cd app/python-wheels && sha256sum --check SHA256SUMS)
           chmod +x gradlew
           ./gradlew :core:model:test --tests 'in.growurdhan.model.NativePpfSsyPassbookAccrualTest' :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin --no-daemon --stacktrace
-      - name: Validate original XML test cases and no skips
+      - name: Validate original 15-case XML test cases and no skips
         shell: bash
         run: |
           python3 - <<'PY'
           import xml.etree.ElementTree as ET
           p='android-native/core/model/build/test-results/test/TEST-in.growurdhan.model.NativePpfSsyPassbookAccrualTest.xml'
           x=ET.parse(p).getroot()
-          assert int(x.attrib['tests']) == len(x.findall('testcase')) == 9
+          assert int(x.attrib['tests']) == len(x.findall('testcase')) == 15
           assert all(int(x.attrib.get(k,'0'))==0 for k in ('errors','failures','skipped'))
           print('Original P11:',x.attrib)
           PY

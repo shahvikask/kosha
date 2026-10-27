@@ -31,10 +31,11 @@ class NativePpfSsyPassbookAccrualTest {
             listOf(700,720,740,760).mapIndexed { i,b -> rate(endYear,i,b) },
         ownerId: String = owner, holdingId: String = holding,
         scheme: NativePpfSsyPassbookAccrual.Scheme =
-            NativePpfSsyPassbookAccrual.Scheme.PPF) =
+            NativePpfSsyPassbookAccrual.Scheme.PPF,
+        withdrawals: List<NativePpfSsyPassbookAccrual.Withdrawal> = emptyList()) =
         NativePpfSsyPassbookAccrual.YearEvidence(ownerId, holdingId, scheme,
             day("$endYear-03-31"), principal, "owner-opening-passbook",
-            deposits, rates, closing, "owner-closing-passbook")
+            deposits, rates, closing, "owner-closing-passbook", withdrawals)
     private fun compare(vararg y: NativePpfSsyPassbookAccrual.YearEvidence) =
         NativePpfSsyPassbookAccrual.compare(y.toList(), day("2026-10-27"))
 
@@ -147,6 +148,81 @@ class NativePpfSsyPassbookAccrualTest {
         assertThrows(ArithmeticException::class.java) {
             compare(fy(principal=Long.MAX_VALUE,
                 deposits=listOf(deposit("2025-04-05",1L,"overflow"))))
+        }
+    }
+
+    private fun withdrawal(date: String, amount: Long, id: String,
+        ownerId: String = owner, holdingId: String = holding) =
+        NativePpfSsyPassbookAccrual.Withdrawal(ownerId, holdingId, day(date),
+            amount, id, "fictional-withdrawal-$id")
+
+    @Test fun withdrawalAfterFifthReducesCurrentMonthMinimumOnlyWhenLower() {
+        val x = compare(fy(withdrawals = listOf(
+            withdrawal("2025-07-07", 400_000L, "withdraw-july"))))
+        val months = x.comparisons.single().months
+        // July6 deposited 200k before July7 withdrew 400k; the minimum
+        // actually held from July5 through month end was 1.3m.
+        assertEquals(1_300_000L, months[3].lowestFromFifthMinor)
+        assertEquals(1_300_000L, months[4].lowestFromFifthMinor)
+        assertEquals(400_000L, x.comparisons.single().withdrawalsMinor)
+        assertFalse(x.allEnteredClosingsMatch)
+    }
+    @Test fun withdrawalAfterFifthCannotImproveBaseOrCreateInterest() {
+        val x = compare(fy(withdrawals = listOf(
+            withdrawal("2025-04-15", 100_000L, "apr-withdraw"))))
+        assertEquals(1_120_000L,
+            x.comparisons.single().months[0].lowestFromFifthMinor)
+        assertEquals(1_300_000L,
+            x.comparisons.single().months[1].lowestFromFifthMinor)
+    }
+    @Test fun sameDayOppositeFlowsAndReusedRowsAcrossDirectionsFailClosed() {
+        val d = deposit("2025-07-05", 10_000L, "new-july")
+        val opposite = withdrawal("2025-07-05", 2_000L, "separate")
+        assertThrows(IllegalArgumentException::class.java) {
+            compare(fy(deposits=listOf(d), withdrawals=listOf(opposite)))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            compare(fy(deposits=listOf(d),
+                withdrawals=listOf(withdrawal("2025-08-05",2_000L,"new-july"))))
+        }
+    }
+    @Test fun sourcedWithdrawalsCannotExceedActualChronologicalAvailableBalance() {
+        assertThrows(IllegalArgumentException::class.java) {
+            compare(fy(withdrawals=listOf(
+                withdrawal("2025-04-01",1_000_001L,"overdraw"))))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            compare(fy(withdrawals=listOf(withdrawal("2026-04-01",1L,"future"))))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            compare(fy(withdrawals=listOf(withdrawal("2025-04-01",1L,"foreign",
+                ownerId="someone-else"))))
+        }
+    }
+    @Test fun optionalOwnerSourcedContributionCeilingNeverMasqueradesAsStatutory() {
+        val scenario = fy()
+        assertThrows(IllegalArgumentException::class.java) {
+            compare(scenario.copy(statedContributionLimitMinor=999_999L,
+                contributionLimitSourceRef="owner-entered-limit"))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            compare(scenario.copy(statedContributionLimitMinor=1_000_000L))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            compare(scenario.copy(contributionLimitSourceRef="unpaired"))
+        }
+        assertTrue(compare(scenario.copy(statedContributionLimitMinor=1_000_000L,
+            contributionLimitSourceRef="owner-entered-limit"))
+            .allEnteredClosingsMatch)
+    }
+    @Test fun reusedPassbookEntryIdAcrossFiscalYearsRejected() {
+        val first = fy()
+        val second = fy(endYear=2027, principal=2_116_012L, closing=0L,
+            deposits=listOf(deposit("2026-04-05", 100_000L, "a")),
+            rates=listOf(700,700,700,700).mapIndexed { i,b -> rate(2027,i,b) })
+        assertThrows(IllegalArgumentException::class.java) {
+            NativePpfSsyPassbookAccrual.compare(listOf(first,second),
+                day("2027-03-31"))
         }
     }
 }

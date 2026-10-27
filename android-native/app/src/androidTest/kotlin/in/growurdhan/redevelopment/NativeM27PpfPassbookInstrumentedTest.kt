@@ -121,4 +121,61 @@ class NativeM27PpfPassbookInstrumentedTest {
             assertEquals(beforeB,books.history(user.email,b).map { it.id })
         }
     }
+
+    @Test fun sourcedWithdrawalPreviewIsReadOnlyAndUnreconciledAfterEncryptedRestart() {
+        val ctx = sandbox()
+        val (account, books) = enroll(ctx)
+        val owner = books.read(user.email).people.single().id
+        val holding = books.createHolding(user.email, NativeBooksRepository.NewHolding(
+            owner, null, "Fictional PPF withdrawal", "FIXED_INCOME", "PPF",
+            100_000_000L, 1_000_000L, "2024-01-01", true))
+        val history = books.history(user.email, holding).map { it.id }
+        val fixture = year(owner, holding).copy(withdrawals = listOf(
+            NativePpfSsyPassbookAccrual.Withdrawal(owner, holding,
+                LocalDate.parse("2025-07-07"), 400_000L, "withdrawal-1",
+                "fictional-passbook-withdrawal-1")))
+        val preview = books.previewPpfSsyPassbook(user.email, holding,
+            listOf(fixture), LocalDate.parse("2026-10-27"))
+        assertFalse(preview.allEnteredClosingsMatch)
+        assertEquals(400_000L, preview.comparisons.single().withdrawalsMinor)
+        assertEquals(1_300_000L,
+            preview.comparisons.single().months[3].lowestFromFifthMinor)
+        assertEquals(history, books.history(user.email, holding).map { it.id })
+        account.onBackground()
+        val again = NativeAccountRepository(ctx, gate())
+        assertTrue(again.login(user.email, user.password))
+        val reopened = NativeBooksRepository(again)
+        assertEquals(preview, reopened.previewPpfSsyPassbook(user.email, holding,
+            listOf(fixture), LocalDate.parse("2026-10-27")))
+        assertEquals(history, reopened.history(user.email, holding).map { it.id })
+    }
+
+    @Test fun overlappingImmutableFinancialLedgerMovementRequiresSourceReconciliation() {
+        val ctx = sandbox()
+        val (account, books) = enroll(ctx)
+        val owner = books.read(user.email).people.single().id
+        val holding = books.createHolding(user.email, NativeBooksRepository.NewHolding(
+            owner, null, "Fictional manual journal PPF", "FIXED_INCOME", "PPF",
+            100_000_000L, 1_000_000L, "2024-01-01", true))
+        val input = year(owner, holding)
+        // This synthetic owner journal entry is NOT a linked issuer passbook row.
+        val event = books.appendUserEvent(user.email, NativeBooksRepository.NewEvent(
+            holding, "INTEREST", "2025-10-01", 0L, 0L, 100L))
+        val original = books.history(user.email, holding).map { it.id }
+        assertTrue(event in original)
+        assertThrows(IllegalArgumentException::class.java) {
+            books.previewPpfSsyPassbook(user.email, holding,
+                listOf(input), LocalDate.parse("2026-10-27"))
+        }
+        assertEquals(original, books.history(user.email, holding).map { it.id })
+        account.onBackground()
+        val again = NativeAccountRepository(ctx, gate())
+        assertTrue(again.login(user.email, user.password))
+        val reopened = NativeBooksRepository(again)
+        assertThrows(IllegalArgumentException::class.java) {
+            reopened.previewPpfSsyPassbook(user.email, holding,
+                listOf(input), LocalDate.parse("2026-10-27"))
+        }
+        assertEquals(original, reopened.history(user.email, holding).map { it.id })
+    }
 }
