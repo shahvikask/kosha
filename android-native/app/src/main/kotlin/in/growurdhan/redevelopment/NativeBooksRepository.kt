@@ -366,18 +366,6 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
                 arrayOf(form.holdingId)).use { c -> check(c.moveToFirst()); c.getString(0) }
             val fold = NativePortfolioMath.fold(readRawEvents(db, form.holdingId), category)
             require(fold.errors.isEmpty()) { "Event breaks quantity/history invariants: ${fold.errors}" }
-            // Valuation events are dated price evidence, not purchases or tax lots.
-            // Publish the observed owner price in the SAME SQLCipher transaction.
-            if (form.kind == "VALUATION_UPDATE") {
-                val instrument = db.rawQuery(
-                    "SELECT instrument_id FROM holding WHERE holding_id=?",
-                    arrayOf(form.holdingId)).use { c ->
-                    check(c.moveToFirst())
-                    c.getString(0)
-                }
-                NativeDatedPriceRecorder.record(db, form.holdingId, instrument,
-                    form.date, form.unitPriceMinor, "USER_OVERRIDE", now())
-            }
             id
         }
 
@@ -391,13 +379,15 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
         // replace imported registrar snapshots, CAS-sourced transactions or
         // automatically scheduled EMI evidence using a manual correction.
         var effectiveKind = form.kind
+        var originalEventId: String? = null
+        var originalEventDate: String? = null
         if (form.kind == "CORRECTION") {
             var target = requireNotNull(form.supersedes) { "Missing correction target" }
             val visited = mutableSetOf<String>()
             while (true) {
                 require(visited.add(target)) { "Correction lineage cycle" }
                 val prior = db.rawQuery(
-                    "SELECT event_type,supersedes_event_id,entered_by,source_ref " +
+                    "SELECT event_type,supersedes_event_id,entered_by,source_ref,trade_date " +
                         "FROM ledger_event WHERE ledger_event_id=? AND holding_id=? AND entity_id=?",
                     arrayOf(target, holding, owner)).use { cur ->
                     require(cur.moveToFirst()) { "Unverified correction target" }
@@ -409,15 +399,56 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
                         type != "SNAPSHOT_ADJUSTMENT") {
                         "Imported or automatic financial evidence cannot be manually corrected"
                     }
-                    type to parent
+                    Triple(type, parent, cur.getString(4))
                 }
                 if (prior.first != "CORRECTION") {
                     effectiveKind = prior.first
+                    originalEventId = target
+                    originalEventDate = prior.third
                     break
                 }
                 target = requireNotNull(prior.second) { "Broken correction lineage" }
             }
         } else require(form.supersedes == null) { "Non-correction cannot supersede" }
+        // An unknown opening is not transformed into a free/known-cost lot by
+        // a correction. Preserve the immutable original cost provenance and
+        // forbid a replacement form from claiming a price without new verified
+        // acquisition evidence (which requires a separate reviewed workflow).
+        val correctedOpeningCost = if (form.kind == "CORRECTION" &&
+            effectiveKind == "OPENING_BALANCE") {
+            val root = requireNotNull(originalEventId)
+            val source = db.rawQuery("SELECT value FROM setting WHERE key=?",
+                arrayOf("native.ledger.cost_source.$root")).use { cur ->
+                if (cur.moveToFirst()) cur.getString(0) else null
+            }
+            val original = db.rawQuery(
+                "SELECT unit_price_minor,total_amount_minor,notes FROM ledger_event " +
+                    "WHERE ledger_event_id=?", arrayOf(root)).use { cur ->
+                check(cur.moveToFirst())
+                Triple(cur.getLong(0), cur.getLong(1),
+                    if (cur.isNull(2)) "" else cur.getString(2))
+            }
+            val known = when (source) {
+                "KNOWN" -> true
+                "UNKNOWN" -> false
+                else -> !(original.first == 0L && original.second == 0L ||
+                    original.third.contains("unknown", ignoreCase = true))
+            }
+            if (!known) require(form.unitPriceMinor == 0L &&
+                form.amountMinor == 0L && form.chargesMinor == 0L) {
+                "Unknown acquisition cost cannot be invented by an opening correction"
+            }
+            if (known) "KNOWN" else "UNKNOWN"
+        } else null
+        // An audited valuation correction may change the reported price but
+        // not the observation date: migrating a dated observation would leave
+        // the earlier immutable price/source ledger ambiguous. Same-day
+        // replacements remain auditable and can be replayed chronologically.
+        if (form.kind == "CORRECTION" && effectiveKind == "VALUATION_UPDATE") {
+            require(settled == originalEventDate) {
+                "Valuation correction must retain the original observation date"
+            }
+        }
         when (effectiveKind) {
             "BUY", "OPENING_BALANCE", "BONUS" ->
                 require(form.quantityScaled > 0L) { "Positive units required" }
@@ -460,6 +491,24 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
             id, owner, holding, holdingName, custody, form.kind, settled,
             form.quantityScaled, form.unitPriceMinor, form.amountMinor,
             form.chargesMinor, form.supersedes, form.notes?.take(2048), now(), "owner", sourceRef))
+        if (correctedOpeningCost != null) {
+            db.execSQL("INSERT INTO setting(key,value) VALUES(?,?)",
+                arrayOf<Any>("native.ledger.cost_source.$id", correctedOpeningCost))
+        }
+        // Corrected VALUATION_UPDATE retains its original effective event kind
+        // even though its stored ledger kind is CORRECTION. Every replacement
+        // creates an append-only dated price observation, never a FIFO purchase.
+        // The outer SQLCipher transaction rolls both back if folding fails.
+        if (sourceRef == null && effectiveKind == "VALUATION_UPDATE") {
+            val instrumentId = db.rawQuery(
+                "SELECT instrument_id FROM holding WHERE holding_id=?",
+                arrayOf(holding)).use { cur ->
+                check(cur.moveToFirst())
+                cur.getString(0)
+            }
+            NativeDatedPriceRecorder.record(db, holding, instrumentId,
+                settled, form.unitPriceMinor, "USER_OVERRIDE", now())
+        }
         return id
     }
 
