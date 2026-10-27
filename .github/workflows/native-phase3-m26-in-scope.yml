@@ -1,5 +1,5 @@
 name: GrowUrDhan Phase 3 in-scope M26 family owner-lens acceptance
-# In-scope M26/G14 15-case gate: real SQLCipher-backed responsive screen, synthetic PNG contrast, D57 archive excluded.
+# Owner D57 in-scope exact-SHA M26/G14 15-case gate after 2-case offscreen-scrolling proof 40452172431.
 on:
   push:
     branches: [GUD-Android-Redevelopment]
@@ -52,6 +52,8 @@ jobs:
           grep -Fq 'color = MaterialTheme.colorScheme.onBackground' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeOwnerLensStatus.kt
           grep -q 'fun realBooksCompactLightTwoHundredPercentOwnerLensAccessible()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM26RealBooksAccessibilityInstrumentedTest.kt
           grep -q 'fun realBooksCompactDarkTwoHundredPercentOwnerLensAccessible()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM26RealBooksAccessibilityInstrumentedTest.kt
+          grep -Fq 'heightIn(min = 56.dp)' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksNavigation.kt
+          grep -q 'performScrollTo()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM26RealBooksAccessibilityInstrumentedTest.kt
           grep -q 'Owner-lens label has low rendered contrast' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM26VisualEvidenceInstrumentedTest.kt
           bash -n .github/scripts/native-phase3-m26-base-gate.sh
           # Compile and instrument the six destination owner-lens navigation coverage.
