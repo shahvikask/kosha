@@ -17,6 +17,7 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
           fetch-depth: 0
+      # Correct invalid Android-test assertion imports; retain all assertions.
       - name: Exact source and D57/protected-scope preflight
         shell: bash
         run: |
