@@ -2,6 +2,8 @@ package `in`.growurdhan.redevelopment
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -46,6 +48,7 @@ import java.time.LocalDate
  * Real SQLCipher-backed owner-lens navigation. No example balances or sample records.
  * Financial values are rendered only while the parent Activity has an admitted session.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
     imports: NativeStatementImportRepository,
@@ -108,7 +111,9 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
             Text("Private family books", style = MaterialTheme.typography.headlineSmall)
             Text("On this device only. Values are recorded holdings, not live market quotes.",
                 style = MaterialTheme.typography.bodySmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()) {
                 Button(onClick = onLock) { Text("Lock vault") }
                 OutlinedButton(onClick = onReplaceRecovery) { Text("Recovery code") }
             }
