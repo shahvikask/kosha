@@ -1,0 +1,67 @@
+name: GrowUrDhan M27 PPF SSY source-golden JVM proof
+on:
+  push:
+    branches: [GUD-Android-Redevelopment]
+    paths: [.github/workflows/native-m27-ppf-ssy-golden.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  p11-ppf-ssy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Source identity, frozen files, scope and D57 preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/GUD-Android-Redevelopment
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code c964921319bace5bbc8cb1fd4320a7ac0a865a4b "$GITHUB_SHA" -- src/ src-tauri/ scripts/ public/brand/
+          grep -Fq 'contributionThisFy' src/lib/interest.ts
+          grep -Fq 'export function interestMinor' src/lib/interest.ts
+          grep -Fq 'class NativePpfSsyProjectionTest' android-native/core/model/src/test/kotlin/in/growurdhan/model/NativePpfSsyProjectionTest.kt
+          test "$(grep -c '@Test fun' android-native/core/model/src/test/kotlin/in/growurdhan/model/NativePpfSsyProjectionTest.kt)" -eq 6
+          grep -Fq 'android:allowBackup="false"' android-native/app/src/main/AndroidManifest.xml
+          echo "$GITHUB_SHA" > m27-ppf-ssy-source-sha.txt
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Targeted Kotlin/JVM golden tests without emulator
+        working-directory: android-native
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :core:model:test --tests 'in.growurdhan.model.NativePpfSsyProjectionTest' --no-daemon --stacktrace
+      - name: Inspect original JUnit XML and enforce six non-skipped successes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          path='android-native/core/model/build/test-results/test/TEST-in.growurdhan.model.NativePpfSsyProjectionTest.xml'
+          x=ET.parse(path).getroot()
+          print({k:x.attrib.get(k) for k in ('name','tests','failures','errors','skipped')})
+          assert int(x.attrib['tests'])==6
+          assert all(int(x.attrib.get(k,'0'))==0 for k in ('failures','errors','skipped'))
+          assert len(x.findall('testcase'))==6
+          PY
+      - name: Preserve original source and six-case JUnit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-sha-m27-ppf-ssy-golden
+          path: |
+            m27-ppf-ssy-source-sha.txt
+            android-native/core/model/build/test-results/test/TEST-in.growurdhan.model.NativePpfSsyProjectionTest.xml
+            android-native/core/model/build/reports/tests/test/
+          if-no-files-found: warn
+          retention-days: 14
