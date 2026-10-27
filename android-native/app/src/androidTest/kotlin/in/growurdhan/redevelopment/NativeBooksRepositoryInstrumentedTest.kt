@@ -77,9 +77,33 @@ class NativeBooksRepositoryInstrumentedTest {
         val after = books.read(input.email)
         assertEquals(before.holdings, after.holdings)
         assertEquals(beforeHistory, books.history(input.email, holding))
-        // The actual encrypted close/reopen exercises read persistence without
-        // introducing fabricated property identity or market valuation records.
-        accounts.lock()
+        // Reject duplicate holding claims and contradictory gross valuations.
+        try {
+            books.inspectPropertyClaims(input.email, listOf(claim, claim),
+                LocalDate.parse("2025-03-01"))
+            fail("Duplicate property holding must reject")
+        } catch (expected: IllegalArgumentException) {
+            assertTrue(expected.message!!.contains("Duplicate"))
+        }
+        try {
+            books.inspectPropertyClaims(input.email,
+                listOf(claim, claim.copy(holdingId="another-holding",
+                    ownerId="another-owner", grossPropertyValueMinor=200_000L)),
+                LocalDate.parse("2025-03-01"))
+            fail("Conflicting property valuations must reject")
+        } catch (expected: IllegalArgumentException) {
+            assertTrue(expected.message!!.contains("conflict"))
+        }
+        accounts.onBackground()
+        val reopened = NativeAccountRepository(context, gate())
+        assertTrue(reopened.login(input.email, input.password))
+        val persisted = NativeBooksRepository(reopened)
+        assertEquals(before.holdings, persisted.read(input.email).holdings)
+        assertEquals(beforeHistory, persisted.history(input.email, holding))
+        assertThrows(IllegalArgumentException::class.java) {
+            persisted.inspectPropertyClaims(input.email, listOf(claim),
+                LocalDate.parse("2025-03-01"))
+        }
     }
 
     @Test fun genuineEncryptedRegistrationStoresCurrentVersionedTermsAndPrimaryOwner() {
