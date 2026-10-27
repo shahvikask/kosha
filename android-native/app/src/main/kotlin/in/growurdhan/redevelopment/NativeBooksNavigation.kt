@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -38,7 +39,7 @@ internal fun NativeBooksNavigation(activeTab: String, onNavigate: (String) -> Un
         destinations.forEach { (key, label) ->
             OutlinedButton(
                 onClick = { onNavigate(key) },
-                modifier = Modifier.testTag("books-tab-$key")
+                modifier = Modifier.heightIn(min = 48.dp).testTag("books-tab-$key")
                     .semantics { selected = activeTab == key }
             ) {
                 Text(label)
