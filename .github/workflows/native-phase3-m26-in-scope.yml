@@ -1,4 +1,5 @@
 name: GrowUrDhan Phase 3 in-scope M26 family owner-lens acceptance
+# Exact-SHA retry after fixing missing Compose enabled-state assertion imports.
 on:
   push:
     branches: [GUD-Android-Redevelopment]
