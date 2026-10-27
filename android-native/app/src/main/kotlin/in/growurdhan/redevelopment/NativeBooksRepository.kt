@@ -123,6 +123,9 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
         // property identities and owner shares before any other use.
         `in`.growurdhan.model.NativeSharedPropertyAggregation.compare(claims, asOf)
         for (claim in claims) {
+            require(Regex("[a-fA-F0-9]{64}").matches(claim.sourceDigest)) {
+                "Property source must have an exact SHA-256 digest"
+            }
             val (owner, account) = requireHoldingOwner(db, claim.holdingId)
             require(owner == claim.ownerId) {
                 "Claimed property owner does not match encrypted holding"
