@@ -19,6 +19,9 @@ internal fun NativeOwnerLensStatus(memberName: String?) {
     Text(
         text = "Viewing $scope financial records",
         style = MaterialTheme.typography.bodyMedium,
+        // Isolated composables must not inherit an unthemed black LocalContentColor.
+        // This also keeps the actual dark-mode owner scope legible.
+        color = MaterialTheme.colorScheme.onBackground,
         modifier = Modifier.testTag("owner-lens-status")
             .semantics { liveRegion = LiveRegionMode.Polite }
     )
