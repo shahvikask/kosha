@@ -765,7 +765,8 @@ internal fun EventForm(holdings: List<NativeBooksRepository.Holding>, busy: Bool
         val visited = mutableSetOf<String>()
         while (cursor.kind == "CORRECTION") {
             if (!visited.add(cursor.id)) return null
-            cursor = byId[cursor.supersedes] ?: return null
+            val previousId = cursor.supersedes ?: return null
+            cursor = byId[previousId] ?: return null
         }
         return cursor.kind
     }
