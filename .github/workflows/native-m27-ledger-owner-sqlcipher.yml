@@ -26,9 +26,11 @@ jobs:
           git diff --exit-code c34952391c72afdd18f25856d6b0ee6dbc004628 "$GITHUB_SHA" -- src/ src-tauri/ scripts/ public/brand/
           grep -Fq 'android:allowBackup="false"' android-native/app/src/main/AndroidManifest.xml
           grep -Fq 'Ledger owner does not match holding owner' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksRepository.kt
+          grep -Fq 'NativeTradeCashReview.preview' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksScreen.kt
+          grep -Fq 'Bonus must not invent a cash payment' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksRepository.kt
           grep -Fq 'SNAPSHOT_ADJUSTMENT" -> false' android-native/core/model/src/main/kotlin/in/growurdhan/model/NativeCostProvenance.kt
           test "$(grep -c '@Test fun' android-native/core/model/src/test/kotlin/in/growurdhan/model/NativeM27LedgerIntegrityGoldenTest.kt)" -eq 7
-          test "$(grep -c '@Test fun' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM27FinancialIntegrityInstrumentedTest.kt)" -eq 2
+          test "$(grep -c '@Test fun' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM27FinancialIntegrityInstrumentedTest.kt)" -eq 3
           echo "$GITHUB_SHA" > m27-owner-fifo-source-sha.txt
       - uses: actions/setup-java@v4
         with:
@@ -77,13 +79,13 @@ jobs:
             adb install -r android-native/app/build/outputs/apk/debug/app-debug.apk
             adb install -r android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell am instrument -w -r -e class in.growurdhan.redevelopment.NativeM27FinancialIntegrityInstrumentedTest in.growurdhan.redevelopment.test/androidx.test.runner.AndroidJUnitRunner | tee m27-owner-fifo-adb.txt
-            grep -Fq 'OK (2 tests)' m27-owner-fifo-adb.txt
+            grep -Fq 'OK (3 tests)' m27-owner-fifo-adb.txt
             grep -Fq 'INSTRUMENTATION_CODE: -1' m27-owner-fifo-adb.txt
       - name: Retain actual JUnit APK ADB SHA even after failure
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: exact-sha-m27-p13-p14-owner-fifo
+          name: exact-sha-m27-p13-p14-cash-negative
           path: |
             m27-owner-fifo-source-sha.txt
             m27-owner-fifo-apk-sha256.txt
