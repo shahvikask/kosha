@@ -110,7 +110,7 @@ New-chat prompt the owner pastes (replaces §17.5/17.7):
 Seed written by Claude on 2026-10-28 from repo docs. FIRST SESSION: verify B1–B3 against GitHub Actions and fix any mismatch before relying on them.
 
 ## B1 Header
-branch GUD-Android-Redevelopment · HEAD checked before P09/P10 `89b425bef7c93fba5229b0cc3b976f8b5aa844d9` · checkpoint_sha `89b425bef7c93fba5229b0cc3b976f8b5aa844d9` · accepted requirements 0/36 in-scope · formally accepted milestones: none.
+branch GUD-Android-Redevelopment · HEAD checked after P12–P14 T2 `7a31d37d26ccf72f3a8ac3bf3d56037db3f570bb` · checkpoint_sha `7a31d37d26ccf72f3a8ac3bf3d56037db3f570bb` · accepted requirements 0/36 in-scope · formally accepted milestones: none.
 State codes: ND not started · SP source partial · JV JVM green · EM emulator green · AC accepted · DF deferred (D57).
 
 ## B2 Requirement matrix (split a row when members diverge)
@@ -120,10 +120,10 @@ State codes: ND not started · SP source partial · JV JVM green · EM emulator 
 | P03, P28, P29, E05, E12 | — | DF | D57; do not build or test as base-release features |
 | P04–P05 | M24 | SP/EM | SQLCipher schema + append-only ledger tests green at older SHAs; full field parity/historic migration open |
 | P06–P08, E03, E04 | M26 | SP | owner-scoped CRUD partial; one focused G14 pass at df12285f; acceptance open |
-| P09–P10 | M27 | SP | 8-category Compose review tests authored; 15-case CI at f2d301de UNVERIFIED; per-category SQLCipher create/restart/negative + full field map open |
+| P09–P10 | M27 | SP/EM | Eight-category encrypted restart/negative and 36-key specialist mapping T2 40682410679 API35 9/9; formal acceptance open |
 | P11 | M24/M27 | SP/EM | specialist metadata, PPF/SSY non-posting, property proof tests green at 3746d928; genuine issuer/valuer roots need owner |
-| P12 | M27 | SP | detail/edit/archive/close, custom dated valuation partly done |
-| P13–P14 | M27 | SP/EM | 10 event kinds, FIFO correction; green at 511aa0ea; reconciliation UI open |
+| P12 | M27 | SP/EM | Owner-scoped detail links, edit, goal, archive/reopen and dated-price negative restart checks; 40687321312 API35; G14 matrix/OWNER acceptance open |
+| P13–P14 | M27 | SP/EM | Source-referenced snapshot read-only history/reconciliation preview and correction-picker restriction; SQLCipher source guard and correction tests 40687321312; full source reconciliation acceptance open |
 | P15 | M27 | SP/EM | filters/lazy history green at d68d884; owner-lens G14 open |
 | P16, P21–P25 | M29 | SP | goldens/engines partial (FIFO, XIRR, EMI, interest); look-through, FY tax rules, home analytics open |
 | P17–P20, E06 | M28 | SP | staging/idempotency partial; genuine CAS PDF on ARM64 unproven |
@@ -136,7 +136,7 @@ State codes: ND not started · SP source partial · JV JVM green · EM emulator 
 ## B3 Evidence ledger (copied from STATUS.md; verify before relying)
 | run_id | sha | proves | dep_paths |
 |---|---|---|---|
-| 40658862842 | dbb561dd | JVM+APK compile; API35 8/8 (specialist/P10-P11 set) | core/**, app/src/main/** |
+| 40687321312 | 19ad328874f03cf37c7ad1981815b279d7e1eb4f | T2 SUCCESS: preflight/JVM/APK/API35 12/12 touched P12/P13/P14 classes; INSTRUMENTATION_CODE -1; cache wheels SHA256 verified; artifacts summary 12816655631, APK/ADB 12815664540, JVM 12815263485; request commit 7a31d37d | NativeBooksRepository.kt, NativeBooksScreen.kt, NativeHoldingAuditHistory.kt, four changed androidTests, wheel dependencies |\n| 40686757629 | 19ad328874f03cf37c7ad1981815b279d7e1eb4f | T1 SUCCESS: JVM tests and app/androidTest Kotlin compilation; repaired Kotlin helper callback parameter ordering | same P12/P13/P14 dep_paths |\n| 40686081793 | 9d5f659dd7b591d506ff0de83efb7176204a0ddd | T1 FAILED: 3 Kotlin errors in NativeM27EventFormInstrumentedTest trailing-lambda calls after added optional argument; repaired in 19ad3288; no test assertion weakened | NativeM27EventFormInstrumentedTest.kt |\n| 40658862842 | dbb561dd | JVM+APK compile; API35 8/8 (specialist/P10-P11 set) | core/**, app/src/main/** |
 | 40659987550 | f2d301de | FAILED :app:compileDebugAndroidTestKotlin (assertDoesNotExist import / NativeAssetTaxonomy); no emulator result | core/**, app/src/main/**, specialist form test |\n| 40682410679 | 3f1a808f986c6cddfc4ef8063546e7fb3580d488 | P09/P10 T2 SUCCESS: preflight/JVM/APKs/API35 9/9 specialist metadata tests; INSTRUMENTATION_CODE -1; wheel cache audit WHEELS_CACHE_VERIFIED=4; artifacts summary 12813967375, emulator 12813149481, JVM 12813118593; request 639cdcf0 | NativeHoldingSpecialist.kt, NativeBooksRepository.kt, NativeM27SpecialistMetadataInstrumentedTest.kt, native-ci.yml |\n| 40681907139 | 3f1a808f986c6cddfc4ef8063546e7fb3580d488 | P09/P10 T1 SUCCESS: preflight, JVM compile/tests, summary; request e69d019f | NativeHoldingSpecialist.kt, specialist metadata test |\n| 40679023182 | d9fa7ae3b940945ea9701bf9579b43be26f8ce1a | P09/P10 T2: preflight+JVM PASS; Android 9 executed, 8 PASS / 1 FAIL (invalid 2025-02-30 leaked DateTimeParseException instead of IllegalArgumentException); source repair required; summary FAILED | specialist metadata, NativeHoldingSpecialist |\n| 40676871448 | fbe75e44a32d55b0ab2a39f75b485ce96c6d40ac | T2 SUCCESS all jobs, API35 16/16 specialist metadata (7) + Compose (9), INSTRUMENTATION_CODE -1; JVM 12810887959, APK+ADB 12811088202, summary 12810734932; wheel source build/cache SHA256SUMS verified; request 89b425be | native-ci.yml, wheels script, specialist tests |\n| 40675114759 | e2f98b488c4b873047e4342d4373317ce41ee4d3 | T2 source wheels cache+JVM+APK+API35 emulator; ORIGINAL ADB OK (16 tests), exit -1; WORKFLOW FAILED on overescaped success regex, not app; repair 2 pending. Request fac0c6b3 | native-ci.yml, wheels cache, specialist tests |\n| 40672732934 | ba288dbc9ceb1dd899d774ef11b50cff746d3956 | T2: pinned wheels built and SHA256SUMS verified; JVM PASS, APK compile/hash PASS, API35 boot PASS; emulator test script FAILED before execution (/bin/sh rejects pipefail), no Android tests; workflow repair 1 pending, artifact 12809099272 | native-ci.yml, wheels script |\n| 40666583685 | 5d524652ab2e48c8569479151f4b6b51de024b67 | T1 SUCCESS: preflight, JVM tests/Kotlin compile and summary; Android correctly skipped; request commit b91dd296; native-ci replacement proven at T1, T2 still unverified | native-ci.yml, core/**, app/src/main/** |\n| 40665928598 | 09c00047988b9141ad6141122eb5d0d400b977a7 | T1 preflight + JVM SUCCESS; summary FAILED due malformed shell quote; repair round 1 pending. Request commit 67f8a10a; no EMULATOR | native-ci.yml |\n| 40661694569 | 6965c40cc0b92d88647c59f9e5485c025a2c342b | SUCCESS: JVM/APK build and API35 16/16 (7 NativeM27SpecialistMetadataInstrumentedTest + 9 NativeM27SpecialistFormInstrumentedTest); prior 15 expectation was stale (6+9), new source had 7 metadata cases. Artifact 12804837207; reused only if A6 dep paths unchanged | core/**, app/src/main/**, specialist form test, gradle/** |
 | 40652687085 / 40652687166 | 3746d928 | P11 JVM compile; API35 10/10 migration/rollback | core/**, app/src/main/** |
 | 40499402394 | 511aa0ea | 169 JVM + 3 API35 (P13/P14 reconciliation) | core/**, app/src/main/** |
@@ -146,8 +146,8 @@ Expired/unusable: wheel artifact 12795467059 (run 40640334920) — replace per A
 ## B4 Work queue (top = next; re-prioritize only by owner)
 1. DONE. Prior f2d301de compile failure superseded by 40661694569 API35 16/16; unified native-ci T1 40666583685 and T2 40676871448 SUCCESS. No duplicate re-runs required.
 2. P09/P10: one-source-batch all-eight-category encrypted create→restart→negative tests and exact 36-key HoldingDetails mapping implemented; invalid date negative failure repaired. T1 40681907139 and T2 40682410679 API35 9/9 SUCCESS at 3f1a808f. State EM (tested), NOT AC; no owner/device/security signoff.
-3. P12 detail/edit/archive/close + custom dated valuation + links (one slice with 4–5). [T2]
-4. P13/P14 reconciliation + source-only SNAPSHOT_ADJUSTMENT handling. [T2, same run as 3]
+3. P12 source + tests done in P12/P13/P14 batch at 19ad3288: holding links/detail, edit/archive/reopen, dated valuation restart/negative; T1 40686757629 and T2 40687321312 API35 12/12 SUCCESS. NOT AC (G14/OWNER open).
+4. P13/P14 same batch: source-only SNAPSHOT_ADJUSTMENT visible read-only in history; excluded from correction picker; encrypted provenance checks; T2 40687321312 SUCCESS. NOT AC (full source reconciliation remains open).
 5. P15 owner-lens consistency + virtualized lists. [T2]
 6. G14 matrix for M26–M27 screens: 360dp, 200% font, light/dark, TalkBack labels; produce screenshots for owner review. [T3]
 7. M26 acceptance: P06–P08, E03/E04 negative cross-owner matrix. [T2→T3]
@@ -169,4 +169,4 @@ Gmail OAuth project/credentials; Play Billing products/test accounts; upload/sig
 - Known past failures to avoid: hard-coded test counts in workflow YAML; pinning an expired artifact id; duplicate dispatch while a run is active; treating lightweight/docs CI as Android proof.
 
 ## B7 Open risks
-Evidence is mostly tied to older SHAs; no local Gradle for the agent; legacy per-slice workflows archived after unified T1 proof (T2 still open); owner-only inputs block M32–M34; 0 formal acceptances after many sessions — the next sessions should convert PARTIAL → ACCEPTED slice by slice rather than adding breadth.
+Evidence is mostly tied to older SHAs; no local Gradle for the agent; legacy workflows archived after unified T1/T2 proof; P12–P14 focused T2 green but owner/security/G14 acceptance open; owner-only inputs block M32–M34; 0 formal acceptances after many sessions — the next sessions should convert PARTIAL → ACCEPTED slice by slice rather than adding breadth.
