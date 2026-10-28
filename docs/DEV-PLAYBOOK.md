@@ -110,7 +110,7 @@ New-chat prompt the owner pastes (replaces §17.5/17.7):
 Seed written by Claude on 2026-10-28 from repo docs. FIRST SESSION: verify B1–B3 against GitHub Actions and fix any mismatch before relying on them.
 
 ## B1 Header
-branch GUD-Android-Redevelopment · HEAD checked after M29 P22/P23/P25 emulator `f7f0916e5f9dfe7c3e641edc5ae52ae24abc422f` · checkpoint_sha `f7f0916e5f9dfe7c3e641edc5ae52ae24abc422f` · accepted requirements 0/36 in-scope · formally accepted milestones: none.
+branch GUD-Android-Redevelopment · HEAD checked after M29 exposure T1 `18b08dfc5d3e7971185f9935b94854771710c801` · checkpoint_sha `18b08dfc5d3e7971185f9935b94854771710c801` · accepted requirements 0/36 in-scope · formally accepted milestones: none.
 State codes: ND not started · SP source partial · JV JVM green · EM emulator green · AC accepted · DF deferred (D57).
 
 ## B2 Requirement matrix (split a row when members diverge)
@@ -125,7 +125,7 @@ State codes: ND not started · SP source partial · JV JVM green · EM emulator 
 | P12 | M27 | SP/EM | Owner-scoped detail links, edit, goal, archive/reopen and dated-price negative restart checks; 40687321312 API35; G14 matrix/OWNER acceptance open |
 | P13–P14 | M27 | SP/EM | Source-referenced snapshot read-only history/reconciliation preview and correction-picker restriction; SQLCipher source guard and correction tests 40687321312; full source reconciliation acceptance open |
 | P15 | M27 | SP/EM | Owner-scoped filtered/sorted bounded lazy holdings with stable IDs and history, account links; 360dp/200%-font dark API35 3/3 at c3f534b4; full G14/OWNER acceptance open |
-| P16, P21, P24 | M29 | SP/JV | FIFO and signed return source goldens, explicit reviewed FMV helper; T1 40748714360 PASS; full financial/tax acceptance open |
+| P16, P21, P24 | M29 | SP/JV | FIFO, reviewed FMV, source returns and strict owner-scoped exact hybrid exposure splits; T1 40748714360 and 40757210296 PASS; P24 persistence/UI and complete financial/tax acceptance open |
 | P22–P23, P25 | M29 | SP/EM | Interest coupon and EMI due-date/one-post goldens; owner-scoped Home health/unknown-cost/stale-price indicators and G14 tests; T1 40750235052 SUCCESS, T2 40751028900 API35 6/6; published rates, full analytics, owner acceptance open |
 | P17–P20, E06 | M28 | SP | staging/idempotency partial; genuine CAS PDF on ARM64 unproven |
 | P26–P27, E10 | M30 | SP | AMFI NAV only; NSE/BSE, provenance UX open |
@@ -137,6 +137,7 @@ State codes: ND not started · SP source partial · JV JVM green · EM emulator 
 ## B3 Evidence ledger (copied from STATUS.md; verify before relying)
 | run_id | sha | proves | dep_paths |
 |---|---|---|---|
+| 40757210296 | 7acd13f3d7fa10d6fb258bed53cac3fda78566e5 | M29 P24 lookthrough T1 SUCCESS: source apportion exact 10000bp, largest-slice remainder, unknown price exclusion, estimated value label, owner isolation and invalid split negatives; :core:model:test, app/androidTest Kotlin PASS, 4 cached wheels SHA256; JVM artifact 12846747118, summary 12847840029; request 18b08dfc; Android skipped expected T1 | NativeExposureAllocation.kt, NativePortfolioMathTest.kt, core/model, app Kotlin deps | 
 | 40751028900 | 5a9a5f4ee9e6aebe22b7affc5459027971342f53 | M29 P22/P23/P25 T2 SUCCESS at source SHA: preflight/JVM/APK/API35 6/6, ADB exit -1, wheels cache SHA256 4; artifacts emulator 12845106225, summary 12844887246, JVM 12844580985; request f7f0916e | NativeBooksHomeHealth.kt, NativeBooksScreen.kt, NativeM26RealBooksAccessibilityInstrumentedTest.kt, NativeM27HoldingFilterInstrumentedTest.kt, app/gradle | 
 | 40750235052 | 5a9a5f4ee9e6aebe22b7affc5459027971342f53 | M29 P22/P23/P25 T1 SUCCESS preflight/JVM/app/androidTest compile and summary; artifacts JVM 12842764389, summary 12843588215; request f2bec88a | NativeEmiPlannerTest.kt, NativeInterestPayoutPlannerTest.kt, Home health and related Kotlin | 
 | 40748714360 | 34bbf6330b4d6f531202875b67dce46343ad316d | M29 T1 SUCCESS: five source-golden JVM cases added, app Kotlin compilation PASS, SHA256 wheel check 4; JVM artifact 12841324668 and summary 12843216433; request 82d12eab | NativeTaxLotTrace, NativeMoneyWeightedReturn, model JVM tests |
@@ -179,7 +180,7 @@ Expired/unusable: wheel artifact 12795467059 (run 40640334920) — replace per A
 6. G14 synthetic M26–M27 screenshot slice: source/T1/T2 done at 2445eb76. T2 40696534614 API35 10/10; 8 PNGs + hashes, 360/412/840dp light/dark and 200% font. NOT AC: owner must review screenshots, real TalkBack/focus/contrast across remaining states and milestone T3 still open; no new CI for owner-only approval.
 7. M26 P06–P08/E03/E04 negative cross-owner matrix: source 752ee756, focused repair b38de8be; T1 40705038884 PASS and targeted API35 T2 40705791566 3/3 PASS. Encrypted cross-owner custody/goal rollback, minor/guardian/HUF and primary identity restart verified. NOT AC: broader navigation/G14 T3, physical device, AppSec and owner acceptance remain open.
 8. M25 P01/P02 source/JVM/EMULATOR negative/interruption batch completed at 6f5cb3c5: re-admission before vault creation, invalid identity/Terms no-file, duplicate enrollment no-overwrite, re-consent SQLCipher restart, recovery replacement and one-use. T1 40736723667 SUCCESS; T2 40737480182 API35 15/15 SUCCESS. NOT AC: physical device/actual Keyguard interruption, AppSec, OWNER acceptance remain blocked.
-9. M29 PARTIAL: P16/P21/P24 FIFO/FMV/XIRR source T1 40748714360 PASS at 34bbf633; P22/P23/P25 coupon/EMI/owner-scoped Home source 5a9a5f4e T1 40750235052 + API35 T2 40751028900 6/6 PASS. Next: remaining P16/P21/P24 owner-scoped look-through/analytics/tax report; no unverified tax rates. NOT AC; owner/security/release outstanding.
+9. M29 PARTIAL: 34bbf633 FIFO/FMV/returns goldens T1 40748714360 PASS; 5a9a5f4e coupon/EMI/Home T1 40750235052 + T2 40751028900 6/6 PASS; 7acd13f3 exact reviewed/estimated hybrid lookthrough and owner-lens JVM T1 40757210296 PASS. Next: connect reviewed splits and full household financial/tax reports; no invented prices/tax rates, no claim of M29 AC. If lacking verified source/year/rates, continue B4 item 10 without faking compliance.
 10. M28 synthetic CAS contract tests; genuine ARM64 PDF = BLOCKED (owner sample/device).
 11. M30 NSE/BSE adapters + provenance/stale UX; mock HTTP tests.
 12. M31 settings/diagnostics/accessibility/Hindi onboarding/dossier export warnings.
