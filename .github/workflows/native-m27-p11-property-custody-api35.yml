@@ -1,4 +1,4 @@
-name: GrowUrDhan M27 P11 property custody negative SQLCipher API35
+name: GrowUrDhan M27 P11 signed property proof SQLCipher API35
 on:
   push:
     branches: [GUD-Android-Redevelopment]
@@ -25,9 +25,9 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           git diff --exit-code 89b75c53cd042c32acde6198376e2af76b135d90 "$GITHUB_SHA" -- src/ src-tauri/ scripts/ public/brand/
           grep -Fq 'android:allowBackup="false"' android-native/app/src/main/AndroidManifest.xml
-          for method in propertyPreviewFailsClosedWithoutAuthenticatedRegistryAndValuation directPropertyClaimWithoutOwnerCustodyRefusesBeforeSourceLookup listedReitCannotBeMisrepresentedAsRegisteredRealProperty; do
-            grep -Fq "@Test fun $method()" android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeBooksRepositoryInstrumentedTest.kt
-          done
+          test "$(grep -c '@Test fun' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativePropertyProofRepositoryInstrumentedTest.kt)" -eq 4
+          grep -Fq 'val productionRoots = TrustRoots(emptyMap(), emptyMap())' android-native/core/model/src/main/kotlin/in/growurdhan/model/NativePropertySignedEvidence.kt
+          grep -Fq "Immutable property proof" android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativePropertyProofRepository.kt
           echo "$GITHUB_SHA" > m27-property-custody-source-sha.txt
       - uses: actions/setup-java@v4
         with:
@@ -58,7 +58,7 @@ jobs:
           sha256sum android-native/app/build/outputs/apk/debug/app-debug.apk android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk > m27-property-custody-apk-sha256.txt
       - name: Allow Android emulator acceleration
         run: if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
-      - name: Three real API35 SQLCipher property rejection and encrypted restart tests
+      - name: Four synthetic-signer API35 SQLCipher positive negative and encrypted restart proofs
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -75,14 +75,14 @@ jobs:
             set -eu
             adb install -r android-native/app/build/outputs/apk/debug/app-debug.apk
             adb install -r android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-            adb shell am instrument -w -r -e class 'in.growurdhan.redevelopment.NativeBooksRepositoryInstrumentedTest#propertyPreviewFailsClosedWithoutAuthenticatedRegistryAndValuation,in.growurdhan.redevelopment.NativeBooksRepositoryInstrumentedTest#directPropertyClaimWithoutOwnerCustodyRefusesBeforeSourceLookup,in.growurdhan.redevelopment.NativeBooksRepositoryInstrumentedTest#listedReitCannotBeMisrepresentedAsRegisteredRealProperty' in.growurdhan.redevelopment.test/androidx.test.runner.AndroidJUnitRunner | tee m27-property-custody-adb.txt
-            grep -Fq 'OK (3 tests)' m27-property-custody-adb.txt
+            adb shell am instrument -w -r -e class in.growurdhan.redevelopment.NativePropertyProofRepositoryInstrumentedTest in.growurdhan.redevelopment.test/androidx.test.runner.AndroidJUnitRunner | tee m27-property-custody-adb.txt
+            grep -Fq 'OK (4 tests)' m27-property-custody-adb.txt
             grep -Fq 'INSTRUMENTATION_CODE: -1' m27-property-custody-adb.txt
       - name: Preserve original JUnit ADB APK and exact-SHA evidence even if failing
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: exact-sha-m27-property-custody-negative-api35
+          name: exact-sha-m27-property-signed-sqlcipher-api35
           path: |
             m27-property-custody-source-sha.txt
             m27-property-custody-apk-sha256.txt
