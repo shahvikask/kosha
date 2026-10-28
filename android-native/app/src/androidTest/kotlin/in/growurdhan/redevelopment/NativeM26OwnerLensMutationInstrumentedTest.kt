@@ -14,7 +14,7 @@ import `in`.growurdhan.model.NativeDeviceAdmission
 import `in`.growurdhan.model.NativeRegistrationProof
 import java.io.File
 import java.util.UUID
-import org.junit.Assert.assertTrue
+import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 
@@ -95,5 +95,141 @@ class NativeM26OwnerLensMutationInstrumentedTest {
         compose.onNodeWithText("Records").performClick()
         compose.onNodeWithText("Append money event").assertIsNotEnabled()
         compose.onNodeWithText("Save manual price and source date").assertIsNotEnabled()
+    }
+
+    private data class BooksFixture(val context: Context,
+        val accounts: NativeAccountRepository, val books: NativeBooksRepository)
+
+    private fun admittedBooks(): BooksFixture {
+        val context = sandbox()
+        val gate = NativeDeviceAdmission().also {
+            it.onStart()
+            check(it.begin() && it.complete(true))
+        }
+        val accounts = NativeAccountRepository(context, gate)
+        val credentials = NativeCredentials.Enrollment(
+            "owner@example.org", "Owner", "Family", "Strong!Pass123",
+            "school", "First School", "pet", "First Pet")
+        accounts.enrollVerified(credentials,
+            NativeRegistrationProof.Identity("ABCDE1234F", "1990-06-12"),
+            NativeRegistrationProof.Consent(NativeRegistrationProof.TERMS_VERSION,
+                NativeRegistrationProof.TERMS_TEXT_ID, "2026-10-28T10:00:00Z", true))
+        assertTrue(accounts.login(credentials.email, credentials.password))
+        return BooksFixture(context, accounts, NativeBooksRepository(accounts))
+    }
+
+    @Test fun crossOwnerCustodyAndGoalMutationsRollbackThroughEncryptedRestart() {
+        val fixture = admittedBooks()
+        val email = "owner@example.org"
+        val books = fixture.books
+        val owner = books.read(email).people.single().id
+        val member = books.createPerson(email,
+            NativeBooksRepository.NewPerson("Synthetic Spouse", "Spouse"))
+        val ownedCustody = books.createCustody(email, NativeBooksRepository.NewCustody(
+            owner, "DEMAT", "Synthetic owner broker", "****1234",
+            nominee = "Synthetic primary nominee"))
+        val memberCustody = books.createCustody(email, NativeBooksRepository.NewCustody(
+            member, "DEMAT", "Synthetic member broker", "****9876",
+            nominee = "Synthetic member nominee"))
+        val ownerGoal = books.createGoal(email, owner, "Owner Goal", 200_000L,
+            "2032-01-01", "HIGH")
+        val memberGoal = books.createGoal(email, member, "Member Goal", 300_000L,
+            "2032-01-01", "HIGH")
+        val memberHolding = books.createHolding(email,
+            NativeBooksRepository.NewHolding(member, memberCustody,
+                "Synthetic member stock", "EQUITY", "Large cap",
+                0L, 0L, "2024-01-01", false))
+        val ownerHolding = books.createHolding(email,
+            NativeBooksRepository.NewHolding(owner, ownedCustody,
+                "Synthetic owner stock", "EQUITY", "Large cap",
+                0L, 0L, "2024-01-01", false))
+        val before = books.read(email)
+        assertThrows(IllegalArgumentException::class.java) {
+            books.createHolding(email, NativeBooksRepository.NewHolding(
+                member, ownedCustody, "Foreign linked stock", "EQUITY", "Large cap",
+                0L, 0L, "2024-01-01", false))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            books.updateHoldingMetadata(email, memberHolding, ownedCustody,
+                "Illicit owner transfer", null, null)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            books.updateCustody(email, ownedCustody, NativeBooksRepository.NewCustody(
+                member, "DEMAT", "Reassigned custodian", nominee = "Changed nominee"))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            books.assignGoal(email, memberHolding, ownerGoal)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            books.assignGoal(email, ownerHolding, memberGoal)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            books.updateGoal(email, ownerGoal, member, "Reassigned goal",
+                200_000L, "2032-01-01", "HIGH")
+        }
+        val after = books.read(email)
+        assertEquals(before.people, after.people)
+        assertEquals(before.custody, after.custody)
+        assertEquals(before.goals, after.goals)
+        assertEquals(before.holdings, after.holdings)
+        assertTrue(books.history(email, memberHolding).isEmpty())
+        fixture.accounts.onBackground()
+        val gate = NativeDeviceAdmission().also {
+            it.onStart(); check(it.begin() && it.complete(true))
+        }
+        val reopenedAccount = NativeAccountRepository(fixture.context, gate)
+        assertTrue(reopenedAccount.login(email, "Strong!Pass123"))
+        val reopened = NativeBooksRepository(reopenedAccount).read(email)
+        assertEquals(after.people, reopened.people)
+        assertEquals(after.custody, reopened.custody)
+        assertEquals(after.goals, reopened.goals)
+        assertEquals(after.holdings, reopened.holdings)
+        assertNull(reopened.holdings.single { it.id == memberHolding }.goalId)
+        assertEquals("Synthetic primary nominee",
+            reopened.custody.single { it.id == ownedCustody }.nominee)
+    }
+
+    @Test fun primaryMinorGuardianAndHufReclassificationFailClosedAfterRestart() {
+        val fixture = admittedBooks()
+        val email = "owner@example.org"
+        val books = fixture.books
+        val primary = books.read(email).people.single().id
+        val guardian = books.createPerson(email,
+            NativeBooksRepository.NewPerson("Synthetic Adult", "Parent"))
+        val huf = books.createPerson(email,
+            NativeBooksRepository.NewPerson("Synthetic HUF", "HUF", kind = "HUF"))
+        val child = books.createPerson(email, NativeBooksRepository.NewPerson(
+            "Synthetic Child", "Child", dob = "2017-04-05", guardianId = guardian))
+        val before = books.read(email)
+        assertThrows(IllegalArgumentException::class.java) {
+            books.createPerson(email, NativeBooksRepository.NewPerson(
+                "Unrepresented child", "Child", dob = "2017-04-05"))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            books.updatePerson(email, child, NativeBooksRepository.NewPerson(
+                "Synthetic Child", "Child", dob = "2017-04-05", guardianId = huf))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            books.archivePerson(email, guardian)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            books.archivePerson(email, primary)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            books.updatePerson(email, primary,
+                NativeBooksRepository.NewPerson("Owner Family", "HUF", kind = "HUF"))
+        }
+        assertEquals(before.people, books.read(email).people)
+        fixture.accounts.onBackground()
+        val gate = NativeDeviceAdmission().also {
+            it.onStart(); check(it.begin() && it.complete(true))
+        }
+        val reopenedAccount = NativeAccountRepository(fixture.context, gate)
+        assertTrue(reopenedAccount.login(email, "Strong!Pass123"))
+        val loaded = NativeBooksRepository(reopenedAccount).read(email)
+        assertEquals(before.people, loaded.people)
+        assertTrue(loaded.people.single { it.id == guardian }.active)
+        assertTrue(loaded.people.single { it.id == primary }.isPrimary)
+        assertTrue(loaded.people.single { it.id == child }.active)
     }
 }
