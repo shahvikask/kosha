@@ -28,6 +28,11 @@ internal class NativePropertyProofRepository(
      * canonical v9 tables are untouched; this check does not rebuild a damaged
      * table or recreate missing immutable triggers.
      */
+    // Match the complete stored trigger body, not strings in comments: a no-op
+    // trigger can contain the literal RAISE(ABORT) inside a SQL comment.
+    private fun canonicalDdl(sql: String): String = sql.trim()
+        .replace(Regex("\\s+"), " ").uppercase(java.util.Locale.ROOT)
+
     private fun requireProofSchema(db: SQLiteDatabase) {
         require(installed(db)) { "Missing encrypted property proof table" }
         db.rawQuery("PRAGMA user_version", null).use {
@@ -70,9 +75,13 @@ internal class NativePropertyProofRepository(
             db.rawQuery("SELECT sql FROM sqlite_master WHERE type='trigger' AND name=?",
                 arrayOf(trigger)).use { cur ->
                 require(cur.moveToFirst()) { "Missing immutable property proof trigger" }
-                val ddl = cur.getString(0).uppercase()
-                require(ddl.contains("BEFORE $operation ON NATIVE_P11_PROPERTY_PROOF") &&
-                    ddl.contains("RAISE(ABORT")) {
+                val ddl = canonicalDdl(cur.getString(0))
+                val expected = canonicalDdl("CREATE TRIGGER $trigger BEFORE $operation " +
+                    "ON $table BEGIN SELECT RAISE(ABORT,'Immutable property proof'); END")
+                // SQLite normally strips IF NOT EXISTS when persisting the DDL.
+                val expectedWithIfNotExists = expected.replace("CREATE TRIGGER ",
+                    "CREATE TRIGGER IF NOT EXISTS ")
+                require(ddl == expected || ddl == expectedWithIfNotExists) {
                     "Modified immutable property proof trigger"
                 }
             }

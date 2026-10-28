@@ -199,6 +199,46 @@ class NativePropertyProofRepositoryInstrumentedTest {
         assertTrue(books.history(input.email, second).isEmpty())
     }
 
+    @Test fun commentedAbortInNoOpTriggerFailsClosedWithoutRepair() {
+        val (accounts, books) = create(sandbox())
+        val owner = books.read(input.email).people.single().id
+        val joint = books.createPerson(input.email,
+            NativeBooksRepository.NewPerson("Synthetic Joint","Joint"))
+        val (first, firstCustody) = holding(books, owner)
+        val (second, secondCustody) = holding(books, joint)
+        val repo = NativePropertyProofRepository(accounts, roots)
+        repo.register(input.email, proof(first, owner, firstCustody, "60"), date)
+        val holdingsBefore = books.read(input.email).holdings
+        accounts.withUnlockedVault(input.email) { db ->
+            db.execSQL("DROP TRIGGER native_p11_proof_no_update")
+            // The prior substring check saw RAISE(ABORT) in this comment and
+            // falsely accepted a trigger which cannot abort an UPDATE.
+            db.execSQL("CREATE TRIGGER native_p11_proof_no_update BEFORE UPDATE " +
+                "ON native_p11_property_proof BEGIN " +
+                "SELECT 1 /* RAISE(ABORT,'Immutable property proof') */; END")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            repo.preview(input.email, date)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            repo.register(input.email, proof(second, joint, secondCustody, "40"), date)
+        }
+        accounts.withUnlockedVault(input.email) { db ->
+            db.rawQuery("SELECT count(*) FROM native_p11_property_proof",null).use {
+                assertTrue(it.moveToFirst())
+                assertEquals(1L,it.getLong(0))
+            }
+            db.rawQuery("SELECT sql FROM sqlite_master WHERE name=?",
+                arrayOf("native_p11_proof_no_update")).use {
+                assertTrue(it.moveToFirst())
+                assertTrue(it.getString(0).contains("SELECT 1 /* RAISE(ABORT"))
+            }
+        }
+        assertEquals(holdingsBefore, books.read(input.email).holdings)
+        assertTrue(books.history(input.email, first).isEmpty())
+        assertTrue(books.history(input.email, second).isEmpty())
+    }
+
     @Test fun mismatchedDigestStaleProofAndUntrustedSignerDoNotCreateTable() {
         val (accounts,books)=create(sandbox())
         val owner=books.read(input.email).people.single().id
