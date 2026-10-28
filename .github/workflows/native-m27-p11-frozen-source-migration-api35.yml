@@ -1,0 +1,96 @@
+name: GrowUrDhan M27 P11 frozen source v1/v8 encrypted migration API35
+on:
+  push:
+    branches: [GUD-Android-Redevelopment]
+    paths: [.github/workflows/native-m27-p11-frozen-source-migration-api35.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  historical-source-migration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Exact SHA, frozen sources, D57 and negative test preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/GUD-Android-Redevelopment
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code 89b75c53cd042c32acde6198376e2af76b135d90 "$GITHUB_SHA" -- src/ src-tauri/ scripts/ public/brand/
+          grep -Fq 'android:allowBackup="false"' android-native/app/src/main/AndroidManifest.xml
+          test "$(grep -c '@Test fun' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeHistoricalSourceMigrationInstrumentedTest.kt)" -eq 3
+          grep -Fq 'val productionRoots = TrustRoots(emptyMap(), emptyMap())' android-native/core/model/src/main/kotlin/in/growurdhan/model/NativePropertySignedEvidence.kt
+          grep -Fq 'Source blob: 50b896eb1b017b9ec6426e108c9e13a5ae10f002' android-native/app/src/androidTest/assets/p11-frozen-source-v1.sql
+          grep -Fq 'implementation("org.bouncycastle:bcprov-jdk18on:1.86")' android-native/core/model/build.gradle.kts
+          grep -Fq 'migrateInsideTransaction(db, version)' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/EncryptedVaultStore.kt
+          grep -Fq 'HistoricalMigrationWitness.capture(db)' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/EncryptedVaultStore.kt
+          echo "$GITHUB_SHA" > m27-historical-source-source-sha.txt
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Reuse pinned strict Android ABI Python wheels
+        uses: actions/download-artifact@v4
+        with:
+          repository: shahvikask/kosha
+          run-id: 40640334920
+          github-token: ${{ github.token }}
+          name: source-pinned-android-python-wheels
+          path: android-native/app/python-wheels
+      - name: Verify immutable wheel hashes and assemble debug/test APKs
+        working-directory: android-native
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd app/python-wheels && sha256sum --check SHA256SUMS)
+          chmod +x gradlew
+          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --stacktrace
+      - name: Record original app/test APK SHA-256
+        run: |
+          sha256sum android-native/app/build/outputs/apk/debug/app-debug.apk android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk > m27-historical-source-apk-sha256.txt
+      - name: Allow Android emulator acceleration
+        run: if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - name: Three source-derived v1/v8 SQLCipher upgrade and atomic rollback tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 3072M
+          heap-size: 512M
+          disable-animations: true
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: |
+            set -eu
+            adb install -r android-native/app/build/outputs/apk/debug/app-debug.apk
+            adb install -r android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            adb shell am instrument -w -r -e class in.growurdhan.redevelopment.NativeHistoricalSourceMigrationInstrumentedTest in.growurdhan.redevelopment.test/androidx.test.runner.AndroidJUnitRunner | tee m27-historical-source-adb.txt
+            grep -Fq 'OK (3 tests)' m27-historical-source-adb.txt
+            grep -Fq 'INSTRUMENTATION_CODE: -1' m27-historical-source-adb.txt
+      - name: Preserve original JUnit ADB APK and exact-SHA evidence even if failing
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-sha-m27-historical-source-migration-api35
+          path: |
+            m27-historical-source-source-sha.txt
+            m27-historical-source-apk-sha256.txt
+            m27-historical-source-adb.txt
+            android-native/app/build/outputs/apk/debug/app-debug.apk
+            android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          if-no-files-found: warn
+          retention-days: 14
