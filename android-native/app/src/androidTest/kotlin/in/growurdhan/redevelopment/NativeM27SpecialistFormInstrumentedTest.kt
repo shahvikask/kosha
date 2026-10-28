@@ -43,6 +43,10 @@ class NativeM27SpecialistFormInstrumentedTest {
         compose.onNodeWithTag("m27-holding-units").performScrollTo().performTextReplacement("0")
         compose.onNodeWithTag("m27-review-holding").performScrollTo().performClick()
         compose.onNodeWithText("Confirm holding before saving").assertExists()
+        // The owner must see exactly the reviewed specialist values before committing.
+        compose.onNodeWithText("MF plan: DIRECT").assertExists()
+        compose.onNodeWithText("Custody: No custody account").assertExists()
+        compose.onNodeWithText("Issuer / institution: Not specified").assertExists()
         compose.onNodeWithTag("m27-confirm-holding").performScrollTo().performClick()
         assertNotNull(saved)
         assertEquals("MUTUAL_FUND", saved!!.category)
