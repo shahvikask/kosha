@@ -259,9 +259,9 @@ class NativePropertyProofRepositoryInstrumentedTest {
             assertTrue(ddl.contains("UNIQUE(property_id, entity_id)"))
             val weakened = ddl
                 .replace("CHECK(gross_value_minor>0)",
-                    "/* CHECK(gross_value_minor>0) */")
+                    "CHECK(1=1) /* CHECK(gross_value_minor>0) */")
                 .replace("UNIQUE(property_id, entity_id)",
-                    "/* UNIQUE(property_id, entity_id) */")
+                    "CHECK(1=1) /* UNIQUE(property_id, entity_id) */")
             assertNotEquals(ddl, weakened)
             db.execSQL("DROP TABLE native_p11_property_proof")
             db.execSQL(weakened)
