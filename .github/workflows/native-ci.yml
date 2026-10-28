@@ -1,0 +1,211 @@
+name: GrowUrDhan unified native CI
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Exact source commit SHA
+        type: string
+        required: true
+      tier:
+        description: T1 JVM/compile, T2 targeted emulator, T3 milestone
+        type: choice
+        required: true
+        options: [T1, T2, T3]
+      tests:
+        description: Comma-separated fully qualified instrumentation classes
+        type: string
+        required: false
+        default: ''
+      api:
+        description: Android API level
+        type: string
+        required: false
+        default: '35'
+  push:
+    branches: [GUD-Android-Redevelopment]
+    paths: [.ci/request.json]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: native-ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      tier: ${{ steps.guard.outputs.tier }}
+      tests: ${{ steps.guard.outputs.tests }}
+      api: ${{ steps.guard.outputs.api }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - id: guard
+        name: Fail-closed SHA, branch, request and D57 guards
+        shell: bash
+        env:
+          INPUT_SHA: ${{ inputs.sha }}
+          INPUT_TIER: ${{ inputs.tier }}
+          INPUT_TESTS: ${{ inputs.tests }}
+          INPUT_API: ${{ inputs.api }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/GUD-Android-Redevelopment
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          if [[ "$GITHUB_EVENT_NAME" = push ]]; then
+            target=$(python3 -c 'import json;print(json.load(open(".ci/request.json"))["sha"])')
+            tier=$(python3 -c 'import json;print(json.load(open(".ci/request.json"))["tier"])')
+            tests=$(python3 -c 'import json;print(json.load(open(".ci/request.json")).get("tests",""))')
+            api=$(python3 -c 'import json;print(json.load(open(".ci/request.json")).get("api",35))')
+          else
+            target="$INPUT_SHA";tier="$INPUT_TIER";tests="$INPUT_TESTS";api="${INPUT_API:-35}"
+          fi
+          test "$target" = "$GITHUB_SHA"
+          case "$tier" in T1|T2|T3) ;; *) exit 1;; esac
+          [[ "$api" =~ ^[0-9]+$ ]]
+          if [[ "$tier" != T1 ]]; then test -n "$tests" || test "$tier" = T3; fi
+          git diff --exit-code 272a271508d28b5bbcaf724def8e7eb568b38b56 HEAD -- src/ src-tauri/ scripts/ public/brand/
+          grep -Fq 'android:allowBackup="false"' android-native/app/src/main/AndroidManifest.xml
+          echo "JVM_TESTS_DISCOVERED=$(grep -r -E '@Test([ (]|$)' android-native/core/*/src/test --include='*.kt' | wc -l)"
+          echo "ANDROID_TESTS_DISCOVERED=$(grep -r -E '@Test([ (]|$)' android-native/app/src/androidTest --include='*.kt' | wc -l)"
+          echo "tier=$tier" >> "$GITHUB_OUTPUT"
+          echo "tests=$tests" >> "$GITHUB_OUTPUT"
+          echo "api=$api" >> "$GITHUB_OUTPUT"
+  jvm:
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 85
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/cache@v4
+        with:
+          path: android-native/app/python-wheels
+          key: native-python-wheels-${{ hashFiles('android-native/**/requirements*.txt') }}-v1
+      - name: Obtain source-pinned Android wheels (no expired artifact ID)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f android-native/app/python-wheels/SHA256SUMS ]; then
+            gh run list --workflow native-m27-p11-wheel-refresh.yml --branch GUD-Android-Redevelopment --status success --limit 20 --json databaseId -q '.[].databaseId' | while read -r run; do
+              gh run download "$run" -n source-pinned-android-python-wheels -D android-native/app/python-wheels && break || true
+            done
+          fi
+          (cd android-native/app/python-wheels && sha256sum --check SHA256SUMS)
+      - name: JVM tests and Kotlin compilation
+        working-directory: android-native
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :core:model:test :core:database:test :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin --build-cache --no-daemon -x lint
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-ci-jvm-${{ github.run_id }}
+          path: android-native/core/*/build/test-results/test/TEST-*.xml
+          if-no-files-found: warn
+  android:
+    if: needs.preflight.outputs.tier != 'T1'
+    needs: [preflight, jvm]
+    runs-on: ubuntu-latest
+    timeout-minutes: 85
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/cache@v4
+        with:
+          path: android-native/app/python-wheels
+          key: native-python-wheels-${{ hashFiles('android-native/**/requirements*.txt') }}-v1
+      - name: Prepare verified wheels
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f android-native/app/python-wheels/SHA256SUMS ]; then
+            gh run list --workflow native-m27-p11-wheel-refresh.yml --branch GUD-Android-Redevelopment --status success --limit 20 --json databaseId -q '.[].databaseId' | while read -r run; do
+              gh run download "$run" -n source-pinned-android-python-wheels -D android-native/app/python-wheels && break || true
+            done
+          fi
+          (cd android-native/app/python-wheels && sha256sum --check SHA256SUMS)
+      - name: Compile original APKs and hashes
+        working-directory: android-native
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --build-cache --no-daemon -x lint
+          sha256sum app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk | tee ../native-apks.sha256
+      - name: Enable KVM
+        run: if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ needs.preflight.outputs.api }}
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            set -euo pipefail
+            adb install -r android-native/app/build/outputs/apk/debug/app-debug.apk
+            adb install -r android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            adb shell am instrument -w -r -e class "${{ needs.preflight.outputs.tests }}" in.growurdhan.redevelopment.test/androidx.test.runner.AndroidJUnitRunner | tee native-adb.txt
+            grep -Fq 'INSTRUMENTATION_CODE: -1' native-adb.txt
+            ! grep -Eq 'FAILURES!!!|INSTRUMENTATION_CODE: 0' native-adb.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-ci-emulator-${{ github.run_id }}
+          path: |
+            native-apks.sha256
+            native-adb.txt
+            android-native/app/build/outputs/apk/debug/*.apk
+            android-native/app/build/outputs/apk/androidTest/debug/*.apk
+          if-no-files-found: warn
+  summary:
+    if: always()
+    needs: [preflight, jvm, android]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mandatory gates and machine-readable outcome
+        env:
+          PREFLIGHT: ${{ needs.preflight.result }}
+          JVM: ${{ needs.jvm.result }}
+          ANDROID: ${{ needs.android.result }}
+          TIER: ${{ needs.preflight.outputs.tier }}
+          TESTS: ${{ needs.preflight.outputs.tests }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '{"sha":"%s","tier":"%s","tests":"%s","jvm_pass":%s,"android_pass":%s,"apk_sha256":null,"run_id":"%s"}\n' "$GITHUB_SHA" "$TIER" "$TESTS" "$([[ "$JVM" == success ]] && echo true || echo false)" "$([[ "$ANDROID" == success ]] && echo true || echo false)" "$GITHUB_RUN_ID" | tee native-summary.json
+          test "$PREFLIGHT" = success && test "$JVM" = success
+          if [[ "$TIER" != T1 ]]; then test "$ANDROID" = success; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-ci-summary-${{ github.run_id }}
+          path: native-summary.json

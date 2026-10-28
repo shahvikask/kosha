@@ -1,3 +1,4 @@
+Process: follow docs/DEV-PLAYBOOK.md
 # AGENTS.md — GrowUrDhan native redevelopment
 
 **Re-read this file before every prompt, code change, test, troubleshooting session, and GitHub Actions decision.** Chat memory is not a source of requirements.
