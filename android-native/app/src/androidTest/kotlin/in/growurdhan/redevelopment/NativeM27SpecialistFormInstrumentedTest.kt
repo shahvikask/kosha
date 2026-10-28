@@ -143,5 +143,11 @@ class NativeM27SpecialistFormInstrumentedTest {
         compose.onNodeWithText("Enter a valid acquisition date (YYYY-MM-DD).").assertExists()
         compose.onNodeWithTag("m27-confirm-holding").assertDoesNotExist()
         assertEquals(null, saved)
+        compose.onNodeWithTag("m27-holding-date").performScrollTo()
+            .performTextReplacement("2024-02-29")
+        compose.onNodeWithTag("m27-review-holding").performScrollTo().performClick()
+        compose.onNodeWithTag("m27-confirm-holding").performScrollTo().performClick()
+        assertNotNull(saved)
+        assertEquals("2024-02-29", saved!!.date)
     }
 }
