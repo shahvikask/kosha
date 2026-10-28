@@ -110,13 +110,13 @@ New-chat prompt the owner pastes (replaces §17.5/17.7):
 Seed written by Claude on 2026-10-28 from repo docs. FIRST SESSION: verify B1–B3 against GitHub Actions and fix any mismatch before relying on them.
 
 ## B1 Header
-branch GUD-Android-Redevelopment · HEAD checked after M26 cross-owner negative T2 `ca48b86148ade199aae918b02bcbf52d32284fd1` · checkpoint_sha `ca48b86148ade199aae918b02bcbf52d32284fd1` · accepted requirements 0/36 in-scope · formally accepted milestones: none.
+branch GUD-Android-Redevelopment · HEAD checked after M25 P01/P02 T2 `d2829701c175d33f6e82a3402a8f7d6ed8859a8f` · checkpoint_sha `d2829701c175d33f6e82a3402a8f7d6ed8859a8f` · accepted requirements 0/36 in-scope · formally accepted milestones: none.
 State codes: ND not started · SP source partial · JV JVM green · EM emulator green · AC accepted · DF deferred (D57).
 
 ## B2 Requirement matrix (split a row when members diverge)
 | IDs | Milestone | State | Notes / next gap |
 |---|---|---|---|
-| P01–P02 | M25 | SP | offline recovery code, lock/rotation partly done; real-device/AppSec open |
+| P01–P02 | M25 | SP/EM | Enrollment admission recheck before vault creation; PAN/DOB/Terms negative no-file, duplicate registration no-overwrite, Terms re-consent, one-time recovery replacement, restart/clock/lock guards; targeted API35 15/15 at 6f5cb3c5. Real-device/AppSec/OWNER acceptance open |
 | P03, P28, P29, E05, E12 | — | DF | D57; do not build or test as base-release features |
 | P04–P05 | M24 | SP/EM | SQLCipher schema + append-only ledger tests green at older SHAs; full field parity/historic migration open |
 | P06–P08, E03, E04 | M26 | SP/EM | Cross-owner custody, goal, HUF/minor/guardian and primary protections encrypted rollback→restart; targeted API35 3/3 at b38de8be; complete lens/T3/device/security/OWNER acceptance open |
@@ -136,7 +136,7 @@ State codes: ND not started · SP source partial · JV JVM green · EM emulator 
 ## B3 Evidence ledger (copied from STATUS.md; verify before relying)
 | run_id | sha | proves | dep_paths |
 |---|---|---|---|
-| 40705791566 | b38de8beab324163bce73e01edbd6f6b7f897d13 | M26 targeted T2 SUCCESS: API35 3/3 owner-lens mutation tests, preflight/JVM/APK/summary green; wheel cache SHA256 verified (4); artifacts summary 12824278855, emulator 12823989615, JVM 12823742181; request ca48b861 | NativeM26OwnerLensMutationInstrumentedTest.kt, NativeBooksRepository.kt, NativeBooksScreen.kt, app/gradle, wheels |
+| 40737480182 | 6f5cb3c5f323742d443e9e4ef20ab881cb68b536 | M25 P01/P02 T2 SUCCESS: preflight/JVM/APK/API35 15/15 NativeAccountRepositoryInstrumentedTest; original INSTRUMENTATION_CODE -1; 4 wheels SHA256 verified; artifacts summary 12839136251, APK+ADB 12838946565, JVM 12838426825; request d2829701 | NativeAccountRepository.kt, NativeAccountRepositoryInstrumentedTest.kt, native-ci.yml, app/gradle/wheels |\n| 40736723667 | 6f5cb3c5f323742d443e9e4ef20ab881cb68b536 | M25 P01/P02 T1 SUCCESS: preflight, JVM/core tests and app/androidTest Kotlin compilation, summary; artifacts JVM 12837596822, summary 12837128887; request 8d5ece1f | NativeAccountRepository.kt, NativeAccountRepositoryInstrumentedTest.kt |\n| 40705791566 | b38de8beab324163bce73e01edbd6f6b7f897d13 | M26 targeted T2 SUCCESS: API35 3/3 owner-lens mutation tests, preflight/JVM/APK/summary green; wheel cache SHA256 verified (4); artifacts summary 12824278855, emulator 12823989615, JVM 12823742181; request ca48b861 | NativeM26OwnerLensMutationInstrumentedTest.kt, NativeBooksRepository.kt, NativeBooksScreen.kt, app/gradle, wheels |
 | 40705038884 | b38de8beab324163bce73e01edbd6f6b7f897d13 | M26 repair T1 SUCCESS JVM + Android Kotlin compile; original test locator corrected to m27-review-event without loosening 3 assertions | NativeM26OwnerLensMutationInstrumentedTest.kt |
 | 40702769850 | 752ee75689c0efafd5d42c45400c918c019b3985 | M26 targeted T2 FAILED: 2/3 new negatives PASS; pre-existing UI test used removed 'Append money event' label (failed to find action); repaired by tag b38de8be | NativeM26OwnerLensMutationInstrumentedTest.kt |
 | 40702095652 | 752ee75689c0efafd5d42c45400c918c019b3985 | M26 original T1 SUCCESS JVM + Android Kotlin compilation, summary | NativeM26OwnerLensMutationInstrumentedTest.kt |
@@ -155,7 +155,7 @@ Expired/unusable: wheel artifact 12795467059 (run 40640334920) — replace per A
 5. P15 batch complete at source/JVM/EMULATOR: stable-key bounded holdings LazyColumn, member/account/category/archive search/sort, 360dp/200%-font dark virtualization; T1 40689794038 and API35 T2 40690449183 3/3 SUCCESS at c3f534b4. NOT AC; G14/OWNER remains open.
 6. G14 synthetic M26–M27 screenshot slice: source/T1/T2 done at 2445eb76. T2 40696534614 API35 10/10; 8 PNGs + hashes, 360/412/840dp light/dark and 200% font. NOT AC: owner must review screenshots, real TalkBack/focus/contrast across remaining states and milestone T3 still open; no new CI for owner-only approval.
 7. M26 P06–P08/E03/E04 negative cross-owner matrix: source 752ee756, focused repair b38de8be; T1 40705038884 PASS and targeted API35 T2 40705791566 3/3 PASS. Encrypted cross-owner custody/goal rollback, minor/guardian/HUF and primary identity restart verified. NOT AC: broader navigation/G14 T3, physical device, AppSec and owner acceptance remain open.
-8. M25 close-out: P01/P02 negative/interruption cases; real-device = BLOCKED (owner).
+8. M25 P01/P02 source/JVM/EMULATOR negative/interruption batch completed at 6f5cb3c5: re-admission before vault creation, invalid identity/Terms no-file, duplicate enrollment no-overwrite, re-consent SQLCipher restart, recovery replacement and one-use. T1 40736723667 SUCCESS; T2 40737480182 API35 15/15 SUCCESS. NOT AC: physical device/actual Keyguard interruption, AppSec, OWNER acceptance remain blocked.
 9. M29 goldens/engines: P16, P21–P25 (TS-vs-Kotlin golden vectors; no tax rate without verified source).
 10. M28 synthetic CAS contract tests; genuine ARM64 PDF = BLOCKED (owner sample/device).
 11. M30 NSE/BSE adapters + provenance/stale UX; mock HTTP tests.
