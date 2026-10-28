@@ -51,8 +51,10 @@ class NativeBooksRepositoryInstrumentedTest {
         val context = sandbox()
         val (accounts, books) = create(context)
         val owner = books.read(input.email).people.single().id
+        val custody = books.createCustody(input.email,
+            NativeBooksRepository.NewCustody(owner, "OTHER", "Synthetic registry custody"))
         val holding = books.createHolding(input.email, NativeBooksRepository.NewHolding(
-            owner, null, "Synthetic residential property", "REAL_ESTATE", "Residential",
+            owner, custody, "Synthetic residential property", "REAL_ESTATE", "Residential",
             0L, 0L, "2025-01-01", false))
         val claim = `in`.growurdhan.model.NativeSharedPropertyAggregation.Claim(
             holding, owner, "synthetic-registry-1", "missing-source-document",
@@ -110,8 +112,10 @@ class NativeBooksRepositoryInstrumentedTest {
         val context = sandbox()
         val (_, books) = create(context)
         val owner = books.read(input.email).people.single().id
+        val custody = books.createCustody(input.email,
+            NativeBooksRepository.NewCustody(owner, "OTHER", "Synthetic registry custody"))
         val reit = books.createHolding(input.email, NativeBooksRepository.NewHolding(
-            owner, null, "Fictional listed REIT", "REAL_ESTATE", "REIT",
+            owner, custody, "Fictional listed REIT", "REAL_ESTATE", "REIT",
             0L, 0L, "2025-01-01", false))
         val claim = `in`.growurdhan.model.NativeSharedPropertyAggregation.Claim(
             reit, owner, "fictional-land-registry", "fictional-document",
