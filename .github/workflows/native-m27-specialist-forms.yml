@@ -25,7 +25,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           git diff --exit-code 272a271508d28b5bbcaf724def8e7eb568b38b56 "$GITHUB_SHA" -- src/ src-tauri/ scripts/
           grep -Fq 'requireSpecialistLink' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksRepository.kt
-          test "$(grep -c '@Test fun' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM27SpecialistMetadataInstrumentedTest.kt)" -eq 3
+          test "$(grep -c '@Test fun' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM27SpecialistMetadataInstrumentedTest.kt)" -eq 6
           test "$(grep -c '@Test fun' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM27SpecialistFormInstrumentedTest.kt)" -eq 2
           grep -Fq 'android:allowBackup="false"' android-native/app/src/main/AndroidManifest.xml
           echo "$GITHUB_SHA" > m27-specialist-source-sha.txt
@@ -57,7 +57,7 @@ jobs:
         run: sha256sum android-native/app/build/outputs/apk/debug/app-debug.apk android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk > m27-specialist-apk-sha256.txt
       - name: Configure emulator
         run: if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
-      - name: Three encrypted specialist tests and two real Compose form cases
+      - name: Six encrypted specialist tests and two real Compose form cases
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -75,7 +75,7 @@ jobs:
             adb install -r android-native/app/build/outputs/apk/debug/app-debug.apk
             adb install -r android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell am instrument -w -r -e class in.growurdhan.redevelopment.NativeM27SpecialistMetadataInstrumentedTest,in.growurdhan.redevelopment.NativeM27SpecialistFormInstrumentedTest in.growurdhan.redevelopment.test/androidx.test.runner.AndroidJUnitRunner | tee m27-specialist-adb.txt
-            grep -Fq 'OK (5 tests)' m27-specialist-adb.txt
+            grep -Fq 'OK (8 tests)' m27-specialist-adb.txt
             grep -Fq 'INSTRUMENTATION_CODE: -1' m27-specialist-adb.txt
       - name: Preserve original pass/fail evidence
         if: always()
