@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -234,7 +236,7 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                             categoryFilter, holdingAccountFilter, holdingStatusFilter, search,
                             holdingSort)
                         Text("${list.size} holding(s) in filtered view — archived and zero-unit history retained")
-                        list.forEach { h ->
+                        NativeHoldingsLazyList(list) { h ->
                             HorizontalDivider()
                             Text("${h.name} • ${h.personName}", style = MaterialTheme.typography.titleMedium)
                             Text("${h.subcategory} • ${NativeBooksRepository.formatMinor(h.quantityScaled, 8)} units")
@@ -447,6 +449,20 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                     }
                 }
             }
+        }
+    }
+}
+
+/** Bounded lazy list; stable IDs survive owner lens, search and sort changes. */
+@Composable
+internal fun NativeHoldingsLazyList(
+    holdings: List<NativeBooksRepository.Holding>,
+    content: @Composable (NativeBooksRepository.Holding) -> Unit
+) {
+    LazyColumn(modifier = Modifier.fillMaxWidth().height(420.dp)
+        .testTag("m27-holdings-list")) {
+        items(items = holdings, key = { it.id }) { holding ->
+            content(holding)
         }
     }
 }
