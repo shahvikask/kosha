@@ -1,5 +1,7 @@
 package `in`.growurdhan.redevelopment
 
+import `in`.growurdhan.model.NativeAssetTaxonomy
+
 import android.content.Context
 import android.content.ContextWrapper
 import androidx.test.ext.junit.runners.AndroidJUnit4
