@@ -738,6 +738,7 @@ internal fun HoldingForm(people: List<NativeBooksRepository.Person>,
         val specialist = runCatching {
             NativeHoldingSpecialist.merge(null, category, sub, specialistValues)
         }
+        specialistError = ""
         if (specialist.isFailure) specialistError = "Check the asset-specific fields before saving."
         if (!validDate) specialistError = "Enter a valid acquisition date (YYYY-MM-DD)."
         if (validDate && specialist.isSuccess && qty != null && minor != null &&
