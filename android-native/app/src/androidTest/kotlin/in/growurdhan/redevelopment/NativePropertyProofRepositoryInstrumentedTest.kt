@@ -19,12 +19,16 @@ import java.util.UUID
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.bouncycastle.jce.provider.BouncyCastleProvider
 
 /** API35 SQLCipher proof using synthetic test-only issuers; NOT authenticated legal title. */
 @RunWith(AndroidJUnit4::class)
 class NativePropertyProofRepositoryInstrumentedTest {
-    private val registry = KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
-    private val appraiser = KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
+    // AndroidKeyStore is the default Ed25519 generator on API35 but requires
+    // KeyGenParameterSpec initialization and cannot serve synthetic test keys.
+    private val testProvider = BouncyCastleProvider()
+    private val registry = KeyPairGenerator.getInstance("Ed25519",testProvider).generateKeyPair()
+    private val appraiser = KeyPairGenerator.getInstance("Ed25519",testProvider).generateKeyPair()
     private val roots = NativePropertySignedEvidence.TrustRoots(
         mapOf("test-registry" to registry.public.encoded),
         mapOf("test-appraiser" to appraiser.public.encoded))
@@ -54,7 +58,7 @@ class NativePropertyProofRepositoryInstrumentedTest {
         return accounts to NativeBooksRepository(accounts)
     }
     private fun sign(key: KeyPair, payload: ByteArray): ByteArray =
-        Signature.getInstance("Ed25519").run {
+        Signature.getInstance("Ed25519",testProvider).run {
             initSign(key.private)
             update(payload)
             sign()
