@@ -2,9 +2,21 @@ package `in`.growurdhan.redevelopment
 
 import android.content.Context
 import android.content.ContextWrapper
+import `in`.growurdhan.model.NativeCredentials
+import `in`.growurdhan.model.NativeDeviceAdmission
+import `in`.growurdhan.model.NativePropertySignedEvidence
+import `in`.growurdhan.model.NativeRegistrationProof
+import `in`.growurdhan.model.NativeSharedPropertyAggregation
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
+import java.security.KeyPair
+import java.security.KeyPairGenerator
+import java.security.MessageDigest
+import java.security.Signature
+import java.time.Instant
+import java.time.LocalDate
+import org.bouncycastle.jce.provider.BouncyCastleProvider
 import java.util.UUID
 import net.zetetic.database.DatabaseErrorHandler
 import net.zetetic.database.sqlcipher.SQLiteDatabase
@@ -199,6 +211,153 @@ class NativeHistoricalSourceMigrationInstrumentedTest {
             "WHERE type='table' AND name='native_p11_property_proof'"))
     }
 
+
+    private val testProvider = BouncyCastleProvider()
+    private val syntheticRegistrar = KeyPairGenerator
+        .getInstance("Ed25519", testProvider).generateKeyPair()
+    private val syntheticAppraiser = KeyPairGenerator
+        .getInstance("Ed25519", testProvider).generateKeyPair()
+    private val syntheticRoots = NativePropertySignedEvidence.TrustRoots(
+        mapOf("test-only-registrar" to syntheticRegistrar.public.encoded),
+        mapOf("test-only-appraiser" to syntheticAppraiser.public.encoded))
+    private val proofDate = LocalDate.parse("2026-10-27")
+    private val testEnrollment = NativeCredentials.Enrollment(
+        "migration-test@example.org", "Migration", "Fixture", "Secure!Pass123",
+        "school", "Old School", "pet", "Old Pet")
+
+    /** Only test scaffolding: the frozen v1-v5 never carried native credentials.
+     * Auth is provisioned AFTER the source-derived migration, without enrolling
+     * a fresh database or overwriting its historical owners and financial rows.
+     */
+    private fun admittedAfterMigration(ctx: Context, store: EncryptedVaultStore):
+        NativeAccountRepository {
+        val credentials = NativeCredentials.enroll(
+            testEnrollment, Instant.now().toString())
+        store.openExisting().use { db ->
+            preserved(db)
+            db.beginTransaction()
+            try {
+                db.execSQL("INSERT INTO vault_account(id,email,first_name,last_name," +
+                    "password_salt,password_hash,password_iterations," +
+                    "password_changed_at,q1_id,q1_hash,q2_id,q2_hash,created_at) " +
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    arrayOf<Any>("native-account", credentials.email,
+                        credentials.firstName, credentials.lastName,
+                        credentials.passwordSalt, credentials.passwordHash,
+                        credentials.passwordIterations, credentials.passwordChangedAt,
+                        credentials.q1Id, credentials.q1Hash, credentials.q2Id,
+                        credentials.q2Hash, credentials.createdAt))
+                for ((key, value) in listOf(
+                    "m25.terms.version" to NativeRegistrationProof.TERMS_VERSION,
+                    "m25.terms.text_id" to NativeRegistrationProof.TERMS_TEXT_ID,
+                    "m25.terms.accepted_at" to "2026-10-19T10:00:00Z")) {
+                    db.execSQL("INSERT INTO setting(key,value) VALUES(?,?)",
+                        arrayOf(key, value))
+                }
+                db.setTransactionSuccessful()
+            } finally { db.endTransaction() }
+        }
+        return loginExisting(ctx)
+    }
+
+    private fun loginExisting(ctx: Context): NativeAccountRepository {
+        val gate = NativeDeviceAdmission().also {
+            it.onStart()
+            check(it.begin() && it.complete(true))
+        }
+        val accounts = NativeAccountRepository(ctx, gate)
+        assertTrue("Test-only migrated vault credentials should authenticate",
+            accounts.login(testEnrollment.email, testEnrollment.password))
+        return accounts
+    }
+
+    private fun sign(key: KeyPair, message: ByteArray): ByteArray =
+        Signature.getInstance("Ed25519", testProvider).run {
+            initSign(key.private)
+            update(message)
+            sign()
+        }
+
+    private fun digest(bytes: ByteArray): String =
+        MessageDigest.getInstance("SHA-256").digest(bytes)
+            .joinToString("") { "%02x".format(it.toInt() and 255) }
+
+    private fun signedProof(
+        owner: String = "historical-owner",
+        custody: String = "historical-custody",
+        grossMinor: Long = 100_000L
+    ): NativePropertySignedEvidence.Proof {
+        val registryBytes = "disposable test registrar source row".toByteArray()
+        val appraisalBytes = "disposable independent test appraisal row".toByteArray()
+        val claim = NativeSharedPropertyAggregation.Claim(
+            "historical-holding", owner, "historical-test-property-id",
+            "test-only-registered-source", digest(registryBytes),
+            LocalDate.parse("2026-09-01"), "60", grossMinor,
+            "test-only-independent-appraisal", LocalDate.parse("2026-10-01"))
+        val unsigned = NativePropertySignedEvidence.Proof(
+            claim, custody, "test-only-registrar", "test-only-appraiser",
+            registryBytes, ByteArray(0), appraisalBytes, digest(appraisalBytes),
+            ByteArray(0))
+        return unsigned.copy(
+            registrySignature = sign(syntheticRegistrar,
+                NativePropertySignedEvidence.registryMessage(unsigned)),
+            valuationSignature = sign(syntheticAppraiser,
+                NativePropertySignedEvidence.appraisalMessage(unsigned)))
+    }
+
+    private fun installedProofCount(db: SQLiteDatabase): Long =
+        scalar(db, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' " +
+            "AND name='native_p11_property_proof'")
+
+    private fun preservedAfterProperty(db: SQLiteDatabase) {
+        foreignKeysValid(db)
+        assertEquals(9L, scalar(db, "PRAGMA user_version"))
+        assertEquals("9", select(db,
+            "SELECT value FROM vault_meta WHERE key='schema_version'"))
+        assertEquals("unaltered owner note", select(db,
+            "SELECT notes FROM entity WHERE entity_id='historical-owner'"))
+        assertEquals("Test-only nominee", select(db,
+            "SELECT nominee FROM account WHERE account_id='historical-custody'"))
+        assertEquals(876543L, scalar(db,
+            "SELECT current_price_minor FROM holding " +
+                "WHERE holding_id='historical-holding'"))
+        assertEquals(1234567890L, scalar(db,
+            "SELECT quantity_scaled FROM ledger_event " +
+                "WHERE ledger_event_id='historical-ledger'"))
+        assertEquals(1234500L, scalar(db,
+            "SELECT total_amount_minor FROM ledger_event " +
+                "WHERE ledger_event_id='historical-ledger'"))
+        assertEquals(125L, scalar(db,
+            "SELECT charges_minor FROM ledger_event " +
+                "WHERE ledger_event_id='historical-ledger'"))
+        assertEquals(1L, scalar(db,
+            "SELECT COUNT(*) FROM source_document " +
+                "WHERE source_document_id='historical-document'"))
+        assertEquals(1L, scalar(db,
+            "SELECT COUNT(*) FROM statement_position " +
+                "WHERE import_batch_id='historical-batch'"))
+        assertEquals(1L, scalar(db,
+            "SELECT COUNT(*) FROM goal WHERE goal_id='historical-goal'"))
+        assertEquals("0001FF007F", select(db,
+            "SELECT hex(historical_opaque) FROM setting " +
+                "WHERE key='historical-state'"))
+        assertThrows(Exception::class.java) {
+            db.execSQL("UPDATE ledger_event SET notes='forged' " +
+                "WHERE ledger_event_id='historical-ledger'")
+        }
+        assertEquals(1L, installedProofCount(db))
+        assertEquals(1L, scalar(db,
+            "SELECT COUNT(*) FROM native_p11_property_proof " +
+                "WHERE holding_id='historical-holding' AND " +
+                "entity_id='historical-owner' AND " +
+                "account_id='historical-custody'"))
+        assertEquals(100_000L, scalar(db,
+            "SELECT gross_value_minor FROM native_p11_property_proof"))
+        assertEquals(19L, scalar(db,
+            "SELECT COUNT(*) FROM sqlite_master " +
+                "WHERE type='table' AND name NOT LIKE 'sqlite_%'"))
+    }
+
     @Test fun frozenSourceV1EncryptedUpgradePreservesBooksLedgerAndOpaqueCells() {
         val (_, store) = fixture(1)
         store.openExisting().use { db ->
@@ -305,6 +464,133 @@ class NativeHistoricalSourceMigrationInstrumentedTest {
                 assertEquals("ok", select(db, "PRAGMA quick_check"))
             }
         } finally { afterKey.fill(0) }
+    }
+
+
+    @Test fun sourceV1ThroughV8FirstSignedProofInstallIsAtomicAndPreservesLedger() {
+        // Each iteration is a distinct encrypted version-specific physical DB;
+        // no older fixture is just a v9 layout with a relabelled version marker.
+        for (version in 1..8) {
+            val (ctx, store) = fixture(version)
+            val accounts = admittedAfterMigration(ctx, store)
+            val repo = NativePropertyProofRepository(accounts, syntheticRoots)
+            assertNull(repo.preview(testEnrollment.email, proofDate))
+            val source = signedProof()
+            assertThrows(IllegalArgumentException::class.java) {
+                NativePropertyProofRepository(accounts)
+                    .register(testEnrollment.email, source, proofDate)
+            }
+            accounts.withUnlockedVault(testEnrollment.email) { db ->
+                preserved(db)
+                assertEquals(0L, installedProofCount(db))
+            }
+            repo.register(testEnrollment.email, source, proofDate)
+            val comparison = repo.preview(testEnrollment.email, proofDate)!!
+            assertEquals(100_000L, comparison.householdGrossMinor)
+            assertEquals(60_000L, comparison.attributedMinor)
+            assertEquals(40_000L, comparison.unallocatedMinor)
+            accounts.withUnlockedVault(testEnrollment.email) { db ->
+                preservedAfterProperty(db)
+                assertEquals("disposable test registrar source row",
+                    select(db, "SELECT CAST(registry_bytes AS TEXT) " +
+                        "FROM native_p11_property_proof"))
+                assertThrows(Exception::class.java) {
+                    db.execSQL("DELETE FROM native_p11_property_proof")
+                }
+            }
+            accounts.onBackground()
+            val restarted = loginExisting(ctx)
+            val reopenedRepo = NativePropertyProofRepository(restarted, syntheticRoots)
+            assertEquals("Source version $version mismatch after encrypted restart",
+                comparison, reopenedRepo.preview(testEnrollment.email, proofDate))
+            restarted.withUnlockedVault(testEnrollment.email) { db ->
+                preservedAfterProperty(db)
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                NativePropertyProofRepository(restarted)
+                    .preview(testEnrollment.email, proofDate)
+            }
+        }
+    }
+
+    @Test fun migratedV5RejectsSignedForeignOwnerCustodyAndWrongDigestWithoutTable() {
+        val (ctx, store) = fixture(5)
+        val accounts = admittedAfterMigration(ctx, store)
+        val repo = NativePropertyProofRepository(accounts, syntheticRoots)
+        val original = signedProof()
+        assertThrows(IllegalArgumentException::class.java) {
+            repo.register(testEnrollment.email,
+                signedProof(owner = "not-the-original-owner"), proofDate)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            repo.register(testEnrollment.email,
+                signedProof(custody = "not-original-custody"), proofDate)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            repo.register(testEnrollment.email,
+                original.copy(registrySourceBytes = "wrong digest".toByteArray()),
+                proofDate)
+        }
+        accounts.withUnlockedVault(testEnrollment.email) { db ->
+            preserved(db)
+            assertEquals(0L, installedProofCount(db))
+        }
+        repo.register(testEnrollment.email, original, proofDate)
+        val comparison = repo.preview(testEnrollment.email, proofDate)!!
+        for (rejected in listOf(original, signedProof(grossMinor = 200_000L))) {
+            assertThrows(Exception::class.java) {
+                repo.register(testEnrollment.email, rejected, proofDate)
+            }
+        }
+        assertEquals(comparison, repo.preview(testEnrollment.email, proofDate))
+        accounts.withUnlockedVault(testEnrollment.email) { db ->
+            preservedAfterProperty(db)
+        }
+    }
+
+    @Test fun migratedV8PreexistingDamagedProofSchemaRejectsWithoutRepair() {
+        val (ctx, store) = fixture(8)
+        val accounts = admittedAfterMigration(ctx, store)
+        accounts.withUnlockedVault(testEnrollment.email) { db ->
+            // Malformed partial installed extension: fail closed, never bless
+            // it or create missing columns/triggers inside a failed admission.
+            db.execSQL("CREATE TABLE native_p11_property_proof(" +
+                "holding_id TEXT PRIMARY KEY NOT NULL," +
+                "property_id TEXT NOT NULL)")
+        }
+        val repo = NativePropertyProofRepository(accounts, syntheticRoots)
+        assertThrows(IllegalArgumentException::class.java) {
+            repo.register(testEnrollment.email, signedProof(), proofDate)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            repo.preview(testEnrollment.email, proofDate)
+        }
+        accounts.withUnlockedVault(testEnrollment.email) { db ->
+            assertEquals(1L, installedProofCount(db))
+            assertEquals(0L, scalar(db,
+                "SELECT COUNT(*) FROM native_p11_property_proof"))
+            assertEquals(0L, scalar(db,
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' " +
+                    "AND name LIKE 'native_p11_proof_no_%'"))
+            assertEquals(2L, scalar(db,
+                "SELECT COUNT(*) FROM pragma_table_info('native_p11_property_proof')"))
+            assertEquals(876543L, scalar(db,
+                "SELECT current_price_minor FROM holding " +
+                    "WHERE holding_id='historical-holding'"))
+            assertEquals(1234500L, scalar(db,
+                "SELECT total_amount_minor FROM ledger_event " +
+                    "WHERE ledger_event_id='historical-ledger'"))
+            assertEquals("0001FF007F", select(db,
+                "SELECT hex(historical_opaque) FROM setting " +
+                    "WHERE key='historical-state'"))
+            foreignKeysValid(db)
+        }
+        accounts.onBackground()
+        val reopened = loginExisting(ctx)
+        assertThrows(IllegalArgumentException::class.java) {
+            NativePropertyProofRepository(reopened, syntheticRoots)
+                .preview(testEnrollment.email, proofDate)
+        }
     }
 
     @Test fun incompatibleFrozenV1UpgradeRollsBackAllNewTablesAndVersion() {

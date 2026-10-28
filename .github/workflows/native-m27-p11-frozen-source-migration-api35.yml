@@ -25,7 +25,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           git diff --exit-code 89b75c53cd042c32acde6198376e2af76b135d90 "$GITHUB_SHA" -- src/ src-tauri/ scripts/ public/brand/
           grep -Fq 'android:allowBackup="false"' android-native/app/src/main/AndroidManifest.xml
-          test "$(grep -c '@Test fun' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeHistoricalSourceMigrationInstrumentedTest.kt)" -eq 5
+          test "$(grep -c '@Test fun' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeHistoricalSourceMigrationInstrumentedTest.kt)" -eq 8
           grep -Fq 'val productionRoots = TrustRoots(emptyMap(), emptyMap())' android-native/core/model/src/main/kotlin/in/growurdhan/model/NativePropertySignedEvidence.kt
           grep -Fq 'Source blob: 50b896eb1b017b9ec6426e108c9e13a5ae10f002' android-native/app/src/androidTest/assets/p11-frozen-source-v1.sql
           grep -Fq 'implementation("org.bouncycastle:bcprov-jdk18on:1.86")' android-native/core/model/build.gradle.kts
@@ -61,7 +61,7 @@ jobs:
           sha256sum android-native/app/build/outputs/apk/debug/app-debug.apk android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk > m27-historical-source-apk-sha256.txt
       - name: Allow Android emulator acceleration
         run: if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
-      - name: Five source-derived v1-v8 SQLCipher upgrade and atomic rollback tests
+      - name: Eight source-derived v1-v8 SQLCipher upgrade and P11 signed extension tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -79,7 +79,7 @@ jobs:
             adb install -r android-native/app/build/outputs/apk/debug/app-debug.apk
             adb install -r android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell am instrument -w -r -e class in.growurdhan.redevelopment.NativeHistoricalSourceMigrationInstrumentedTest in.growurdhan.redevelopment.test/androidx.test.runner.AndroidJUnitRunner | tee m27-historical-source-adb.txt
-            grep -Fq 'OK (5 tests)' m27-historical-source-adb.txt
+            grep -Fq 'OK (8 tests)' m27-historical-source-adb.txt
             grep -Fq 'INSTRUMENTATION_CODE: -1' m27-historical-source-adb.txt
       - name: Preserve original JUnit ADB APK and exact-SHA evidence even if failing
         if: always()

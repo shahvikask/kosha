@@ -30,9 +30,11 @@ jobs:
           grep -Fq 'CHECK(1=1) /* CHECK(gross_value_minor>0) */' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativePropertyProofRepositoryInstrumentedTest.kt
           grep -Fq 'syntheticV8UpgradeKeepsOwnerCustodyAndAllowsFirstV9Extension' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativePropertyProofRepositoryInstrumentedTest.kt
           grep -Fq 'Mismatched encrypted proof foreign-key targets' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativePropertyProofRepository.kt
-          test "$(grep -c '@Test fun' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeHistoricalSourceMigrationInstrumentedTest.kt)" -eq 5
+          test "$(grep -c '@Test fun' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeHistoricalSourceMigrationInstrumentedTest.kt)" -eq 8
           grep -Fq 'Source blob: 50b896eb1b017b9ec6426e108c9e13a5ae10f002' android-native/app/src/androidTest/assets/p11-frozen-source-v1.sql
           grep -Fq 'frozenSourceV2ThroughV7EncryptedUpgradesRetainTypedFinancialHistory' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeHistoricalSourceMigrationInstrumentedTest.kt
+          grep -Fq 'sourceV1ThroughV8FirstSignedProofInstallIsAtomicAndPreservesLedger' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeHistoricalSourceMigrationInstrumentedTest.kt
+          grep -Fq 'migratedV8PreexistingDamagedProofSchemaRejectsWithoutRepair' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeHistoricalSourceMigrationInstrumentedTest.kt
           grep -Fq 'frozenSourceV5OrphanCustodyFailsBeforeAnyUpgradeOrRepair' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeHistoricalSourceMigrationInstrumentedTest.kt
           grep -Fq 'incompatibleFrozenV1UpgradeRollsBackAllNewTablesAndVersion' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeHistoricalSourceMigrationInstrumentedTest.kt
           echo "$GITHUB_SHA" > property-source-sha.txt
