@@ -27,6 +27,9 @@ jobs:
           grep -Fq 'BouncyCastleProvider()' android-native/core/model/src/main/kotlin/in/growurdhan/model/NativePropertySignedEvidence.kt
           grep -Fq 'requireProofSchema(db)' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativePropertyProofRepository.kt
           test "$(grep -c '@Test fun' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativePropertyProofRepositoryInstrumentedTest.kt)" -eq 8
+          grep -Fq 'CHECK(1=1) /* CHECK(gross_value_minor>0) */' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativePropertyProofRepositoryInstrumentedTest.kt
+          grep -Fq 'syntheticV8UpgradeKeepsOwnerCustodyAndAllowsFirstV9Extension' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativePropertyProofRepositoryInstrumentedTest.kt
+          grep -Fq 'Mismatched encrypted proof foreign-key targets' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativePropertyProofRepository.kt
           echo "$GITHUB_SHA" > property-source-sha.txt
       - uses: actions/setup-java@v4
         with:
