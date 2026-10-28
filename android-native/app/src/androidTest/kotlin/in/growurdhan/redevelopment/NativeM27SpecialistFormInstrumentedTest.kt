@@ -97,8 +97,10 @@ class NativeM27SpecialistFormInstrumentedTest {
         }
         compose.onNodeWithTag("choice-Owner").performClick()
         compose.onNodeWithText("Category Test Owner").performClick()
-        compose.onNodeWithTag("choice-Asset category").performScrollTo().performClick()
-        compose.onNodeWithText(category).performClick()
+        if (category != "EQUITY") {
+            compose.onNodeWithTag("choice-Asset category").performScrollTo().performClick()
+            compose.onNodeWithText(category).performClick()
+        }
         compose.onNodeWithTag("m27-holding-name").performScrollTo()
             .performTextInput("Fictional " + category)
         compose.onNodeWithTag("m27-holding-units").performScrollTo()
@@ -106,7 +108,8 @@ class NativeM27SpecialistFormInstrumentedTest {
         compose.onNodeWithTag("m27-review-holding").performScrollTo().performClick()
         compose.onNodeWithText("Acquisition cost: Unknown (no inferred basis)").assertExists()
         compose.onNodeWithText("Instrument: Fictional " + category +
-            " • " + category + " / " + NativeAssetTaxonomy.subcategories.getValue(category).first())
+            " • " + category + " / " +
+            (if (category == "EQUITY") "Other" else NativeAssetTaxonomy.subcategories.getValue(category).first()))
             .assertExists()
         compose.onNodeWithTag("m27-confirm-holding").performScrollTo().performClick()
         assertNotNull(saved)
