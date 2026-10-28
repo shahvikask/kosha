@@ -1,4 +1,4 @@
-name: GrowUrDhan M27 P11 signed property proof SQLCipher API35
+name: GrowUrDhan M27 P11 signed property proof SQLCipher API35 provider retest
 on:
   push:
     branches: [GUD-Android-Redevelopment]
@@ -27,6 +27,8 @@ jobs:
           grep -Fq 'android:allowBackup="false"' android-native/app/src/main/AndroidManifest.xml
           test "$(grep -c '@Test fun' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativePropertyProofRepositoryInstrumentedTest.kt)" -eq 4
           grep -Fq 'val productionRoots = TrustRoots(emptyMap(), emptyMap())' android-native/core/model/src/main/kotlin/in/growurdhan/model/NativePropertySignedEvidence.kt
+          grep -Fq 'BouncyCastleProvider()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativePropertyProofRepositoryInstrumentedTest.kt
+          grep -Fq 'implementation("org.bouncycastle:bcprov-jdk18on:1.86")' android-native/core/model/build.gradle.kts
           grep -Fq "Immutable property proof" android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativePropertyProofRepository.kt
           echo "$GITHUB_SHA" > m27-property-custody-source-sha.txt
       - uses: actions/setup-java@v4
