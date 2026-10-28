@@ -593,6 +593,103 @@ class NativeHistoricalSourceMigrationInstrumentedTest {
         }
     }
 
+    @Test fun migratedV3TriggerCollisionRollsBackActualInstallerDdlAndAllowsSafeRetry() {
+        val (ctx, store) = fixture(3)
+        val accounts = admittedAfterMigration(ctx, store)
+        val proof = signedProof()
+        val repo = NativePropertyProofRepository(accounts, syntheticRoots)
+        // Another pre-existing trigger owns the immutable proof trigger name.
+        // The real installer creates the proof table and first trigger, then
+        // IF NOT EXISTS cannot replace the conflicting second trigger.
+        // Its schema validation must reject and roll BOTH newly-created
+        // objects back in the same authenticated SQLCipher transaction.
+        accounts.withUnlockedVault(testEnrollment.email) { db ->
+            db.execSQL("CREATE TRIGGER native_p11_proof_no_delete " +
+                "BEFORE DELETE ON holding BEGIN " +
+                "SELECT RAISE(ABORT,'Test-only name collision'); END")
+            preserved(db)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            repo.register(testEnrollment.email, proof, proofDate)
+        }
+        accounts.withUnlockedVault(testEnrollment.email) { db ->
+            preserved(db)
+            assertEquals(0L, scalar(db,
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' " +
+                    "AND name='native_p11_proof_no_update'"))
+            assertEquals(1L, scalar(db,
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' " +
+                    "AND name='native_p11_proof_no_delete'"))
+            assertTrue(select(db,
+                "SELECT sql FROM sqlite_master WHERE type='trigger' " +
+                    "AND name='native_p11_proof_no_delete'")
+                    .contains("ON holding"))
+        }
+        accounts.onBackground()
+        val restarted = loginExisting(ctx)
+        assertNull(NativePropertyProofRepository(restarted, syntheticRoots)
+            .preview(testEnrollment.email, proofDate))
+        restarted.withUnlockedVault(testEnrollment.email) { db ->
+            preserved(db)
+            db.execSQL("DROP TRIGGER native_p11_proof_no_delete")
+        }
+        val retry = NativePropertyProofRepository(restarted, syntheticRoots)
+        retry.register(testEnrollment.email, proof, proofDate)
+        assertEquals(100_000L,
+            retry.preview(testEnrollment.email, proofDate)!!.householdGrossMinor)
+        restarted.withUnlockedVault(testEnrollment.email) { db ->
+            preservedAfterProperty(db)
+        }
+        restarted.onBackground()
+        val finalLogin = loginExisting(ctx)
+        assertEquals(60_000L,
+            NativePropertyProofRepository(finalLogin, syntheticRoots)
+                .preview(testEnrollment.email, proofDate)!!.attributedMinor)
+        finalLogin.withUnlockedVault(testEnrollment.email) { db ->
+            preservedAfterProperty(db)
+        }
+    }
+
+    @Test fun migratedV6AbortedAuthenticatedUpdateRestoresProofTriggerAndExactSignedBytes() {
+        val (ctx, store) = fixture(6)
+        val accounts = admittedAfterMigration(ctx, store)
+        val repo = NativePropertyProofRepository(accounts, syntheticRoots)
+        repo.register(testEnrollment.email, signedProof(), proofDate)
+        val before = repo.preview(testEnrollment.email, proofDate)!!
+        val signedBytes = accounts.withUnlockedVault(testEnrollment.email) { db ->
+            preservedAfterProperty(db)
+            select(db, "SELECT hex(registry_bytes)||':'||hex(registrar_signature)" +
+                "||':'||hex(appraisal_bytes)||':'||hex(appraiser_signature)" +
+                "||':'||gross_value_minor FROM native_p11_property_proof")
+        }
+        assertThrows(IllegalStateException::class.java) {
+            accounts.withUnlockedVault(testEnrollment.email) { db ->
+                db.execSQL("DROP TRIGGER native_p11_proof_no_update")
+                db.execSQL("UPDATE native_p11_property_proof " +
+                    "SET gross_value_minor=400000")
+                assertEquals(400000L, scalar(db,
+                    "SELECT gross_value_minor FROM native_p11_property_proof"))
+                throw IllegalStateException("Synthetic interruption before SQL commit")
+            }
+        }
+        accounts.onBackground()
+        val restarted = loginExisting(ctx)
+        val reopenedRepo = NativePropertyProofRepository(restarted, syntheticRoots)
+        assertEquals(before,
+            reopenedRepo.preview(testEnrollment.email, proofDate))
+        restarted.withUnlockedVault(testEnrollment.email) { db ->
+            preservedAfterProperty(db)
+            assertEquals(signedBytes,
+                select(db, "SELECT hex(registry_bytes)||':'||hex(registrar_signature)" +
+                    "||':'||hex(appraisal_bytes)||':'||hex(appraiser_signature)" +
+                    "||':'||gross_value_minor FROM native_p11_property_proof"))
+            assertThrows(Exception::class.java) {
+                db.execSQL("UPDATE native_p11_property_proof " +
+                    "SET gross_value_minor=400000")
+            }
+        }
+    }
+
     @Test fun incompatibleFrozenV1UpgradeRollsBackAllNewTablesAndVersion() {
         val (badContext, badStore) = fixture(1)
         val key = KeystoreWrappedVaultKey(badContext).unwrapExisting()
