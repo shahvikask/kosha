@@ -191,7 +191,7 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: |
-            set -euo pipefail
+            set -eu
             adb install -r android-native/app/build/outputs/apk/debug/app-debug.apk
             adb install -r android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell am instrument -w -r -e class "${{ needs.preflight.outputs.tests }}" in.growurdhan.redevelopment.test/androidx.test.runner.AndroidJUnitRunner | tee native-adb.txt
