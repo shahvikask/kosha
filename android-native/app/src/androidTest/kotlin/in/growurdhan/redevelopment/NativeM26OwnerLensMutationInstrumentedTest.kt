@@ -81,19 +81,19 @@ class NativeM26OwnerLensMutationInstrumentedTest {
         compose.onNodeWithText("Records").performClick()
         compose.onNodeWithTag("choice-Holding").performClick()
         compose.onNodeWithText("Alpha Fund • Member Alpha").performClick()
-        compose.onNodeWithText("Append money event").assertIsEnabled()
+        compose.onNodeWithTag("m27-review-event").assertIsEnabled()
         compose.onNodeWithText("Save manual price and source date").assertIsEnabled()
 
         compose.onNodeWithText("Whole household").performClick()
         compose.onNodeWithText("Owner Family").performClick()
         compose.onNodeWithText("Records").performClick()
-        compose.onNodeWithText("Append money event").assertIsNotEnabled()
+        compose.onNodeWithTag("m27-review-event").assertIsNotEnabled()
         compose.onNodeWithText("Save manual price and source date").assertIsNotEnabled()
 
         compose.onNodeWithText("Owner Family").performClick()
         compose.onNodeWithText("Member Alpha").performClick()
         compose.onNodeWithText("Records").performClick()
-        compose.onNodeWithText("Append money event").assertIsNotEnabled()
+        compose.onNodeWithTag("m27-review-event").assertIsNotEnabled()
         compose.onNodeWithText("Save manual price and source date").assertIsNotEnabled()
     }
 
