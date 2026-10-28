@@ -11,7 +11,7 @@ Clauses marked `[O#]` apply only while the box is ticked. All five were ticked o
 - [x] O2 Move (not delete) old working docs to `docs/archive/` (A8). Add ONE DECISION-LOG row D58: "process change → DEV-PLAYBOOK v1.0; status: OWNER-DELEGATED (owner asked Claude to choose; owner has not individually reviewed each clause)". Do not word it as a personal owner approval.
 - [x] O3 Path-scoped evidence reuse (A6): a green result on an older SHA stays valid when no dependency path changed. Narrow relaxation of G07's older-SHA rule; reuse must always be labeled "reused", never presented as a new run.
 - [x] O4 Replace the 58 per-slice workflows with one parametrized `native-ci.yml` (A5). Prove it once on a real SHA BEFORE moving old workflows to `.github/workflows-archive/`. Leave `ci.yml`, `marketing.yml`, `android-aab.yml`, `android-apk.yml` untouched (release/web).
-- [x] O5 Committing `.ci/request.json` starts `native-ci.yml` (the GitHub connector can commit files but may not dispatch workflows). Guards: trigger only on that one path; ignore the request if `sha` ≠ the commit's SHA, if the same (sha, tier, tests) already has a green run, or if another native-ci run is active; one request file at a time; docs-only commits never contain a request.
+- [x] O5 Committing `.ci/request.json` triggers `native-ci.yml`: its `sha` names a previously committed ancestor on `GUD-Android-Redevelopment` (usually the request commit's parent), not the request commit itself. Require a request-only push, ancestor/branch verification, no other active native-ci run, and no prior green identical (sha, tier, tests); checkout and test requested `sha`. Docs-only commits must never contain a request.
 
 ---------------------------------------------------------------------
 # PART A — RULES (static)
@@ -62,7 +62,7 @@ Tiers (pick the lowest that proves the slice):
 - T1 JVM tests + `:app:compileDebugKotlin :app:compileDebugAndroidTestKotlin` (minutes, cheap). Required before any T2.
 - T2 targeted API35 instrumentation: only the test classes the slice touched (`-Pandroid.testInstrumentationRunnerArguments.class=<A,B,C>`).
 - T3 full regression + G14 matrix + APK/AAB hashes: only at milestone gates (end of M27, M26 acceptance, release candidate) on a clean exact SHA.
-Hard rules for every run: exact-SHA check (`inputs.sha == github.sha`, branch = redevelopment); fail closed; no duplicate dispatch of an identical (SHA, tier, tests) tuple; check for an existing green run first (A6).
+Hard rules for every run: test the requested source SHA; workflow_dispatch requires requested SHA = running commit SHA, while a request-file push requires requested SHA to be an existing ancestor on this branch and the push commit to touch only `.ci/request.json`. Reject active native-ci peers and identical (SHA, tier, tests) green runs. Never claim request-commit SHA as tested SHA.
 
 [O4] One workflow `native-ci.yml` (`workflow_dispatch`, optional `.ci/request.json` trigger under [O5]) with inputs `sha`, `tier` (T1|T2|T3), `tests` (comma list of classes), `api` (default 35). Jobs:
 1. `preflight` (≈1 min): SHA/branch match; frozen-file hash gate against the existing freeze list; PRINT discovered test counts from source (e.g. grep `@Test`) and pass them forward — NEVER hard-code expected counts in YAML (stale hard-coded counts failed runs 40658684890 and similar).
@@ -78,7 +78,7 @@ Failure classes (act on the class, not the symptom):
 | preflight | count/SHA/hash mismatch | fix preflight logic (derive, don't hard-code) |
 | compile | Kotlin error | fix source; T1 only |
 | test | assertion/instrumentation fail | read the one failing stack; fix source or test expectation ONLY with justification; never loosen |
-If the agent cannot dispatch workflows: commit `.ci/request.json` [O5] or give the owner ONE command: `gh workflow run native-ci.yml -f sha=<SHA> -f tier=T2 -f tests=<A,B>` and wait for the owner to paste the run id.
+If the agent cannot dispatch workflows: commit `.ci/request.json` [O5] containing the preceding source commit SHA, tier and tests (one file changed); monitor the run and archive old workflows only after successful native-ci proof.
 
 ## A6 Evidence reuse [O3]
 Each B3 ledger row stores `tested_sha`, `dep_paths`, `run_id`. A result is reusable at HEAD iff `git diff --name-only <tested_sha> HEAD -- <dep_paths>` is empty. Default `dep_paths` for Android tests: `android-native/core/**`, `android-native/app/src/main/**`, the test file itself, `android-native/gradle/**`, `android-native/app/build.gradle.kts`. State "reused from <run_id> at <sha>" explicitly; never call it a new run. If O3 is not ticked, only same-SHA results count.
@@ -137,7 +137,7 @@ State codes: ND not started · SP source partial · JV JVM green · EM emulator 
 | run_id | sha | proves | dep_paths |
 |---|---|---|---|
 | 40658862842 | dbb561dd | JVM+APK compile; API35 8/8 (specialist/P10-P11 set) | core/**, app/src/main/** |
-| 40659987550 | f2d301de | FAILED :app:compileDebugAndroidTestKotlin (assertDoesNotExist import / NativeAssetTaxonomy); no emulator result | core/**, app/src/main/**, specialist form test |\n| 40661694569 | 6965c40c | SUCCESS: JVM/APK build and API35 16/16 (7 metadata + 9 form); artifact 12804837207; reused at P0 (no Android dependency changes) | core/**, app/src/main/**, specialist form test, gradle/** |
+| 40659987550 | f2d301de | FAILED :app:compileDebugAndroidTestKotlin (assertDoesNotExist import / NativeAssetTaxonomy); no emulator result | core/**, app/src/main/**, specialist form test |\n| 40661694569 | 6965c40cc0b92d88647c59f9e5485c025a2c342b | SUCCESS: JVM/APK build and API35 16/16 (7 NativeM27SpecialistMetadataInstrumentedTest + 9 NativeM27SpecialistFormInstrumentedTest); prior 15 expectation was stale (6+9), new source had 7 metadata cases. Artifact 12804837207; reused only if A6 dep paths unchanged | core/**, app/src/main/**, specialist form test, gradle/** |
 | 40652687085 / 40652687166 | 3746d928 | P11 JVM compile; API35 10/10 migration/rollback | core/**, app/src/main/** |
 | 40499402394 | 511aa0ea | 169 JVM + 3 API35 (P13/P14 reconciliation) | core/**, app/src/main/** |
 | 40441608989 | df12285f | M26+G14 API35 PASS, 144 JVM / 10 Android | core/**, app/src/main/** |
@@ -157,7 +157,7 @@ Expired/unusable: wheel artifact 12795467059 (run 40640334920) — replace per A
 11. M30 NSE/BSE adapters + provenance/stale UX; mock HTTP tests.
 12. M31 settings/diagnostics/accessibility/Hindi onboarding/dossier export warnings.
 13. M32–M34 — BLOCKED until owner supplies Google OAuth, Play Billing/signing, device, AppSec reviewer.
-Process task P0: docs, archive moves, AGENTS pointer, D58, native-ci.yml committed at 95d54f62 (T0). NOT YET VERIFIED: native-ci.yml T1/T2 dispatch/terminal evidence; `.ci/request.json` remains absent because self-referential SHA equality cannot be satisfied by a conventional single commit. Do not archive old workflows until replacement passes. Native CI dispatch requires owner `gh workflow run` or another authorized dispatch capability.
+Process task P0: archived working docs, AGENTS pointer, D58, and native-ci committed at 95d54f62 (T0). O5 ancestor-based request guard updated after owner clarification; first source-SHA T1 request and native-ci proof pending. Do not archive old workflows before green proof.
 
 ## B5 Blockers needing the owner
 Gmail OAuth project/credentials; Play Billing products/test accounts; upload/signing keys; physical ARM64 phone + genuine CAS statements; production property/PPF/SSY/valuer trust roots; independent AppSec reviewer; G14 screenshot approval. (O1–O5 are already ticked via owner delegation; workflow triggering uses `.ci/request.json`.)

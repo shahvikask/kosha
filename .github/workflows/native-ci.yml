@@ -27,9 +27,10 @@ on:
 permissions:
   contents: read
   actions: read
+run-name: native-ci ${{ inputs.sha || github.sha }} ${{ inputs.tier || 'request' }}
 concurrency:
   group: native-ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   preflight:
     runs-on: ubuntu-latest
@@ -37,6 +38,7 @@ jobs:
       tier: ${{ steps.guard.outputs.tier }}
       tests: ${{ steps.guard.outputs.tests }}
       api: ${{ steps.guard.outputs.api }}
+      target: ${{ steps.guard.outputs.target }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -47,6 +49,7 @@ jobs:
         name: Fail-closed SHA, branch, request and D57 guards
         shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
           INPUT_SHA: ${{ inputs.sha }}
           INPUT_TIER: ${{ inputs.tier }}
           INPUT_TESTS: ${{ inputs.tests }}
@@ -56,18 +59,54 @@ jobs:
           test "$GITHUB_REF" = refs/heads/GUD-Android-Redevelopment
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           if [[ "$GITHUB_EVENT_NAME" = push ]]; then
+            test "$(git rev-list --parents -n 1 "$GITHUB_SHA" | wc -w)" -eq 2
+            test "$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA")" = ".ci/request.json"
             target=$(python3 -c 'import json;print(json.load(open(".ci/request.json"))["sha"])')
             tier=$(python3 -c 'import json;print(json.load(open(".ci/request.json"))["tier"])')
             tests=$(python3 -c 'import json;print(json.load(open(".ci/request.json")).get("tests",""))')
             api=$(python3 -c 'import json;print(json.load(open(".ci/request.json")).get("api",35))')
+            git cat-file -e "$target^{commit}"
+            test "$target" != "$GITHUB_SHA"
+            git merge-base --is-ancestor "$target" "$GITHUB_SHA"
+            git merge-base --is-ancestor "$target" origin/GUD-Android-Redevelopment
           else
             target="$INPUT_SHA";tier="$INPUT_TIER";tests="$INPUT_TESTS";api="${INPUT_API:-35}"
+            test "$target" = "$GITHUB_SHA"
           fi
-          test "$target" = "$GITHUB_SHA"
+          # Query actual workflow history. Exclude this run; no active peer or prior green tuple.
+          export REQUEST_TARGET="$target" REQUEST_TIER="$tier" REQUEST_TESTS="$tests"
+          python3 - <<'PY'
+          import base64,json,os,urllib.request
+          root="https://api.github.com/repos/shahvikask/kosha"
+          token=os.environ["GH_TOKEN"]
+          def fetch(url):
+              q=urllib.request.Request(url,headers={"Authorization":"Bearer "+token,"Accept":"application/vnd.github+json"})
+              with urllib.request.urlopen(q) as resp: return json.load(resp)
+          runs=fetch(root+"/actions/workflows/native-ci.yml/runs?branch=GUD-Android-Redevelopment&per_page=100").get("workflow_runs",[])
+          wanted=(os.environ["REQUEST_TARGET"],os.environ["REQUEST_TIER"],os.environ["REQUEST_TESTS"])
+          for r in runs:
+              if str(r["id"])==os.environ["GITHUB_RUN_ID"]: continue
+              if r["status"] in ("queued","in_progress","waiting","requested","pending"):
+                  raise SystemExit(f"Another native-ci run is active: {r['id']}")
+              if r["conclusion"]!="success": continue
+              # For push runs compare the immutable request contents at that push commit.
+              if r["event"]=="push":
+                  try:
+                      old=fetch(root+"/contents/.ci/request.json?ref="+r["head_sha"])
+                      j=json.loads(base64.b64decode(old["content"]))
+                      if (j.get("sha"),j.get("tier"),j.get("tests",""))==wanted:
+                          raise SystemExit(f"Duplicate green request: {r['id']}")
+                  except (KeyError,ValueError,urllib.error.HTTPError): pass
+              # Dispatch runs are recorded by their exact run-name tuple, where present.
+              else:
+                  if r.get("display_title")==f"native-ci {wanted[0]} {wanted[1]}":
+                      raise SystemExit(f"Duplicate green dispatch: {r['id']}")
+          PY
+          echo "target=$target" >> "$GITHUB_OUTPUT"
           case "$tier" in T1|T2|T3) ;; *) exit 1;; esac
           [[ "$api" =~ ^[0-9]+$ ]]
           if [[ "$tier" != T1 ]]; then test -n "$tests" || test "$tier" = T3; fi
-          git diff --exit-code 272a271508d28b5bbcaf724def8e7eb568b38b56 HEAD -- src/ src-tauri/ scripts/ public/brand/
+          git diff --exit-code 272a271508d28b5bbcaf724def8e7eb568b38b56 "$target" -- src/ src-tauri/ scripts/ public/brand/
           grep -Fq 'android:allowBackup="false"' android-native/app/src/main/AndroidManifest.xml
           echo "JVM_TESTS_DISCOVERED=$(grep -r -E '@Test([ (]|$)' android-native/core/*/src/test --include='*.kt' | wc -l)"
           echo "ANDROID_TESTS_DISCOVERED=$(grep -r -E '@Test([ (]|$)' android-native/app/src/androidTest --include='*.kt' | wc -l)"
@@ -81,7 +120,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ needs.preflight.outputs.target }}
           persist-credentials: false
       - uses: actions/setup-java@v4
         with:
@@ -128,7 +167,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ needs.preflight.outputs.target }}
           persist-credentials: false
       - uses: actions/setup-java@v4
         with:
@@ -196,12 +235,13 @@ jobs:
           PREFLIGHT: ${{ needs.preflight.result }}
           JVM: ${{ needs.jvm.result }}
           ANDROID: ${{ needs.android.result }}
+          TARGET_SHA: ${{ needs.preflight.outputs.target }}
           TIER: ${{ needs.preflight.outputs.tier }}
           TESTS: ${{ needs.preflight.outputs.tests }}
         shell: bash
         run: |
           set -euo pipefail
-          printf '{"sha":"%s","tier":"%s","tests":"%s","jvm_pass":%s,"android_pass":%s,"apk_sha256":null,"run_id":"%s"}\n' "$GITHUB_SHA" "$TIER" "$TESTS" "$([[ "$JVM" == success ]] && echo true || echo false)" "$([[ "$ANDROID" == success ]] && echo true || echo false)" "$GITHUB_RUN_ID" | tee native-summary.json
+          printf '{"sha":"%s","tier":"%s","tests":"%s","jvm_pass":%s,"android_pass":%s,"apk_sha256":null,"run_id":"%s"}\n' $TARGET_SHA" "$TIER" "$TESTS" "$([[ "$JVM" == success ]] && echo true || echo false)" "$([[ "$ANDROID" == success ]] && echo true || echo false)" "$GITHUB_RUN_ID" | tee native-summary.json
           test "$PREFLIGHT" = success && test "$JVM" = success
           if [[ "$TIER" != T1 ]]; then test "$ANDROID" = success; fi
       - uses: actions/upload-artifact@v4
