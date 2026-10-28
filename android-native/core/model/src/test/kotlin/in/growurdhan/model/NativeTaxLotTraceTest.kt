@@ -64,6 +64,69 @@ class NativeTaxLotTraceTest {
         }
     }
 
+    @Test fun twoFifoLotsSourceGoldenFeeAndDayBoundary() {
+        val events = listOf(
+            NativePortfolioMath.Event("sale", "owner", "holding", "SELL",
+                "2025-06-15", 200_000_000L, 15_000L, 30_000L, 101L),
+            NativePortfolioMath.Event("late", "owner", "holding", "BUY",
+                "2025-02-01", 200_000_000L, 12_000L, 24_000L, 400L),
+            NativePortfolioMath.Event("early", "owner", "holding", "BUY",
+                "2024-01-01", 100_000_000L, 10_000L, 10_000L, 250L))
+        val before = events.toList()
+        val paper = NativeTaxLotTrace.trace(events, "EQUITY", "AY26-27")
+        assertEquals(before, events)
+        assertEquals(listOf("early", "late"), paper.items.map { it.purchaseEventId })
+        assertEquals(listOf(14_950L, 14_949L), paper.items.map { it.proceedsMinor })
+        assertEquals(listOf(10_250L, 12_200L), paper.items.map { it.costMinor })
+        assertEquals(listOf(4_700L, 2_749L), paper.items.map { it.realizedGainMinor })
+        assertEquals(listOf(true, false), paper.items.map { it.ledgerLongTerm })
+        assertEquals(7_449L, paper.fullyCostedGainMinor)
+        assertTrue(paper.needsTaxRuleReview)
+        assertEquals(101L, 30_000L - paper.items.sumOf { it.proceedsMinor })
+        val open = NativePortfolioMath.fold(events, "EQUITY")
+        assertTrue(open.errors.isEmpty())
+        assertEquals(100_000_000L, open.quantityScaled)
+        assertEquals(12_200L, open.knownCostMinor)
+    }
+
+    @Test fun grandfatheredCostOnlyUsesOwnerReviewedFmvGolden() {
+        val cutoff = LocalDate.parse("2018-01-31")
+        val acquired = LocalDate.parse("2018-01-30")
+        fun cost(day: LocalDate, actual: Long, proceeds: Long,
+            fmv: Long?, date: LocalDate? = cutoff) =
+            NativeTaxLotTrace.reviewedGrandfatheredCostMinor(
+                day, actual, proceeds, fmv, date)
+        assertEquals(18_000L, cost(acquired, 10_000L, 20_000L, 18_000L))
+        assertEquals(20_000L, cost(acquired, 10_000L, 20_000L, 25_000L))
+        assertEquals(10_000L, cost(acquired, 10_000L, 20_000L, null))
+        assertEquals(10_000L, cost(acquired, 10_000L, 20_000L, 18_000L, null))
+        assertEquals(10_000L, cost(LocalDate.parse("2018-02-01"),
+            10_000L, 20_000L, 18_000L))
+        assertEquals(25_000L, cost(acquired, 25_000L, 20_000L, 18_000L))
+        assertThrows(IllegalArgumentException::class.java) {
+            cost(acquired, 10_000L, 20_000L, -1L)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            cost(acquired, -1L, 20_000L, 18_000L)
+        }
+    }
+
+    @Test fun originalCategoryDayThresholdsUseStrictGreaterThan() {
+        fun longTerm(sold: String, category: String): Boolean {
+            val events = listOf(
+                event("open", "BUY", "2024-01-01", 100_000_000L),
+                event("dispose", "SELL", sold, 100_000_000L, 11_000L))
+            return NativeTaxLotTrace.trace(events, category,
+                NativeTaxLotTrace.assessmentYear(LocalDate.parse(sold)))
+                .items.single().ledgerLongTerm
+        }
+        // Frozen lots.ts longTermDays uses strict > 365 equity, >730 property.
+        assertFalse(longTerm("2024-12-31", "EQUITY"))
+        assertTrue(longTerm("2025-01-01", "EQUITY"))
+        assertFalse(longTerm("2025-01-01", "REAL_ESTATE"))
+        assertTrue(longTerm("2026-01-02", "REAL_ESTATE"))
+    }
+
     @Test fun invalidAssessmentYearIsNeverGuessed() {
         assertThrows(IllegalArgumentException::class.java) {
             NativeTaxLotTrace.trace(emptyList(), "EQUITY", "AY28-2029")

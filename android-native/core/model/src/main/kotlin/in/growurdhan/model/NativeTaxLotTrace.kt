@@ -25,6 +25,24 @@ object NativeTaxLotTrace {
             (fyStart + 2).toString().takeLast(2)
     }
 
+    /**
+     * Frozen taxRules.ts grandfatheredCostMinor source formula, SOURCE FACT ONLY.
+     * The caller must supply the reviewed cutoff and actual historical FMV.
+     * Never infer FMV, tax rates, exemptions, or alter original ledger cost.
+     */
+    fun reviewedGrandfatheredCostMinor(acquired: LocalDate,
+        actualCostMinor: Long, proceedsMinor: Long,
+        reviewedFmvMinor: Long?, reviewedGrandfatherDate: LocalDate?): Long {
+        require(actualCostMinor >= 0L && proceedsMinor >= 0L &&
+            (reviewedFmvMinor == null || reviewedFmvMinor >= 0L)) {
+            "Invalid source cost, proceeds or FMV"
+        }
+        if (reviewedGrandfatherDate == null ||
+            acquired.isAfter(reviewedGrandfatherDate) ||
+            reviewedFmvMinor == null || reviewedFmvMinor == 0L) return actualCostMinor
+        return maxOf(actualCostMinor, minOf(reviewedFmvMinor, proceedsMinor))
+    }
+
     fun trace(events: List<NativePortfolioMath.Event>, category: String,
         targetYear: String): Workpaper {
         require(targetYear.matches(Regex("AY[0-9]{2}-[0-9]{2}")))

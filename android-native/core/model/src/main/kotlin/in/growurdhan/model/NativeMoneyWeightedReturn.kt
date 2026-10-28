@@ -84,6 +84,23 @@ object NativeMoneyWeightedReturn {
     }
 
     /**
+     * Frozen returns.ts totalGainPercent in exact basis points, NOT annualized.
+     * Reproduces JavaScript Math.round half-toward-positive-infinity, including
+     * negative returns. Null means unknown basis rather than a fake 0% gain.
+     */
+    fun totalGainBasisPoints(investedMinor: Long?, gainMinor: Long?): Long? {
+        if (investedMinor == null || investedMinor <= 0L || gainMinor == null) return null
+        val denominator = BigInteger.valueOf(investedMinor).multiply(BigInteger.valueOf(2L))
+        val numerator = BigInteger.valueOf(gainMinor)
+            .multiply(BigInteger.valueOf(20_000L))
+            .add(BigInteger.valueOf(investedMinor))
+        val parts = numerator.divideAndRemainder(denominator)
+        val rounded = if (numerator.signum() < 0 && parts[1] != BigInteger.ZERO)
+            parts[0].subtract(BigInteger.ONE) else parts[0]
+        return rounded.longValueExact()
+    }
+
+    /**
      * Returns annual percent to two decimals, never a guessed intermediate
      * value. Mirrors frozen Newton-Raphson then bounded bisection fallback.
      */

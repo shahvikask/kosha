@@ -65,6 +65,43 @@ class NativeMoneyWeightedReturnTest {
             13_000L, LocalDate.parse("2025-01-01")))
     }
 
+    @Test fun sourceGoldenAbsoluteGainUsesIntegerSignedRounding() {
+        // Frozen returns.ts totalGainPercent: Math.round((gain/invested)*10000)/100.
+        assertEquals(1_235L, NativeMoneyWeightedReturn.totalGainBasisPoints(
+            100_000L, 12_345L))
+        assertEquals(-1_234L, NativeMoneyWeightedReturn.totalGainBasisPoints(
+            100_000L, -12_345L))
+        assertEquals(0L, NativeMoneyWeightedReturn.totalGainBasisPoints(
+            100_000L, 0L))
+        assertNull(NativeMoneyWeightedReturn.totalGainBasisPoints(0L, 1_000L))
+        assertNull(NativeMoneyWeightedReturn.totalGainBasisPoints(null, 1_000L))
+        assertNull(NativeMoneyWeightedReturn.totalGainBasisPoints(1_000L, null))
+        assertEquals(1_000_000L, NativeMoneyWeightedReturn.totalGainBasisPoints(
+            1_000_000_000L, 100_000_000_000L))
+    }
+
+    @Test fun sourceGoldenCashFlowsRejectMixedOwnersAndUnknownStatementBasis() {
+        val events = listOf(
+            event("buy", "BUY", "2024-01-01", 200_000_000L, 10_000L,
+                20_000L, charges = 40L),
+            event("dividend", "DIVIDEND", "2024-06-01", 0L, 0L, 500L),
+            event("snapshot", "SNAPSHOT_ADJUSTMENT", "2024-08-01",
+                100_000_000L, 0L, 0L, knownCost = false),
+            event("sell", "SELL", "2024-09-01", 100_000_000L, 12_000L,
+                12_000L, charges = 20L))
+        assertEquals(listOf(-20_040L, 500L, 11_980L, 13_000L),
+            NativeMoneyWeightedReturn.cashFlows(events, 13_000L,
+                LocalDate.parse("2025-01-01")).map { it.amountMinor })
+        assertThrows(IllegalArgumentException::class.java) {
+            NativeMoneyWeightedReturn.cashFlows(events +
+                event("foreign", "BUY", "2024-03-01", 100_000_000L,
+                    10_000L, 10_000L).copy(ownerId = "foreign-owner"),
+                13_000L, LocalDate.parse("2025-01-01"))
+        }
+        assertNull(NativeMoneyWeightedReturn.forHolding(events, "EQUITY",
+            13_000L, LocalDate.parse("2025-01-01")))
+    }
+
     @Test fun sameDayOrSingleSignOrInvalidHistoryIsNotAPretendReturn() {
         assertNull(NativeMoneyWeightedReturn.percent(listOf(
             NativeMoneyWeightedReturn.Flow(LocalDate.parse("2025-01-01"), -100L),
