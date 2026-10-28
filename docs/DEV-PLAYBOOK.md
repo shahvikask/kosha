@@ -110,7 +110,7 @@ New-chat prompt the owner pastes (replaces §17.5/17.7):
 Seed written by Claude on 2026-10-28 from repo docs. FIRST SESSION: verify B1–B3 against GitHub Actions and fix any mismatch before relying on them.
 
 ## B1 Header
-branch GUD-Android-Redevelopment · HEAD checked after M29 exposure T1 `18b08dfc5d3e7971185f9935b94854771710c801` · checkpoint_sha `18b08dfc5d3e7971185f9935b94854771710c801` · accepted requirements 0/36 in-scope · formally accepted milestones: none.
+branch GUD-Android-Redevelopment · HEAD checked after M28 synthetic CAS T2 `eb34356a4e325fdc456bb3ba046c1e167bc907d0` · checkpoint_sha `eb34356a4e325fdc456bb3ba046c1e167bc907d0` · accepted requirements 0/36 in-scope · formally accepted milestones: none.
 State codes: ND not started · SP source partial · JV JVM green · EM emulator green · AC accepted · DF deferred (D57).
 
 ## B2 Requirement matrix (split a row when members diverge)
@@ -127,7 +127,7 @@ State codes: ND not started · SP source partial · JV JVM green · EM emulator 
 | P15 | M27 | SP/EM | Owner-scoped filtered/sorted bounded lazy holdings with stable IDs and history, account links; 360dp/200%-font dark API35 3/3 at c3f534b4; full G14/OWNER acceptance open |
 | P16, P21, P24 | M29 | SP/JV | FIFO, reviewed FMV, source returns and strict owner-scoped exact hybrid exposure splits; T1 40748714360 and 40757210296 PASS; P24 persistence/UI and complete financial/tax acceptance open |
 | P22–P23, P25 | M29 | SP/EM | Interest coupon and EMI due-date/one-post goldens; owner-scoped Home health/unknown-cost/stale-price indicators and G14 tests; T1 40750235052 SUCCESS, T2 40751028900 API35 6/6; published rates, full analytics, owner acceptance open |
-| P17–P20, E06 | M28 | SP | staging/idempotency partial; genuine CAS PDF on ARM64 unproven |
+| P17–P20, E06 | M28 | SP/EM | Non-demat CAS preview exact ISIN/folio identity, duplicate rejection and multi-folio negatives at e21966a7 API35 15/15 (40759156459); SQLCipher staging/idempotency prior partial; genuine CAS PDF, full positive approval and ARM64 source proof unverified |
 | P26–P27, E10 | M30 | SP | AMFI NAV only; NSE/BSE, provenance UX open |
 | P30–P33, E01, E02, E08, E11, E13 | M31 | SP/EM | G14 synthetic 360/412/840dp light/dark screenshots and sampled contrast/semantics T2 green; full G14, Hindi, real TalkBack, owner visual sign-off open |
 | P34 | M32 | SP | idempotency/cursor guard only; real OAuth needs owner |
@@ -137,6 +137,8 @@ State codes: ND not started · SP source partial · JV JVM green · EM emulator 
 ## B3 Evidence ledger (copied from STATUS.md; verify before relying)
 | run_id | sha | proves | dep_paths |
 |---|---|---|---|
+| 40759156459 | e21966a7eaca6c6c01b26be5eac435ad3014952e | M28 targeted T2 SUCCESS: preflight/JVM/APK/API35 15/15 NativeCasOutputReviewGateInstrumentedTest, ADB exit -1, emulator 12848301613, summary 12847563458, JVM 12846113994; request eb34356a; no real CAS | NativeCasOutputReviewGate.kt, NativeCasOutputReviewGateInstrumentedTest.kt, app/main and gradle/wheels | 
+| 40758465483 | e21966a7eaca6c6c01b26be5eac435ad3014952e | M28 T1 SUCCESS: preflight/JVM+Android Kotlin compilation/summary; request b1c24953 | NativeCasOutputReviewGate.kt, NativeCasOutputReviewGateInstrumentedTest.kt | 
 | 40757210296 | 7acd13f3d7fa10d6fb258bed53cac3fda78566e5 | M29 P24 lookthrough T1 SUCCESS: source apportion exact 10000bp, largest-slice remainder, unknown price exclusion, estimated value label, owner isolation and invalid split negatives; :core:model:test, app/androidTest Kotlin PASS, 4 cached wheels SHA256; JVM artifact 12846747118, summary 12847840029; request 18b08dfc; Android skipped expected T1 | NativeExposureAllocation.kt, NativePortfolioMathTest.kt, core/model, app Kotlin deps | 
 | 40751028900 | 5a9a5f4ee9e6aebe22b7affc5459027971342f53 | M29 P22/P23/P25 T2 SUCCESS at source SHA: preflight/JVM/APK/API35 6/6, ADB exit -1, wheels cache SHA256 4; artifacts emulator 12845106225, summary 12844887246, JVM 12844580985; request f7f0916e | NativeBooksHomeHealth.kt, NativeBooksScreen.kt, NativeM26RealBooksAccessibilityInstrumentedTest.kt, NativeM27HoldingFilterInstrumentedTest.kt, app/gradle | 
 | 40750235052 | 5a9a5f4ee9e6aebe22b7affc5459027971342f53 | M29 P22/P23/P25 T1 SUCCESS preflight/JVM/app/androidTest compile and summary; artifacts JVM 12842764389, summary 12843588215; request f2bec88a | NativeEmiPlannerTest.kt, NativeInterestPayoutPlannerTest.kt, Home health and related Kotlin | 
@@ -181,7 +183,7 @@ Expired/unusable: wheel artifact 12795467059 (run 40640334920) — replace per A
 7. M26 P06–P08/E03/E04 negative cross-owner matrix: source 752ee756, focused repair b38de8be; T1 40705038884 PASS and targeted API35 T2 40705791566 3/3 PASS. Encrypted cross-owner custody/goal rollback, minor/guardian/HUF and primary identity restart verified. NOT AC: broader navigation/G14 T3, physical device, AppSec and owner acceptance remain open.
 8. M25 P01/P02 source/JVM/EMULATOR negative/interruption batch completed at 6f5cb3c5: re-admission before vault creation, invalid identity/Terms no-file, duplicate enrollment no-overwrite, re-consent SQLCipher restart, recovery replacement and one-use. T1 40736723667 SUCCESS; T2 40737480182 API35 15/15 SUCCESS. NOT AC: physical device/actual Keyguard interruption, AppSec, OWNER acceptance remain blocked.
 9. M29 PARTIAL: 34bbf633 FIFO/FMV/returns goldens T1 40748714360 PASS; 5a9a5f4e coupon/EMI/Home T1 40750235052 + T2 40751028900 6/6 PASS; 7acd13f3 exact reviewed/estimated hybrid lookthrough and owner-lens JVM T1 40757210296 PASS. Next: connect reviewed splits and full household financial/tax reports; no invented prices/tax rates, no claim of M29 AC. If lacking verified source/year/rates, continue B4 item 10 without faking compliance.
-10. M28 synthetic CAS contract tests; genuine ARM64 PDF = BLOCKED (owner sample/device).
+10. M28 synthetic CAS gate slice done at e21966a7: require exact unique ISIN/folio for CAMS/KFINTECH/NPS preview, preserve multi-folio/DP identifiers; T1 40758465483 PASS, API35 T2 40759156459 15/15 PASS. Remaining P17–P20 encrypted positive approval, parser reconciliation and genuine ARM64 CAS = OPEN/BLOCKED on owner sample/device; NOT AC.
 11. M30 NSE/BSE adapters + provenance/stale UX; mock HTTP tests.
 12. M31 settings/diagnostics/accessibility/Hindi onboarding/dossier export warnings.
 13. M32–M34 — BLOCKED until owner supplies Google OAuth, Play Billing/signing, device, AppSec reviewer.
