@@ -1,4 +1,4 @@
-name: GrowUrDhan M27 P11 signed property proof SQLCipher API35 provider retest
+name: GrowUrDhan M27 P11 signed property proof schema integrity API35
 on:
   push:
     branches: [GUD-Android-Redevelopment]
@@ -25,11 +25,12 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           git diff --exit-code 89b75c53cd042c32acde6198376e2af76b135d90 "$GITHUB_SHA" -- src/ src-tauri/ scripts/ public/brand/
           grep -Fq 'android:allowBackup="false"' android-native/app/src/main/AndroidManifest.xml
-          test "$(grep -c '@Test fun' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativePropertyProofRepositoryInstrumentedTest.kt)" -eq 4
+          test "$(grep -c '@Test fun' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativePropertyProofRepositoryInstrumentedTest.kt)" -eq 5
           grep -Fq 'val productionRoots = TrustRoots(emptyMap(), emptyMap())' android-native/core/model/src/main/kotlin/in/growurdhan/model/NativePropertySignedEvidence.kt
           grep -Fq 'BouncyCastleProvider()' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativePropertyProofRepositoryInstrumentedTest.kt
           grep -Fq 'implementation("org.bouncycastle:bcprov-jdk18on:1.86")' android-native/core/model/build.gradle.kts
           grep -Fq "Immutable property proof" android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativePropertyProofRepository.kt
+          grep -Fq 'requireProofSchema(db)' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativePropertyProofRepository.kt
           echo "$GITHUB_SHA" > m27-property-custody-source-sha.txt
       - uses: actions/setup-java@v4
         with:
@@ -60,7 +61,7 @@ jobs:
           sha256sum android-native/app/build/outputs/apk/debug/app-debug.apk android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk > m27-property-custody-apk-sha256.txt
       - name: Allow Android emulator acceleration
         run: if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
-      - name: Four synthetic-signer API35 SQLCipher positive negative and encrypted restart proofs
+      - name: Five synthetic-signer API35 SQLCipher proof, schema tampering and restart tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -78,7 +79,7 @@ jobs:
             adb install -r android-native/app/build/outputs/apk/debug/app-debug.apk
             adb install -r android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell am instrument -w -r -e class in.growurdhan.redevelopment.NativePropertyProofRepositoryInstrumentedTest in.growurdhan.redevelopment.test/androidx.test.runner.AndroidJUnitRunner | tee m27-property-custody-adb.txt
-            grep -Fq 'OK (4 tests)' m27-property-custody-adb.txt
+            grep -Fq 'OK (5 tests)' m27-property-custody-adb.txt
             grep -Fq 'INSTRUMENTATION_CODE: -1' m27-property-custody-adb.txt
       - name: Preserve original JUnit ADB APK and exact-SHA evidence even if failing
         if: always()
