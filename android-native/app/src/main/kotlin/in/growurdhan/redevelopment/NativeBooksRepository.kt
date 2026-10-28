@@ -130,7 +130,11 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
             require(owner == claim.ownerId) {
                 "Claimed property owner does not match encrypted holding"
             }
-            require(account == null || db.exists(
+            // A directly registered property claim must have an explicit
+            // owner-scoped active custody link. A null link is not evidence
+            // of registry custody, even when the holding itself is valid.
+            require(account != null) { "Missing property custody evidence" }
+            require(db.exists(
                 "SELECT 1 FROM account WHERE account_id=? AND entity_id=? AND closed_on IS NULL",
                 account, owner
             )) { "Inactive or foreign property custody" }
