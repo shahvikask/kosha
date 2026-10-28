@@ -108,6 +108,28 @@ class NativeBooksRepositoryInstrumentedTest {
         }
     }
 
+    @Test fun directPropertyClaimWithoutOwnerCustodyRefusesBeforeSourceLookup() {
+        val (_, books) = create(sandbox())
+        val owner = books.read(input.email).people.single().id
+        val unlinked = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, null, "Synthetic uncustodied land", "REAL_ESTATE", "Land",
+            0L, 0L, "2025-01-01", false))
+        val proposed = `in`.growurdhan.model.NativeSharedPropertyAggregation.Claim(
+            unlinked, owner, "synthetic-unverified-land-id", "not-a-real-source",
+            "c".repeat(64), LocalDate.parse("2025-01-01"), "100",
+            30_000L, "not-an-appraisal", LocalDate.parse("2025-02-01"))
+        val before = books.read(input.email).holdings
+        try {
+            books.inspectPropertyClaims(input.email, listOf(proposed),
+                LocalDate.parse("2025-03-01"))
+            fail("Unlinked direct property must not be accepted")
+        } catch (expected: IllegalArgumentException) {
+            assertTrue(expected.message!!.contains("custody"))
+        }
+        assertEquals(before, books.read(input.email).holdings)
+        assertTrue(books.history(input.email, unlinked).isEmpty())
+    }
+
     @Test fun listedReitCannotBeMisrepresentedAsRegisteredRealProperty() {
         val context = sandbox()
         val (_, books) = create(context)
