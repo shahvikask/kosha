@@ -70,7 +70,7 @@ Hard rules for every run: test the requested source SHA; workflow_dispatch requi
 3. `android` (only T2/T3): emulator run of `tests`; upload ADB output, JUnit XML, app/test APK SHA-256.
 4. `summary`: one JSON `{sha, tier, tests, jvm_pass, android_pass, apk_sha256, run_id}`; fail if any mandatory job is skipped/failed.
 Speed: enable Gradle build cache + `--configuration-cache`; `-x lint` for test tiers; cache the AVD snapshot; `concurrency: group: native-ci-${{ github.ref }}, cancel-in-progress: true`; `paths-ignore: docs/**, marketing/**, **/*.md`.
-Wheels (CASPARSER Chaquopy): build once, store as a GitHub release asset or `actions/cache` keyed by `requirements-cas.txt` hash. NEVER pin another run's artifact id (it expires; this broke run 40658782342).
+Wheels (CASPARSER Chaquopy): `native-ci.yml` verifies cached SHA256SUMS or builds four pinned upstream Android CPython 3.13 wheels locally via `.github/scripts/build-native-wheels.sh` and saves them in actions/cache keyed by build script + Android build dependencies. No cross-run artifact downloads/IDs; missing wheels fail closed.
 Failure classes (act on the class, not the symptom):
 | Class | Signal | Action |
 |---|---|---|
