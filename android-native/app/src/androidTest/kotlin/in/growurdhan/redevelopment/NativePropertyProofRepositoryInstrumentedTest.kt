@@ -139,6 +139,9 @@ class NativePropertyProofRepositoryInstrumentedTest {
         assertThrows(IllegalArgumentException::class.java) {
             repo.register(input.email,proof(b,joint,bc,"40",200_000L),date)
         }
+        assertThrows(IllegalArgumentException::class.java) {
+            repo.register(input.email,proof(b,joint,bc,"50"),date)
+        }
         accounts.withUnlockedVault(input.email) { db ->
             db.rawQuery("SELECT count(*) FROM native_p11_property_proof",null).use {
                 assertTrue(it.moveToFirst())
