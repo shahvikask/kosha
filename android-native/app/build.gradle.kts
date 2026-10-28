@@ -63,6 +63,8 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.compose.ui.test)
+    // Synthetic test-only Ed25519 keys; not production registrar authorities.
+    androidTestImplementation("org.bouncycastle:bcprov-jdk18on:1.86")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
     // Exercise actual system Keyguard and DocumentsUI outside Compose semantics.
