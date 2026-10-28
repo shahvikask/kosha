@@ -1,6 +1,6 @@
 {
   "sha": "6f5cb3c5f323742d443e9e4ef20ab881cb68b536",
-  "tier": "T1",
-  "tests": "",
+  "tier": "T2",
+  "tests": "in.growurdhan.redevelopment.NativeAccountRepositoryInstrumentedTest",
   "api": 35
 }
