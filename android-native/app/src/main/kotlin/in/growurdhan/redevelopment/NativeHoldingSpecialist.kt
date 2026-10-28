@@ -214,7 +214,7 @@ internal object NativeHoldingSpecialist {
                     }
                     Kind.TEXT -> data.put(key, value)
                     Kind.DATE -> {
-                        require(LocalDate.parse(value).toString() == value)
+                        require(runCatching { LocalDate.parse(value).toString() == value }.getOrDefault(false)) { "Invalid specialist date" }
                         data.put(key, value)
                     }
                     Kind.MONEY -> {
