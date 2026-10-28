@@ -1,4 +1,4 @@
-name: GrowUrDhan M27 P11 property source JVM and Android Kotlin compile
+name: GrowUrDhan M27 P11 signed property evidence JVM and Android Kotlin compile
 # Exact-SHA rerun for P11 active property custody check and associated androidTest negatives.
 on:
   push:
@@ -35,9 +35,10 @@ jobs:
           set -euo pipefail
           chmod +x gradlew
           ./gradlew :core:model:test --tests 'in.growurdhan.model.NativeSharedPropertyAggregationTest' \
+            --tests 'in.growurdhan.model.NativePropertySignedEvidenceTest' \
             :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin \
             -x :app:installDebugPythonRequirements --no-daemon --stacktrace
-      - name: Verify original JUnit XML 7 of 7
+      - name: Verify original property comparison 7 and signed evidence 8 JUnit cases
         run: |
           python3 - <<'PY'
           import xml.etree.ElementTree as ET
@@ -45,6 +46,10 @@ jobs:
           r=ET.parse(p).getroot()
           assert int(r.attrib['tests']) == len(r.findall('testcase')) == 7
           assert all(int(r.attrib.get(k,'0'))==0 for k in ('failures','errors','skipped'))
+          q='android-native/core/model/build/test-results/test/TEST-in.growurdhan.model.NativePropertySignedEvidenceTest.xml'
+          signed=ET.parse(q).getroot()
+          assert int(signed.attrib['tests']) == len(signed.findall('testcase')) == 8
+          assert all(int(signed.attrib.get(k,'0')) == 0 for k in ('failures','errors','skipped'))
           PY
       - name: Original artifact
         if: always()
