@@ -157,11 +157,30 @@ class NativePropertyProofRepositoryInstrumentedTest {
         assertEquals(40_000L,sum.unallocatedMinor)
     }
     @Test fun mismatchedDigestStaleProofAndUntrustedSignerDoNotCreateTable() {
-        val (_,books)=create(sandbox())
+        val (accounts,books)=create(sandbox())
         val owner=books.read(input.email).people.single().id
         val (h,c)=holding(books,owner)
-        // The production verifier has no approved registrar/appraisal trust anchors.
-        // This test uses a new vault with an explicit source mismatch:
-        // neither mismatch nor stale date can write an authenticated proof.
+        val p=proof(h,owner,c,"100")
+        val repo=NativePropertyProofRepository(accounts,roots)
+        val before=books.read(input.email).holdings
+        assertThrows(IllegalArgumentException::class.java) {
+            repo.register(input.email,p.copy(registrySourceBytes="mismatch".toByteArray()),date)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            repo.register(input.email,p,LocalDate.parse("2028-01-01"))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            NativePropertyProofRepository(accounts).register(input.email,p,date)
+        }
+        assertNull(repo.preview(input.email,date))
+        accounts.withUnlockedVault(input.email) { db ->
+            db.rawQuery("SELECT count(*) FROM sqlite_master WHERE name='native_p11_property_proof'",
+                null).use {
+                assertTrue(it.moveToFirst())
+                assertEquals(0L,it.getLong(0))
+            }
+        }
+        assertEquals(before,books.read(input.email).holdings)
+        assertTrue(books.history(input.email,h).isEmpty())
     }
 }
