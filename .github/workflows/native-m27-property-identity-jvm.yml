@@ -1,4 +1,5 @@
 name: GrowUrDhan M27 P11 property source JVM and Android Kotlin compile
+# Exact-SHA rerun for P11 active property custody check and associated androidTest negatives.
 on:
   push:
     branches: [GUD-Android-Redevelopment]
