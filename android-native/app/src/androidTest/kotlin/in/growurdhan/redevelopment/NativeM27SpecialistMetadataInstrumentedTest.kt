@@ -210,4 +210,38 @@ class NativeM27SpecialistMetadataInstrumentedTest {
         assertEquals("1507500", obj.getString("monthlyIncomeMinor"))
         assertEquals(0, NativeBooksRepository(unlocked).history(credentials.email, holding).size)
     }
+
+    @Test fun allEightZeroPositionCategoriesSurviveEncryptedRestartWithoutInventedCost() {
+        val ctx = context()
+        val (accounts, books) = open(ctx)
+        val owner = books.read(credentials.email).people.single().id
+        val categories = listOf("EQUITY", "MUTUAL_FUND", "GOLD_SGB", "FIXED_INCOME",
+            "REAL_ESTATE", "SPECIALISED", "CASH_BANK", "LIABILITY")
+        categories.forEach { category ->
+            val sub = NativeAssetTaxonomy.subcategories.getValue(category).first()
+            val name = "Synthetic " + category
+            val details = NativeHoldingSpecialist.merge(null, category, sub,
+                NativeHoldingSpecialist.defaults(category, sub))
+            books.createHolding(credentials.email, NativeBooksRepository.NewHolding(
+                owner, null, name, category, sub, 0L, 0L, "2024-01-01",
+                false, detailsJson = details))
+        }
+        val before = books.read(credentials.email).holdings
+        assertEquals(8, before.size)
+        assertEquals(categories.toSet(), before.map { it.category }.toSet())
+        accounts.onBackground()
+        val unlocked = NativeAccountRepository(ctx, gate())
+        assertTrue(unlocked.login(credentials.email, credentials.password))
+        val reopened = NativeBooksRepository(unlocked)
+            .read(credentials.email).holdings
+        assertEquals(8, reopened.size)
+        categories.forEach { category ->
+            val original = before.single { it.category == category }
+            val restored = reopened.single { it.category == category }
+            assertEquals(original.id, restored.id)
+            assertEquals(owner, restored.personId)
+            assertEquals(0L, restored.quantityScaled)
+            assertEquals(original.detailsJson, restored.detailsJson)
+        }
+    }
 }
