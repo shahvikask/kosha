@@ -13,7 +13,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Synthetic test-only encrypted physical source-v1/schema-upgrade fixtures.
+ * Synthetic test-only encrypted physical source-v1 through v8 upgrade fixtures.
  * V1 SQL is copied exactly from frozen src/db/schema.ts blob
  * 50b896eb1b017b9ec6426e108c9e13a5ae10f002, in p11-frozen-source-v1.sql.
  * These are NOT captured customer vaults and do not accept P11 real title.
@@ -73,7 +73,7 @@ class NativeHistoricalSourceMigrationInstrumentedTest {
         }
 
     private fun fixture(version: Int): Pair<Context, EncryptedVaultStore> {
-        require(version == 1 || version == 8)
+        require(version in 1..8)
         val context = sandbox()
         val store = EncryptedVaultStore(context)
         store.createFresh(false).use { db ->
@@ -99,8 +99,9 @@ class NativeHistoricalSourceMigrationInstrumentedTest {
                 if (sql.startsWith("PRAGMA foreign_keys")) continue
                 db.execSQL(sql)
             }
-            if (version == 8) {
-                // Frozen, checked-in canonical upgrade SQL, not regenerated DDL.
+            if (version >= 3) {
+                // Apply only the frozen source-version DDL through the requested stage;
+                // v2 intentionally has no independent upgrade statements.
                 val upgrades = context.assets.open("m24-frozen-upgrades.sql")
                     .bufferedReader().use { it.readText() }
                 for ((stage, sql) in script(upgrades)) {
@@ -220,6 +221,90 @@ class NativeHistoricalSourceMigrationInstrumentedTest {
             preserved(db)
         }
         store.openExisting().use { preserved(it) }
+    }
+
+    @Test fun frozenSourceV2ThroughV7EncryptedUpgradesRetainTypedFinancialHistory() {
+        // Six distinct source-version physical layouts, each populated BEFORE
+        // the production upgrader runs; unlike an intact v9 database with
+        // only a changed user_version marker.
+        for (version in 2..7) {
+            val (_, store) = fixture(version)
+            store.openExisting().use { db ->
+                assertEquals("Failed source stage $version", 9L,
+                    scalar(db, "PRAGMA user_version"))
+                assertEquals("9", select(db,
+                    "SELECT value FROM vault_meta WHERE key='schema_version'"))
+                assertEquals(18L, scalar(db,
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' " +
+                        "AND name NOT LIKE 'sqlite_%'"))
+                preserved(db)
+                assertThrows(Exception::class.java) {
+                    db.execSQL("UPDATE ledger_event SET notes='changed' " +
+                        "WHERE ledger_event_id='historical-ledger'")
+                }
+            }
+            store.openExisting().use { db ->
+                assertEquals(9L, scalar(db, "PRAGMA user_version"))
+                preserved(db)
+            }
+        }
+    }
+
+    @Test fun frozenSourceV5OrphanCustodyFailsBeforeAnyUpgradeOrRepair() {
+        val (ctx, store) = fixture(5)
+        val key = KeystoreWrappedVaultKey(ctx).unwrapExisting()
+        try {
+            val file = ctx.getDatabasePath("growurdhan-v9.sqlcipher")
+            SQLiteDatabase.openDatabase(file.absolutePath, key, null,
+                SQLiteDatabase.OPEN_READWRITE,
+                DatabaseErrorHandler { _, _ ->
+                    throw IllegalStateException("Preserve synthetic source on corruption")
+                }, null).use { db ->
+                db.execSQL("PRAGMA foreign_keys=OFF")
+                db.execSQL("INSERT INTO account(account_id,entity_id,account_type," +
+                    "custodian,created_at) VALUES('orphan-custody'," +
+                    "'missing-owner','OTHER','Test custodian','2025-01-01')")
+            }
+        } finally { key.fill(0) }
+        assertThrows(Exception::class.java) { store.openExisting().close() }
+        val afterKey = KeystoreWrappedVaultKey(ctx).unwrapExisting()
+        try {
+            SQLiteDatabase.openDatabase(
+                ctx.getDatabasePath("growurdhan-v9.sqlcipher").absolutePath,
+                afterKey, null, SQLiteDatabase.OPEN_READWRITE,
+                DatabaseErrorHandler { _, _ ->
+                    throw IllegalStateException("Preserve rejected source")
+                }, null).use { db ->
+                db.execSQL("PRAGMA foreign_keys=ON")
+                assertEquals(5L, scalar(db, "PRAGMA user_version"))
+                assertEquals("5", select(db,
+                    "SELECT value FROM vault_meta WHERE key='schema_version'"))
+                assertEquals(16L, scalar(db,
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' " +
+                        "AND name NOT LIKE 'sqlite_%'"))
+                assertEquals(0L, scalar(db,
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' " +
+                        "AND name IN ('vault_account','gmail_seen','native_p11_property_proof')"))
+                assertEquals(1L, scalar(db,
+                    "SELECT COUNT(*) FROM account WHERE account_id='orphan-custody'"))
+                assertEquals(1L, scalar(db,
+                    "SELECT COUNT(*) FROM entity WHERE entity_id='historical-owner'"))
+                assertEquals(876543L, scalar(db,
+                    "SELECT current_price_minor FROM holding " +
+                        "WHERE holding_id='historical-holding'"))
+                assertEquals(1234500L, scalar(db,
+                    "SELECT total_amount_minor FROM ledger_event " +
+                        "WHERE ledger_event_id='historical-ledger'"))
+                assertEquals("0001FF007F", select(db,
+                    "SELECT hex(historical_opaque) FROM setting " +
+                        "WHERE key='historical-state'"))
+                db.rawQuery("PRAGMA foreign_key_check", null).use { c ->
+                    assertTrue("Original orphan must not be silently repaired",
+                        c.moveToFirst())
+                }
+                assertEquals("ok", select(db, "PRAGMA quick_check"))
+            }
+        } finally { afterKey.fill(0) }
     }
 
     @Test fun incompatibleFrozenV1UpgradeRollsBackAllNewTablesAndVersion() {
