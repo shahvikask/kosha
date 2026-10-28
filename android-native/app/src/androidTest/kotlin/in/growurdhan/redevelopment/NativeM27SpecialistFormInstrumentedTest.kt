@@ -81,4 +81,43 @@ class NativeM27SpecialistFormInstrumentedTest {
         assertEquals("FIXED_INCOME", saved!!.category)
         assertEquals("CUMULATIVE", JSONObject(saved!!.detailsJson!!).getString("compounding"))
     }
+
+    private fun assertZeroCostCategory(category: String) {
+        var saved: NativeBooksRepository.NewHolding? = null
+        val owner = NativeBooksRepository.Person("category-owner", "Category Test Owner",
+            "Self", "INDIVIDUAL", true, true, null)
+        compose.setContent {
+            MaterialTheme {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    HoldingForm(listOf(owner), emptyList(), false) { saved = it }
+                }
+            }
+        }
+        compose.onNodeWithTag("choice-Owner").performClick()
+        compose.onNodeWithText("Category Test Owner").performClick()
+        compose.onNodeWithTag("choice-Asset category").performScrollTo().performClick()
+        compose.onNodeWithText(category).performClick()
+        compose.onNodeWithTag("m27-holding-name").performScrollTo()
+            .performTextInput("Fictional " + category)
+        compose.onNodeWithTag("m27-holding-units").performScrollTo()
+            .performTextReplacement("0")
+        compose.onNodeWithTag("m27-review-holding").performScrollTo().performClick()
+        compose.onNodeWithText("Acquisition cost: Unknown (no inferred basis)").assertExists()
+        compose.onNodeWithText("Instrument: Fictional " + category +
+            " • " + category + " / " + NativeAssetTaxonomy.subcategories.getValue(category).first())
+            .assertExists()
+        compose.onNodeWithTag("m27-confirm-holding").performScrollTo().performClick()
+        assertNotNull(saved)
+        assertEquals(category, saved!!.category)
+        assertEquals("category-owner", saved!!.personId)
+        assertEquals(false, saved!!.knownOpeningCost)
+        assertEquals(null, saved!!.openingUnitPriceMinor)
+    }
+
+    @Test fun equityCategoryAllowsExplicitUnknownCost() = assertZeroCostCategory("EQUITY")
+    @Test fun goldCategoryAllowsExplicitUnknownCost() = assertZeroCostCategory("GOLD_SGB")
+    @Test fun realEstateCategoryAllowsExplicitUnknownCost() = assertZeroCostCategory("REAL_ESTATE")
+    @Test fun specialisedCategoryAllowsExplicitUnknownCost() = assertZeroCostCategory("SPECIALISED")
+    @Test fun cashCategoryAllowsExplicitUnknownCost() = assertZeroCostCategory("CASH_BANK")
+    @Test fun liabilityCategoryAllowsExplicitUnknownCost() = assertZeroCostCategory("LIABILITY")
 }
