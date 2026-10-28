@@ -5,6 +5,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -120,4 +121,27 @@ class NativeM27SpecialistFormInstrumentedTest {
     @Test fun specialisedCategoryAllowsExplicitUnknownCost() = assertZeroCostCategory("SPECIALISED")
     @Test fun cashCategoryAllowsExplicitUnknownCost() = assertZeroCostCategory("CASH_BANK")
     @Test fun liabilityCategoryAllowsExplicitUnknownCost() = assertZeroCostCategory("LIABILITY")
+
+    @Test fun invalidAcquisitionDateCannotBecomeApprovedHolding() {
+        var saved: NativeBooksRepository.NewHolding? = null
+        val owner = NativeBooksRepository.Person("invalid-date-owner", "Invalid Date Owner",
+            "Self", "INDIVIDUAL", true, true, null)
+        compose.setContent {
+            MaterialTheme {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    HoldingForm(listOf(owner), emptyList(), false) { saved = it }
+                }
+            }
+        }
+        compose.onNodeWithTag("choice-Owner").performClick()
+        compose.onNodeWithText("Invalid Date Owner").performClick()
+        compose.onNodeWithTag("m27-holding-name").performScrollTo()
+            .performTextInput("Synthetic date check")
+        compose.onNodeWithTag("m27-holding-date").performScrollTo()
+            .performTextReplacement("2026-02-30")
+        compose.onNodeWithTag("m27-review-holding").performScrollTo().performClick()
+        compose.onNodeWithText("Enter a valid acquisition date (YYYY-MM-DD).").assertExists()
+        compose.onNodeWithTag("m27-confirm-holding").assertDoesNotExist()
+        assertEquals(null, saved)
+    }
 }
