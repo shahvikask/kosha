@@ -23,8 +23,8 @@ class NativeM27EventFormInstrumentedTest {
         "Example holding", "EQUITY", "Other", 100_000_000L, 10_000L,
         "2024-01-01", "USER_ENTRY", 10_000L, false, false, false, null)
 
-    private fun form(onSave: (NativeBooksRepository.NewEvent) -> Unit,
-        audit: List<NativeBooksRepository.EventRow> = emptyList()) {
+    private fun form(audit: List<NativeBooksRepository.EventRow> = emptyList(),
+        onSave: (NativeBooksRepository.NewEvent) -> Unit) {
         compose.setContent {
             MaterialTheme {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
@@ -62,7 +62,7 @@ class NativeM27EventFormInstrumentedTest {
         val owner = NativeBooksRepository.EventRow("owner-1", holding.id,
             holding.personId, "BUY", "2025-01-02",
             100_000_000L, 10_000L, 10_000L, 0L, null, null)
-        form({ saved = it }, listOf(source, owner))
+        form(listOf(source, owner)) { saved = it }
         compose.onNodeWithTag("choice-Event kind").performScrollTo().performClick()
         compose.onNodeWithText("CORRECTION").performClick()
         compose.waitForIdle()
