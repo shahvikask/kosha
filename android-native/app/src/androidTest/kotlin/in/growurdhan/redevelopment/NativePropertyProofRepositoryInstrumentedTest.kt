@@ -163,6 +163,42 @@ class NativePropertyProofRepositoryInstrumentedTest {
         assertEquals(60_000L,sum.attributedMinor)
         assertEquals(40_000L,sum.unallocatedMinor)
     }
+    @Test fun damagedImmutableProofTriggerRejectsReadAndWriteWithoutSilentRepair() {
+        val (accounts, books) = create(sandbox())
+        val owner = books.read(input.email).people.single().id
+        val joint = books.createPerson(input.email,
+            NativeBooksRepository.NewPerson("Synthetic Joint","Joint"))
+        val (holding, custody) = holding(books, owner)
+        val (second, secondCustody) = holding(books, joint)
+        val proofStore = NativePropertyProofRepository(accounts, roots)
+        proofStore.register(input.email, proof(holding, owner, custody, "60"), date)
+        val before = books.read(input.email).holdings
+        accounts.withUnlockedVault(input.email) { db ->
+            db.execSQL("DROP TRIGGER native_p11_proof_no_update")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            proofStore.preview(input.email, date)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            proofStore.register(input.email,
+                proof(second, joint, secondCustody, "40"), date)
+        }
+        accounts.withUnlockedVault(input.email) { db ->
+            db.rawQuery("SELECT count(*) FROM native_p11_property_proof", null).use {
+                assertTrue(it.moveToFirst())
+                assertEquals(1L, it.getLong(0))
+            }
+            db.rawQuery("SELECT count(*) FROM sqlite_master " +
+                "WHERE type='trigger' AND name='native_p11_proof_no_update'", null).use {
+                assertTrue(it.moveToFirst())
+                assertEquals(0L, it.getLong(0))
+            }
+        }
+        assertEquals(before, books.read(input.email).holdings)
+        assertTrue(books.history(input.email, holding).isEmpty())
+        assertTrue(books.history(input.email, second).isEmpty())
+    }
+
     @Test fun mismatchedDigestStaleProofAndUntrustedSignerDoNotCreateTable() {
         val (accounts,books)=create(sandbox())
         val owner=books.read(input.email).people.single().id
