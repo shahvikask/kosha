@@ -771,6 +771,20 @@ internal fun HoldingForm(people: List<NativeBooksRepository.Person>,
         Text(if (approved.knownOpeningCost) "Verified acquisition cost: ₹" +
             NativeBooksRepository.formatMinor(approved.openingUnitPriceMinor!!, 4) +
             " per unit" else "Acquisition cost: Unknown (no inferred basis)")
+        Text("Custody: " + (custody.firstOrNull { it.id == approved.accountId }?.custodian
+            ?: "No custody account"))
+        Text("Acquisition date: " + approved.date)
+        Text("Issuer / institution: " + (approved.institutionName ?: "Not specified"))
+        Text("Location: " + (approved.location ?: "Not specified"))
+        Text("Asset-specific details", style = MaterialTheme.typography.titleSmall)
+        val reviewedFields = NativeHoldingSpecialist.fields(approved.category, approved.subcategory)
+        val reviewedValues = NativeHoldingSpecialist.read(
+            approved.detailsJson, approved.category, approved.subcategory)
+        reviewedFields.forEach { field ->
+            reviewedValues[field.key]?.takeIf { it.isNotBlank() }?.let { value ->
+                Text(field.label + ": " + value)
+            }
+        }
         Text("Confirming will append an immutable opening event only for nonzero units.")
         Button(enabled = !busy, modifier = Modifier.testTag("m27-confirm-holding"),
             onClick = {
