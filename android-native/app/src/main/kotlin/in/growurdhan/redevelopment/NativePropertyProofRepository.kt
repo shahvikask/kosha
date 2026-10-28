@@ -2,6 +2,7 @@ package `in`.growurdhan.redevelopment
 
 import `in`.growurdhan.model.NativePropertySignedEvidence
 import `in`.growurdhan.model.NativeSharedPropertyAggregation
+import java.math.BigDecimal
 import java.time.LocalDate
 import net.zetetic.database.sqlcipher.SQLiteDatabase
 
@@ -79,8 +80,10 @@ internal class NativePropertyProofRepository(
         val c = NativePropertySignedEvidence.verify(proof, roots, asOf)
         requireCurrentHolding(db,c,proof.custodyId)
         install(db)
+        var allocated = BigDecimal(c.memberPercent)
         db.rawQuery("""SELECT registry_source_id,registry_digest,registry_as_of,
-                appraisal_source_id,appraisal_digest,appraisal_as_of,gross_value_minor
+                appraisal_source_id,appraisal_digest,appraisal_as_of,gross_value_minor,
+                member_percent,entity_id
                 FROM native_p11_property_proof WHERE property_id=?""",
             arrayOf(c.registeredPropertyId)).use { cur ->
             while (cur.moveToNext()) {
@@ -92,6 +95,13 @@ internal class NativePropertyProofRepository(
                     cur.getString(5)==c.valuationAsOf.toString() &&
                     cur.getLong(6)==c.grossPropertyValueMinor) {
                     "Conflicting immutable registered property source or appraisal"
+                }
+                require(cur.getString(8) != c.ownerId) {
+                    "Duplicate registered property claim for same owner"
+                }
+                allocated = allocated.add(BigDecimal(cur.getString(7)))
+                require(allocated <= BigDecimal("100")) {
+                    "Overallocated registered property shares"
                 }
             }
         }
