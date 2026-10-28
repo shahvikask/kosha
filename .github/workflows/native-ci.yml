@@ -241,7 +241,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          printf '{"sha":"%s","tier":"%s","tests":"%s","jvm_pass":%s,"android_pass":%s,"apk_sha256":null,"run_id":"%s"}\n' $TARGET_SHA" "$TIER" "$TESTS" "$([[ "$JVM" == success ]] && echo true || echo false)" "$([[ "$ANDROID" == success ]] && echo true || echo false)" "$GITHUB_RUN_ID" | tee native-summary.json
+          printf '{"sha":"%s","tier":"%s","tests":"%s","jvm_pass":%s,"android_pass":%s,"apk_sha256":null,"run_id":"%s"}\n' "$TARGET_SHA" "$TIER" "$TESTS" "$([[ "$JVM" == success ]] && echo true || echo false)" "$([[ "$ANDROID" == success ]] && echo true || echo false)" "$GITHUB_RUN_ID" | tee native-summary.json
           test "$PREFLIGHT" = success && test "$JVM" = success
           if [[ "$TIER" != T1 ]]; then test "$ANDROID" = success; fi
       - uses: actions/upload-artifact@v4
