@@ -9,6 +9,76 @@ class NativePortfolioMathTest {
         supersedes: String? = null) = NativePortfolioMath.Event(
         id, "family-1", "holding-1", kind, day, qty, price, 0L, charges, supersedes, knownCost)
 
+    @Test fun sourceGoldenHybridApportionPreservesEveryMinorWithoutDuplicatingRows() {
+        val split = listOf(
+            NativeExposureAllocation.Slice("EQUITY", 6_500),
+            NativeExposureAllocation.Slice("DEBT", 3_500))
+        assertEquals(mapOf("EQUITY" to java.math.BigInteger.valueOf(66L),
+            "DEBT" to java.math.BigInteger.valueOf(35L)),
+            NativeExposureAllocation.apportion(java.math.BigInteger.valueOf(101L), split))
+        assertEquals(mapOf("EQUITY" to java.math.BigInteger.ONE,
+            "DEBT" to java.math.BigInteger.ZERO),
+            NativeExposureAllocation.apportion(java.math.BigInteger.ONE, listOf(
+                NativeExposureAllocation.Slice("EQUITY", 5_000),
+                NativeExposureAllocation.Slice("DEBT", 5_000))))
+        val large = java.math.BigInteger.valueOf(Long.MAX_VALUE).multiply(
+            java.math.BigInteger.valueOf(1_000_000L))
+        val parts = NativeExposureAllocation.apportion(large, split)
+        assertEquals(large, parts.values.fold(java.math.BigInteger.ZERO) { a, b -> a + b })
+    }
+
+    @Test fun allocationScopeKeepsForeignRowsOutAndUnknownPriceUnallocated() {
+        val split = listOf(NativeExposureAllocation.Slice("EQUITY", 6_500),
+            NativeExposureAllocation.Slice("DEBT", 3_500))
+        val rows = listOf(
+            NativeExposureAllocation.Position("hybrid", "owner-a",
+                java.math.BigInteger.valueOf(101L), split, true, "Explicit estimated hybrid"),
+            NativeExposureAllocation.Position("unpriced", "owner-a", null,
+                emptyList(), false, "No verified quote"),
+            NativeExposureAllocation.Position("foreign", "owner-b",
+                java.math.BigInteger.valueOf(999_999L),
+                listOf(NativeExposureAllocation.Slice("GOLD", 10_000)), false,
+                "Reviewed asset"))
+        val own = NativeExposureAllocation.summarize(rows, "owner-a")
+        assertEquals(listOf("hybrid", "unpriced"), own.listedHoldingIds)
+        assertEquals(java.math.BigInteger.valueOf(101L), own.knownValueMinor)
+        assertEquals(java.math.BigInteger.valueOf(101L), own.estimatedValueMinor)
+        assertEquals(1, own.excludedUnpriced)
+        assertEquals(mapOf("EQUITY" to java.math.BigInteger.valueOf(66L),
+            "DEBT" to java.math.BigInteger.valueOf(35L)), own.totals)
+        assertFalse(own.totals.containsKey("GOLD"))
+        assertEquals(java.math.BigInteger.valueOf(999_999L),
+            NativeExposureAllocation.summarize(rows, "owner-b").knownValueMinor)
+    }
+
+    @Test fun allocationRejectsUnreviewedSplitsAndDuplicateHoldingIdentity() {
+        val amount = java.math.BigInteger.valueOf(100L)
+        fun rejected(slices: List<NativeExposureAllocation.Slice>) {
+            assertThrows(IllegalArgumentException::class.java) {
+                NativeExposureAllocation.apportion(amount, slices)
+            }
+        }
+        rejected(emptyList())
+        rejected(listOf(NativeExposureAllocation.Slice("EQUITY", 9_999)))
+        rejected(listOf(NativeExposureAllocation.Slice("EQUITY", 10_001)))
+        rejected(listOf(NativeExposureAllocation.Slice("UNKNOWN", 10_000)))
+        rejected(listOf(NativeExposureAllocation.Slice("EQUITY", 5_000),
+            NativeExposureAllocation.Slice("EQUITY", 5_000)))
+        assertThrows(IllegalArgumentException::class.java) {
+            NativeExposureAllocation.apportion(amount.negate(),
+                listOf(NativeExposureAllocation.Slice("EQUITY", 10_000)))
+        }
+        val row = NativeExposureAllocation.Position("id", "owner", amount,
+            listOf(NativeExposureAllocation.Slice("EQUITY", 10_000)),
+            false, "Reviewed statement")
+        assertThrows(IllegalArgumentException::class.java) {
+            NativeExposureAllocation.summarize(listOf(row, row), "owner")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            NativeExposureAllocation.summarize(listOf(row.copy(source = "")), "owner")
+        }
+    }
+
     @Test fun frozenEightCategoriesAndAllSubcategoriesRemainPresent() {
         assertEquals(8, NativeAssetTaxonomy.subcategories.size)
         assertTrue("Sovereign Gold Bond" in NativeAssetTaxonomy.subcategories.getValue("GOLD_SGB"))
