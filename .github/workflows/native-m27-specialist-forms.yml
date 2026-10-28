@@ -28,6 +28,8 @@ jobs:
           test "$(grep -c '@Test fun' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM27SpecialistMetadataInstrumentedTest.kt)" -eq 7
           test "$(grep -c '@Test fun' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM27SpecialistFormInstrumentedTest.kt)" -eq 9
           grep -Fq 'android:allowBackup="false"' android-native/app/src/main/AndroidManifest.xml
+          grep -Fq 'val validDate = runCatching { LocalDate.parse(date) }.isSuccess' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativeBooksScreen.kt
+          grep -Fq 'allEightZeroPositionCategoriesSurviveEncryptedRestartWithoutInventedCost' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativeM27SpecialistMetadataInstrumentedTest.kt
           echo "$GITHUB_SHA" > m27-specialist-source-sha.txt
       - uses: actions/setup-java@v4
         with:
