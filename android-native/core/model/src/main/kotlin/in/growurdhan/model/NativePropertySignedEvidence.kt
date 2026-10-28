@@ -8,6 +8,7 @@ import java.security.Signature
 import java.security.spec.X509EncodedKeySpec
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
+import org.bouncycastle.jce.provider.BouncyCastleProvider
 
 /** P11: cryptographically verified source rows, never user-entered title or appraisal.
  * No production issuer roots are shipped until approved independently.
