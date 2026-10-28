@@ -20,6 +20,11 @@ import net.zetetic.database.sqlcipher.SQLiteDatabase
  * admission/credentials before committing. Never writes a plaintext financial cache.
  */
 internal class NativeBooksRepository(private val accounts: NativeAccountRepository) {
+    /** Manual official close, downloaded without sending any book identifiers. */
+    fun refreshExchangeCloses(email: String, exchange: NativeExchangeEodCatalog.Exchange,
+        archiveUrl: String): NativeExchangeEodRepository.Receipt =
+        NativeExchangeEodRepository(accounts).refresh(email, archiveUrl, exchange)
+
     data class Person(val id: String, val name: String, val relation: String,
         val kind: String, val isPrimary: Boolean, val active: Boolean, val maskedPan: String?)
     data class Custody(val id: String, val personId: String, val type: String,

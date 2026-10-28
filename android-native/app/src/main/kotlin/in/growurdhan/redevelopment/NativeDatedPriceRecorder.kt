@@ -17,7 +17,8 @@ import net.zetetic.database.sqlcipher.SQLiteDatabase
  * Call ONLY inside the NativeAccountRepository.withUnlockedVault transaction.
  */
 internal object NativeDatedPriceRecorder {
-    private val sources = setOf("USER_OVERRIDE", "CSV_STATEMENT", "CAS_PDF", "AMFI_OFFICIAL")
+    private val sources = setOf("USER_OVERRIDE", "CSV_STATEMENT", "CAS_PDF",
+        "AMFI_OFFICIAL", "NSE_OFFICIAL", "BSE_OFFICIAL")
 
     fun record(db: SQLiteDatabase, holdingId: String, instrumentId: String,
         date: String, minor: Long, source: String, ingestedAt: String,
@@ -66,6 +67,7 @@ internal object NativeDatedPriceRecorder {
                     when (source) {
                         "USER_OVERRIDE" -> "MANUAL"
                         "AMFI_OFFICIAL" -> "OFFICIAL_NAV"
+                        "NSE_OFFICIAL", "BSE_OFFICIAL" -> "OFFICIAL_CLOSE"
                         else -> "STATEMENT"
                     },
                     minor, source, ingestedAt))

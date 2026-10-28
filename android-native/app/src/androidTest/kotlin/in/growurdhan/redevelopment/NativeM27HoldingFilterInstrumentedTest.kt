@@ -2,6 +2,7 @@ package `in`.growurdhan.redevelopment
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
@@ -12,6 +13,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -76,6 +80,49 @@ class NativeM27HoldingFilterInstrumentedTest {
         compose.onNodeWithTag("m27-holdings-list").performScrollToIndex(219)
         compose.onNodeWithTag("m27-lazy-a-0219").assertExists()
         compose.onNodeWithTag("m27-lazy-foreign").assertDoesNotExist()
+    }
+
+    @Test fun datedExchangeDisclosureIsHonestAboutMissingFutureAndStale() {
+        val current = java.time.LocalDate.parse("2026-10-28")
+        val base = h("priced", "a", null, "Synthetic asset",
+            qty = 100_000_000L, price = 123_400L)
+        assertTrue(NativeExchangePriceDisclosure.text(base, current)
+            .contains("value unknown"))
+        assertTrue(NativeExchangePriceDisclosure.text(base.copy(
+            priceDate = "2026-10-27", priceSource = "NSE_OFFICIAL"), current)
+            .contains("NSE official close"))
+        assertTrue(NativeExchangePriceDisclosure.text(base.copy(
+            priceDate = "2026-08-01", priceSource = "BSE_OFFICIAL"), current)
+            .contains("STALE"))
+        assertTrue(NativeExchangePriceDisclosure.text(base.copy(
+            priceDate = "2099-01-01"), current).contains("Future"))
+        assertTrue(NativeExchangePriceDisclosure.text(base.copy(
+            priceDate = "2026-10-27", priceSource = "USER_OVERRIDE"), current)
+            .contains("Owner-entered"))
+    }
+
+    @Test fun compactDarkTwoHundredPercentExchangeCardRequiresExplicitAction() {
+        var refreshes = 0
+        var chosen = ""
+        compose.setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                CompositionLocalProvider(LocalDensity provides Density(1f, 2f)) {
+                    Column(Modifier.width(360.dp)) {
+                        NativeExchangePriceCard(false) { exchange, url ->
+                            refreshes++
+                            chosen = exchange.name + ":" + url
+                        }
+                    }
+                }
+            }
+        }
+        compose.onNodeWithTag("m30-import-close").assertIsNotEnabled()
+        compose.onNodeWithTag("m30-source-BSE").performClick()
+        compose.onNodeWithTag("m30-source-url")
+            .performTextInput("https://www.bseindia.com/public/test")
+        compose.onNodeWithTag("m30-import-close").performClick()
+        assertEquals(1, refreshes)
+        assertEquals("BSE:https://www.bseindia.com/public/test", chosen)
     }
 
     @Test fun homeHealthOwnerAndPriceCoverageAreIndependent() {
