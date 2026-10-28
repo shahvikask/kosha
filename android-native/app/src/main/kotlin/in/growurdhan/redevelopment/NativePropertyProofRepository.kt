@@ -23,6 +23,71 @@ internal class NativePropertyProofRepository(
         db.rawQuery("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
             arrayOf(table)).use { it.moveToFirst() }
 
+    /**
+     * Refuse a damaged or silently altered v9 physical extension. The frozen
+     * canonical v9 tables are untouched; this check does not rebuild a damaged
+     * table or recreate missing immutable triggers.
+     */
+    private fun requireProofSchema(db: SQLiteDatabase) {
+        require(installed(db)) { "Missing encrypted property proof table" }
+        db.rawQuery("PRAGMA user_version", null).use {
+            require(it.moveToFirst() && it.getInt(0) == 9) {
+                "Incompatible SQLCipher property proof schema version"
+            }
+        }
+        val required = mapOf(
+            "holding_id" to "TEXT", "entity_id" to "TEXT",
+            "account_id" to "TEXT", "property_id" to "TEXT",
+            "registry_source_id" to "TEXT", "registry_digest" to "TEXT",
+            "registry_as_of" to "TEXT", "registry_bytes" to "BLOB",
+            "registrar_id" to "TEXT", "registrar_signature" to "BLOB",
+            "member_percent" to "TEXT", "appraisal_source_id" to "TEXT",
+            "appraisal_digest" to "TEXT", "appraisal_as_of" to "TEXT",
+            "appraisal_bytes" to "BLOB", "appraiser_id" to "TEXT",
+            "appraiser_signature" to "BLOB", "gross_value_minor" to "INTEGER",
+            "created_at" to "TEXT"
+        )
+        val observed = mutableMapOf<String, String>()
+        db.rawQuery("PRAGMA table_info('$table')", null).use { cur ->
+            while (cur.moveToNext()) {
+                require(cur.getInt(3) == 1) { "Nullable encrypted property evidence field" }
+                observed[cur.getString(1)] = cur.getString(2).uppercase()
+            }
+        }
+        require(observed == required) { "Incompatible encrypted property proof columns" }
+        val fk = mutableSetOf<Pair<String,String>>()
+        db.rawQuery("PRAGMA foreign_key_list('$table')", null).use { cur ->
+            while (cur.moveToNext()) fk += cur.getString(3) to cur.getString(2)
+        }
+        require(fk.containsAll(setOf("holding_id" to "holding",
+            "entity_id" to "entity", "account_id" to "account"))) {
+            "Missing encrypted property ownership or custody foreign key"
+        }
+        for ((trigger, operation) in listOf(
+            "native_p11_proof_no_update" to "UPDATE",
+            "native_p11_proof_no_delete" to "DELETE"
+        )) {
+            db.rawQuery("SELECT sql FROM sqlite_master WHERE type='trigger' AND name=?",
+                arrayOf(trigger)).use { cur ->
+                require(cur.moveToFirst()) { "Missing immutable property proof trigger" }
+                val ddl = cur.getString(0).uppercase()
+                require(ddl.contains("BEFORE $operation ON NATIVE_P11_PROPERTY_PROOF") &&
+                    ddl.contains("RAISE(ABORT")) {
+                    "Modified immutable property proof trigger"
+                }
+            }
+        }
+        db.rawQuery("SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
+            arrayOf(table)).use { cur ->
+            require(cur.moveToFirst()) { "Missing encrypted property proof definition" }
+            val ddl = cur.getString(0).uppercase()
+            require(ddl.contains("UNIQUE(PROPERTY_ID, ENTITY_ID)") &&
+                ddl.contains("CHECK(GROSS_VALUE_MINOR>0)")) {
+                "Missing immutable registered-property uniqueness or financial constraint"
+            }
+        }
+    }
+
     private fun install(db: SQLiteDatabase) {
         db.execSQL("""CREATE TABLE IF NOT EXISTS native_p11_property_proof(
             holding_id TEXT PRIMARY KEY NOT NULL REFERENCES holding(holding_id),
@@ -79,7 +144,8 @@ internal class NativePropertyProofRepository(
         asOf: LocalDate = LocalDate.now()) = accounts.withUnlockedVault(email) { db ->
         val c = NativePropertySignedEvidence.verify(proof, roots, asOf)
         requireCurrentHolding(db,c,proof.custodyId)
-        install(db)
+        if (!installed(db)) install(db)
+        requireProofSchema(db)
         var allocated = BigDecimal(c.memberPercent)
         db.rawQuery("""SELECT registry_source_id,registry_digest,registry_as_of,
                 appraisal_source_id,appraisal_digest,appraisal_as_of,gross_value_minor,
@@ -126,6 +192,7 @@ internal class NativePropertyProofRepository(
         NativeSharedPropertyAggregation.Comparison? =
         accounts.withUnlockedVault(email) { db ->
             if (!installed(db)) return@withUnlockedVault null
+            requireProofSchema(db)
             val claims = mutableListOf<NativeSharedPropertyAggregation.Claim>()
             db.rawQuery("""SELECT holding_id,entity_id,account_id,property_id,
                 registry_source_id,registry_digest,registry_as_of,registry_bytes,
