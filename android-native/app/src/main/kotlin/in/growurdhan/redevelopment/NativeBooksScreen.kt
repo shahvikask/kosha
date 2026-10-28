@@ -723,6 +723,7 @@ internal fun HoldingForm(people: List<NativeBooksRepository.Person>,
     Button(enabled = !busy && owner.isNotBlank() && name.isNotBlank() &&
         (knownCost == "Unknown" || openingPrice.isNotBlank()),
         modifier = Modifier.testTag("m27-review-holding"), onClick = {
+        val validDate = runCatching { LocalDate.parse(date) }.isSuccess
         val qty = runCatching { NativeBooksRepository.parseMinor(quantity, 8) }.getOrNull()
         val minor = runCatching { NativeBooksRepository.parseMinor(price, 4) }.getOrNull()
         val opened = if (knownCost == "Unknown") null else runCatching {
@@ -738,7 +739,8 @@ internal fun HoldingForm(people: List<NativeBooksRepository.Person>,
             NativeHoldingSpecialist.merge(null, category, sub, specialistValues)
         }
         if (specialist.isFailure) specialistError = "Check the asset-specific fields before saving."
-        if (specialist.isSuccess && qty != null && minor != null &&
+        if (!validDate) specialistError = "Enter a valid acquisition date (YYYY-MM-DD)."
+        if (validDate && specialist.isSuccess && qty != null && minor != null &&
             (knownCost == "Unknown" || opened != null) &&
             (emiMinor.isBlank() || emi != null) &&
             (couponBps.isBlank() || coupon != null) &&
