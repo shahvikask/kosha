@@ -25,6 +25,8 @@ jobs:
           test "$(grep -c '@Test fun' android-native/core/model/src/test/kotlin/in/growurdhan/model/NativeSharedPropertyAggregationTest.kt)" -eq 7
           test "$(grep -c '@Test fun' android-native/core/model/src/test/kotlin/in/growurdhan/model/NativePropertySignedEvidenceTest.kt)" -eq 8
           grep -Fq 'BouncyCastleProvider()' android-native/core/model/src/main/kotlin/in/growurdhan/model/NativePropertySignedEvidence.kt
+          grep -Fq 'requireProofSchema(db)' android-native/app/src/main/kotlin/in/growurdhan/redevelopment/NativePropertyProofRepository.kt
+          test "$(grep -c '@Test fun' android-native/app/src/androidTest/kotlin/in/growurdhan/redevelopment/NativePropertyProofRepositoryInstrumentedTest.kt)" -eq 5
           echo "$GITHUB_SHA" > property-source-sha.txt
       - uses: actions/setup-java@v4
         with:
