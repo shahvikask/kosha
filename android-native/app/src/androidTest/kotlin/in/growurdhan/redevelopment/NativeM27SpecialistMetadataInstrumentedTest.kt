@@ -246,4 +246,140 @@ class NativeM27SpecialistMetadataInstrumentedTest {
             assertEquals(original.detailsJson, restored.detailsJson)
         }
     }
+
+
+    @Test fun sourceHoldingDetailsContractHasExactThirtySixMappedKeys() {
+        val expected = setOf(
+            "goldHoldMode", "goldPurity", "goldHallmark", "earlyExitDate",
+            "annualContributionMinor", "contributionOn", "compounding", "tdsApplicable",
+            "npsTier", "npsCra", "npsPfm", "faceValueMinor", "areaSqFt",
+            "ownership", "ownershipPercent", "aifCategory", "commitmentMinor",
+            "capitalCalledMinor", "ifsc", "strategyName", "custodian",
+            "originalTenorMonths", "rateType", "linkedHoldingId", "mfPlan",
+            "mfOption", "mfHeldAs", "depository", "dpId", "clientId", "boId",
+            "altHoldMode", "monthlyIncomeMinor", "incomeDay", "incomeStart", "incomeEnd")
+        val mapping = NativeHoldingSpecialist.fullFieldMapping()
+        assertEquals(expected, mapping.keys)
+        assertEquals(setOf("EQUITY", "MUTUAL_FUND", "GOLD_SGB", "FIXED_INCOME",
+            "REAL_ESTATE", "SPECIALISED", "CASH_BANK", "LIABILITY"),
+            mapping.values.flatten().map { it.category }.toSet())
+        assertTrue(mapping.values.all { it.isNotEmpty() })
+        assertTrue(mapping.getValue("npsTier").all {
+            it.category == "FIXED_INCOME" && it.subcategory == "NPS"
+        })
+        assertTrue(mapping.getValue("mfPlan").all { it.category == "MUTUAL_FUND" })
+        assertTrue(mapping.getValue("linkedHoldingId").all { it.category == "LIABILITY" })
+        assertTrue(mapping.getValue("goldHallmark").all { it.category == "GOLD_SGB" })
+        assertEquals(setOf(NativeHoldingSpecialist.Kind.MONEY),
+            mapping.getValue("commitmentMinor").map { it.kind }.toSet())
+        assertEquals(setOf(NativeHoldingSpecialist.Kind.BOOLEAN),
+            mapping.getValue("tdsApplicable").map { it.kind }.toSet())
+        assertEquals(listOf("DIRECT", "REGULAR"),
+            mapping.getValue("mfPlan").first().options)
+    }
+
+    @Test fun allEightCategoryFieldValuesAndNegativeWritesSurviveEncryptedReopen() {
+        val ctx = context()
+        val (account, books) = open(ctx)
+        val owner = books.read(credentials.email).people.single().id
+        val mapping = NativeHoldingSpecialist.fullFieldMapping()
+        var equityId = ""
+        data class Case(val category: String, val sub: String,
+            val values: Map<String, String>)
+        val cases = listOf(
+            Case("EQUITY", "Other", mapOf("depository" to "CDSL", "dpId" to "DP-A",
+                "clientId" to "CLIENT-A", "boId" to "BO-A")),
+            Case("MUTUAL_FUND", "Equity fund", mapOf("mfPlan" to "DIRECT",
+                "mfOption" to "GROWTH", "mfHeldAs" to "FOLIO",
+                "depository" to "NSDL", "dpId" to "DP-MF",
+                "clientId" to "CLIENT-MF", "boId" to "BO-MF")),
+            Case("GOLD_SGB", "Physical gold (24K)", mapOf("goldHoldMode" to "CERTIFICATE",
+                "goldPurity" to "24K", "goldHallmark" to "HALL-TEST",
+                "earlyExitDate" to "2025-01-31")),
+            Case("FIXED_INCOME", "NPS", mapOf(
+                "annualContributionMinor" to "1000.50", "contributionOn" to "2024-02-01",
+                "compounding" to "QUARTERLY", "tdsApplicable" to "false",
+                "npsTier" to "I", "npsCra" to "PROT", "npsPfm" to "Fictional PFM",
+                "faceValueMinor" to "500.25", "monthlyIncomeMinor" to "10.25",
+                "incomeDay" to "28", "incomeStart" to "2024-01-01",
+                "incomeEnd" to "2025-01-01")),
+            Case("REAL_ESTATE", "REIT", mapOf("areaSqFt" to "1250.125",
+                "ownership" to "JOINT", "ownershipPercent" to "37.33333333",
+                "altHoldMode" to "DEMAT", "monthlyIncomeMinor" to "12.50",
+                "incomeDay" to "28", "incomeStart" to "2024-01-01",
+                "incomeEnd" to "2025-01-01")),
+            Case("SPECIALISED", "AIF", mapOf("aifCategory" to "II",
+                "commitmentMinor" to "250000.10", "capitalCalledMinor" to "125000.05",
+                "strategyName" to "Fictional strategy", "custodian" to "Fictional custody",
+                "altHoldMode" to "LUMPSUM", "monthlyIncomeMinor" to "125.50",
+                "incomeDay" to "28", "incomeStart" to "2024-01-01",
+                "incomeEnd" to "2025-01-01")),
+            Case("CASH_BANK", "Savings account", mapOf("ifsc" to "ABCD0001234")),
+            Case("LIABILITY", "Home loan", mapOf("originalTenorMonths" to "120",
+                "rateType" to "FLOATING"))
+        )
+        val stored = mutableMapOf<String, Pair<String, String>>()
+        for (case in cases) {
+            val values = if (case.category == "LIABILITY")
+                case.values + ("linkedHoldingId" to equityId) else case.values
+            val details = NativeHoldingSpecialist.merge(
+                """{"historicalUnknown":"keep"}""", case.category, case.sub, values)
+            val id = books.createHolding(credentials.email,
+                NativeBooksRepository.NewHolding(owner, null,
+                    "Synthetic " + case.category, case.category, case.sub,
+                    0L, 0L, "2024-01-01", false, detailsJson = details))
+            if (case.category == "EQUITY") equityId = id
+            stored[case.category] = id to details!!
+            assertEquals("keep", JSONObject(details).getString("historicalUnknown"))
+            val validKeys = NativeHoldingSpecialist.fields(case.category, case.sub)
+                .map { it.key }.toSet()
+            val foreignField = mapping.keys.first { it !in validKeys }
+            val injected = JSONObject().put(foreignField, "illicit").toString()
+            assertThrows(IllegalArgumentException::class.java) {
+                books.createHolding(credentials.email, NativeBooksRepository.NewHolding(
+                    owner, null, "Invalid " + case.category, case.category, case.sub,
+                    0L, 0L, "2024-01-01", false, detailsJson = injected))
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                NativeHoldingSpecialist.merge(null, case.category, case.sub,
+                    mapOf(foreignField to "invalid"))
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                books.createHolding(credentials.email, NativeBooksRepository.NewHolding(
+                    "nonexistent-owner", null, "Foreign " + case.category,
+                    case.category, case.sub, 0L, 0L, "2024-01-01", false,
+                    detailsJson = details))
+            }
+            assertEquals(stored.size, books.read(credentials.email).holdings.size)
+            assertTrue(books.history(credentials.email, id).isEmpty())
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            NativeHoldingSpecialist.merge(null, "FIXED_INCOME", "NPS",
+                mapOf("annualContributionMinor" to "-0.0001"))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            NativeHoldingSpecialist.merge(null, "GOLD_SGB", "Physical gold (24K)",
+                mapOf("earlyExitDate" to "2025-02-30"))
+        }
+        assertEquals("37.33333333", JSONObject(stored.getValue("REAL_ESTATE").second)
+            .getString("ownershipPercent"))
+        assertEquals("10005000", JSONObject(stored.getValue("FIXED_INCOME").second)
+            .getString("annualContributionMinor"))
+        account.onBackground()
+        val unlocked = NativeAccountRepository(ctx, gate())
+        assertTrue(unlocked.login(credentials.email, credentials.password))
+        val restored = NativeBooksRepository(unlocked)
+        val holdings = restored.read(credentials.email).holdings
+        assertEquals(8, holdings.size)
+        for (case in cases) {
+            val (id, json) = stored.getValue(case.category)
+            val item = holdings.single { it.id == id }
+            assertEquals(case.category, item.category)
+            assertEquals(case.sub, item.subcategory)
+            assertEquals(owner, item.personId)
+            assertEquals(0L, item.quantityScaled)
+            assertEquals(json, item.detailsJson)
+            assertTrue(restored.history(credentials.email, id).isEmpty())
+        }
+    }
 }

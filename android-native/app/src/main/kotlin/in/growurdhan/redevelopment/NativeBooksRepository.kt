@@ -378,6 +378,7 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
             form.detailsJson?.let {
                 require(it.length <= 32768)
                 org.json.JSONObject(it) // Do not silently replace malformed specialist metadata.
+                NativeHoldingSpecialist.requireScopedDetails(it, form.category, form.subcategory)
             }
             requireSpecialistLink(db, form.personId, null, form.detailsJson)
             val instrument = newId()
@@ -940,6 +941,14 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
             if (detailsJson != null) {
                 require(detailsJson.length <= 32768)
                 org.json.JSONObject(detailsJson)
+                val kind = db.rawQuery("SELECT i.category,i.sub_category FROM holding h " +
+                    "JOIN instrument i ON h.instrument_id=i.instrument_id " +
+                    "WHERE h.holding_id=?", arrayOf(holdingId)).use { cursor ->
+                    require(cursor.moveToFirst()) { "Unknown holding" }
+                    cursor.getString(0) to cursor.getString(1)
+                }
+                NativeHoldingSpecialist.requireScopedDetails(
+                    detailsJson, kind.first, kind.second)
                 requireSpecialistLink(db, owner, holdingId, detailsJson)
             }
             // null means preserve an omitted update; an explicit empty string

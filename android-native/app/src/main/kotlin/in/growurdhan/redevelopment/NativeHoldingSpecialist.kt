@@ -1,5 +1,6 @@
 package `in`.growurdhan.redevelopment
 
+import `in`.growurdhan.model.NativeAssetTaxonomy
 import java.math.BigDecimal
 import java.time.LocalDate
 import org.json.JSONObject
@@ -139,6 +140,41 @@ internal object NativeHoldingSpecialist {
         else -> emptyList()
     }
 
+    /** Deterministic machine-readable mapping of the original 36 HoldingDetails keys.
+     * Location retains its category and subcategory to prevent cross-type editing.
+     */
+    data class FieldLocation(val category: String, val subcategory: String,
+        val kind: Kind, val options: List<String>)
+    fun fullFieldMapping(): Map<String, List<FieldLocation>> {
+        val mapped = sortedMapOf<String, MutableList<FieldLocation>>()
+        for ((category, subcategories) in NativeAssetTaxonomy.subcategories) {
+            for (subcategory in subcategories) {
+                for (field in fields(category, subcategory)) {
+                    mapped.getOrPut(field.key) { mutableListOf() }.add(
+                        FieldLocation(category, subcategory, field.kind, field.options))
+                }
+            }
+        }
+        return mapped.mapValues { (_, locations) -> locations.toList() }
+    }
+
+    private val knownSourceKeys by lazy { fullFieldMapping().keys }
+
+    /** Existing unknown historical keys survive, but a known key from a foreign
+     * asset category must never be imported or edited through raw details_json.
+     */
+    fun requireScopedDetails(json: String?, category: String, subcategory: String) {
+        if (json.isNullOrBlank()) return
+        val valid = fields(category, subcategory).map { it.key }.toSet()
+        val iterator = JSONObject(json).keys()
+        while (iterator.hasNext()) {
+            val key = iterator.next()
+            require(key !in knownSourceKeys || key in valid) {
+                "Specialist field belongs to another asset category/subcategory"
+            }
+        }
+    }
+
     fun read(json: String?, category: String, subcategory: String): Map<String, String> {
         if (json.isNullOrBlank()) return emptyMap()
         val data = JSONObject(json)
@@ -190,7 +226,7 @@ internal object NativeHoldingSpecialist {
                         val number = BigDecimal(value)
                         require(number >= BigDecimal.ZERO && number <= BigDecimal("1000000000"))
                         if (key == "ownershipPercent") require(number <= BigDecimal("100"))
-                        data.put(key, number.toDouble())
+                        data.put(key, number)
                     }
                     Kind.INTEGER -> {
                         val integer = value.toInt()
