@@ -1,5 +1,5 @@
 name: GrowUrDhan M27 P11 signed property evidence JVM and Android Kotlin compile
-# Exact-SHA rerun for P11 active property custody check and associated androidTest negatives.
+# Exact-SHA provider repair: API35 AndroidKeyStore Ed25519 default is not test key generator.
 on:
   push:
     branches: [GUD-Android-Redevelopment]
@@ -24,6 +24,7 @@ jobs:
           grep -Fq 'android:allowBackup="false"' android-native/app/src/main/AndroidManifest.xml
           test "$(grep -c '@Test fun' android-native/core/model/src/test/kotlin/in/growurdhan/model/NativeSharedPropertyAggregationTest.kt)" -eq 7
           test "$(grep -c '@Test fun' android-native/core/model/src/test/kotlin/in/growurdhan/model/NativePropertySignedEvidenceTest.kt)" -eq 8
+          grep -Fq 'BouncyCastleProvider()' android-native/core/model/src/main/kotlin/in/growurdhan/model/NativePropertySignedEvidence.kt
           echo "$GITHUB_SHA" > property-source-sha.txt
       - uses: actions/setup-java@v4
         with:
