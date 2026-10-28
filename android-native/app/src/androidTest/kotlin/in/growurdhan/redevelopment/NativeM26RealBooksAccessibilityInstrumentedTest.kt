@@ -86,6 +86,9 @@ class NativeM26RealBooksAccessibilityInstrumentedTest {
         }
         compose.onNodeWithText("Viewing Whole household financial records").assertExists()
         compose.onNodeWithTag("books-tab-Home").assertIsSelected()
+        compose.onNodeWithTag("m29-home-health").assertExists()
+        compose.onNodeWithTag("m29-home-price-health").assertExists()
+        compose.onNodeWithTag("m29-home-categories").assertExists()
         for (tab in listOf("Home", "Holdings", "Family", "Accounts",
             "Goals", "Records", "Documents", "Settings")) {
             // At 200% text scale the nav begins below the viewport. A clipped

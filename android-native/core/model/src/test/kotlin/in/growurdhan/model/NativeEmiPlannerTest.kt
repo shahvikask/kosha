@@ -45,6 +45,22 @@ class NativeEmiPlannerTest {
         assertNull(NativeEmiPlanner.plan(liability(), "2024-12-01", emptySet()))
     }
 
+    @Test fun sourceGoldenIntermediateEmiCatchupMaintainsUnpaidCursor() {
+        val plan = NativeEmiPlanner.plan(liability(balance = 55_000L),
+            "2025-03-31", emptySet())!!
+        assertEquals(listOf("2025-01-31", "2025-02-28", "2025-03-28"),
+            plan.payments.map { it.dueDate })
+        assertEquals(30_000L, plan.payments.sumOf { it.amountMinor })
+        assertEquals(25_000L, plan.outstandingMinor)
+        assertEquals(2, plan.remainingCount)
+        assertEquals("2025-04-28", plan.nextDueDate)
+        assertEquals("PAYING", plan.status)
+        assertThrows(IllegalArgumentException::class.java) {
+            NativeEmiPlanner.plan(liability(balance = 55_000L),
+                "2025-03-31", setOf("2025-02-28"))
+        }
+    }
+
     @Test fun crossCategoryAndNegativeValuesFailClosed() {
         assertThrows(IllegalArgumentException::class.java) {
             NativeEmiPlanner.plan(liability().copy(category = "EQUITY"),

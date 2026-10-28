@@ -151,6 +151,21 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                         Text("${selected.size} holdings • ${lensPeople.size} active ${if (lensPeople.size == 1) "member" else "members"} in view",
                             style = MaterialTheme.typography.titleLarge)
                         Text("$warnings holding(s) need review or cost/price confirmation")
+                        val health = NativeBooksHomeHealth.summarize(
+                            data.holdings, ownerFilter, LocalDate.now())
+                        Text("Books health: ${health.active} active, ${health.archived} archived; " +
+                            "${health.unknownCost} asset(s) with unknown acquisition cost; " +
+                            "${health.needsReview} needing explicit review.",
+                            modifier = Modifier.testTag("m29-home-health"))
+                        Text("Dated price coverage: ${health.missingDatedPrice} missing, " +
+                            "${health.staleDatedPrice} at least 45 days old, " +
+                            "${health.invalidOrFuturePrice} invalid or future. " +
+                            "No absent price is used as a live quote.",
+                            modifier = Modifier.testTag("m29-home-price-health"))
+                        Text("Asset categories in current owner view: " +
+                            (health.categories.joinToString { "${it.first} ${it.second}" }
+                                .ifEmpty { "None" }),
+                            modifier = Modifier.testTag("m29-home-categories"))
                         Text("Home displays book records. No market value is calculated from an absent quote.")
                         selected.take(12).forEach { h ->
                             Text("${h.name}: ${NativeBooksRepository.formatMinor(h.quantityScaled, 8)} units " +

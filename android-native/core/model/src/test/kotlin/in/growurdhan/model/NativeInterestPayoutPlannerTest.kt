@@ -57,6 +57,22 @@ class NativeInterestPayoutPlannerTest {
         }
     }
 
+    @Test fun sourceGoldenFullYearPayoutsRequireExplicitRate() {
+        val monthly = NativeInterestPayoutPlanner.plan(
+            input(NativeInterestPayoutPlanner.Kind.POMIS, rate = 1200))
+        assertEquals(12, monthly.coupons.size)
+        assertEquals(12_000L, monthly.coupons.sumOf { it.amountMinor })
+        val quarterly = NativeInterestPayoutPlanner.plan(
+            input(NativeInterestPayoutPlanner.Kind.SCSS, rate = 800))
+        assertEquals(4, quarterly.coupons.size)
+        assertEquals(8_000L, quarterly.coupons.sumOf { it.amountMinor })
+        val afterPosting = NativeInterestPayoutPlanner.plan(
+            input(NativeInterestPayoutPlanner.Kind.POMIS, rate = 1200),
+            setOf(LocalDate.parse("2025-02-28")))
+        assertEquals(1, afterPosting.alreadyRecorded)
+        assertEquals(11, afterPosting.coupons.size)
+    }
+
     @Test fun dueDateWindowIsBoundedForOriginalHistoricalContracts() {
         assertThrows(IllegalArgumentException::class.java) {
             NativeInterestPayoutPlanner.plan(

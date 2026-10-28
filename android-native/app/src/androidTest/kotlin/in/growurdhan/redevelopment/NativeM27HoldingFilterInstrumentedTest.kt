@@ -78,6 +78,32 @@ class NativeM27HoldingFilterInstrumentedTest {
         compose.onNodeWithTag("m27-lazy-foreign").assertDoesNotExist()
     }
 
+    @Test fun homeHealthOwnerAndPriceCoverageAreIndependent() {
+        val rows = listOf(
+            h("priced", "a", null, "Known", qty = 100_000_000L)
+                .copy(unknownCost = false, priceDate = "2025-06-01"),
+            h("stale", "a", null, "Old", qty = 100_000_000L)
+                .copy(unknownCost = false, priceDate = "2025-02-01"),
+            h("unpriced", "a", null, "Missing", qty = 100_000_000L)
+                .copy(needsReview = true),
+            h("arch", "a", null, "Archived", archived = true),
+            h("foreign", "b", null, "Other", qty = 100_000_000L))
+        val day = java.time.LocalDate.parse("2025-06-01")
+        val own = NativeBooksHomeHealth.summarize(rows, "a", day)
+        assertEquals(3, own.active)
+        assertEquals(1, own.archived)
+        assertEquals(1, own.unknownCost)
+        assertEquals(1, own.missingDatedPrice)
+        assertEquals(1, own.staleDatedPrice)
+        assertEquals(0, own.invalidOrFuturePrice)
+        assertEquals(listOf("EQUITY" to 3), own.categories)
+        assertEquals(1, NativeBooksHomeHealth.summarize(rows, "b", day).active)
+        assertEquals(4, NativeBooksHomeHealth.summarize(rows, "", day).active)
+        assertEquals(1, NativeBooksHomeHealth.summarize(rows +
+            h("future", "a", null, "Future", qty = 100_000_000L)
+                .copy(priceDate = "2099-01-01"), "a", day).invalidOrFuturePrice)
+    }
+
     @Test fun valueSortUsesExactBigIntegerAndStableNamesWithoutOverflow() {
         val rows = listOf(
             h("large", "a", null, "Very large", qty = Long.MAX_VALUE, price = Long.MAX_VALUE),
