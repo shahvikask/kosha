@@ -35,7 +35,8 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
         val goalId: String? = null, val location: String? = null)
     data class EventRow(val id: String, val holdingId: String, val ownerId: String,
         val kind: String, val date: String, val quantityScaled: Long, val unitPriceMinor: Long,
-        val amountMinor: Long, val chargesMinor: Long, val supersedes: String?, val notes: String?)
+        val amountMinor: Long, val chargesMinor: Long, val supersedes: String?, val notes: String?,
+        val sourceBacked: Boolean = false)
     data class ImportBatch(val id: String, val filename: String, val documentKind: String,
         val statementDate: String?, val newRows: Int, val duplicateRows: Int,
         val conflicts: Int, val committedAt: String)
@@ -773,17 +774,23 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
             val rows = mutableListOf<EventRow>()
             db.rawQuery("SELECT ledger_event_id,entity_id,event_type,trade_date," +
                 "quantity_scaled,unit_price_minor,total_amount_minor,charges_minor," +
-                "supersedes_event_id,notes FROM ledger_event WHERE holding_id=? " +
+                "supersedes_event_id,notes,entered_by,source_ref FROM ledger_event WHERE holding_id=? " +
                 "ORDER BY trade_date,ledger_event_id", arrayOf(holdingId)).use { c ->
                 while (c.moveToNext()) {
                     require(c.getString(1) == expectedOwner) {
                         "Ledger history owner does not match holding owner"
                     }
+                    val sourced = c.getString(10) != "owner" || !c.isNull(11)
+                    if (c.getString(2) == "SNAPSHOT_ADJUSTMENT") {
+                        require(c.getString(10) != "owner" && !c.isNull(11)) {
+                            "Snapshot adjustment lacks source provenance"
+                        }
+                    }
                     rows += EventRow(c.getString(0), holdingId,
-                    c.getString(1), c.getString(2), c.getString(3), c.getLong(4),
-                    c.getLong(5), c.getLong(6), c.getLong(7),
-                    if (c.isNull(8)) null else c.getString(8),
-                    if (c.isNull(9)) null else c.getString(9))
+                        c.getString(1), c.getString(2), c.getString(3), c.getLong(4),
+                        c.getLong(5), c.getLong(6), c.getLong(7),
+                        if (c.isNull(8)) null else c.getString(8),
+                        if (c.isNull(9)) null else c.getString(9), sourced)
                 }
             }
             rows

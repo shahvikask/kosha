@@ -23,12 +23,13 @@ class NativeM27EventFormInstrumentedTest {
         "Example holding", "EQUITY", "Other", 100_000_000L, 10_000L,
         "2024-01-01", "USER_ENTRY", 10_000L, false, false, false, null)
 
-    private fun form(onSave: (NativeBooksRepository.NewEvent) -> Unit) {
+    private fun form(onSave: (NativeBooksRepository.NewEvent) -> Unit,
+        audit: List<NativeBooksRepository.EventRow> = emptyList()) {
         compose.setContent {
             MaterialTheme {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
                     EventForm(listOf(holding), false,
-                        loadHistory = { emptyList() }, add = onSave, price = { _, _, _ -> })
+                        loadHistory = { audit }, add = onSave, price = { _, _, _ -> })
                 }
             }
         }
@@ -51,6 +52,25 @@ class NativeM27EventFormInstrumentedTest {
         assertEquals(0L, saved!!.quantityScaled)
         assertEquals(0L, saved!!.unitPriceMinor)
         assertEquals(125_000L, saved!!.amountMinor)
+    }
+
+    @Test fun correctionPickerExcludesSourceBackedSnapshotBeforeSave() {
+        var saved: NativeBooksRepository.NewEvent? = null
+        val source = NativeBooksRepository.EventRow("registrar-1", holding.id,
+            holding.personId, "SNAPSHOT_ADJUSTMENT", "2025-01-01",
+            0L, 0L, 0L, 0L, null, null, sourceBacked = true)
+        val owner = NativeBooksRepository.EventRow("owner-1", holding.id,
+            holding.personId, "BUY", "2025-01-02",
+            100_000_000L, 10_000L, 10_000L, 0L, null, null)
+        form({ saved = it }, listOf(source, owner))
+        compose.onNodeWithTag("choice-Event kind").performScrollTo().performClick()
+        compose.onNodeWithText("CORRECTION").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("choice-Recorded event to correct").performScrollTo().performClick()
+        compose.onNodeWithText("2025-01-02 • BUY • owner-1").assertExists()
+        compose.onNodeWithText("2025-01-01 • SNAPSHOT_ADJUSTMENT • registrar-1")
+            .assertDoesNotExist()
+        assertNull(saved)
     }
 
     @Test fun splitIsExactRatioOnlyAndCannotSaveCashAmount() {

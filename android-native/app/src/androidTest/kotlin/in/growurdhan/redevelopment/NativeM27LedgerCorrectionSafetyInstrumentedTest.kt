@@ -67,6 +67,10 @@ class NativeM27LedgerCorrectionSafetyInstrumentedTest {
                     "registrar", "fictional-import"))
             }
         }
+        val sourceHistory = books.history(credential.email, h)
+        assertEquals(2, sourceHistory.size)
+        assertTrue(sourceHistory.all { it.sourceBacked })
+        assertTrue(sourceHistory.any { it.kind == "SNAPSHOT_ADJUSTMENT" })
         for (source in sourceIds) {
             assertThrows(IllegalArgumentException::class.java) {
                 books.appendUserEvent(credential.email, NativeBooksRepository.NewEvent(

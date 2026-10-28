@@ -45,6 +45,26 @@ class NativeM27LazyAuditHistoryInstrumentedTest {
             .assertExists().assertTextContains("corrects full event ID fictional-event-0001", substring = true)
     }
 
+    @Test fun sourcedSnapshotShowsReadOnlyReconciliationAtHighFontScale() {
+        val e = NativeBooksRepository.EventRow("fictional-snapshot",
+            "fictional-holding", "fictional-owner", "SNAPSHOT_ADJUSTMENT",
+            "2025-02-01", 0L, 0L, 0L, 0L, null, null, sourceBacked = true)
+        compose.setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                val density = LocalDensity.current
+                CompositionLocalProvider(LocalDensity provides Density(density.density, 2f)) {
+                    Box(Modifier.width(360.dp)) {
+                        NativeHoldingAuditHistory(listOf(e))
+                    }
+                }
+            }
+        }
+        compose.onNodeWithTag("m27-source-event-fictional-snapshot")
+            .assertExists().assertTextContains("Source-referenced", substring = true)
+        compose.onNodeWithTag("m27-source-snapshot-fictional-snapshot")
+            .assertExists().assertTextContains("read-only reconciliation", substring = true)
+    }
+
     @Test fun lastAuditIdAndFullCorrectionRemainAccessibleAt360dpAnd200PercentText() {
         compose.setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {

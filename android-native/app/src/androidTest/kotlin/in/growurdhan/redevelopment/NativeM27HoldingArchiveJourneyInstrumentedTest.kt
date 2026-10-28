@@ -172,6 +172,37 @@ class NativeM27HoldingArchiveJourneyInstrumentedTest {
         assertEquals(goal, afterSecondRestart.goalId)
     }
 
+    @Test fun customDatedValuationCannotCreatePurchasesAndSurvivesReopen() {
+        val ctx = context()
+        val (account, books) = enroll(ctx)
+        val owner = books.read(credential.email).people.single().id
+        val id = books.createHolding(credential.email,
+            NativeBooksRepository.NewHolding(owner, null, "Fictional dated fund",
+                "MUTUAL_FUND", "Equity fund", 100_000_000L, 10_000L,
+                "2024-01-01", false))
+        val before = books.history(credential.email, id).map { it.id }
+        books.recordManualPrice(credential.email, id, 42_000L, "2025-01-12")
+        books.recordManualPrice(credential.email, id, 31_000L, "2024-12-01")
+        assertEquals(42_000L, books.read(credential.email).holdings.single().marketPriceMinor)
+        assertEquals(before, books.history(credential.email, id).map { it.id })
+        assertThrows(IllegalArgumentException::class.java) {
+            books.recordManualPrice(credential.email, id, -1L, "2025-01-13")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            books.recordManualPrice(credential.email, id, 70_000L, "2099-01-01")
+        }
+        assertEquals(before, books.history(credential.email, id).map { it.id })
+        account.onBackground()
+        val reopenedAccount = NativeAccountRepository(ctx, gate())
+        assertTrue(reopenedAccount.login(credential.email, credential.password))
+        val reopened = NativeBooksRepository(reopenedAccount)
+        val state = reopened.read(credential.email).holdings.single()
+        assertEquals(42_000L, state.marketPriceMinor)
+        assertTrue(state.unknownCost)
+        assertEquals(100_000_000L, state.quantityScaled)
+        assertEquals(before, reopened.history(credential.email, id).map { it.id })
+    }
+
     @Test fun openPositionAndForeignGoalAndCustodyFailWithoutDataLossOrReassignment() {
         val (_, books) = enroll(context())
         val primary = books.read(credential.email).people.single().id

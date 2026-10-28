@@ -271,6 +271,12 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                                     "no interest or contribution is auto-posted.",
                                     modifier = Modifier.testTag("m27-ppf-ssy-history-warning"))
                             }
+                            Text("Custody link: " + (lensCustody.firstOrNull { it.id == h.accountId }
+                                ?.custodian ?: "None") + " • Goal link: " +
+                                (data.goals.firstOrNull { it.id == h.goalId }?.name ?: "None"),
+                                modifier = Modifier.testTag("m27-holding-links"))
+                            h.location?.let { Text("Location: " + it) }
+                            h.notes?.let { Text("Holding notes: " + it) }
                             if (h.archived) Text("Archived (history retained)")
                             if (h.needsReview) Text("Reconciliation review needed",
                                 color = MaterialTheme.colorScheme.error)
@@ -320,6 +326,12 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                             }
                         }
                         if (historyId.isNotEmpty() && list.any { it.id == historyId }) {
+                            Text("Reconciliation review: " +
+                                "${history.count { it.sourceBacked }} source-referenced event(s), " +
+                                "${history.count { it.kind == "SNAPSHOT_ADJUSTMENT" }} " +
+                                "registrar snapshot(s). Source-only adjustments cannot be " +
+                                "reclassified as purchases or edited manually.",
+                                modifier = Modifier.testTag("m27-reconciliation-read-only"))
                             NativeHoldingAuditHistory(history)
                             TextButton(onClick = { historyId = ""; history = emptyList() }) {
                                 Text("Close history")
@@ -832,13 +844,15 @@ internal fun EventForm(holdings: List<NativeBooksRepository.Holding>, busy: Bool
     val byId = history.associateBy { it.id }
     fun correctedKind(target: String): String? {
         var cursor = byId[target] ?: return null
+        if (cursor.sourceBacked || cursor.kind == "SNAPSHOT_ADJUSTMENT") return null
         val visited = mutableSetOf<String>()
         while (cursor.kind == "CORRECTION") {
+            if (cursor.sourceBacked) return null
             if (!visited.add(cursor.id)) return null
             val previousId = cursor.supersedes ?: return null
             cursor = byId[previousId] ?: return null
         }
-        return cursor.kind
+        return cursor.kind.takeUnless { cursor.sourceBacked || it == "SNAPSHOT_ADJUSTMENT" }
     }
     val effectiveKind = if (kind == "CORRECTION") correctedKind(correctionId) else kind
     val split = effectiveKind == "SPLIT"
@@ -864,7 +878,8 @@ internal fun EventForm(holdings: List<NativeBooksRepository.Holding>, busy: Bool
     }
     if (kind == "CORRECTION") {
         Choice("Recorded event to correct", listOf("" to "Select exact recorded event") +
-            history.map { it.id to "${it.date} • ${it.kind} • ${it.id}" },
+            history.filter { !it.sourceBacked && it.kind != "SNAPSHOT_ADJUSTMENT" }
+                .map { it.id to "${it.date} • ${it.kind} • ${it.id}" },
             correctionId, !busy) { target ->
             correctionId = target
             val original = byId[target]

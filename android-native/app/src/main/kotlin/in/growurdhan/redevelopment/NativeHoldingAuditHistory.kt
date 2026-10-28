@@ -37,6 +37,17 @@ internal fun NativeHoldingAuditHistory(
                         "charges ₹${NativeBooksRepository.formatMinor(event.chargesMinor, 4)}",
                     style = MaterialTheme.typography.bodyMedium
                 )
+                if (event.sourceBacked) {
+                    Text("Source-referenced immutable event: verify original evidence before reconciliation.",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.testTag("m27-source-event-${event.id}"))
+                }
+                if (event.kind == "SNAPSHOT_ADJUSTMENT") {
+                    Text("Registrar snapshot adjustment is read-only reconciliation evidence, " +
+                        "not an acquisition or manual trade.",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.testTag("m27-source-snapshot-${event.id}"))
+                }
                 Text(
                     "Event ID ${event.id}" +
                         (event.supersedes?.let { " • corrects full event ID $it" } ?: ""),
