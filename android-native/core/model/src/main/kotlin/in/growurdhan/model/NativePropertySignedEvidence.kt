@@ -30,6 +30,7 @@ object NativePropertySignedEvidence {
         val valuationSignature: ByteArray
     )
 
+    private val ed25519Provider = BouncyCastleProvider()
     private fun digest(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
         .digest(bytes).joinToString("") { "%02x".format(it.toInt() and 255) }
     private fun valid(s: String) = s.isNotBlank() && s.length <= 160 &&
@@ -54,9 +55,9 @@ object NativePropertySignedEvidence {
 
     private fun verifySignature(key: ByteArray, payload: ByteArray, signature: ByteArray) {
         require(signature.size == 64 && key.isNotEmpty()) { "Missing issuer signature" }
-        val publicKey = KeyFactory.getInstance("Ed25519")
+        val publicKey = KeyFactory.getInstance("Ed25519", ed25519Provider)
             .generatePublic(X509EncodedKeySpec(key))
-        require(Signature.getInstance("Ed25519").run {
+        require(Signature.getInstance("Ed25519", ed25519Provider).run {
             initVerify(publicKey)
             update(payload)
             verify(signature)
