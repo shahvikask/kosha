@@ -48,6 +48,114 @@ class NativeAccountRepositoryInstrumentedTest {
                 NativeRegistrationProof.TERMS_VERSION,
                 NativeRegistrationProof.TERMS_TEXT_ID, at, true), at)
 
+
+    @Test fun rejectedIdentityOrTermsNeverCreatesVaultAndDuplicateEnrollmentPreservesOwner() {
+        val ctx = sandbox()
+        val auth = repository(ctx)
+        val input = NativeCredentials.Enrollment("safe@example.org", "Safe", "Owner",
+            "Strong!Pass123", "school", "First School", "pet", "My Cat")
+        val validTerms = NativeRegistrationProof.Consent(
+            NativeRegistrationProof.TERMS_VERSION,
+            NativeRegistrationProof.TERMS_TEXT_ID, Instant.now().toString(), true)
+        assertThrows(IllegalArgumentException::class.java) {
+            auth.enrollVerified(input,
+                NativeRegistrationProof.Identity("NOT-A-PAN", "1990-01-02"), validTerms)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            auth.enrollVerified(input,
+                NativeRegistrationProof.Identity("ABCDE1234F", "2099-01-01"), validTerms)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            auth.enrollVerified(input,
+                NativeRegistrationProof.Identity("ABCDE1234F", "1990-01-02"),
+                validTerms.copy(scrolledToEnd = false))
+        }
+        assertFalse(ctx.getDatabasePath("growurdhan-v9.sqlcipher").exists())
+        val originalCode = verifiedEnroll(auth, input)
+        assertTrue(originalCode.startsWith("GUD-"))
+        assertThrows(IllegalStateException::class.java) {
+            verifiedEnroll(auth, input.copy(password = "Different!Pass234"))
+        }
+        auth.onBackground()
+        val reopened = repository(ctx)
+        assertTrue(reopened.login(input.email, input.password))
+        assertFalse(reopened.login(input.email, "Different!Pass234"))
+        assertTrue(reopened.login(input.email, input.password))
+        reopened.withUnlockedVault(input.email) { db ->
+            db.rawQuery("SELECT COUNT(*) FROM vault_account", null).use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals(1L, c.getLong(0))
+            }
+        }
+    }
+
+    @Test fun outdatedTermsCannotUnlockUntilCurrentScrollConsentIsPersisted() {
+        val ctx = sandbox()
+        val auth = repository(ctx)
+        val input = NativeCredentials.Enrollment("terms@example.org", "Terms", "Owner",
+            "Strong!Pass123", "school", "School", "pet", "Cat")
+        verifiedEnroll(auth, input)
+        assertTrue(auth.login(input.email, input.password))
+        auth.withUnlockedVault(input.email) { db ->
+            db.execSQL("UPDATE setting SET value=? WHERE key='m25.terms.version'",
+                arrayOf<Any>("superseded-version"))
+        }
+        auth.onBackground()
+        val reopened = repository(ctx)
+        assertEquals(NativeAccountRepository.SignInResult.TERMS_REQUIRED,
+            reopened.loginResult(input.email, input.password))
+        assertThrows(IllegalStateException::class.java) {
+            reopened.withUnlockedVault(input.email) { Unit }
+        }
+        val current = NativeRegistrationProof.Consent(
+            NativeRegistrationProof.TERMS_VERSION, NativeRegistrationProof.TERMS_TEXT_ID,
+            Instant.now().toString(), true)
+        assertEquals(NativeAccountRepository.SignInResult.DENIED,
+            reopened.loginResult(input.email, input.password,
+                current.copy(scrolledToEnd = false)))
+        assertThrows(IllegalStateException::class.java) {
+            reopened.withUnlockedVault(input.email) { Unit }
+        }
+        assertEquals(NativeAccountRepository.SignInResult.UNLOCKED,
+            reopened.loginResult(input.email, input.password, current))
+        reopened.withUnlockedVault(input.email) { db ->
+            db.rawQuery("SELECT value FROM setting WHERE key='m25.terms.version'",
+                null).use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals(NativeRegistrationProof.TERMS_VERSION, c.getString(0))
+            }
+        }
+        reopened.onBackground()
+        assertTrue(repository(ctx).login(input.email, input.password))
+    }
+
+    @Test fun replacementCodeInvalidatesUndeliveredOriginalAcrossEncryptedRestart() {
+        val ctx = sandbox()
+        val input = NativeCredentials.Enrollment("rotatecode@example.org", "Rotate", "Code",
+            "Strong!Pass123", "school", "School Name", "pet", "Cat")
+        val auth = repository(ctx)
+        val firstCode = verifiedEnroll(auth, input)
+        assertTrue(auth.login(input.email, input.password))
+        val replacement = auth.replaceRecoveryCode(input.email)
+        assertNotEquals(firstCode, replacement)
+        auth.onBackground()
+        val reopened = repository(ctx)
+        assertThrows(IllegalArgumentException::class.java) {
+            reopened.recoverWithCode(input.email, firstCode, "school", "School Name",
+                "pet", "Cat", "NewStrong!345")
+        }
+        assertTrue(reopened.login(input.email, input.password))
+        reopened.onBackground()
+        reopened.recoverWithCode(input.email, replacement, "school", "School Name",
+            "pet", "Cat", "NewStrong!345")
+        assertFalse(reopened.login(input.email, input.password))
+        assertTrue(repository(ctx).login(input.email, "NewStrong!345"))
+        assertThrows(IllegalArgumentException::class.java) {
+            repository(ctx).recoverWithCode(input.email, replacement,
+                "school", "School Name", "pet", "Cat", "Another!Strong456")
+        }
+    }
+
     @Test fun interruptedRegistrationCodeCanBeSafelyReplacedAfterFreshAuthentication() {
         val context = sandbox()
         val input = NativeCredentials.Enrollment("delivery@example.org", "Delivery",

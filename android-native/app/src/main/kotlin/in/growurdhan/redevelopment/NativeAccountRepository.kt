@@ -91,10 +91,15 @@ internal class NativeAccountRepository(
         identity: `in`.growurdhan.model.NativeRegistrationProof.Identity,
         consent: `in`.growurdhan.model.NativeRegistrationProof.Consent
     ): String {
-        ticket() // require explicit foreground device proof before any vault file is created
+        val admissionTicket = ticket() // require foreground proof before expensive credential work
         val account = NativeCredentials.enroll(input, createdAt)
         val ownerId = UUID.randomUUID().toString()
         val issued = NativeCredentials.issueRecoveryCapability()
+        // PBKDF2 and recovery-capability generation can take time. Backgrounding
+        // during them must not allow first vault creation on a stale device proof.
+        // Once createFresh has published the vault/key, finish enrollment atomically:
+        // aborting mid-publication could leave an unowned, unrecoverable vault.
+        requireTicket(admissionTicket)
         vault.createFresh(legacyVaultPresent = false).use { db ->
             db.beginTransaction()
             try {
