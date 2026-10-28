@@ -198,6 +198,18 @@ jobs:
             grep -Eq 'OK \([1-9][0-9]* tests\)' native-adb.txt
             grep -Fq 'INSTRUMENTATION_CODE: -1' native-adb.txt
             ! grep -Eq 'FAILURES!!!|INSTRUMENTATION_CODE: 0' native-adb.txt
+            # Only synthetic Compose fixtures are exported; never capture admitted vaults.
+            if adb shell test -d /sdcard/Android/data/in.growurdhan.redevelopment/files/g14-evidence; then
+              mkdir -p g14-screenshots
+              adb pull /sdcard/Android/data/in.growurdhan.redevelopment/files/g14-evidence/. g14-screenshots/
+              (cd g14-screenshots && find . -type f -name '*.png' -print0 | sort -z | xargs -0 -r sha256sum) > g14-screenshots.sha256
+              test -s g14-screenshots.sha256
+              (cd g14-screenshots && sha256sum --check ../g14-screenshots.sha256)
+            fi
+            # Fail closed if visual fixtures were explicitly requested but no PNG was produced.
+            case "${{ needs.preflight.outputs.tests }}" in
+              *NativeM26VisualEvidenceInstrumentedTest*) test -s g14-screenshots.sha256 ;;
+            esac
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -207,6 +219,8 @@ jobs:
             native-adb.txt
             android-native/app/build/outputs/apk/debug/*.apk
             android-native/app/build/outputs/apk/androidTest/debug/*.apk
+            g14-screenshots/*.png
+            g14-screenshots.sha256
           if-no-files-found: warn
   summary:
     if: always()
