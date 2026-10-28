@@ -110,7 +110,7 @@ New-chat prompt the owner pastes (replaces §17.5/17.7):
 Seed written by Claude on 2026-10-28 from repo docs. FIRST SESSION: verify B1–B3 against GitHub Actions and fix any mismatch before relying on them.
 
 ## B1 Header
-branch GUD-Android-Redevelopment · HEAD at seed `6965c40cc0b92d88647c59f9e5485c025a2c342b` · checkpoint_sha `6965c40cc0b92d88647c59f9e5485c025a2c342b` · accepted requirements 0/36 in-scope · formally accepted milestones: none.
+branch GUD-Android-Redevelopment · HEAD checked after P0 `95d54f62f6a58086990d524c5023ca3d6b9d56c8` · checkpoint_sha `95d54f62f6a58086990d524c5023ca3d6b9d56c8` · accepted requirements 0/36 in-scope · formally accepted milestones: none.
 State codes: ND not started · SP source partial · JV JVM green · EM emulator green · AC accepted · DF deferred (D57).
 
 ## B2 Requirement matrix (split a row when members diverge)
@@ -137,14 +137,14 @@ State codes: ND not started · SP source partial · JV JVM green · EM emulator 
 | run_id | sha | proves | dep_paths |
 |---|---|---|---|
 | 40658862842 | dbb561dd | JVM+APK compile; API35 8/8 (specialist/P10-P11 set) | core/**, app/src/main/** |
-| 40659987550 | f2d301de | EXPECTED 6 SQLCipher + 9 Compose = 15; RUNNING at seed time → UNVERIFIED | core/**, app/src/main/** |
+| 40659987550 | f2d301de | FAILED :app:compileDebugAndroidTestKotlin (assertDoesNotExist import / NativeAssetTaxonomy); no emulator result | core/**, app/src/main/**, specialist form test |\n| 40661694569 | 6965c40c | SUCCESS: JVM/APK build and API35 16/16 (7 metadata + 9 form); artifact 12804837207; reused at P0 (no Android dependency changes) | core/**, app/src/main/**, specialist form test, gradle/** |
 | 40652687085 / 40652687166 | 3746d928 | P11 JVM compile; API35 10/10 migration/rollback | core/**, app/src/main/** |
 | 40499402394 | 511aa0ea | 169 JVM + 3 API35 (P13/P14 reconciliation) | core/**, app/src/main/** |
 | 40441608989 | df12285f | M26+G14 API35 PASS, 144 JVM / 10 Android | core/**, app/src/main/** |
 Expired/unusable: wheel artifact 12795467059 (run 40640334920) — replace per A5 wheels rule.
 
 ## B4 Work queue (top = next; re-prioritize only by owner)
-1. Terminal result of run 40659987550 (f2d301de): inspect XML/ADB/APK hashes; repair real failures. [T1→T2]
+1. DONE, source-level verified: 40659987550 failed AndroidTest Kotlin compilation (not a 15-case emulator failure); newer 40661694569 passed build + API35 16/16. Original artifact hashes/JUnit XML not yet separately extracted; no duplicate run. Unified native-ci T1/T2 remains UNPROVEN and needs workflow_dispatch when available.
 2. P09/P10: all 8 categories encrypted create→restart→negative + full `HoldingDetails` field mapping (spec §4.1–4.2). [T2]
 3. P12 detail/edit/archive/close + custom dated valuation + links (one slice with 4–5). [T2]
 4. P13/P14 reconciliation + source-only SNAPSHOT_ADJUSTMENT handling. [T2, same run as 3]
@@ -157,7 +157,7 @@ Expired/unusable: wheel artifact 12795467059 (run 40640334920) — replace per A
 11. M30 NSE/BSE adapters + provenance/stale UX; mock HTTP tests.
 12. M31 settings/diagnostics/accessibility/Hindi onboarding/dossier export warnings.
 13. M32–M34 — BLOCKED until owner supplies Google OAuth, Play Billing/signing, device, AppSec reviewer.
-Process task P0 (do first, in one commit, T0): add this playbook, move old docs to `docs/archive/` (A8), add the AGENTS.md pointer line and DECISION-LOG row D58, create `native-ci.yml` + `.ci/` trigger. Then prove `native-ci.yml` once with item 1 (T1, then T2 for the 15 expected cases), and only then move the old workflows to `.github/workflows-archive/` in a separate commit.
+Process task P0: docs, archive moves, AGENTS pointer, D58, native-ci.yml committed at 95d54f62 (T0). NOT YET VERIFIED: native-ci.yml T1/T2 dispatch/terminal evidence; `.ci/request.json` remains absent because self-referential SHA equality cannot be satisfied by a conventional single commit. Do not archive old workflows until replacement passes. Native CI dispatch requires owner `gh workflow run` or another authorized dispatch capability.
 
 ## B5 Blockers needing the owner
 Gmail OAuth project/credentials; Play Billing products/test accounts; upload/signing keys; physical ARM64 phone + genuine CAS statements; production property/PPF/SSY/valuer trust roots; independent AppSec reviewer; G14 screenshot approval. (O1–O5 are already ticked via owner delegation; workflow triggering uses `.ci/request.json`.)
