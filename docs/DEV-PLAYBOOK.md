@@ -137,7 +137,7 @@ State codes: ND not started · SP source partial · JV JVM green · EM emulator 
 | run_id | sha | proves | dep_paths |
 |---|---|---|---|
 | 40658862842 | dbb561dd | JVM+APK compile; API35 8/8 (specialist/P10-P11 set) | core/**, app/src/main/** |
-| 40659987550 | f2d301de | FAILED :app:compileDebugAndroidTestKotlin (assertDoesNotExist import / NativeAssetTaxonomy); no emulator result | core/**, app/src/main/**, specialist form test |\n| 40665928598 | 09c00047988b9141ad6141122eb5d0d400b977a7 | T1 preflight + JVM SUCCESS; summary FAILED due malformed shell quote; repair round 1 pending. Request commit 67f8a10a; no EMULATOR | native-ci.yml |\n| 40661694569 | 6965c40cc0b92d88647c59f9e5485c025a2c342b | SUCCESS: JVM/APK build and API35 16/16 (7 NativeM27SpecialistMetadataInstrumentedTest + 9 NativeM27SpecialistFormInstrumentedTest); prior 15 expectation was stale (6+9), new source had 7 metadata cases. Artifact 12804837207; reused only if A6 dep paths unchanged | core/**, app/src/main/**, specialist form test, gradle/** |
+| 40659987550 | f2d301de | FAILED :app:compileDebugAndroidTestKotlin (assertDoesNotExist import / NativeAssetTaxonomy); no emulator result | core/**, app/src/main/**, specialist form test |\n| 40666583685 | 5d524652ab2e48c8569479151f4b6b51de024b67 | T1 SUCCESS: preflight, JVM tests/Kotlin compile and summary; Android correctly skipped; request commit b91dd296; native-ci replacement proven at T1, T2 still unverified | native-ci.yml, core/**, app/src/main/** |\n| 40665928598 | 09c00047988b9141ad6141122eb5d0d400b977a7 | T1 preflight + JVM SUCCESS; summary FAILED due malformed shell quote; repair round 1 pending. Request commit 67f8a10a; no EMULATOR | native-ci.yml |\n| 40661694569 | 6965c40cc0b92d88647c59f9e5485c025a2c342b | SUCCESS: JVM/APK build and API35 16/16 (7 NativeM27SpecialistMetadataInstrumentedTest + 9 NativeM27SpecialistFormInstrumentedTest); prior 15 expectation was stale (6+9), new source had 7 metadata cases. Artifact 12804837207; reused only if A6 dep paths unchanged | core/**, app/src/main/**, specialist form test, gradle/** |
 | 40652687085 / 40652687166 | 3746d928 | P11 JVM compile; API35 10/10 migration/rollback | core/**, app/src/main/** |
 | 40499402394 | 511aa0ea | 169 JVM + 3 API35 (P13/P14 reconciliation) | core/**, app/src/main/** |
 | 40441608989 | df12285f | M26+G14 API35 PASS, 144 JVM / 10 Android | core/**, app/src/main/** |
@@ -157,7 +157,7 @@ Expired/unusable: wheel artifact 12795467059 (run 40640334920) — replace per A
 11. M30 NSE/BSE adapters + provenance/stale UX; mock HTTP tests.
 12. M31 settings/diagnostics/accessibility/Hindi onboarding/dossier export warnings.
 13. M32–M34 — BLOCKED until owner supplies Google OAuth, Play Billing/signing, device, AppSec reviewer.
-Process task P0: archived working docs, AGENTS pointer, D58, and native-ci committed at 95d54f62 (T0). O5 ancestor-based request guard updated after owner clarification; first source-SHA T1 request and native-ci proof pending. Do not archive old workflows before green proof.
+Process task P0: completed. O5 ancestor-based source-SHA T1 proven SUCCESS run 40666583685; legacy per-slice workflows moved by unchanged Git blobs to .github/workflows-archive/ in separate archive commit. Keep ci.yml, marketing.yml, android-aab.yml, android-apk.yml, native-ci.yml.
 
 ## B5 Blockers needing the owner
 Gmail OAuth project/credentials; Play Billing products/test accounts; upload/signing keys; physical ARM64 phone + genuine CAS statements; production property/PPF/SSY/valuer trust roots; independent AppSec reviewer; G14 screenshot approval. (O1–O5 are already ticked via owner delegation; workflow triggering uses `.ci/request.json`.)
@@ -169,4 +169,4 @@ Gmail OAuth project/credentials; Play Billing products/test accounts; upload/sig
 - Known past failures to avoid: hard-coded test counts in workflow YAML; pinning an expired artifact id; duplicate dispatch while a run is active; treating lightweight/docs CI as Android proof.
 
 ## B7 Open risks
-Evidence is mostly tied to older SHAs; no local Gradle for the agent; 58 per-slice workflows (maintenance + wrong counts); owner-only inputs block M32–M34; 0 formal acceptances after many sessions — the next sessions should convert PARTIAL → ACCEPTED slice by slice rather than adding breadth.
+Evidence is mostly tied to older SHAs; no local Gradle for the agent; legacy per-slice workflows archived after unified T1 proof (T2 still open); owner-only inputs block M32–M34; 0 formal acceptances after many sessions — the next sessions should convert PARTIAL → ACCEPTED slice by slice rather than adding breadth.
