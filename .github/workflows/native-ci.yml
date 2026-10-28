@@ -195,7 +195,7 @@ jobs:
             adb install -r android-native/app/build/outputs/apk/debug/app-debug.apk
             adb install -r android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell am instrument -w -r -e class "${{ needs.preflight.outputs.tests }}" in.growurdhan.redevelopment.test/androidx.test.runner.AndroidJUnitRunner | tee native-adb.txt
-            grep -Eq 'OK \\([1-9][0-9]* tests\\)' native-adb.txt
+            grep -Eq 'OK \([1-9][0-9]* tests\)' native-adb.txt
             grep -Fq 'INSTRUMENTATION_CODE: -1' native-adb.txt
             ! grep -Eq 'FAILURES!!!|INSTRUMENTATION_CODE: 0' native-adb.txt
       - uses: actions/upload-artifact@v4
