@@ -650,7 +650,7 @@ internal fun HoldingForm(people: List<NativeBooksRepository.Person>,
     OutlinedTextField(price, { price = it }, label = { Text("Current / last price per unit ₹ (valuation only)") },
         modifier = Modifier.fillMaxWidth())
     OutlinedTextField(date, { date = it }, label = { Text("Acquisition date YYYY-MM-DD") },
-        modifier = Modifier.fillMaxWidth())
+        modifier = Modifier.fillMaxWidth().testTag("m27-holding-date"))
     Choice("Opening cost", listOf("Unknown" to "Unknown", "Known" to "Known"), knownCost,
         !busy) {
         knownCost = it
