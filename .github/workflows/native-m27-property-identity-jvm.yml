@@ -23,6 +23,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           grep -Fq 'android:allowBackup="false"' android-native/app/src/main/AndroidManifest.xml
           test "$(grep -c '@Test fun' android-native/core/model/src/test/kotlin/in/growurdhan/model/NativeSharedPropertyAggregationTest.kt)" -eq 7
+          test "$(grep -c '@Test fun' android-native/core/model/src/test/kotlin/in/growurdhan/model/NativePropertySignedEvidenceTest.kt)" -eq 8
           echo "$GITHUB_SHA" > property-source-sha.txt
       - uses: actions/setup-java@v4
         with:
@@ -59,4 +60,5 @@ jobs:
           path: |
             property-source-sha.txt
             android-native/core/model/build/test-results/test/TEST-in.growurdhan.model.NativeSharedPropertyAggregationTest.xml
+            android-native/core/model/build/test-results/test/TEST-in.growurdhan.model.NativePropertySignedEvidenceTest.xml
           if-no-files-found: warn
