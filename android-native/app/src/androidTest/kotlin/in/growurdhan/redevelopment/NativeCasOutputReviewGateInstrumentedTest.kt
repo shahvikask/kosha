@@ -57,6 +57,57 @@ class NativeCasOutputReviewGateInstrumentedTest {
         }
     }
 
+    private fun nonDematSource(): JSONObject {
+        val document = source().put("fileType", "CAMS").put("casType", "MUTUAL_FUND")
+        val account = document.getJSONArray("accounts").getJSONObject(0)
+        account.put("type", "Mutual Fund Folios")
+        account.remove("dpId")
+        account.remove("clientId")
+        val row = document.getJSONArray("holdings").getJSONObject(0)
+        row.put("kind", "mutual_fund").put("accountType", "Mutual Fund Folios")
+            .put("isin", "INF000000001").put("folio", "FOLIO-SYNTHETIC-1")
+        row.remove("dpId")
+        row.remove("clientId")
+        return document
+    }
+
+    @Test fun syntheticNonDematPreviewRequiresUniqueSourcePositionIdentity() {
+        assertEquals("CAMS", NativeCasOutputReviewGate.verify(
+            nonDematSource(), "ABCDE1234F").issuer)
+        val missing = nonDematSource()
+        val missingRow = missing.getJSONArray("holdings").getJSONObject(0)
+        missingRow.remove("isin")
+        missingRow.remove("folio")
+        assertThrows(IllegalArgumentException::class.java) {
+            NativeCasOutputReviewGate.verify(missing, "ABCDE1234F")
+        }
+        val malformed = nonDematSource()
+        malformed.getJSONArray("holdings").getJSONObject(0)
+            .put("isin", "INVALID")
+        assertThrows(IllegalArgumentException::class.java) {
+            NativeCasOutputReviewGate.verify(malformed, "ABCDE1234F")
+        }
+        val duplicate = nonDematSource()
+        val positions = duplicate.getJSONArray("holdings")
+        positions.put(JSONObject(positions.getJSONObject(0).toString()))
+        duplicate.getJSONObject("parsedTotals").put("holdingsCount", 2)
+            .put("holdingsValue", 2000)
+        duplicate.getJSONObject("pdfTotals").put("grand", 2000)
+        assertThrows(IllegalArgumentException::class.java) {
+            NativeCasOutputReviewGate.verify(duplicate, "ABCDE1234F")
+        }
+        // Same ISIN in two independently identified folios is distinct.
+        val twoFolios = nonDematSource()
+        val first = twoFolios.getJSONArray("holdings").getJSONObject(0)
+        twoFolios.getJSONArray("holdings")
+            .put(JSONObject(first.toString()).put("folio", "FOLIO-SYNTHETIC-2"))
+        twoFolios.getJSONObject("parsedTotals").put("holdingsCount", 2)
+            .put("holdingsValue", 2000)
+        twoFolios.getJSONObject("pdfTotals").put("grand", 2000)
+        assertEquals(2, NativeCasOutputReviewGate.verify(
+            twoFolios, "ABCDE1234F").count)
+    }
+
     @Test fun singleSyntheticOriginalFormatAccountPassesStrictPayloadGate() {
         val verified = NativeCasOutputReviewGate.verify(source(), "ABCDE1234F")
         assertEquals("NSDL", verified.issuer)

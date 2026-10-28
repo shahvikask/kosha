@@ -142,8 +142,23 @@ internal object NativeCasOutputReviewGate {
             return n
         }
         var positionsSubtotal = BigDecimal.ZERO
+        val nonDematSourceKeys = mutableSetOf<Pair<String, String>>()
         for (index in 0 until holdings.length()) {
             val position = holdings.getJSONObject(index)
+            // A preview is not permission to guess an issuer's identity. For
+            // non-demat sources every row needs an exact ISIN or folio, and
+            // distinct positions must not silently double-count the same key.
+            // Demat account/ISIN combinations are checked separately above.
+            if (issuer !in setOf("CDSL", "NSDL")) {
+                val isin = position.optString("isin").trim()
+                val folio = position.optString("folio").trim()
+                require((isin.isNotEmpty() || folio.isNotEmpty()) &&
+                    (isin.isEmpty() || isin.matches(Regex("[A-Z0-9]{12}"))) &&
+                    folio.length <= 120 && folio.none { it.isISOControl() } &&
+                    nonDematSourceKeys.add(isin to folio)) {
+                    "Non-demat CAS position lacks unique exact ISIN/folio provenance"
+                }
+            }
             // Each actual source position must have real, bounded numeric
             // units/NAV/value. No null, string or guessed replacement value.
             val units = finiteAmount(position.get("quantity"))
