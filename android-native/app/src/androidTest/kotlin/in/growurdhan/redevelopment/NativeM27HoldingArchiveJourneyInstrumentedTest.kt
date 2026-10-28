@@ -58,6 +58,63 @@ class NativeM27HoldingArchiveJourneyInstrumentedTest {
         return account to NativeBooksRepository(account)
     }
 
+    @Test fun officialCloseSqlCipherRestartAndManualPrecedenceAreFailClosed() {
+        val ctx = context()
+        val (account, books) = enroll(ctx)
+        val owner = books.read(credential.email).people.single().id
+        val id = books.createHolding(credential.email,
+            NativeBooksRepository.NewHolding(owner, null, "Fictional NSE equity",
+                "EQUITY", "Other", 100_000_000L, 10_000L, "2024-01-01", true,
+                isin = "INE000000001", openingUnitPriceMinor = 10_000L))
+        val before = books.history(credential.email, id).map { it.id }
+        val quote = NativeExchangeEodCatalog.Quote("INE000000001",
+            "2026-10-27", 123_450L, "EQUITY")
+        val catalog = NativeExchangeEodCatalog.Catalog(
+            NativeExchangeEodCatalog.Exchange.NSE, "2026-10-27",
+            mapOf(quote.isin to quote))
+        val receipt = NativeExchangeEodRepository(account)
+            .applyVerifiedCatalog(credential.email, catalog)
+        assertEquals(1, receipt.matched)
+        val priced = books.read(credential.email).holdings.single()
+        assertEquals(123_450L, priced.marketPriceMinor)
+        assertEquals("2026-10-27", priced.priceDate)
+        assertEquals("NSE_OFFICIAL", priced.priceSource)
+        assertEquals(before, books.history(credential.email, id).map { it.id })
+
+        // Earlier market statements cannot roll back the newer displayed close.
+        NativeExchangeEodRepository(account).applyVerifiedCatalog(credential.email,
+            catalog.copy(date = "2026-10-26", quotes = mapOf(quote.isin to
+                quote.copy(date = "2026-10-26", minor = 50_000L))))
+        assertEquals(123_450L, books.read(credential.email)
+            .holdings.single().marketPriceMinor)
+
+        // An actual owner override for the same date wins over an NSE quote.
+        account.withUnlockedVault(credential.email) { db ->
+            NativeDatedPriceRecorder.record(db, id, priced.instrumentId, "2026-10-27",
+                222_200L, "USER_OVERRIDE", java.time.Instant.now().toString())
+        }
+        NativeExchangeEodRepository(account).applyVerifiedCatalog(credential.email,
+            catalog.copy(quotes = mapOf(quote.isin to quote.copy(minor = 123_456L))))
+        val manual = books.read(credential.email).holdings.single()
+        assertEquals(222_200L, manual.marketPriceMinor)
+        assertEquals("USER_OVERRIDE", manual.priceSource)
+        assertEquals(before, books.history(credential.email, id).map { it.id })
+
+        assertThrows(IllegalArgumentException::class.java) {
+            NativeExchangeEodRepository(account).applyVerifiedCatalog(
+                credential.email, catalog.copy(date = "2099-01-01",
+                    quotes = mapOf(quote.isin to quote.copy(date = "2099-01-01"))))
+        }
+        account.onBackground()
+        val reopened = NativeAccountRepository(ctx, gate())
+        assertTrue(reopened.login(credential.email, credential.password))
+        val saved = NativeBooksRepository(reopened).read(credential.email).holdings.single()
+        assertEquals(222_200L, saved.marketPriceMinor)
+        assertEquals("USER_OVERRIDE", saved.priceSource)
+        assertEquals(before, NativeBooksRepository(reopened)
+            .history(credential.email, id).map { it.id })
+    }
+
     @Test fun composeGoalLocationArchiveCancelConfirmAndReopenSurviveEncryptedRestart() {
         val ctx = context()
         val (account, books) = enroll(ctx)

@@ -27,6 +27,13 @@ internal object NativeExchangeEodDownloader {
             conn.connectTimeout = 12_000
             conn.readTimeout = 20_000
             conn.useCaches = false
+            conn.setRequestProperty("User-Agent",
+                "Mozilla/5.0 (Android; GrowUrDhan Native) AppleWebKit/537.36")
+            conn.setRequestProperty("Accept", "*/*")
+            conn.setRequestProperty("Referer",
+                if (source.exchange == NativeExchangeEodCatalog.Exchange.NSE)
+                    "https://www.nseindia.com/all-reports"
+                else "https://www.bseindia.com/")
             try {
                 require(conn.responseCode == HttpURLConnection.HTTP_OK &&
                     conn.contentLengthLong <= MAX_BYTES) {

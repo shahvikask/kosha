@@ -30,10 +30,12 @@ class NativeAmfiNavCatalogInstrumentedTest {
         return output.toByteArray()
     }
 
-    private fun officialLink(exchange: String, day: String): String {
-        val host = if (exchange == "NSE") "nsearchives.nseindia.com"
-            else "www.bseindia.com"
-        return "https://$host/download/BhavCopy_${exchange}_CM_0_0_0_${day}_F_0000.csv.zip"
+    private fun officialLink(exchange: String, day: String): String = when (exchange) {
+        "NSE" -> "https://nsearchives.nseindia.com/content/cm/" +
+            "BhavCopy_NSE_CM_0_0_0_${day}_F_0000.csv.zip"
+        "BSE" -> "https://www.bseindia.com/download/BhavCopy/Equity/" +
+            "BhavCopy_BSE_CM_0_0_0_${day}_F_0000.CSV"
+        else -> error("Unexpected test exchange")
     }
 
     @Test fun nseAndBseMockHttpArchiveUseExactIsinCloseAndDate() {
@@ -42,9 +44,15 @@ class NativeAmfiNavCatalogInstrumentedTest {
                 officialLink(exchange, "20261027"),
                 NativeExchangeEodCatalog.Exchange.valueOf(exchange),
                 LocalDate.parse("2026-10-28"))
-            val csv = "ISIN,ClsPric,TradDt\\nINE000000001,123.4567,2026-10-27\\n" +
-                "INE000000002,10.0000,2026-10-27\\n"
-            val archive = eodZip(exchange, "20261027", csv.replace("\\n", "\n"))
+            val csv = if (exchange == "NSE")
+                "ISIN,ClsPric,TradDt,SctySrs\\nINE000000001,123.4567,2026-10-27,EQ\\n" +
+                    "INE000000002,10.0000,2026-10-27,BE\\n"
+            else
+                "ISIN,ClsPric,TradDt,FinInstrmTp\\nINE000000001,123.4567,2026-10-27,STK\\n" +
+                    "INE000000002,10.0000,2026-10-27,STK\\n"
+            val actualCsv = csv.replace("\\n", "\n")
+            val archive = if (exchange == "NSE") eodZip(exchange, "20261027", actualCsv)
+                else actualCsv.toByteArray(Charsets.UTF_8)
             var requested: String? = null
             val parsed = NativeExchangeEodDownloader.fetch(source) { url ->
                 requested = url.toString()
@@ -80,11 +88,14 @@ class NativeAmfiNavCatalogInstrumentedTest {
             officialLink("NSE", "20261027"),
             NativeExchangeEodCatalog.Exchange.NSE, LocalDate.parse("2026-10-28"))
         val bad = listOf(
-            "ISIN,ClsPric\\nINE000000001,12.12345\\n",
-            "ISIN,ClsPric\\nINE000000001,-12.50\\n",
-            "ISIN,ClsPric,TradDt\\nINE000000001,12.5,2026-10-28\\n",
-            "ISIN,ClsPric\\nINE000000001,12\\nINE000000001,13\\n",
-            "ISIN,LastPric\\nINE000000001,12.0\\n")
+            "ISIN,ClsPric,TradDt,SctySrs\\nINE000000001,12.12345,2026-10-27,EQ\\n",
+            "ISIN,ClsPric,TradDt,SctySrs\\nINE000000001,-12.5,2026-10-27,EQ\\n",
+            "ISIN,ClsPric,TradDt,SctySrs\\nINE000000001,12.5,2026-10-28,EQ\\n",
+            "ISIN,ClsPric,TradDt,SctySrs\\nINE000000001,12,2026-10-27,EQ\\n" +
+                "INE000000001,13,2026-10-27,EQ\\n",
+            "ISIN,LastPric,TradDt,SctySrs\\nINE000000001,12,2026-10-27,EQ\\n",
+            "ISIN,ClsPric,TradDt,SctySrs\\nINE000000001,12,2026-10-27,FUT\\n"
+        )
         for (csv in bad) assertThrows(Exception::class.java) {
             NativeExchangeEodCatalog.parse(
                 eodZip("NSE", "20261027", csv.replace("\\n", "\n")), source)
@@ -94,6 +105,28 @@ class NativeAmfiNavCatalogInstrumentedTest {
                 eodZip("NSE", "20261027",
                     "ISIN,ClsPric\nINE000000001,12\n", true), source)
         }
+    }
+
+    @Test fun frozenExchangeFiltersPreventDerivativePricesFromBecomingEquity() {
+        val nse = NativeExchangeEodCatalog.source(officialLink("NSE", "20261027"),
+            NativeExchangeEodCatalog.Exchange.NSE, LocalDate.parse("2026-10-28"))
+        val nseRows = "ISIN,ClsPric,TradDt,SctySrs\\n" +
+            "INE000000001,50.0000,2026-10-27,FUT\\n" +
+            "INE000000002,20.0000,2026-10-27,EQ\\n" +
+            "INE000000003,30.0000,2026-10-27,GB\\n"
+        val nseCatalog = NativeExchangeEodCatalog.parse(
+            eodZip("NSE", "20261027", nseRows.replace("\\n", "\n")), nse)
+        assertFalse(nseCatalog.quotes.containsKey("INE000000001"))
+        assertEquals("EQUITY", nseCatalog.quotes.getValue("INE000000002").category)
+        assertEquals("GOLD_SGB", nseCatalog.quotes.getValue("INE000000003").category)
+        val bse = NativeExchangeEodCatalog.source(officialLink("BSE", "20261027"),
+            NativeExchangeEodCatalog.Exchange.BSE, LocalDate.parse("2026-10-28"))
+        val bseRows = "ISIN,ClsPric,TradDt,FinInstrmTp\\n" +
+            "INE000000001,50.0000,2026-10-27,FUT\\n" +
+            "INE000000002,20.0000,2026-10-27,STK\\n"
+        val bseCatalog = NativeExchangeEodCatalog.parse(
+            bseRows.replace("\\n", "\n").toByteArray(Charsets.UTF_8), bse)
+        assertEquals(setOf("INE000000002"), bseCatalog.quotes.keys)
     }
 
     @Test fun officialAmfiStructureIsParsedToExactScaledPriceAndDatedIsin() {

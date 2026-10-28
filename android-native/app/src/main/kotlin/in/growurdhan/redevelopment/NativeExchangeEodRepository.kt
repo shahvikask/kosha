@@ -28,12 +28,14 @@ internal class NativeExchangeEodRepository(private val accounts: NativeAccountRe
             val seen = hashSetOf<String>()
             var matched = 0
             var updated = 0
-            db.rawQuery("SELECT h.holding_id,i.instrument_id,i.isin FROM holding h " +
+            db.rawQuery("SELECT h.holding_id,i.instrument_id,i.isin,i.category FROM holding h " +
                 "JOIN instrument i ON h.instrument_id=i.instrument_id " +
-                "WHERE i.category='EQUITY' AND i.isin IS NOT NULL", null).use { cur ->
+                "WHERE i.category IN ('EQUITY','GOLD_SGB') AND i.isin IS NOT NULL", null).use { cur ->
                 while (cur.moveToNext()) {
                     val quote = catalog.quotes[cur.getString(2).uppercase(Locale.ROOT)]
                         ?: continue
+                    // NSE GB is an SGB, not a plain equity; never cross-category price.
+                    if (quote.category != cur.getString(3)) continue
                     val instrument = cur.getString(1)
                     matched++
                     if (NativeDatedPriceRecorder.record(db, cur.getString(0),
