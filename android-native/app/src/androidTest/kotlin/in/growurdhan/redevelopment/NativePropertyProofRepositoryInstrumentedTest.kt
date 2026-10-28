@@ -239,6 +239,98 @@ class NativePropertyProofRepositoryInstrumentedTest {
         assertTrue(books.history(input.email, second).isEmpty())
     }
 
+    @Test fun weakenedTableConstraintCommentsRejectWithoutProofPublication() {
+        val (accounts, books) = create(sandbox())
+        val owner = books.read(input.email).people.single().id
+        val (holding, custody) = holding(books, owner)
+        val repo = NativePropertyProofRepository(accounts, roots)
+        repo.register(input.email, proof(holding, owner, custody, "60"), date)
+        val original = books.read(input.email)
+        // Deliberately corrupt only the physical extension; no original book row
+        // or transaction history can be changed by the refused repository calls.
+        accounts.withUnlockedVault(input.email) { db ->
+            val ddl = db.rawQuery(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
+                arrayOf("native_p11_property_proof")).use { cur ->
+                assertTrue(cur.moveToFirst())
+                cur.getString(0)
+            }
+            assertTrue(ddl.contains("CHECK(gross_value_minor>0)"))
+            assertTrue(ddl.contains("UNIQUE(property_id, entity_id)"))
+            val weakened = ddl
+                .replace("CHECK(gross_value_minor>0)",
+                    "/* CHECK(gross_value_minor>0) */")
+                .replace("UNIQUE(property_id, entity_id)",
+                    "/* UNIQUE(property_id, entity_id) */")
+            assertNotEquals(ddl, weakened)
+            db.execSQL("DROP TABLE native_p11_property_proof")
+            db.execSQL(weakened)
+            db.execSQL("CREATE TRIGGER native_p11_proof_no_update " +
+                "BEFORE UPDATE ON native_p11_property_proof BEGIN " +
+                "SELECT RAISE(ABORT,'Immutable property proof'); END")
+            db.execSQL("CREATE TRIGGER native_p11_proof_no_delete " +
+                "BEFORE DELETE ON native_p11_property_proof BEGIN " +
+                "SELECT RAISE(ABORT,'Immutable property proof'); END")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            repo.preview(input.email, date)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            repo.register(input.email, proof(holding, owner, custody, "60"), date)
+        }
+        accounts.withUnlockedVault(input.email) { db ->
+            db.rawQuery("SELECT count(*) FROM native_p11_property_proof",null).use {
+                assertTrue(it.moveToFirst())
+                assertEquals(0L,it.getLong(0))
+            }
+        }
+        assertEquals(original.holdings, books.read(input.email).holdings)
+        assertEquals(original.custody, books.read(input.email).custody)
+        assertTrue(books.history(input.email, holding).isEmpty())
+    }
+
+    @Test fun syntheticV8UpgradeKeepsOwnerCustodyAndAllowsFirstV9Extension() {
+        val ctx = sandbox()
+        val (accounts, books) = create(ctx)
+        val owner = books.read(input.email).people.single().id
+        val (holding, custody) = holding(books, owner)
+        val original = books.read(input.email)
+        // Explicitly synthetic v8 version marker over an existing encrypted
+        // fixture, not a captured historical v8 database or a v1-v7 proof.
+        accounts.withUnlockedVault(input.email) { db ->
+            db.execSQL("PRAGMA user_version=8")
+            db.execSQL("UPDATE vault_meta SET value='8' WHERE key='schema_version'")
+        }
+        accounts.onBackground()
+        val migrated = NativeAccountRepository(ctx, gate())
+        assertTrue(migrated.login(input.email, input.password))
+        val afterMigration = NativeBooksRepository(migrated)
+        assertEquals(original.holdings, afterMigration.read(input.email).holdings)
+        assertEquals(original.custody, afterMigration.read(input.email).custody)
+        val repo = NativePropertyProofRepository(migrated, roots)
+        assertNull(repo.preview(input.email, date))
+        repo.register(input.email, proof(holding, owner, custody, "100"), date)
+        val comparison = repo.preview(input.email, date)!!
+        assertEquals(100_000L, comparison.householdGrossMinor)
+        assertTrue(afterMigration.history(input.email, holding).isEmpty())
+        migrated.withUnlockedVault(input.email) { db ->
+            db.rawQuery("PRAGMA user_version",null).use {
+                assertTrue(it.moveToFirst())
+                assertEquals(9L,it.getLong(0))
+            }
+            db.rawQuery("PRAGMA foreign_key_check",null).use {
+                assertFalse(it.moveToFirst())
+            }
+        }
+        migrated.onBackground()
+        val reopened = NativeAccountRepository(ctx, gate())
+        assertTrue(reopened.login(input.email, input.password))
+        assertEquals(comparison, NativePropertyProofRepository(reopened, roots)
+            .preview(input.email, date))
+        assertEquals(original.holdings, NativeBooksRepository(reopened)
+            .read(input.email).holdings)
+    }
+
     @Test fun mismatchedDigestStaleProofAndUntrustedSignerDoNotCreateTable() {
         val (accounts,books)=create(sandbox())
         val owner=books.read(input.email).people.single().id

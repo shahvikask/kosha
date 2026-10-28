@@ -19,6 +19,29 @@ internal class NativePropertyProofRepository(
 ) {
     private val table = "native_p11_property_proof"
 
+    // Exact immutable v9 extension definition. Not a new canonical schema version.
+    private val createProofTableSql = """CREATE TABLE IF NOT EXISTS native_p11_property_proof(
+            holding_id TEXT PRIMARY KEY NOT NULL REFERENCES holding(holding_id),
+            entity_id TEXT NOT NULL REFERENCES entity(entity_id),
+            account_id TEXT NOT NULL REFERENCES account(account_id),
+            property_id TEXT NOT NULL,
+            registry_source_id TEXT NOT NULL,
+            registry_digest TEXT NOT NULL,
+            registry_as_of TEXT NOT NULL,
+            registry_bytes BLOB NOT NULL,
+            registrar_id TEXT NOT NULL,
+            registrar_signature BLOB NOT NULL,
+            member_percent TEXT NOT NULL,
+            appraisal_source_id TEXT NOT NULL,
+            appraisal_digest TEXT NOT NULL,
+            appraisal_as_of TEXT NOT NULL,
+            appraisal_bytes BLOB NOT NULL,
+            appraiser_id TEXT NOT NULL,
+            appraiser_signature BLOB NOT NULL,
+            gross_value_minor INTEGER NOT NULL CHECK(gross_value_minor>0),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(property_id, entity_id))"""
+
     private fun installed(db: SQLiteDatabase): Boolean =
         db.rawQuery("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
             arrayOf(table)).use { it.moveToFirst() }
@@ -55,18 +78,42 @@ internal class NativePropertyProofRepository(
         val observed = mutableMapOf<String, String>()
         db.rawQuery("PRAGMA table_info('$table')", null).use { cur ->
             while (cur.moveToNext()) {
+                val name = cur.getString(1)
                 require(cur.getInt(3) == 1) { "Nullable encrypted property evidence field" }
-                observed[cur.getString(1)] = cur.getString(2).uppercase()
+                require(cur.getInt(5) == if (name == "holding_id") 1 else 0) {
+                    "Invalid encrypted property proof primary key"
+                }
+                require(observed.put(name, cur.getString(2).uppercase()) == null) {
+                    "Duplicate encrypted property proof column"
+                }
             }
         }
         require(observed == required) { "Incompatible encrypted property proof columns" }
-        val fk = mutableSetOf<Pair<String,String>>()
+        val fk = mutableSetOf<Triple<String, String, String>>()
         db.rawQuery("PRAGMA foreign_key_list('$table')", null).use { cur ->
-            while (cur.moveToNext()) fk += cur.getString(3) to cur.getString(2)
+            while (cur.moveToNext()) {
+                require(cur.getString(5).equals("NO ACTION", true) &&
+                    cur.getString(6).equals("NO ACTION", true)) {
+                    "Unexpected proof foreign-key cascade"
+                }
+                fk += Triple(cur.getString(3), cur.getString(2), cur.getString(4))
+            }
         }
-        require(fk.containsAll(setOf("holding_id" to "holding",
-            "entity_id" to "entity", "account_id" to "account"))) {
-            "Missing encrypted property ownership or custody foreign key"
+        require(fk == setOf(
+            Triple("holding_id", "holding", "holding_id"),
+            Triple("entity_id", "entity", "entity_id"),
+            Triple("account_id", "account", "account_id"))) {
+            "Mismatched encrypted proof foreign-key targets"
+        }
+        // The vault open path checks these too; verify them within the same
+        // admitted read/write transaction after any intervening schema damage.
+        db.rawQuery("PRAGMA foreign_keys", null).use { cur ->
+            require(cur.moveToFirst() && cur.getInt(0) == 1) {
+                "Encrypted proof foreign-key enforcement disabled"
+            }
+        }
+        db.rawQuery("PRAGMA foreign_key_check", null).use { cur ->
+            require(!cur.moveToFirst()) { "Encrypted property proof foreign-key violation" }
         }
         for ((trigger, operation) in listOf(
             "native_p11_proof_no_update" to "UPDATE",
@@ -89,36 +136,18 @@ internal class NativePropertyProofRepository(
         db.rawQuery("SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
             arrayOf(table)).use { cur ->
             require(cur.moveToFirst()) { "Missing encrypted property proof definition" }
-            val ddl = cur.getString(0).uppercase()
-            require(ddl.contains("UNIQUE(PROPERTY_ID, ENTITY_ID)") &&
-                ddl.contains("CHECK(GROSS_VALUE_MINOR>0)")) {
-                "Missing immutable registered-property uniqueness or financial constraint"
+            val ddl = canonicalDdl(cur.getString(0))
+            val expected = canonicalDdl(createProofTableSql)
+            val noConditional = expected.replaceFirst("CREATE TABLE IF NOT EXISTS ",
+                "CREATE TABLE ")
+            require(ddl == expected || ddl == noConditional) {
+                "Modified encrypted property proof table constraints or foreign keys"
             }
         }
     }
 
     private fun install(db: SQLiteDatabase) {
-        db.execSQL("""CREATE TABLE IF NOT EXISTS native_p11_property_proof(
-            holding_id TEXT PRIMARY KEY NOT NULL REFERENCES holding(holding_id),
-            entity_id TEXT NOT NULL REFERENCES entity(entity_id),
-            account_id TEXT NOT NULL REFERENCES account(account_id),
-            property_id TEXT NOT NULL,
-            registry_source_id TEXT NOT NULL,
-            registry_digest TEXT NOT NULL,
-            registry_as_of TEXT NOT NULL,
-            registry_bytes BLOB NOT NULL,
-            registrar_id TEXT NOT NULL,
-            registrar_signature BLOB NOT NULL,
-            member_percent TEXT NOT NULL,
-            appraisal_source_id TEXT NOT NULL,
-            appraisal_digest TEXT NOT NULL,
-            appraisal_as_of TEXT NOT NULL,
-            appraisal_bytes BLOB NOT NULL,
-            appraiser_id TEXT NOT NULL,
-            appraiser_signature BLOB NOT NULL,
-            gross_value_minor INTEGER NOT NULL CHECK(gross_value_minor>0),
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(property_id, entity_id))""")
+        db.execSQL(createProofTableSql)
         db.execSQL("""CREATE TRIGGER IF NOT EXISTS native_p11_proof_no_update
             BEFORE UPDATE ON native_p11_property_proof BEGIN
             SELECT RAISE(ABORT,'Immutable property proof'); END""")
