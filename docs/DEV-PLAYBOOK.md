@@ -110,7 +110,7 @@ New-chat prompt the owner pastes (replaces §17.5/17.7):
 Seed written by Claude on 2026-10-28 from repo docs. FIRST SESSION: verify B1–B3 against GitHub Actions and fix any mismatch before relying on them.
 
 ## B1 Header
-branch GUD-Android-Redevelopment · checkpoint_sha `4dd2a6f730907bc3bea07f332d8fccaa440f625c` · repaired M29 P24 T2 `40857791852` at `cc9e7a0c` SUCCESS 50/50 API35, original hashes/ADB reviewed · accepted requirements 0/52 (36 P + 16 E) · no formal milestones.
+branch GUD-Android-Redevelopment · checkpoint_sha `08c4b39346f5022c00cc264d8ee58127478dabc5` · repaired M29 P24 T2 `40857791852` at `cc9e7a0c` SUCCESS 50/50 API35, original hashes/ADB reviewed · accepted requirements 0/52 (36 P + 16 E) · no formal milestones.
 State codes: ND not started · SP source partial · JV JVM green · EM emulator green · AC accepted · DF deferred (D57).
 
 ## B2 Requirement matrix (split a row when members diverge)
@@ -134,7 +134,10 @@ State codes: ND not started · SP source partial · JV JVM green · EM emulator 
 | P32, E11 | M31 | SP/EM | Encrypted opt-in/revoke and no diagnostic logs, redacted manual text preview/copy/clear; acceptance pending |
 | P33, E01, E02, E08, E13 | M31 | SP/EM | Hindi/device-loss and 360dp/200%-font light/dark onboarding. Real-screen owner-safe Settings→Fa; acceptance pending |
 | P34 | M32 | SP | idempotency/cursor guard only; acceptance pending |
-| P35–P39, E07, E09, E15–E18 | M32–M34 | ND | M32 Gmail, M33 Billing/AAB, M34 final regression/AppSec; acceptance pending |
+| P35, E07 | M32 | SP | Fake Gmail many-to-many mapping, bounded scan, WorkManager and encrypted restart tests; T1 pending, OAuth blocked |
+| P36 | M31/M33 | SP | Native feedback timing policy source + golden tests, current Terms UI existing; UI/persistence open |
+| P37, E16 | M33 | SP | Verified-Play-only 30-day trial and four-SKU entitlement policy + JVM goldens; billing integration blocked |
+| P38–P39, E09, E15, E17–E18 | M33–M34 | ND | Billing release/security, analytics, SBOM, pipeline and egress pending |
 | E14 | all | SP | modular tests partial; acceptance pending |
 
 ## B3 Latest passing runs (original details in GitHub Actions; older rows archived)
@@ -165,11 +168,11 @@ State codes: ND not started · SP source partial · JV JVM green · EM emulator 
 6. G14 EM: screenshots; owner/device open.
 7. M26 EM: owner/custody/goal; device/security open.
 8. M25 EM: enrollment/Terms; device/security open.
-9. M29 P24/P25: source 5a947ef5 T1 40918476185 SUCCESS; T2 40919538632 JVM green, Android APK compilation in progress; NOT EM until terminal.
+9. M29 P24/P25: T2 40919538632 FAILED 54/55 at 5a947ef5 (append-only negative fixture); repaired test 9259b99c, T1/T2 still required.
 10. M28 EM: synthetic CAS; real CAS/ARM64 blocked.
 11. M30 EM: priced-feed UI; actual network/device blocked.
 12. M31 EM: dossier/settings/privacy; owner/device blocked.
-13. BUILD NOW: P35/E07 SOURCE at `4dd2a6f7`: WorkManager explicit monthly/manual, SQLCipher many-to-many mapping/cursor/revocation, read-only bounded fake scan and negative/restart tests. Native T1/T2 NOT VERIFIED while M29 T2 40919538632 active. Then P36, P37/E16, E09, E15, E17, E18.
+13. BUILD NOW: P35/E07 source 4dd2a6f7 native T1 40922821801 running (wheel setup); subsequent corrected M29 fixture 9259b99c and P36/P37/E16 pure policies 08c4b393 unverified. Next latest-source T1 then focused API35 P35+M29 T2; P36/P37 model tests in T1. Keep real OAuth/Play blocked.
 14. BLOCKED-OWNER: real Gmail OAuth, Play purchases, signing keys, ARM64 phone and genuine CAS statements, penetration test, G14 sign-off.
 Process P0 completed: unified native-ci T1/T2; 54 old workflows archived.
 
