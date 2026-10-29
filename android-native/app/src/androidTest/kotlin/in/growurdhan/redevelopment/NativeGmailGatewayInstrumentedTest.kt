@@ -50,4 +50,32 @@ class NativeGmailGatewayInstrumentedTest {
             fake.fetch(accountA, null)
         }
     }
+
+    @Test fun paginationIsBoundedAndRemainsReadOnly() {
+        val first = NativeGmailGateway.Page(accountA, "110", false, listOf(proof),
+            nextPageToken = "1")
+        val last = NativeGmailGateway.Page(accountA, "111", true, listOf(proof))
+        val fake = FakeNativeGmailGateway(mapOf(accountA to listOf(first, last)))
+        val scan = NativeGmailScanPlanner.scan(fake, accountA, null)
+        assertEquals("111", scan.finalHistoryId)
+        assertEquals(listOf(proof), scan.attachments)
+    }
+
+    @Test fun conflictingAttachmentBytesFailBeforeReview() {
+        val conflicting = proof.copy(sourceSha256 = "b".repeat(64))
+        val fake = FakeNativeGmailGateway(mapOf(accountA to listOf(
+            NativeGmailGateway.Page(accountA, "110", false, listOf(proof), "1"),
+            NativeGmailGateway.Page(accountA, "111", true, listOf(conflicting)))))
+        assertThrows(IllegalArgumentException::class.java) {
+            NativeGmailScanPlanner.scan(fake, accountA, null)
+        }
+    }
+
+    @Test fun incompleteHistoryCannotBeCommittedAsCompleteScan() {
+        val p = NativeGmailGateway.Page(accountA, "112", false, emptyList(), "1")
+        val fake = FakeNativeGmailGateway(mapOf(accountA to listOf(p, p)))
+        assertThrows(IllegalArgumentException::class.java) {
+            NativeGmailScanPlanner.scan(fake, accountA, null)
+        }
+    }
 }

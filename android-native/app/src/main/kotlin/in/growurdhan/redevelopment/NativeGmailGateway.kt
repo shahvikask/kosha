@@ -61,3 +61,47 @@ internal object NativeGmailPageGate {
         return Decision(if (safe) page.historyId else null, missing)
     }
 }
+
+/**
+ * Bounded, review-only scan. No vault mutations, OAuth credentials, or PDF
+ * bytes; this result is never permission to advance a durable Gmail cursor.
+ */
+internal object NativeGmailScanPlanner {
+    data class Scan(val attachments: List<NativeGmailGateway.Attachment>,
+        val finalHistoryId: String)
+    fun scan(gateway: NativeGmailGateway, account: NativeGmailGateway.Account,
+        cursor: String?): Scan {
+        val seenTokens = mutableSetOf<String>()
+        val identities = mutableMapOf<Pair<String, String>, String>()
+        val attachments = mutableListOf<NativeGmailGateway.Attachment>()
+        var token: String? = null
+        repeat(8) {
+            val page = gateway.fetch(account, cursor, token)
+            require(page.account == account) { "Mailbox belongs to another owner" }
+            require(page.attachments.size <= 50) { "Oversized mailbox page" }
+            for (attachment in page.attachments) {
+                require(attachment.messageId.matches(Regex("[A-Za-z0-9_-]{4,200}")) &&
+                    attachment.attachmentId.matches(Regex("[A-Za-z0-9_-]{4,200}")) &&
+                    attachment.sourceSha256.matches(Regex("[0-9a-f]{64}"))) {
+                    "Invalid Gmail attachment identity"
+                }
+                val id = attachment.messageId to attachment.attachmentId
+                val previous = identities.putIfAbsent(id, attachment.sourceSha256)
+                require(previous == null || previous == attachment.sourceSha256) {
+                    "Conflicting Gmail attachment source bytes"
+                }
+                if (previous == null) attachments += attachment
+            }
+            if (page.complete && page.nextPageToken == null) {
+                val history = page.historyId ?: error("Complete scan without history ID")
+                return Scan(attachments, history)
+            }
+            val next = page.nextPageToken ?: error("Incomplete mailbox scan")
+            require(next.isNotBlank() && seenTokens.add(next)) {
+                "Repeated Gmail pagination token"
+            }
+            token = next
+        }
+        error("Gmail pagination limit reached; no cursor publication")
+    }
+}
