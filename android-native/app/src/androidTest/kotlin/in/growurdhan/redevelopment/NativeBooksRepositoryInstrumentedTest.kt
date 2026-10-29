@@ -1868,5 +1868,9 @@ class NativeBooksRepositoryInstrumentedTest {
         assertThrows(IllegalArgumentException::class.java) {
             restored.requireGmailAccountOwner(input.email, member, address)
         }
+        restored.setMemberOptIn(input.email, member, true)
+        assertThrows(IllegalArgumentException::class.java) {
+            restored.requireGmailAccountOwner(input.email, member, address)
+        }
     }
 }
