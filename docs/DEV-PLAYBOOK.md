@@ -110,7 +110,7 @@ New-chat prompt the owner pastes (replaces §17.5/17.7):
 Seed written by Claude on 2026-10-28 from repo docs. FIRST SESSION: verify B1–B3 against GitHub Actions and fix any mismatch before relying on them.
 
 ## B1 Header
-branch GUD-Android-Redevelopment · HEAD checked after M28 synthetic CAS T2 `eb34356a4e325fdc456bb3ba046c1e167bc907d0` · checkpoint_sha `eb34356a4e325fdc456bb3ba046c1e167bc907d0` · accepted requirements 0/36 in-scope · formally accepted milestones: none.
+branch GUD-Android-Redevelopment · HEAD checked after M30 corrected API35 T2 `9f92b96e86ea96991b777dcccebef6167a6d01e5` · checkpoint_sha `9f92b96e86ea96991b777dcccebef6167a6d01e5` · accepted requirements 0/36 in-scope · formally accepted milestones: none.
 State codes: ND not started · SP source partial · JV JVM green · EM emulator green · AC accepted · DF deferred (D57).
 
 ## B2 Requirement matrix (split a row when members diverge)
@@ -128,7 +128,7 @@ State codes: ND not started · SP source partial · JV JVM green · EM emulator 
 | P16, P21, P24 | M29 | SP/JV | FIFO, reviewed FMV, source returns and strict owner-scoped exact hybrid exposure splits; T1 40748714360 and 40757210296 PASS; P24 persistence/UI and complete financial/tax acceptance open |
 | P22–P23, P25 | M29 | SP/EM | Interest coupon and EMI due-date/one-post goldens; owner-scoped Home health/unknown-cost/stale-price indicators and G14 tests; T1 40750235052 SUCCESS, T2 40751028900 API35 6/6; published rates, full analytics, owner acceptance open |
 | P17–P20, E06 | M28 | SP/EM | Non-demat CAS preview exact ISIN/folio identity, duplicate rejection and multi-folio negatives at e21966a7 API35 15/15 (40759156459); SQLCipher staging/idempotency prior partial; genuine CAS PDF, full positive approval and ARM64 source proof unverified |
-| P26–P27, E10 | M30 | SP | AMFI NAV only; NSE/BSE, provenance UX open |
+| P26–P27, E10 | M30 | SP/EM | Source-aligned NSE CM ZIP/BSE CM CSV UDiFF public-close adapters, strict allowlisted hosts/dates/series, no household egress, synthetic mock-HTTP + SQLCipher restart/owner override; T2 40790101250 API35 17/17 at e9b42535. Standalone G14 provenance card NOT wired into giant Holdings screen; real official download/device and owner acceptance open |
 | P30–P33, E01, E02, E08, E11, E13 | M31 | SP/EM | G14 synthetic 360/412/840dp light/dark screenshots and sampled contrast/semantics T2 green; full G14, Hindi, real TalkBack, owner visual sign-off open |
 | P34 | M32 | SP | idempotency/cursor guard only; real OAuth needs owner |
 | P35–P39, E07, E09, E15–E18 | M32–M34 | ND | M32 Gmail, M33 Billing/AAB, M34 final regression/AppSec |
@@ -137,6 +137,10 @@ State codes: ND not started · SP source partial · JV JVM green · EM emulator 
 ## B3 Evidence ledger (copied from STATUS.md; verify before relying)
 | run_id | sha | proves | dep_paths |
 |---|---|---|---|
+| 40790101250 | e9b42535359e17d909599d572cb24609dbab04ed | M30 corrected-source T2 SUCCESS: preflight/JVM/APK/API35 17/17 across three touched classes, ADB exit -1, four wheels SHA256 verified; emulator artifact 12861423117, summary 12862021628, JVM 12861123039; request 9f92b96e | NativeExchangeEodCatalog/Downloader/Repository, NativeDatedPriceRecorder, NativeBooksRepository, NativeAmfiNavCatalogInstrumentedTest, NativeM27HoldingFilterInstrumentedTest, NativeM27HoldingArchiveJourneyInstrumentedTest, app/gradle | 
+| 40789629666 | e9b42535359e17d909599d572cb24609dbab04ed | M30 corrected-source T1 SUCCESS: JVM tests + app/androidTest Kotlin compile, summary; request f7d90291 | same M30 source and test deps |
+| 40788268661 | 0045cc2ef390d4e2c99861d48eb82d1015bcf63f | M30 initial synthetic T2 SUCCESS: API35 12/12, ADB -1, but source mismatched frozen BSE plain CSV (original expected ZIP) and omitted exchange security-type filter; superseded by e9b42535 and 40790101250 | M30 initial nine-file slice |
+| 40787777683 | 0045cc2ef390d4e2c99861d48eb82d1015bcf63f | M30 initial T1 SUCCESS: JVM+Android Kotlin compilation; no source-format acceptance | initial M30 source and tests |
 | 40759156459 | e21966a7eaca6c6c01b26be5eac435ad3014952e | M28 targeted T2 SUCCESS: preflight/JVM/APK/API35 15/15 NativeCasOutputReviewGateInstrumentedTest, ADB exit -1, emulator 12848301613, summary 12847563458, JVM 12846113994; request eb34356a; no real CAS | NativeCasOutputReviewGate.kt, NativeCasOutputReviewGateInstrumentedTest.kt, app/main and gradle/wheels | 
 | 40758465483 | e21966a7eaca6c6c01b26be5eac435ad3014952e | M28 T1 SUCCESS: preflight/JVM+Android Kotlin compilation/summary; request b1c24953 | NativeCasOutputReviewGate.kt, NativeCasOutputReviewGateInstrumentedTest.kt | 
 | 40757210296 | 7acd13f3d7fa10d6fb258bed53cac3fda78566e5 | M29 P24 lookthrough T1 SUCCESS: source apportion exact 10000bp, largest-slice remainder, unknown price exclusion, estimated value label, owner isolation and invalid split negatives; :core:model:test, app/androidTest Kotlin PASS, 4 cached wheels SHA256; JVM artifact 12846747118, summary 12847840029; request 18b08dfc; Android skipped expected T1 | NativeExposureAllocation.kt, NativePortfolioMathTest.kt, core/model, app Kotlin deps | 
@@ -184,7 +188,7 @@ Expired/unusable: wheel artifact 12795467059 (run 40640334920) — replace per A
 8. M25 P01/P02 source/JVM/EMULATOR negative/interruption batch completed at 6f5cb3c5: re-admission before vault creation, invalid identity/Terms no-file, duplicate enrollment no-overwrite, re-consent SQLCipher restart, recovery replacement and one-use. T1 40736723667 SUCCESS; T2 40737480182 API35 15/15 SUCCESS. NOT AC: physical device/actual Keyguard interruption, AppSec, OWNER acceptance remain blocked.
 9. M29 PARTIAL: 34bbf633 FIFO/FMV/returns goldens T1 40748714360 PASS; 5a9a5f4e coupon/EMI/Home T1 40750235052 + T2 40751028900 6/6 PASS; 7acd13f3 exact reviewed/estimated hybrid lookthrough and owner-lens JVM T1 40757210296 PASS. Next: connect reviewed splits and full household financial/tax reports; no invented prices/tax rates, no claim of M29 AC. If lacking verified source/year/rates, continue B4 item 10 without faking compliance.
 10. M28 synthetic CAS gate slice done at e21966a7: require exact unique ISIN/folio for CAMS/KFINTECH/NPS preview, preserve multi-folio/DP identifiers; T1 40758465483 PASS, API35 T2 40759156459 15/15 PASS. Remaining P17–P20 encrypted positive approval, parser reconciliation and genuine ARM64 CAS = OPEN/BLOCKED on owner sample/device; NOT AC.
-11. M30 NSE/BSE adapters + provenance/stale UX; mock HTTP tests.
+11. M30 PARTIAL source/JVM/EMULATOR: source 0045cc2e, frozen-source ZIP/CSV and series correction e9b42535; initial T1/T2 40787777683/40788268661 (12/12, superseded), corrected T1 40789629666 and T2 40790101250 API35 17/17 SUCCESS (NSE/BSE mock URLs/parsers, SQLCipher create→reopen→negative/manual precedence, 360dp dark 200% standalone provenance). NOT AC: Holdings-screen widget not mounted, real official network/device and owner/UX verification open. Continue B4 item 12 without calling M30 accepted.
 12. M31 settings/diagnostics/accessibility/Hindi onboarding/dossier export warnings.
 13. M32–M34 — BLOCKED until owner supplies Google OAuth, Play Billing/signing, device, AppSec reviewer.
 Process task P0: completed. O5 ancestor request T1 SUCCESS 40666583685 and T2 SUCCESS 40676871448 (after two workflow-only repairs); 54 old slice workflows archived unchanged. The four release/web workflows and native-ci.yml remain.
