@@ -100,17 +100,19 @@ internal class NativeGmailSyncLedger(private val accounts: NativeAccountReposito
         }
     }
 
-    fun requireGmailAccountOwner(email: String, owner: String, gmailAddress: String) {
-        val hashed = accountId(gmailAddress)
-        accounts.withUnlockedVault(email) { db ->
-            requireOptIn(db, owner)
-            db.rawQuery("SELECT value FROM setting WHERE key=?",
-                arrayOf("native.gmail.mapping." + ownerKey(hashed, owner))).use {
-                require(it.moveToFirst() && it.getString(0) == owner) {
-                    "Gmail identity has no approved owner mapping"
-                }
+    private fun requireLink(db: SQLiteDatabase, owner: String, hash: String) {
+        requireOptIn(db, owner)
+        db.rawQuery("SELECT value FROM setting WHERE key=?",
+            arrayOf("native.gmail.mapping." + ownerKey(hash, owner))).use {
+            require(it.moveToFirst() && it.getString(0) == owner) {
+                "Gmail identity has no approved owner mapping"
             }
         }
+    }
+
+    fun requireGmailAccountOwner(email: String, owner: String, gmailAddress: String) {
+        val hash = accountId(gmailAddress)
+        accounts.withUnlockedVault(email) { db -> requireLink(db, owner, hash) }
     }
 
     fun unlinkGmailAccount(email: String, owner: String, gmailAddress: String) {
@@ -122,10 +124,9 @@ internal class NativeGmailSyncLedger(private val accounts: NativeAccountReposito
     }
 
     fun alreadySeen(email: String, owner: String, message: MessageKey): Boolean {
-        requireGmailAccountOwner(email, owner, message.gmailAddress)
         val account = accountId(message.gmailAddress)
         return accounts.withUnlockedVault(email) { db ->
-            requireOptIn(db, owner)
+            requireLink(db, owner, account)
             db.rawQuery("SELECT value FROM setting WHERE key=?",
                 arrayOf(key(account, owner, message))).use { cur ->
                 if (!cur.moveToFirst()) false
@@ -142,11 +143,10 @@ internal class NativeGmailSyncLedger(private val accounts: NativeAccountReposito
     /** Mark only AFTER verified PDF import tied to the same family entity. */
     fun markReconciled(email: String, owner: String,
         message: MessageKey): Receipt {
-        requireGmailAccountOwner(email, owner, message.gmailAddress)
         val account = accountId(message.gmailAddress)
         val index = key(account, owner, message)
         return accounts.withUnlockedVault(email) { db ->
-            requireOptIn(db, owner)
+            requireLink(db, owner, account)
             val imported = db.rawQuery(
                 "SELECT 1 FROM source_document sd JOIN statement_position sp " +
                 "ON sp.import_batch_id=sd.import_batch_id JOIN holding h " +
@@ -183,11 +183,10 @@ internal class NativeGmailSyncLedger(private val accounts: NativeAccountReposito
         complete: Boolean, messages: List<MessageKey>) {
         require(complete && messages.isNotEmpty() &&
             historyId.matches(Regex("[0-9]{1,30}")))
-        requireGmailAccountOwner(email, owner, gmailAddress)
         val account = accountId(gmailAddress)
         require(messages.all { accountId(it.gmailAddress) == account })
         accounts.withUnlockedVault(email) { db ->
-            requireOptIn(db, owner)
+            requireLink(db, owner, account)
             for (message in messages) {
                 val proof = db.rawQuery("SELECT 1 FROM setting " +
                     "WHERE key=? AND value=?",
@@ -210,10 +209,9 @@ internal class NativeGmailSyncLedger(private val accounts: NativeAccountReposito
     }
 
     fun currentCursor(email: String, owner: String, gmailAddress: String): String? {
-        requireGmailAccountOwner(email, owner, gmailAddress)
         val account = accountId(gmailAddress)
         return accounts.withUnlockedVault(email) { db ->
-            requireOptIn(db, owner)
+            requireLink(db, owner, account)
             db.rawQuery("SELECT value FROM setting WHERE key=?",
                 arrayOf("native.gmail.cursor." + ownerKey(account, owner))).use {
                 if (it.moveToFirst()) it.getString(0) else null
