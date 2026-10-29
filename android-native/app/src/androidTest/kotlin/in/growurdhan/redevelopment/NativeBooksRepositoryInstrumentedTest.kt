@@ -1833,4 +1833,40 @@ class NativeBooksRepositoryInstrumentedTest {
         assertEquals(1, books.history(input.email, holding).size)
     }
 
+
+    @Test fun p35EncryptedSharedMailboxLinksRemainOwnerScopedAfterRestart() {
+        val context = sandbox()
+        val (accounts, books) = create(context)
+        val owner = books.read(input.email).people.single().id
+        val member = books.createPerson(input.email,
+            NativeBooksRepository.NewPerson("Second family member", "Spouse"))
+        val gmail = NativeGmailSyncLedger(accounts)
+        val address = "family-inbox@example.org"
+        gmail.setMemberOptIn(input.email, owner, true)
+        gmail.setMemberOptIn(input.email, member, true)
+        assertThrows(IllegalArgumentException::class.java) {
+            gmail.requireGmailAccountOwner(input.email, owner, address)
+        }
+        gmail.bindGmailAccount(input.email, owner, address)
+        gmail.bindGmailAccount(input.email, member, address)
+        gmail.requireGmailAccountOwner(input.email, owner, address)
+        gmail.requireGmailAccountOwner(input.email, member, address)
+        assertNull(gmail.currentCursor(input.email, owner, address))
+        assertNull(gmail.currentCursor(input.email, member, address))
+        accounts.onBackground()
+        val reopened = NativeAccountRepository(context, gate())
+        assertTrue(reopened.login(input.email, input.password))
+        val restored = NativeGmailSyncLedger(reopened)
+        restored.requireGmailAccountOwner(input.email, owner, address)
+        restored.requireGmailAccountOwner(input.email, member, address)
+        restored.unlinkGmailAccount(input.email, owner, address)
+        assertThrows(IllegalArgumentException::class.java) {
+            restored.requireGmailAccountOwner(input.email, owner, address)
+        }
+        restored.requireGmailAccountOwner(input.email, member, address)
+        restored.setMemberOptIn(input.email, member, false)
+        assertThrows(IllegalArgumentException::class.java) {
+            restored.requireGmailAccountOwner(input.email, member, address)
+        }
+    }
 }
