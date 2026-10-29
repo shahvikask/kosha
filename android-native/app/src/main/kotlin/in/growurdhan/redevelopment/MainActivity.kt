@@ -11,6 +11,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -31,6 +32,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var interestPayouts: NativeInterestPayoutRepository
     private lateinit var annualCredits: NativeAnnualInterestCreditRepository
     private lateinit var privateDiagnostics: NativePrivateDiagnosticsRepository
+    private lateinit var userSettings: NativeUserSettingsRepository
+    private var themeChoice by mutableStateOf(NativeUserSettingsRepository.Appearance.SYSTEM)
     private lateinit var casPdf: NativeCasPdfEngine
     private var stagedPdf by mutableStateOf<ByteArray?>(null)
     private var stagedPdfName by mutableStateOf("")
@@ -137,15 +140,17 @@ class MainActivity : ComponentActivity() {
         interestPayouts = NativeInterestPayoutRepository(accounts)
         annualCredits = NativeAnnualInterestCreditRepository(accounts)
         privateDiagnostics = NativePrivateDiagnosticsRepository(accounts)
+        userSettings = NativeUserSettingsRepository(accounts)
         casPdf = NativeCasPdfEngine(applicationContext)
         enableEdgeToEdge()
         setContent {
-            GudTheme {
+            GudTheme(darkTheme = themeChoice.useDark(isSystemInDarkTheme())) {
                 if (booksOpen && unlocked && deviceVerified) {
                     NativeBooksScreen(email = activeEmail, books = books,
                         imports = statementImports, payouts = interestPayouts,
                         annualCredits = annualCredits,
                         diagnostics = privateDiagnostics,
+                        settings = userSettings,
                         casPdf = casPdf,
                         pendingPdf = stagedPdf, pendingPdfFilename = stagedPdfName,
                         onSelectPdf = {
@@ -164,7 +169,8 @@ class MainActivity : ComponentActivity() {
                         },
                         onDiscardCsv = { discardCsv() },
                         onLock = { lockCompletely() },
-                        onReplaceRecovery = { booksOpen = false })
+                        onReplaceRecovery = { booksOpen = false },
+                        onAppearanceChanged = { themeChoice = it })
                 } else NativeAuthenticationScreen(
                     deviceVerified = deviceVerified,
                     unlocked = unlocked,
@@ -193,6 +199,10 @@ class MainActivity : ComponentActivity() {
                             } else {
                                 unlocked = result == NativeAccountRepository.SignInResult.UNLOCKED
                                 activeEmail = if (unlocked) email.trim().lowercase(java.util.Locale.ROOT) else ""
+                                themeChoice = if (unlocked) withContext(Dispatchers.IO) {
+                                    runCatching { userSettings.read(activeEmail).appearance }
+                                        .getOrDefault(NativeUserSettingsRepository.Appearance.SYSTEM)
+                                } else NativeUserSettingsRepository.Appearance.SYSTEM
                                 booksOpen = false
                                 result
                             }
@@ -275,6 +285,7 @@ class MainActivity : ComponentActivity() {
         unlocked = false
         booksOpen = false
         activeEmail = ""
+        themeChoice = NativeUserSettingsRepository.Appearance.SYSTEM
         deviceVerified = false
         if (!preserveCsvForFreshLogin && !csvPickerPending) discardCsv()
         if (!preservePdfForFreshLogin && !pdfPickerPending) discardPdf()

@@ -44,6 +44,46 @@ class NativePrivateDiagnosticsInstrumentedTest {
         return repository
     }
 
+    @Test fun encryptedAppearanceAndRbiIbjaPoliciesSurviveRestartAndRejectCorruption() {
+        val ctx = sandbox()
+        val first = accounts(ctx)
+        val settings = NativeUserSettingsRepository(first)
+        assertEquals(NativeUserSettingsRepository.Preferences(), settings.read(enrollment.email))
+        assertFalse(NativeUserSettingsRepository.Appearance.LIGHT.useDark(true))
+        assertTrue(NativeUserSettingsRepository.Appearance.DARK.useDark(false))
+        assertTrue(NativeUserSettingsRepository.Appearance.SYSTEM.useDark(true))
+        val selected = NativeUserSettingsRepository.Preferences(
+            NativeUserSettingsRepository.Appearance.DARK,
+            NativeUserSettingsRepository.SgbReference.RBI_REFERENCE_REQUIRED,
+            NativeUserSettingsRepository.IbjaReference.OWNER_REVIEW_REQUIRED
+        )
+        settings.save(enrollment.email, selected)
+        assertEquals(selected, settings.read(enrollment.email))
+        first.onBackground()
+        assertThrows(Exception::class.java) { settings.read(enrollment.email) }
+        val reopened = NativeAccountRepository(ctx, gate())
+        assertTrue(reopened.login(enrollment.email, enrollment.password))
+        val restored = NativeUserSettingsRepository(reopened)
+        assertEquals(selected, restored.read(enrollment.email))
+        reopened.withUnlockedVault(enrollment.email) { db ->
+            db.execSQL("UPDATE setting SET value='UNTRUSTED' " +
+                "WHERE key='native.privacy.appearance'")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            restored.read(enrollment.email)
+        }
+        reopened.withUnlockedVault(enrollment.email) { db ->
+            db.execSQL("UPDATE setting SET value='DARK' " +
+                "WHERE key='native.privacy.appearance'")
+        }
+        restored.save(enrollment.email, NativeUserSettingsRepository.Preferences())
+        reopened.onBackground()
+        val final = NativeAccountRepository(ctx, gate())
+        assertTrue(final.login(enrollment.email, enrollment.password))
+        assertEquals(NativeUserSettingsRepository.Preferences(),
+            NativeUserSettingsRepository(final).read(enrollment.email))
+    }
+
     @Test fun optInDefaultsOffAndOnlyExplicitConsentPermitsHealthProbe() {
         val store = NativePrivateDiagnosticsRepository(accounts(sandbox()))
         assertFalse(store.enabled(enrollment.email))

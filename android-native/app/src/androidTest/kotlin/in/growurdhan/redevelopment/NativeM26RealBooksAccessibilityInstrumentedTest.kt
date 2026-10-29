@@ -75,6 +75,7 @@ class NativeM26RealBooksAccessibilityInstrumentedTest {
                             NativeInterestPayoutRepository(accounts),
                             NativeAnnualInterestCreditRepository(accounts),
                             NativePrivateDiagnosticsRepository(accounts),
+                            NativeUserSettingsRepository(accounts),
                             NativeCasPdfEngine(context),
                             null, "", {}, {}, null, "", {}, {}, {}, {})
                     }
@@ -107,6 +108,24 @@ class NativeM26RealBooksAccessibilityInstrumentedTest {
                 bounds.height >= 48f)
         }
 
+        // Real, authenticated Settings at 360dp / 200% in both themes.
+        compose.onNodeWithTag("books-tab-Settings").performScrollTo()
+        compose.onNodeWithTag("books-tab-Settings").performClick()
+        compose.waitUntil(30_000) {
+            compose.onAllNodes(hasTestTag("m31-theme-SYSTEM"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("m31-theme-SYSTEM").assertIsNotEnabled()
+        compose.onNodeWithTag("m31-sgb-RBI_REFERENCE_REQUIRED").assertExists()
+        compose.onNodeWithTag("m31-ibja-OWNER_REVIEW_REQUIRED").assertExists()
+        compose.onNodeWithTag("m31-device-loss-warning").assertExists()
+        compose.onNodeWithTag("m31-support-copy").assertDoesNotExist()
+        compose.onNodeWithTag("m31-theme-DARK").performScrollTo()
+        compose.onNodeWithTag("m31-theme-DARK").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("m31-theme-DARK").assertIsNotEnabled()
+        // A technical support clipboard action cannot appear without opt-in and preview.
+        compose.onNodeWithTag("m31-support-copy").assertDoesNotExist()
         // The production Holdings destination must expose the manual-only official
         // close action, not merely a standalone synthetic component.
         compose.onNodeWithTag("books-tab-Holdings").performScrollTo()

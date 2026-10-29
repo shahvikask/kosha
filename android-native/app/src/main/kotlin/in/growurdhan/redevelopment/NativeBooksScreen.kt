@@ -35,6 +35,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
@@ -59,18 +61,24 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
     imports: NativeStatementImportRepository,
     payouts: NativeInterestPayoutRepository,
     annualCredits: NativeAnnualInterestCreditRepository,
-    diagnostics: NativePrivateDiagnosticsRepository, casPdf: NativeCasPdfEngine,
+    diagnostics: NativePrivateDiagnosticsRepository,
+    settings: NativeUserSettingsRepository, casPdf: NativeCasPdfEngine,
     pendingPdf: ByteArray?, pendingPdfFilename: String,
     onSelectPdf: () -> Unit, onDiscardPdf: () -> Unit,
     pendingCsv: ByteArray?, pendingCsvFilename: String,
     onSelectCsv: () -> Unit, onDiscardCsv: () -> Unit,
-    onLock: () -> Unit, onReplaceRecovery: () -> Unit) {
+    onLock: () -> Unit, onReplaceRecovery: () -> Unit,
+    onAppearanceChanged: (NativeUserSettingsRepository.Appearance) -> Unit = {}) {
     val scope = rememberCoroutineScope()
     var snapshot by remember { mutableStateOf<NativeBooksRepository.Snapshot?>(null) }
     var busy by remember { mutableStateOf(false) }
     var ledgerRevision by remember { mutableStateOf(0) }
     var error by remember { mutableStateOf("") }
     var exchangeReceipt by remember { mutableStateOf("") }
+    var preferences by remember(email) { mutableStateOf(NativeUserSettingsRepository.Preferences()) }
+    var preferencesLoaded by remember(email) { mutableStateOf(false) }
+    var preferencesBusy by remember { mutableStateOf(false) }
+    var preferencesError by remember { mutableStateOf("") }
     var tab by remember { mutableStateOf("Home") }
     var ownerFilter by remember { mutableStateOf("") }
     var categoryFilter by remember { mutableStateOf("All") }
@@ -112,6 +120,13 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
     }
     LaunchedEffect(email) {
         xirrResults = emptyMap()
+        preferencesLoaded = false
+        try {
+            preferences = withContext(Dispatchers.IO) { settings.read(email) }
+            preferencesLoaded = true
+        } catch (_: Exception) {
+            preferencesError = "Encrypted settings unavailable. Lock and unlock again."
+        }
         try { refresh() } catch (_: Exception) {
             error = "Unable to open encrypted books. Lock and verify this device again."
         }
@@ -290,10 +305,26 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                             Text("${h.subcategory} • ${NativeBooksRepository.formatMinor(h.quantityScaled, 8)} units")
                             Text(if (h.unknownCost) "Opening cost unknown — review before using gains"
                                 else "Recorded FIFO cost: ₹${NativeBooksRepository.formatMinor(h.knownCostMinor, 4)}")
-                            Text("Manual/last price: ₹${NativeBooksRepository.formatMinor(h.marketPriceMinor, 4)} " +
-                                "as of ${h.priceDate ?: "unknown"} (${h.priceSource ?: "no source"})")
-                            Text(NativeExchangePriceDisclosure.text(h, LocalDate.now()),
-                                modifier = Modifier.testTag("m30-price-provenance-${h.id}"))
+                            val requireRbi = h.category == "GOLD_SGB" &&
+                                h.subcategory.contains("SGB", ignoreCase = true) &&
+                                preferences.sgbReference ==
+                                NativeUserSettingsRepository.SgbReference.RBI_REFERENCE_REQUIRED
+                            if (requireRbi) {
+                                Text("SGB RBI redemption reference not verified: value unavailable. " +
+                                    "A recorded market close is not an RBI reference.",
+                                    modifier = Modifier.testTag("m31-sgb-unverified"))
+                            } else {
+                                Text("Manual/last price: ₹${NativeBooksRepository.formatMinor(h.marketPriceMinor, 4)} " +
+                                    "as of ${h.priceDate ?: "unknown"} (${h.priceSource ?: "no source"})")
+                                Text(NativeExchangePriceDisclosure.text(h, LocalDate.now()),
+                                    modifier = Modifier.testTag("m30-price-provenance-${h.id}"))
+                            }
+                            if (h.category == "GOLD_SGB" &&
+                                preferences.ibjaReference ==
+                                NativeUserSettingsRepository.IbjaReference.OWNER_REVIEW_REQUIRED)
+                                Text("IBJA owner review selected; no verified IBJA feed " +
+                                    "or rate is applied automatically.",
+                                    modifier = Modifier.testTag("m31-ibja-review"))
                             if (h.category == "REAL_ESTATE") {
                                 // Ownership metadata is NOT a legal title check
                                 // and does not rewrite family balance, owner, or ledger.
@@ -442,6 +473,24 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                         }
                     }
                     "Settings" -> {
+                        if (preferencesLoaded) {
+                            NativeUserSettingsCard(preferences, !preferencesBusy) { next ->
+                                if (!preferencesBusy) {
+                                    preferencesBusy = true
+                                    preferencesError = ""
+                                    scope.launch {
+                                        try {
+                                            withContext(Dispatchers.IO) { settings.save(email, next) }
+                                            preferences = next
+                                            onAppearanceChanged(next.appearance)
+                                        } catch (_: Exception) {
+                                            preferencesError = "Setting not saved; unlock the vault again."
+                                        } finally { preferencesBusy = false }
+                                    }
+                                }
+                            }
+                        } else Text("Preferences require an unlocked encrypted vault.")
+                        if (preferencesError.isNotEmpty()) Text(preferencesError)
                         if (ownerFilter.isNotEmpty()) Text("Device settings apply to the whole household, regardless of the selected member lens.")
                         NativeAmfiNavCard(email, books) {
                             scope.launch {
@@ -1642,6 +1691,7 @@ private fun NativeInterestPayoutForm(email: String,
 private fun NativePrivateDiagnosticsSettings(email: String,
     diagnostics: NativePrivateDiagnosticsRepository) {
     val scope = rememberCoroutineScope()
+    val clipboard = LocalClipboardManager.current
     var optedIn by remember(email) { mutableStateOf(false) }
     var loaded by remember(email) { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
@@ -1704,9 +1754,25 @@ private fun NativePrivateDiagnosticsSettings(email: String,
                 } finally { busy = false }
             }
         }) { Text("Opt out and clear local diagnostics") }
-        if (report.isNotEmpty()) Text(report, style = MaterialTheme.typography.bodySmall)
+        if (report.isNotEmpty()) {
+            Text("Only the redacted lines below are copied. Other apps may read " +
+                "clipboard contents; clear clipboard after sending to support.")
+            Text(report, style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.testTag("m31-redacted-report"))
+            OutlinedButton(enabled = optedIn && !busy, onClick = {
+                // Owner-initiated copy only, never raw logs or financial records.
+                clipboard.setText(AnnotatedString(report))
+                message = "Redacted support text copied by explicit request; no file exported."
+            }, modifier = Modifier.testTag("m31-support-copy")) {
+                Text("Copy sanitized support text manually")
+            }
+            OutlinedButton(onClick = { report = ""; message = "Support preview cleared." },
+                modifier = Modifier.testTag("m31-support-clear")) {
+                Text("Clear local support preview")
+            }
+        }
         if (message.isNotEmpty()) Text(message)
-        Text("Other appearance, family, market and account settings " +
-            "are not yet implemented in this native section.")
+        Text("No technical event log is retained: only encrypted consent is saved. " +
+            "Opt-out deletes that marker. Financial data export remains unavailable.")
     }
 }
