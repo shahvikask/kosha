@@ -134,16 +134,16 @@ State codes: ND not started · SP source partial · JV JVM green · EM emulator 
 | P32, E11 | M31 | SP/EM | Encrypted opt-in/revoke and no diagnostic logs, redacted manual text preview/copy/clear; acceptance pending |
 | P33, E01, E02, E08, E13 | M31 | SP/EM | Hindi/device-loss and 360dp/200%-font light/dark onboarding. Real-screen owner-safe Settings→Fa; acceptance pending |
 | P34 | M32 | SP | idempotency/cursor guard only; acceptance pending |
-| P35, E07 | M32 | SP/JV | T1 40935305515 SUCCESS at 5063de3b; focused API35 T2 40936450262 pending, real OAuth blocked |
-| P36 | M31/M33 | SP | Seven-day/two-day/six-prompt policy; encrypted feedback journal, login seeding and restart tests at 888caf54; Privacy UI absent, no prompts |
-| P37, E16 | M33 | SP | Four-SKU verified Play gateway/controller plus Settings unconfigured notice at 15d61865; no trusted Play verifier, purchases or enforcement |
+| P35, E07 | M32 | SP/EM | API35 40936450262 66/66 PASS at 5063de3b; fake gateway/SQLCipher mapping only, OAuth blocked |
+| P36 | M31/M33 | SP/JV | T1 40961693417 PASS at 888caf54; encrypted feedback/login/restart, focused API35 40962454191 pending; Privacy UI absent |
+| P37, E16 | M33 | SP/JV | Four-SKU Play-deny controller/Settings T1 40961693417 PASS at 888caf54; no trusted Play verifier or enforcement |
 | P38–P39, E09, E15, E17–E18 | M33–M34 | ND | Billing release/security, analytics, SBOM, pipeline and egress pending |
 | E14 | all | SP | modular tests partial; acceptance pending |
 
 ## B3 Latest passing runs (original details in GitHub Actions; older rows archived)
 | run_id | SHA | group |
 |---|---|---|
-| 40857791852 | cc9e7a0c | M29 P24 PASS |
+| 40936450262 | 5063de3b | M29 + P35/E07 API35 66/66 PASS |
 | 40848824289 | e0b6a74e | M31 settings PASS |
 | 40845095146 | 78b772da | M31 privacy PASS |
 | 40811450454 | 2d006e52 | M31 dossier PASS |
@@ -156,7 +156,7 @@ State codes: ND not started · SP source partial · JV JVM green · EM emulator 
 | 40690449183 | c3f534b4 | M27 P15 PASS |
 | 40687321312 | 19ad3288 | M27 P12–14 PASS |
 | 40682410679 | 3f1a808f | M27 P09–10 PASS |
-| 40676871448 | fbe75e44 | native CI PASS |
+| 40961693417 | 888caf54 | P36/P37/E16 T1 PASS |
 | 40499402394 | 511aa0ea | M27 reconciliation PASS |
 
 ## B4 Work queue (top unblocked first)
@@ -168,11 +168,11 @@ State codes: ND not started · SP source partial · JV JVM green · EM emulator 
 6. G14 EM: screenshots; owner/device open.
 7. M26 EM: owner/custody/goal; device/security open.
 8. M25 EM: enrollment/Terms; device/security open.
-9. M29 P24/P25: 40926146593 had 65/66 API35 (M29 tests passed, legacy unmapped Gmail failed). Fixture repaired at 5063de3b, T1 40935305515 SUCCESS; combined API35 T2 40936450262 pending.
+9. M29 P24/P25: original 40926146593 65/66 fixed without weakening guards; 40936450262 API35 66/66 PASS at 5063de3b, original APK hashes/ADB reviewed.
 10. M28 EM: synthetic CAS; real CAS/ARM64 blocked.
 11. M30 EM: priced-feed UI; actual network/device blocked.
 12. M31 EM: dossier/settings/privacy; owner/device blocked.
-13. BUILD NOW: P35/E07 encrypted mapping fixture 5063de3b T1 40935305515 SUCCESS, focused T2 40936450262 active at same SHA. P36 feedback SQLCipher journal/login seed/restart test SOURCE 888caf54; P37/E16 Play-deny controller/Settings notice SOURCE 15d61865; both need new T1, then focused T2. Next E09/E15/E17/E18. Real OAuth/Play owner blocked.
+13. BUILD NOW: P35/E07 API35 40936450262 PASS 66/66 at 5063de3b. P36/P37/E16 source 888caf54 T1 40961693417 PASS; focused API35 40962454191 active for feedback SQLCipher restart + real-screen checks. Then P36 Privacy/UI, P37 Play gating, E09/E15/E17/E18. Genuine OAuth/Play blocked.
 14. BLOCKED-OWNER: real Gmail OAuth, Play purchases, signing keys, ARM64 phone and genuine CAS statements, penetration test, G14 sign-off.
 Process P0 completed: unified native-ci T1/T2; 54 old workflows archived.
 
