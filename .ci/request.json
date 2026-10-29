@@ -1,6 +1,6 @@
 {
   "sha": "22a8cc50e69460af9a5d58c0736158d60f390e83",
-  "tier": "T1",
-  "tests": "",
+  "tier": "T2",
+  "tests": "in.growurdhan.redevelopment.NativeBooksRepositoryInstrumentedTest,in.growurdhan.redevelopment.NativeM26RealBooksAccessibilityInstrumentedTest,in.growurdhan.redevelopment.NativeGmailGatewayInstrumentedTest,in.growurdhan.redevelopment.NativeGmailSchedulingContractInstrumentedTest",
   "api": 35
 }
