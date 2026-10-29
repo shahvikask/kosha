@@ -110,7 +110,7 @@ New-chat prompt the owner pastes (replaces §17.5/17.7):
 Seed written by Claude on 2026-10-28 from repo docs. FIRST SESSION: verify B1–B3 against GitHub Actions and fix any mismatch before relying on them.
 
 ## B1 Header
-branch GUD-Android-Redevelopment · checkpoint_sha `08c4b39346f5022c00cc264d8ee58127478dabc5` · repaired M29 P24 T2 `40857791852` at `cc9e7a0c` SUCCESS 50/50 API35, original hashes/ADB reviewed · accepted requirements 0/52 (36 P + 16 E) · no formal milestones.
+branch GUD-Android-Redevelopment · checkpoint_sha `5063de3b6b2ce4c2a6ed3f145d037f5875e4fb97` · repaired M29 P24 T2 `40857791852` at `cc9e7a0c` SUCCESS 50/50 API35, original hashes/ADB reviewed · accepted requirements 0/52 (36 P + 16 E) · no formal milestones.
 State codes: ND not started · SP source partial · JV JVM green · EM emulator green · AC accepted · DF deferred (D57).
 
 ## B2 Requirement matrix (split a row when members diverge)
@@ -168,11 +168,11 @@ State codes: ND not started · SP source partial · JV JVM green · EM emulator 
 6. G14 EM: screenshots; owner/device open.
 7. M26 EM: owner/custody/goal; device/security open.
 8. M25 EM: enrollment/Terms; device/security open.
-9. M29 P24/P25: T2 40919538632 FAILED 54/55 at 5a947ef5 (append-only negative fixture); repaired test 9259b99c, T1/T2 still required.
+9. M29 P24/P25: repaired append-only fixture source 22a8cc50; focused API35 T2 40926146593 65/66 FAILED only legacy unmapped Gmail fixture; M29 focused tests passed. No formal acceptance.
 10. M28 EM: synthetic CAS; real CAS/ARM64 blocked.
 11. M30 EM: priced-feed UI; actual network/device blocked.
 12. M31 EM: dossier/settings/privacy; owner/device blocked.
-13. BUILD NOW: P35/E07 source 4dd2a6f7 native T1 40922821801 running (wheel setup); subsequent corrected M29 fixture 9259b99c and P36/P37/E16 pure policies 08c4b393 unverified. Next latest-source T1 then focused API35 P35+M29 T2; P36/P37 model tests in T1. Keep real OAuth/Play blocked.
+13. BUILD NOW: P35/E07 T1 40925298231 SUCCESS at 22a8cc50; focused T2 40926146593 65/66 with one legacy unmapped mailbox fixture; repaired explicit mapping + second-account negative in 5063de3b. T1 40935305515 active; next targeted API35 T2. P36/P37/E16 policy and JVM goldens compiled at 22a8cc50; real Gmail OAuth/Play blocked.
 14. BLOCKED-OWNER: real Gmail OAuth, Play purchases, signing keys, ARM64 phone and genuine CAS statements, penetration test, G14 sign-off.
 Process P0 completed: unified native-ci T1/T2; 54 old workflows archived.
 
