@@ -47,11 +47,40 @@ internal class NativeGmailSyncLedger(private val accounts: NativeAccountReposito
             message.messageId + "." + message.attachmentId
     }
 
+    /** Revoke only one explicitly linked member; never erase shared mailbox peers. */
+    private fun clearLink(db: SQLiteDatabase, owner: String, accountHash: String) {
+        val scoped = ownerKey(accountHash, owner)
+        db.execSQL("DELETE FROM setting WHERE key=? AND value=?",
+            arrayOf<Any>("native.gmail.mapping." + scoped, owner))
+        db.execSQL("DELETE FROM setting WHERE key=?",
+            arrayOf<Any>("native.gmail.cursor." + scoped))
+        db.execSQL("DELETE FROM setting WHERE key GLOB ?",
+            arrayOf<Any>("native.gmail.seen." + scoped + ".*"))
+    }
+
     /** Local owner consent does not grant or imply Google OAuth access. */
     fun setMemberOptIn(email: String, owner: String, approved: Boolean) {
         accounts.withUnlockedVault(email) { db ->
             db.rawQuery("SELECT 1 FROM entity WHERE entity_id=? AND is_active=1",
                 arrayOf(owner)).use { require(it.moveToFirst()) }
+            if (!approved) {
+                val prefix = "native.gmail.mapping."
+                val suffix = "." + owner
+                val accountsToRevoke = mutableListOf<String>()
+                db.rawQuery("SELECT key FROM setting WHERE key GLOB ? AND value=?",
+                    arrayOf(prefix + "*", owner)).use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val name = cursor.getString(0)
+                        if (name.startsWith(prefix) && name.endsWith(suffix)) {
+                            val hash = name.removePrefix(prefix).removeSuffix(suffix)
+                            if (hash.matches(Regex("[0-9a-f]{64}"))) {
+                                accountsToRevoke += hash
+                            }
+                        }
+                    }
+                }
+                accountsToRevoke.forEach { clearLink(db, owner, it) }
+            }
             db.execSQL("UPDATE entity SET gmail_sync=? WHERE entity_id=?",
                 arrayOf<Any>(if (approved) 1 else 0, owner))
         }
@@ -88,11 +117,7 @@ internal class NativeGmailSyncLedger(private val accounts: NativeAccountReposito
         val hashed = accountId(gmailAddress)
         accounts.withUnlockedVault(email) { db ->
             requireOptIn(db, owner)
-            val mappingKey = "native.gmail.mapping." + ownerKey(hashed, owner)
-            db.execSQL("DELETE FROM setting WHERE key=? AND value=?",
-                arrayOf<Any>(mappingKey, owner))
-            db.execSQL("DELETE FROM setting WHERE key=?",
-                arrayOf<Any>("native.gmail.cursor." + ownerKey(hashed, owner)))
+            clearLink(db, owner, hashed)
         }
     }
 
