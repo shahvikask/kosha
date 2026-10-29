@@ -1863,6 +1863,33 @@ class NativeBooksRepositoryInstrumentedTest {
     }
 
 
+    @Test fun p36FeedbackTimingIsEncryptedRestartSafeAndMissingPrivacyConsentFailsClosed() {
+        val context = sandbox()
+        val (accounts, _) = create(context)
+        val feedback = NativeFeedbackStateRepository(accounts)
+        val day = 86_400_000L
+        val first = feedback.recordAuthenticatedOpen(input.email, 10 * day)
+        assertEquals(10 * day, first.firstSeenMillis)
+        assertFalse(feedback.eligible(input.email, 17 * day, "privacy-v1"))
+        feedback.finishOnboarding(input.email, 11 * day)
+        assertFalse(feedback.eligible(input.email, 17 * day, "privacy-v1"))
+        val snoozed = feedback.dismiss(input.email, 17 * day)
+        assertEquals(1, snoozed.promptCount)
+        assertEquals(19 * day, snoozed.snoozeUntilMillis)
+        assertThrows(IllegalArgumentException::class.java) {
+            feedback.recordAuthenticatedOpen(input.email, 16 * day)
+        }
+        accounts.onBackground()
+        val restarted = NativeAccountRepository(context, gate())
+        assertTrue(restarted.login(input.email, input.password))
+        val again = NativeFeedbackStateRepository(restarted)
+        assertEquals(snoozed, again.readRecorded(input.email))
+        assertFalse(again.eligible(input.email, 19 * day, "privacy-v1"))
+        assertThrows(Exception::class.java) {
+            NativeFeedbackStateRepository(accounts).readRecorded(input.email)
+        }
+    }
+
     @Test fun p35EncryptedSharedMailboxLinksRemainOwnerScopedAfterRestart() {
         val context = sandbox()
         val (accounts, books) = create(context)
