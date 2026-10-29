@@ -67,6 +67,11 @@ class NativeM26RealBooksAccessibilityInstrumentedTest {
         val books = NativeBooksRepository(accounts)
         books.createPerson(credentials.email,
             NativeBooksRepository.NewPerson("Member Alpha", "Spouse"))
+        val primary = books.read(credentials.email).people.single { it.isPrimary }.id
+        val reviewedHybrid = books.createHolding(credentials.email,
+            NativeBooksRepository.NewHolding(primary, null, "Reviewed hybrid demo",
+                "MUTUAL_FUND", "Hybrid fund", 100_000_000L, 1_010_000L,
+                java.time.LocalDate.now().toString(), true))
 
         compose.setContent {
             GudTheme(darkTheme = darkTheme) {
@@ -93,6 +98,29 @@ class NativeM26RealBooksAccessibilityInstrumentedTest {
         compose.onNodeWithTag("m29-home-health").assertExists()
         compose.onNodeWithTag("m29-home-price-health").assertExists()
         compose.onNodeWithTag("m29-home-categories").assertExists()
+        compose.waitUntil(30_000) {
+            compose.onAllNodes(hasText("Reviewed hybrid subset: 0 reviewed", substring = true))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("m29-exposure-counts").assertExists()
+        compose.onNodeWithTag("m29-exposure-picker").performScrollTo()
+        compose.onNodeWithTag("m29-exposure-picker").performClick()
+        compose.onNodeWithTag("m29-exposure-holding-$reviewedHybrid").performClick()
+        compose.onNodeWithTag("m29-exposure-split").performScrollTo()
+        compose.onNodeWithTag("m29-exposure-split").performTextInput("EQUITY:6500,DEBT:3500")
+        compose.onNodeWithTag("m29-exposure-source").performScrollTo()
+        compose.onNodeWithTag("m29-exposure-source").performTextInput("Owner factsheet review")
+        compose.onNodeWithTag("m29-exposure-date").performScrollTo()
+        compose.onNodeWithTag("m29-exposure-date")
+            .performTextInput(java.time.LocalDate.now().toString())
+        compose.onNodeWithTag("m29-exposure-save").performScrollTo()
+        compose.onNodeWithTag("m29-exposure-save").performClick()
+        compose.waitUntil(30_000) {
+            compose.onAllNodes(hasText("Reviewed hybrid subset: 1 reviewed", substring = true))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("m29-exposure-bucket-EQUITY").assertExists()
+        compose.onNodeWithTag("m29-exposure-bucket-DEBT").assertExists()
         for (tab in listOf("Home", "Holdings", "Family", "Accounts",
             "Goals", "Records", "Documents", "Settings")) {
             // At 200% text scale the nav begins below the viewport. A clipped
@@ -228,6 +256,11 @@ class NativeM26RealBooksAccessibilityInstrumentedTest {
         compose.onNodeWithText("Viewing Member: Member Alpha financial records")
             .assertExists()
         compose.onNodeWithText("0 holdings • 1 active member in view").assertExists()
+        compose.waitUntil(30_000) {
+            compose.onAllNodes(hasText("Reviewed hybrid subset: 0 reviewed", substring = true))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("m29-exposure-bucket-EQUITY").assertDoesNotExist()
         compose.onNodeWithTag("books-tab-Holdings").performScrollTo()
         compose.onNodeWithTag("books-tab-Holdings").performClick()
         compose.onNodeWithTag("m30-source-url").assertDoesNotExist()

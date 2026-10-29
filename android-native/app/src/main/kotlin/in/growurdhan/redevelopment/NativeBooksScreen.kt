@@ -196,6 +196,9 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                             Text("${h.name}: ${NativeBooksRepository.formatMinor(h.quantityScaled, 8)} units " +
                                 "• ${h.personName}")
                         }
+                        key(email, ownerFilter) {
+                            NativeHybridExposureCard(email, books, data.holdings, ownerFilter)
+                        }
                     }
                     "Family" -> {
                         Text("Family members", style = MaterialTheme.typography.titleLarge)

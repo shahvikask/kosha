@@ -1106,6 +1106,71 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
             result
         }
 
+    /** P24 reviewed hybrid splits: SQLCipher metadata only; no v9 schema changes. */
+    private fun requireHybridOwner(db: SQLiteDatabase, holdingId: String,
+        ownerId: String) {
+        NativeHybridExposureReview.key(holdingId)
+        db.rawQuery("SELECT h.entity_id,i.category,i.sub_category,e.is_active,h.account_id " +
+            "FROM holding h JOIN instrument i ON i.instrument_id=h.instrument_id " +
+            "JOIN entity e ON e.entity_id=h.entity_id WHERE h.holding_id=?",
+            arrayOf(holdingId)).use { cursor ->
+            require(cursor.moveToFirst()) { "Unknown holding" }
+            require(cursor.getString(0) == ownerId && cursor.getInt(3) == 1) {
+                "Owner mismatch or inactive owner"
+            }
+            require(cursor.getString(1) == "MUTUAL_FUND" &&
+                cursor.getString(2) == "Hybrid fund") { "Not a hybrid fund" }
+            if (!cursor.isNull(4)) requireCustody(db, ownerId, cursor.getString(4))
+        }
+    }
+
+    fun saveHybridExposure(email: String, holdingId: String, ownerId: String,
+        asOf: String, ownerSource: String, estimated: Boolean,
+        splitText: String): NativeHybridExposureReview.Record {
+        val review = NativeHybridExposureReview.create(holdingId, ownerId,
+            asOf, ownerSource, estimated, splitText)
+        accounts.withUnlockedVault(email) { db ->
+            requireHybridOwner(db, holdingId, ownerId)
+            db.execSQL("INSERT OR REPLACE INTO setting(key,value) VALUES(?,?)",
+                arrayOf<Any>(NativeHybridExposureReview.key(holdingId),
+                    NativeHybridExposureReview.encode(review)))
+        }
+        return review
+    }
+
+    /** ownerFilter never permits a foreign member's reviewed classification to leak. */
+    fun hybridExposureReviews(email: String, ownerFilter: String
+    ): List<NativeHybridExposureReview.Record> =
+        accounts.withUnlockedVault(email) { db ->
+            val reviewed = mutableListOf<NativeHybridExposureReview.Record>()
+            db.rawQuery("SELECT h.holding_id,h.entity_id,s.value,h.account_id " +
+                "FROM holding h JOIN instrument i ON i.instrument_id=h.instrument_id " +
+                "JOIN entity e ON e.entity_id=h.entity_id " +
+                "JOIN setting s ON s.key=('native.exposure.review.' || h.holding_id) " +
+                "WHERE i.category='MUTUAL_FUND' AND i.sub_category='Hybrid fund' " +
+                "AND e.is_active=1 AND (?='' OR h.entity_id=?) " +
+                "ORDER BY h.holding_id", arrayOf(ownerFilter, ownerFilter)).use { c ->
+                while (c.moveToNext()) {
+                    if (!c.isNull(3)) requireCustody(db, c.getString(1), c.getString(3))
+                    val item = NativeHybridExposureReview.decode(c.getString(2))
+                    require(item.holdingId == c.getString(0) &&
+                        item.ownerId == c.getString(1)) {
+                        "Stored exposure ownership conflict"
+                    }
+                    reviewed += item
+                }
+            }
+            reviewed
+        }
+
+    fun deleteHybridExposure(email: String, holdingId: String, ownerId: String) {
+        accounts.withUnlockedVault(email) { db ->
+            requireHybridOwner(db, holdingId, ownerId)
+            db.execSQL("DELETE FROM setting WHERE key=?",
+                arrayOf(NativeHybridExposureReview.key(holdingId)))
+        }
+    }
+
     companion object {
         /** Decimal input is converted once to exact scaled integers; never via Double. */
         fun parseMinor(display: String, scale: Int): Long =

@@ -47,6 +47,95 @@ class NativeBooksRepositoryInstrumentedTest {
         return accounts to NativeBooksRepository(accounts)
     }
 
+    @Test fun p24ReviewedHybridSplitIsEncryptedScopedAndDoesNotPostFinancialEvents() {
+        val context = sandbox()
+        val (accounts, books) = create(context)
+        val owner = books.read(input.email).people.single().id
+        val foreign = books.createPerson(input.email,
+            NativeBooksRepository.NewPerson("Member Alpha", "Spouse"))
+        val day = LocalDate.now().toString()
+        val own = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, null, "Reviewed hybrid", "MUTUAL_FUND", "Hybrid fund",
+            100_000_000L, 1_010_000L, day, true))
+        val unknown = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, null, "Unpriced hybrid", "MUTUAL_FUND", "Hybrid fund",
+            100_000_000L, 0L, day, false))
+        val foreignId = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            foreign, null, "Foreign hybrid", "MUTUAL_FUND", "Hybrid fund",
+            100_000_000L, 999_0000L, day, true))
+        val nonHybrid = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, null, "Nonhybrid index", "MUTUAL_FUND", "Index / ETF",
+            100_000_000L, 1000L, day, false))
+        val before = books.read(input.email)
+        val history = books.history(input.email, own)
+        val split = "EQUITY:6500,DEBT:3500"
+        val reviewed = books.saveHybridExposure(input.email, own, owner,
+            day, "Owner-reviewed stated factsheet", false, split)
+        assertEquals(2, reviewed.slices.size)
+        books.saveHybridExposure(input.email, unknown, owner,
+            day, "Owner estimated source", true, split)
+        books.saveHybridExposure(input.email, foreignId, foreign,
+            day, "Other member review", true, "GOLD:10000")
+        val ownReview = books.hybridExposureReviews(input.email, owner)
+        assertEquals(setOf(own, unknown), ownReview.map { it.holdingId }.toSet())
+        assertFalse(ownReview.any { it.ownerId == foreign })
+        assertEquals(listOf(foreignId),
+            books.hybridExposureReviews(input.email, foreign).map { it.holdingId })
+        val totals = NativeHybridExposureReview.report(
+            books.read(input.email).holdings, ownReview, owner, LocalDate.now())
+        assertEquals(java.math.BigInteger.valueOf(1_010_000L),
+            totals.summary.knownValueMinor)
+        assertEquals(java.math.BigInteger.ZERO, totals.summary.estimatedValueMinor)
+        assertEquals(1, totals.excludedStaleOrUnknown)
+        assertEquals(0, totals.awaitingReview)
+        assertEquals(java.math.BigInteger.valueOf(656_500L),
+            totals.summary.totals["EQUITY"])
+        assertEquals(java.math.BigInteger.valueOf(353_500L),
+            totals.summary.totals["DEBT"])
+        assertEquals(before.holdings, books.read(input.email).holdings)
+        assertEquals(history, books.history(input.email, own))
+        for (bad in listOf("EQUITY:9999", "EQUITY:5000,EQUITY:5000",
+            "UNKNOWN:10000", "DEBT:-100", "EQUITY:0,DEBT:10000")) {
+            assertThrows(IllegalArgumentException::class.java) {
+                books.saveHybridExposure(input.email, own, owner, day,
+                    "Owner-reviewed stated factsheet", false, bad)
+            }
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            books.saveHybridExposure(input.email, own, foreign, day,
+                "Owner-reviewed stated factsheet", false, split)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            books.saveHybridExposure(input.email, nonHybrid, owner, day,
+                "Owner-reviewed stated factsheet", false, split)
+        }
+        assertThrows(Exception::class.java) {
+            books.saveHybridExposure(input.email, own, owner,
+                LocalDate.now().plusDays(1).toString(), "Owner review", false, split)
+        }
+        assertEquals(ownReview, books.hybridExposureReviews(input.email, owner))
+        accounts.onBackground()
+        assertThrows(Exception::class.java) {
+            books.hybridExposureReviews(input.email, owner)
+        }
+        val reopened = NativeAccountRepository(context, gate())
+        assertTrue(reopened.login(input.email, input.password))
+        val restored = NativeBooksRepository(reopened)
+        assertEquals(ownReview, restored.hybridExposureReviews(input.email, owner))
+        reopened.withUnlockedVault(input.email) { db ->
+            db.execSQL("UPDATE setting SET value='corrupt-review' WHERE key=?",
+                arrayOf<Any>(NativeHybridExposureReview.key(own)))
+        }
+        assertThrows(Exception::class.java) {
+            restored.hybridExposureReviews(input.email, owner)
+        }
+        restored.deleteHybridExposure(input.email, own, owner)
+        assertEquals(listOf(unknown),
+            restored.hybridExposureReviews(input.email, owner).map { it.holdingId })
+        assertEquals(before.holdings, restored.read(input.email).holdings)
+        assertEquals(history, restored.history(input.email, own))
+    }
+
     @Test fun propertyPreviewFailsClosedWithoutAuthenticatedRegistryAndValuation() {
         val context = sandbox()
         val (accounts, books) = create(context)
