@@ -110,7 +110,7 @@ New-chat prompt the owner pastes (replaces §17.5/17.7):
 Seed written by Claude on 2026-10-28 from repo docs. FIRST SESSION: verify B1–B3 against GitHub Actions and fix any mismatch before relying on them.
 
 ## B1 Header
-branch GUD-Android-Redevelopment · checkpoint_sha `6a455483f09ec61326f4d26f29d6cd5a53d24ff2` · repaired M29 P24 T2 `40857791852` at `cc9e7a0c` SUCCESS 50/50 API35, original hashes/ADB reviewed · accepted requirements 0/52 (36 P + 16 E) · no formal milestones.
+branch GUD-Android-Redevelopment · checkpoint_sha `4dd2a6f730907bc3bea07f332d8fccaa440f625c` · repaired M29 P24 T2 `40857791852` at `cc9e7a0c` SUCCESS 50/50 API35, original hashes/ADB reviewed · accepted requirements 0/52 (36 P + 16 E) · no formal milestones.
 State codes: ND not started · SP source partial · JV JVM green · EM emulator green · AC accepted · DF deferred (D57).
 
 ## B2 Requirement matrix (split a row when members diverge)
@@ -169,7 +169,7 @@ State codes: ND not started · SP source partial · JV JVM green · EM emulator 
 10. M28 EM: synthetic CAS; real CAS/ARM64 blocked.
 11. M30 EM: priced-feed UI; actual network/device blocked.
 12. M31 EM: dossier/settings/privacy; owner/device blocked.
-13. BUILD NOW: P35/E07 source `6a455483` fake Gmail gateway, many-to-many encrypted owner links, revocation, WorkManager explicit monthly/manual + fail-closed worker and tests; native T1/T2 pending active M29 T2. Then P36 → P37/E16 → E09/E15/E17/E18.
+13. BUILD NOW: P35/E07 SOURCE at `4dd2a6f7`: WorkManager explicit monthly/manual, SQLCipher many-to-many mapping/cursor/revocation, read-only bounded fake scan and negative/restart tests. Native T1/T2 NOT VERIFIED while M29 T2 40919538632 active. Then P36, P37/E16, E09, E15, E17, E18.
 14. BLOCKED-OWNER: real Gmail OAuth, Play purchases, signing keys, ARM64 phone and genuine CAS statements, penetration test, G14 sign-off.
 Process P0 completed: unified native-ci T1/T2; 54 old workflows archived.
 
