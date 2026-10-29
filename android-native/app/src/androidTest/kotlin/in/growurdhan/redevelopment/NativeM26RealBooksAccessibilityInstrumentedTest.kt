@@ -11,11 +11,13 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import `in`.growurdhan.designsystem.GudTheme
@@ -119,7 +121,56 @@ class NativeM26RealBooksAccessibilityInstrumentedTest {
         compose.onNodeWithTag("m31-sgb-RBI_REFERENCE_REQUIRED").assertExists()
         compose.onNodeWithTag("m31-ibja-OWNER_REVIEW_REQUIRED").assertExists()
         compose.onNodeWithTag("m31-device-loss-warning").assertExists()
+
         compose.onNodeWithTag("m31-support-copy").assertDoesNotExist()
+        compose.onNodeWithTag("m31-account-lock").assertExists()
+        compose.onNodeWithTag("m31-ibja-OWNER_REVIEW_REQUIRED").performScrollTo()
+        compose.onNodeWithTag("m31-ibja-OWNER_REVIEW_REQUIRED").performClick()
+        compose.waitUntil(30_000) {
+            compose.onAllNodes(hasTestTag("m31-ibja-empty"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("m31-ibja-date").performScrollTo()
+        compose.onNodeWithTag("m31-ibja-date").performTextInput("2025-06-01")
+        compose.onNodeWithTag("m31-ibja-rate").performScrollTo()
+        compose.onNodeWithTag("m31-ibja-rate").performTextInput("12345.6789")
+        compose.onNodeWithTag("m31-ibja-save").performScrollTo()
+        compose.onNodeWithTag("m31-ibja-save").performClick()
+        compose.waitUntil(30_000) {
+            compose.onAllNodes(hasTestTag("m31-ibja-record"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("m31-ibja-delete").performScrollTo()
+        compose.onNodeWithTag("m31-ibja-delete").performClick()
+        compose.waitUntil(30_000) {
+            compose.onAllNodes(hasTestTag("m31-ibja-empty"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText("Opt in to on-device technical checks").performScrollTo()
+        compose.onNodeWithText("Opt in to on-device technical checks").performClick()
+        compose.waitUntil(30_000) {
+            compose.onAllNodes(hasText("Technical diagnostics: enabled"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText("View sanitized health locally").performScrollTo()
+        compose.onNodeWithText("View sanitized health locally").performClick()
+        compose.waitUntil(30_000) {
+            compose.onAllNodes(hasTestTag("m31-redacted-report"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("m31-support-copy").performScrollTo()
+        compose.onNodeWithTag("m31-support-copy").performClick()
+        compose.onNodeWithTag("m31-support-delete-copy").assertExists()
+        compose.onNodeWithTag("m31-support-clear").performScrollTo()
+        compose.onNodeWithTag("m31-support-clear").performClick()
+        compose.onNodeWithTag("m31-redacted-report").assertDoesNotExist()
+        compose.onNodeWithTag("m31-support-delete-copy").assertDoesNotExist()
+        compose.onNodeWithText("Opt out and clear local diagnostics").performScrollTo()
+        compose.onNodeWithText("Opt out and clear local diagnostics").performClick()
+        compose.waitUntil(30_000) {
+            compose.onAllNodes(hasText("Technical diagnostics: disabled (default)"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onNodeWithTag("m31-theme-DARK").performScrollTo()
         compose.onNodeWithTag("m31-theme-DARK").performClick()
         compose.waitForIdle()

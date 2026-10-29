@@ -44,6 +44,48 @@ class NativePrivateDiagnosticsInstrumentedTest {
         return repository
     }
 
+
+    @Test fun ownerIbjaReferenceEncryptedRestartValidationAndDeletion() {
+        val context = sandbox()
+        val initial = accounts(context)
+        val store = NativeUserSettingsRepository(initial)
+        assertNull(store.readIbja(enrollment.email))
+        assertThrows(IllegalArgumentException::class.java) {
+            store.saveIbja(enrollment.email, "2025-06-01", "12345.6789")
+        }
+        store.save(enrollment.email, NativeUserSettingsRepository.Preferences(
+            ibjaReference = NativeUserSettingsRepository.IbjaReference.OWNER_REVIEW_REQUIRED))
+        for (badRate in listOf("", "0", "-2", "1.00001", "01", "1e6")) {
+            assertThrows(Exception::class.java) {
+                store.saveIbja(enrollment.email, "2025-06-01", badRate)
+            }
+        }
+        assertThrows(Exception::class.java) {
+            store.saveIbja(enrollment.email,
+                java.time.LocalDate.now().plusDays(1).toString(), "12345.6789")
+        }
+        val entry = store.saveIbja(enrollment.email, "2025-06-01", "12345.6789")
+        assertEquals(123456789L, entry.rupeesPerTenGramsMinor)
+        assertEquals(entry, store.readIbja(enrollment.email))
+        initial.onBackground()
+        assertThrows(Exception::class.java) { store.readIbja(enrollment.email) }
+        val reopened = NativeAccountRepository(context, gate())
+        assertTrue(reopened.login(enrollment.email, enrollment.password))
+        val restored = NativeUserSettingsRepository(reopened)
+        assertEquals(entry, restored.readIbja(enrollment.email))
+        reopened.withUnlockedVault(enrollment.email) { db ->
+            db.execSQL("UPDATE setting SET value='INVALID' " +
+                "WHERE key='native.prices.ibja.owner_reference'")
+        }
+        assertThrows(Exception::class.java) { restored.readIbja(enrollment.email) }
+        restored.clearIbja(enrollment.email)
+        assertNull(restored.readIbja(enrollment.email))
+        reopened.onBackground()
+        val latest = NativeAccountRepository(context, gate())
+        assertTrue(latest.login(enrollment.email, enrollment.password))
+        assertNull(NativeUserSettingsRepository(latest).readIbja(enrollment.email))
+    }
+
     @Test fun encryptedAppearanceAndRbiIbjaPoliciesSurviveRestartAndRejectCorruption() {
         val ctx = sandbox()
         val first = accounts(ctx)

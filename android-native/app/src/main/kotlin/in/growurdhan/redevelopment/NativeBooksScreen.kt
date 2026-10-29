@@ -79,6 +79,7 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
     var preferencesLoaded by remember(email) { mutableStateOf(false) }
     var preferencesBusy by remember { mutableStateOf(false) }
     var preferencesError by remember { mutableStateOf("") }
+    var ibjaInput by remember(email) { mutableStateOf<NativeUserSettingsRepository.IbjaInput?>(null) }
     var tab by remember { mutableStateOf("Home") }
     var ownerFilter by remember { mutableStateOf("") }
     var categoryFilter by remember { mutableStateOf("All") }
@@ -126,6 +127,7 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                 settings?.read(email) ?: NativeUserSettingsRepository.Preferences()
             }
             preferencesLoaded = settings != null
+            ibjaInput = withContext(Dispatchers.IO) { settings?.readIbja(email) }
         } catch (_: Exception) {
             preferencesError = "Encrypted settings unavailable. Lock and unlock again."
         }
@@ -476,7 +478,43 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                     }
                     "Settings" -> {
                         if (preferencesLoaded) {
-                            NativeUserSettingsCard(preferences, !preferencesBusy) { next ->
+                            NativeUserSettingsCard(
+                                preferences = preferences, enabled = !preferencesBusy,
+                                ibja = ibjaInput,
+                                onRecordIbja = { date, rate ->
+                                    if (!preferencesBusy) {
+                                        preferencesBusy = true
+                                        preferencesError = ""
+                                        scope.launch {
+                                            try {
+                                                ibjaInput = withContext(Dispatchers.IO) {
+                                                    requireNotNull(settings).saveIbja(email, date, rate)
+                                                }
+                                            } catch (_: Exception) {
+                                                preferencesError = "IBJA reference not saved. Check " +
+                                                    "date, positive rate, or unlock the vault."
+                                            } finally { preferencesBusy = false }
+                                        }
+                                    }
+                                },
+                                onClearIbja = {
+                                    if (!preferencesBusy) {
+                                        preferencesBusy = true
+                                        scope.launch {
+                                            try {
+                                                withContext(Dispatchers.IO) {
+                                                    requireNotNull(settings).clearIbja(email)
+                                                }
+                                                ibjaInput = null
+                                                preferencesError = "Owner-entered IBJA reference deleted."
+                                            } catch (_: Exception) {
+                                                preferencesError = "Cannot delete IBJA reference; unlock again."
+                                            } finally { preferencesBusy = false }
+                                        }
+                                    }
+                                },
+                                onLock = onLock
+                            ) { next ->
                                 if (!preferencesBusy) {
                                     preferencesBusy = true
                                     preferencesError = ""
@@ -1699,8 +1737,15 @@ private fun NativePrivateDiagnosticsSettings(email: String,
     var busy by remember { mutableStateOf(false) }
     var report by remember { mutableStateOf("") }
     var message by remember { mutableStateOf("") }
+    var copiedReport by remember(email) { mutableStateOf("") }
+    val clearOwnedCopy = {
+        if (copiedReport.isNotEmpty() && clipboard.getText()?.text == copiedReport)
+            clipboard.setText(AnnotatedString(""))
+        copiedReport = ""
+    }
     LaunchedEffect(email) {
         report = ""
+        copiedReport = ""
         try {
             optedIn = withContext(Dispatchers.IO) { diagnostics.enabled(email) }
             loaded = true
@@ -1749,6 +1794,7 @@ private fun NativePrivateDiagnosticsSettings(email: String,
                     withContext(Dispatchers.IO) { diagnostics.setEnabled(email, false) }
                     optedIn = false
                     report = ""
+                    clearOwnedCopy()
                     message = "Diagnostics disabled; encrypted opt-in marker cleared. " +
                         "No diagnostic logs are retained."
                 } catch (_: Exception) {
@@ -1764,13 +1810,26 @@ private fun NativePrivateDiagnosticsSettings(email: String,
             OutlinedButton(enabled = optedIn && !busy, onClick = {
                 // Owner-initiated copy only, never raw logs or financial records.
                 clipboard.setText(AnnotatedString(report))
+                copiedReport = report
                 message = "Redacted support text copied by explicit request; no file exported."
             }, modifier = Modifier.testTag("m31-support-copy")) {
                 Text("Copy sanitized support text manually")
             }
-            OutlinedButton(onClick = { report = ""; message = "Support preview cleared." },
+            OutlinedButton(onClick = {
+                report = ""
+                clearOwnedCopy()
+                message = "Support preview and its unchanged clipboard copy cleared."
+            },
                 modifier = Modifier.testTag("m31-support-clear")) {
                 Text("Clear local support preview")
+            }
+        }
+        if (copiedReport.isNotEmpty()) {
+            OutlinedButton(onClick = {
+                clearOwnedCopy()
+                message = "Owned clipboard copy cleared if unchanged."
+            }, modifier = Modifier.testTag("m31-support-delete-copy")) {
+                Text("Clear copied support text")
             }
         }
         if (message.isNotEmpty()) Text(message)
