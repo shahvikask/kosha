@@ -110,7 +110,7 @@ New-chat prompt the owner pastes (replaces §17.5/17.7):
 Seed written by Claude on 2026-10-28 from repo docs. FIRST SESSION: verify B1–B3 against GitHub Actions and fix any mismatch before relying on them.
 
 ## B1 Header
-branch GUD-Android-Redevelopment · checkpoint_sha `5063de3b6b2ce4c2a6ed3f145d037f5875e4fb97` · repaired M29 P24 T2 `40857791852` at `cc9e7a0c` SUCCESS 50/50 API35, original hashes/ADB reviewed · accepted requirements 0/52 (36 P + 16 E) · no formal milestones.
+branch GUD-Android-Redevelopment · checkpoint_sha `888caf540b87cbda928bed809c2e55c54a929037` · repaired M29 P24 T2 `40857791852` at `cc9e7a0c` SUCCESS 50/50 API35, original hashes/ADB reviewed · accepted requirements 0/52 (36 P + 16 E) · no formal milestones.
 State codes: ND not started · SP source partial · JV JVM green · EM emulator green · AC accepted · DF deferred (D57).
 
 ## B2 Requirement matrix (split a row when members diverge)
@@ -134,9 +134,9 @@ State codes: ND not started · SP source partial · JV JVM green · EM emulator 
 | P32, E11 | M31 | SP/EM | Encrypted opt-in/revoke and no diagnostic logs, redacted manual text preview/copy/clear; acceptance pending |
 | P33, E01, E02, E08, E13 | M31 | SP/EM | Hindi/device-loss and 360dp/200%-font light/dark onboarding. Real-screen owner-safe Settings→Fa; acceptance pending |
 | P34 | M32 | SP | idempotency/cursor guard only; acceptance pending |
-| P35, E07 | M32 | SP | Fake Gmail many-to-many mapping, bounded scan, WorkManager and encrypted restart tests; T1 pending, OAuth blocked |
-| P36 | M31/M33 | SP | Native feedback timing policy source + golden tests, current Terms UI existing; UI/persistence open |
-| P37, E16 | M33 | SP | Verified-Play-only 30-day trial and four-SKU entitlement policy + JVM goldens; billing integration blocked |
+| P35, E07 | M32 | SP/JV | T1 40935305515 SUCCESS at 5063de3b; focused API35 T2 40936450262 pending, real OAuth blocked |
+| P36 | M31/M33 | SP | Seven-day/two-day/six-prompt policy; encrypted feedback journal, login seeding and restart tests at 888caf54; Privacy UI absent, no prompts |
+| P37, E16 | M33 | SP | Four-SKU verified Play gateway/controller plus Settings unconfigured notice at 15d61865; no trusted Play verifier, purchases or enforcement |
 | P38–P39, E09, E15, E17–E18 | M33–M34 | ND | Billing release/security, analytics, SBOM, pipeline and egress pending |
 | E14 | all | SP | modular tests partial; acceptance pending |
 
@@ -168,11 +168,11 @@ State codes: ND not started · SP source partial · JV JVM green · EM emulator 
 6. G14 EM: screenshots; owner/device open.
 7. M26 EM: owner/custody/goal; device/security open.
 8. M25 EM: enrollment/Terms; device/security open.
-9. M29 P24/P25: repaired append-only fixture source 22a8cc50; focused API35 T2 40926146593 65/66 FAILED only legacy unmapped Gmail fixture; M29 focused tests passed. No formal acceptance.
+9. M29 P24/P25: 40926146593 had 65/66 API35 (M29 tests passed, legacy unmapped Gmail failed). Fixture repaired at 5063de3b, T1 40935305515 SUCCESS; combined API35 T2 40936450262 pending.
 10. M28 EM: synthetic CAS; real CAS/ARM64 blocked.
 11. M30 EM: priced-feed UI; actual network/device blocked.
 12. M31 EM: dossier/settings/privacy; owner/device blocked.
-13. BUILD NOW: P35/E07 T1 40925298231 SUCCESS at 22a8cc50; focused T2 40926146593 65/66 with one legacy unmapped mailbox fixture; repaired explicit mapping + second-account negative in 5063de3b. T1 40935305515 active; next targeted API35 T2. P36/P37/E16 policy and JVM goldens compiled at 22a8cc50; real Gmail OAuth/Play blocked.
+13. BUILD NOW: P35/E07 encrypted mapping fixture 5063de3b T1 40935305515 SUCCESS, focused T2 40936450262 active at same SHA. P36 feedback SQLCipher journal/login seed/restart test SOURCE 888caf54; P37/E16 Play-deny controller/Settings notice SOURCE 15d61865; both need new T1, then focused T2. Next E09/E15/E17/E18. Real OAuth/Play owner blocked.
 14. BLOCKED-OWNER: real Gmail OAuth, Play purchases, signing keys, ARM64 phone and genuine CAS statements, penetration test, G14 sign-off.
 Process P0 completed: unified native-ci T1/T2; 54 old workflows archived.
 
