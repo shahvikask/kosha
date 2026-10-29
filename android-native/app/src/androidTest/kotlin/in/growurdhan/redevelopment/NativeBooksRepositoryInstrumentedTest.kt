@@ -1847,8 +1847,17 @@ class NativeBooksRepositoryInstrumentedTest {
         assertThrows(IllegalArgumentException::class.java) {
             gmail.requireGmailAccountOwner(input.email, owner, address)
         }
+        assertThrows(IllegalArgumentException::class.java) {
+            NativeGmailSyncSchedule.requestManual(context, gmail, input.email, owner, address)
+        }
         gmail.bindGmailAccount(input.email, owner, address)
         gmail.bindGmailAccount(input.email, member, address)
+        val personalAddress = "personal-mailbox@example.org"
+        gmail.bindGmailAccount(input.email, owner, personalAddress)
+        gmail.requireGmailAccountOwner(input.email, owner, personalAddress)
+        assertThrows(IllegalArgumentException::class.java) {
+            gmail.requireGmailAccountOwner(input.email, member, personalAddress)
+        }
         gmail.requireGmailAccountOwner(input.email, owner, address)
         gmail.requireGmailAccountOwner(input.email, member, address)
         assertNull(gmail.currentCursor(input.email, owner, address))
