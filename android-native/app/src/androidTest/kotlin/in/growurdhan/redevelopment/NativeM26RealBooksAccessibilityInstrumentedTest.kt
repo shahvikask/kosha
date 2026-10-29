@@ -75,9 +75,9 @@ class NativeM26RealBooksAccessibilityInstrumentedTest {
                             NativeInterestPayoutRepository(accounts),
                             NativeAnnualInterestCreditRepository(accounts),
                             NativePrivateDiagnosticsRepository(accounts),
-                            NativeUserSettingsRepository(accounts),
                             NativeCasPdfEngine(context),
-                            null, "", {}, {}, null, "", {}, {}, {}, {})
+                            null, "", {}, {}, null, "", {}, {}, {}, {},
+                            settings = NativeUserSettingsRepository(accounts))
                     }
                 }
             }

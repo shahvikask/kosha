@@ -61,13 +61,13 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
     imports: NativeStatementImportRepository,
     payouts: NativeInterestPayoutRepository,
     annualCredits: NativeAnnualInterestCreditRepository,
-    diagnostics: NativePrivateDiagnosticsRepository,
-    settings: NativeUserSettingsRepository, casPdf: NativeCasPdfEngine,
+    diagnostics: NativePrivateDiagnosticsRepository, casPdf: NativeCasPdfEngine,
     pendingPdf: ByteArray?, pendingPdfFilename: String,
     onSelectPdf: () -> Unit, onDiscardPdf: () -> Unit,
     pendingCsv: ByteArray?, pendingCsvFilename: String,
     onSelectCsv: () -> Unit, onDiscardCsv: () -> Unit,
     onLock: () -> Unit, onReplaceRecovery: () -> Unit,
+    settings: NativeUserSettingsRepository? = null,
     onAppearanceChanged: (NativeUserSettingsRepository.Appearance) -> Unit = {}) {
     val scope = rememberCoroutineScope()
     var snapshot by remember { mutableStateOf<NativeBooksRepository.Snapshot?>(null) }
@@ -122,8 +122,10 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
         xirrResults = emptyMap()
         preferencesLoaded = false
         try {
-            preferences = withContext(Dispatchers.IO) { settings.read(email) }
-            preferencesLoaded = true
+            preferences = withContext(Dispatchers.IO) {
+                settings?.read(email) ?: NativeUserSettingsRepository.Preferences()
+            }
+            preferencesLoaded = settings != null
         } catch (_: Exception) {
             preferencesError = "Encrypted settings unavailable. Lock and unlock again."
         }
@@ -480,7 +482,7 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                                     preferencesError = ""
                                     scope.launch {
                                         try {
-                                            withContext(Dispatchers.IO) { settings.save(email, next) }
+                                            withContext(Dispatchers.IO) { requireNotNull(settings).save(email, next) }
                                             preferences = next
                                             onAppearanceChanged(next.appearance)
                                         } catch (_: Exception) {
