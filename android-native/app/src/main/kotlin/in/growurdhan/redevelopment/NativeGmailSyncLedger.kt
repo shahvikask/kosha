@@ -52,6 +52,50 @@ internal class NativeGmailSyncLedger(private val accounts: NativeAccountReposito
         }
     }
 
+    /** Explicit owner-approved mapping, kept inside the existing encrypted vault. */
+    fun bindGmailAccount(email: String, owner: String, gmailAddress: String) {
+        val normalizedAddress = normalized(gmailAddress)
+        val hashed = accountId(normalizedAddress)
+        accounts.withUnlockedVault(email) { db ->
+            requireOptIn(db, owner)
+            val mappingKey = "native.gmail.mapping." + hashed
+            val prior = db.rawQuery("SELECT value FROM setting WHERE key=?",
+                arrayOf(mappingKey)).use {
+                if (it.moveToFirst()) it.getString(0) else null
+            }
+            require(prior == null || prior == owner) {
+                "Gmail address is already linked to another family entity"
+            }
+            db.execSQL("INSERT OR REPLACE INTO setting(key,value) VALUES(?,?)",
+                arrayOf<Any>(mappingKey, owner))
+        }
+    }
+
+    fun requireGmailAccountOwner(email: String, owner: String, gmailAddress: String) {
+        val hashed = accountId(gmailAddress)
+        accounts.withUnlockedVault(email) { db ->
+            requireOptIn(db, owner)
+            db.rawQuery("SELECT value FROM setting WHERE key=?",
+                arrayOf("native.gmail.mapping." + hashed)).use {
+                require(it.moveToFirst() && it.getString(0) == owner) {
+                    "Gmail identity has no approved owner mapping"
+                }
+            }
+        }
+    }
+
+    fun unlinkGmailAccount(email: String, owner: String, gmailAddress: String) {
+        val hashed = accountId(gmailAddress)
+        accounts.withUnlockedVault(email) { db ->
+            requireOptIn(db, owner)
+            val mappingKey = "native.gmail.mapping." + hashed
+            db.execSQL("DELETE FROM setting WHERE key=? AND value=?",
+                arrayOf<Any>(mappingKey, owner))
+            db.execSQL("DELETE FROM setting WHERE key=?",
+                arrayOf<Any>("native.gmail.cursor." + hashed))
+        }
+    }
+
     fun alreadySeen(email: String, owner: String, message: MessageKey): Boolean {
         val account = accountId(message.gmailAddress)
         return accounts.withUnlockedVault(email) { db ->
