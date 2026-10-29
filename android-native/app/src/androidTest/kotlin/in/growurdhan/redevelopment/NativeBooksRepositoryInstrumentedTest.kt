@@ -1747,6 +1747,12 @@ class NativeBooksRepositoryInstrumentedTest {
             journal.alreadySeen(input.email, owner, message)
         }
         journal.setMemberOptIn(input.email, owner, true)
+        assertThrows(IllegalArgumentException::class.java) {
+            journal.alreadySeen(input.email, owner, message)
+        }
+        // Explicit encrypted account-to-member mapping is required independently
+        // of consent. Do not weaken NativeGmailSyncLedger's fail-closed guard.
+        journal.bindGmailAccount(input.email, owner, message.gmailAddress)
         assertFalse(journal.alreadySeen(input.email, owner, message))
         assertThrows(IllegalArgumentException::class.java) {
             journal.markReconciled(input.email, owner, message)
@@ -1769,8 +1775,13 @@ class NativeBooksRepositoryInstrumentedTest {
             journal.advanceCompleteCursor(input.email, owner,
                 "one@example.invalid", "999", true, listOf(message))
         }
-        assertFalse(journal.alreadySeen(input.email, owner, message.copy(
-            gmailAddress = "two@example.invalid")))
+        val otherAccountMessage = message.copy(gmailAddress = "two@example.invalid")
+        assertThrows(IllegalArgumentException::class.java) {
+            journal.alreadySeen(input.email, owner, otherAccountMessage)
+        }
+        journal.bindGmailAccount(input.email, owner, otherAccountMessage.gmailAddress)
+        assertFalse(journal.alreadySeen(input.email, owner, otherAccountMessage))
+        assertTrue(journal.alreadySeen(input.email, owner, message))
         journal.setMemberOptIn(input.email, owner, false)
         assertThrows(IllegalArgumentException::class.java) {
             journal.currentCursor(input.email, owner, "one@example.invalid")
