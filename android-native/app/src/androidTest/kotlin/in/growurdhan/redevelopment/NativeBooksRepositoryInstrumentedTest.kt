@@ -1863,6 +1863,43 @@ class NativeBooksRepositoryInstrumentedTest {
     }
 
 
+    @Test fun p36ExplicitVersionedPrivacyConsentNeedsReviewAndSurvivesEncryptedRestart() {
+        val context = sandbox()
+        val (accounts, _) = create(context)
+        val privacy = NativePrivacyConsentRepository(accounts)
+        val feedback = NativeFeedbackStateRepository(accounts)
+        val day = 86_400_000L
+        feedback.recordAuthenticatedOpen(input.email, 10 * day)
+        feedback.finishOnboarding(input.email, 11 * day)
+        assertNull(privacy.accepted(input.email))
+        val invalid = NativePrivacyConsentRepository.Review(
+            NativePrivacyNotice.TEXT_ID, false, true, 12 * day)
+        assertThrows(IllegalArgumentException::class.java) {
+            privacy.accept(input.email, invalid)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            privacy.accept(input.email, invalid.copy(reachedEnd = true,
+                textId = "older-notice"))
+        }
+        assertFalse(feedback.eligible(input.email, 17 * day, NativePrivacyNotice.VERSION))
+        val accepted = privacy.accept(input.email, invalid.copy(
+            reachedEnd = true, acceptedAtMillis = 12 * day))
+        assertEquals(NativePrivacyNotice.VERSION, accepted.version)
+        assertTrue(feedback.eligible(input.email, 17 * day, NativePrivacyNotice.VERSION))
+        assertFalse(feedback.eligible(input.email, 17 * day, "another-version"))
+        assertThrows(IllegalArgumentException::class.java) {
+            privacy.accept(input.email, invalid.copy(reachedEnd = true,
+                acceptedAtMillis = 11 * day))
+        }
+        accounts.onBackground()
+        val reopened = NativeAccountRepository(context, gate())
+        assertTrue(reopened.login(input.email, input.password))
+        val restoredPrivacy = NativePrivacyConsentRepository(reopened)
+        assertEquals(accepted, restoredPrivacy.accepted(input.email))
+        assertTrue(NativeFeedbackStateRepository(reopened).eligible(
+            input.email, 17 * day, NativePrivacyNotice.VERSION))
+    }
+
     @Test fun p36FeedbackTimingIsEncryptedRestartSafeAndMissingPrivacyConsentFailsClosed() {
         val context = sandbox()
         val (accounts, _) = create(context)

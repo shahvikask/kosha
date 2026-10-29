@@ -34,6 +34,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var privateDiagnostics: NativePrivateDiagnosticsRepository
     private lateinit var userSettings: NativeUserSettingsRepository
     private lateinit var feedbackState: NativeFeedbackStateRepository
+    private lateinit var privacyConsent: NativePrivacyConsentRepository
     private var themeChoice by mutableStateOf(NativeUserSettingsRepository.Appearance.SYSTEM)
     private lateinit var casPdf: NativeCasPdfEngine
     private var stagedPdf by mutableStateOf<ByteArray?>(null)
@@ -143,6 +144,7 @@ class MainActivity : ComponentActivity() {
         privateDiagnostics = NativePrivateDiagnosticsRepository(accounts)
         userSettings = NativeUserSettingsRepository(accounts)
         feedbackState = NativeFeedbackStateRepository(accounts)
+        privacyConsent = NativePrivacyConsentRepository(accounts)
         casPdf = NativeCasPdfEngine(applicationContext)
         enableEdgeToEdge()
         setContent {
@@ -153,6 +155,7 @@ class MainActivity : ComponentActivity() {
                         annualCredits = annualCredits,
                         diagnostics = privateDiagnostics,
                         settings = userSettings,
+                        privacyConsent = privacyConsent,
                         casPdf = casPdf,
                         pendingPdf = stagedPdf, pendingPdfFilename = stagedPdfName,
                         onSelectPdf = {

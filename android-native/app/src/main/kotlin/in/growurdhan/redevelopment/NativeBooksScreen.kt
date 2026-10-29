@@ -68,6 +68,7 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
     onSelectCsv: () -> Unit, onDiscardCsv: () -> Unit,
     onLock: () -> Unit, onReplaceRecovery: () -> Unit,
     settings: NativeUserSettingsRepository? = null,
+    privacyConsent: NativePrivacyConsentRepository? = null,
     onAppearanceChanged: (NativeUserSettingsRepository.Appearance) -> Unit = {}) {
     val scope = rememberCoroutineScope()
     var snapshot by remember { mutableStateOf<NativeBooksRepository.Snapshot?>(null) }
@@ -560,6 +561,7 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                         }
                         NativeGmailOptInCard(email, books, data.people)
                         NativeBillingStatusNotice()
+                        if (privacyConsent != null) NativePrivacyConsentCard(email, privacyConsent)
                         NativePrivateDiagnosticsSettings(email, diagnostics)
                     }
                     "Records" -> key(ownerFilter) {
