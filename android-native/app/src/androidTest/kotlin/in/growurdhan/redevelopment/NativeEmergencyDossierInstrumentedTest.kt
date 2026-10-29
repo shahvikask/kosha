@@ -1,9 +1,19 @@
 package `in`.growurdhan.redevelopment
 
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import org.junit.Assert.*
+import org.junit.Rule
 import org.junit.Test
 
 class NativeEmergencyDossierInstrumentedTest {
+    @get:Rule val compose = createComposeRule()
+
     private fun sample(review: Boolean, date: String?) =
         NativeBooksRepository.Snapshot(
             people = listOf(NativeBooksRepository.Person("p", "Synthetic person",
@@ -18,6 +28,44 @@ class NativeEmergencyDossierInstrumentedTest {
                 10_000L, false, review, false, null)),
             imports = emptyList(), documents = emptyList()
         )
+
+    @Test fun memberLensChangeRevokesConsentAndNeverRevealsForeignDossier() {
+        val first = sample(false, "2026-10-28")
+        val foreign = NativeBooksRepository.Person("foreign", "Person B",
+            "Parent", "INDIVIDUAL", false, true, null)
+        val both = first.copy(
+            people = first.people + foreign,
+            custody = first.custody + first.custody.single().copy(
+                id = "acct-b", personId = "foreign", custodian = "Foreign custodian"),
+            holdings = first.holdings + first.holdings.single().copy(
+                id = "foreign-holding", personId = "foreign", personName = "Person B",
+                accountId = "acct-b", name = "Foreign position")
+        )
+        val lens = mutableStateOf<String?>("p")
+        compose.setContent {
+            MaterialTheme { NativeEmergencyDossierCard(both, lens.value) }
+        }
+        compose.onNodeWithTag("m31-dossier-warning").assertExists()
+        compose.onNodeWithTag("m31-dossier-preview").assertDoesNotExist()
+        compose.onNodeWithTag("m31-dossier-reveal").assertIsNotEnabled()
+        compose.onNodeWithTag("m31-dossier-ack").performClick()
+        compose.onNodeWithTag("m31-dossier-reveal").performClick()
+        compose.onNodeWithTag("m31-dossier-counts").assertExists()
+        compose.onNodeWithText("1 member(s), 1 account(s), 1 active holding(s)").assertExists()
+        compose.onNodeWithText("Foreign position", substring = true).assertDoesNotExist()
+
+        // A new owner lens must not inherit the prior reveal or approval.
+        compose.runOnUiThread { lens.value = "foreign" }
+        compose.waitForIdle()
+        compose.onNodeWithTag("m31-dossier-preview").assertDoesNotExist()
+        compose.onNodeWithTag("m31-dossier-reveal").assertIsNotEnabled()
+        compose.onNodeWithTag("m31-dossier-ack").performClick()
+        compose.onNodeWithTag("m31-dossier-reveal").performClick()
+        compose.onNodeWithText("Foreign position", substring = true).assertExists()
+        compose.onNodeWithText("Synthetic shares", substring = true).assertDoesNotExist()
+        compose.onNodeWithTag("m31-dossier-hide").performClick()
+        compose.onNodeWithTag("m31-dossier-reveal").assertIsNotEnabled()
+    }
 
     @Test fun decorativeAsterisksCannotExposeRawIdentifiersOrNomineePan() {
         val original = sample(false, "2025-01-01")

@@ -182,8 +182,10 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                                 (if (m.isPrimary) " (Primary)" else "") +
                                 (m.maskedPan?.let { " • $it" } ?: ""))
                         }
-                        if (ownerFilter.isEmpty()) NativeEmergencyDossierCard(data)
-                        else Text("Household-wide emergency dossier is available in Whole household lens.")
+                        key(ownerFilter) {
+                            NativeEmergencyDossierCard(data,
+                                selectedOwnerId = ownerFilter.ifEmpty { null })
+                        }
                         if (ownerFilter.isEmpty()) {
                             PersonForm(active, busy) { form ->
                                 persist { books.createPerson(email, form) }

@@ -126,6 +126,21 @@ class NativeM26RealBooksAccessibilityInstrumentedTest {
         compose.onNodeWithTag("books-tab-Holdings").performClick()
         compose.onNodeWithTag("m30-source-url").assertDoesNotExist()
         compose.onNodeWithTag("m30-owner-scope").assertExists()
+        compose.onNodeWithTag("books-tab-Family").performScrollTo()
+        compose.onNodeWithTag("books-tab-Family").performClick()
+        compose.onNodeWithTag("m31-dossier-scope").assertExists()
+        compose.onNodeWithTag("m31-dossier-preview").assertDoesNotExist()
+        compose.onNodeWithTag("m31-dossier-reveal").assertIsNotEnabled()
+        compose.onNodeWithTag("m31-dossier-ack").performScrollTo()
+        compose.onNodeWithTag("m31-dossier-ack").performClick()
+        compose.onNodeWithTag("m31-dossier-reveal").performScrollTo()
+        compose.onNodeWithTag("m31-dossier-reveal").performClick()
+        compose.onNodeWithTag("m31-dossier-preview").assertExists()
+        compose.onNodeWithText("1 member(s), 0 account(s), 0 active holding(s)").assertExists()
+        compose.onNodeWithTag("m31-dossier-hide").performScrollTo()
+        compose.onNodeWithTag("m31-dossier-hide").performClick()
+        compose.onNodeWithTag("m31-dossier-preview").assertDoesNotExist()
+        compose.onNodeWithTag("m31-dossier-reveal").assertIsNotEnabled()
     }
 
     private fun verifyHindiOnboardingAtTwoHundredPercent(dark: Boolean) {

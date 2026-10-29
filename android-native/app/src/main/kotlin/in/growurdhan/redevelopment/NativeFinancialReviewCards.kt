@@ -18,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import `in`.growurdhan.model.NativeTaxLotTrace
 import java.time.LocalDate
@@ -27,26 +28,52 @@ import kotlinx.coroutines.withContext
 
 /** Dossier remains ephemeral and needs a separate owner click to reveal. */
 @Composable
-internal fun NativeEmergencyDossierCard(book: NativeBooksRepository.Snapshot) {
-    var approved by remember { mutableStateOf(false) }
-    var visible by remember { mutableStateOf(false) }
+internal fun NativeEmergencyDossierCard(book: NativeBooksRepository.Snapshot,
+    selectedOwnerId: String? = null) {
+    // Changed owner or refreshed encrypted snapshot always revokes reveal consent.
+    var approved by remember(book, selectedOwnerId) { mutableStateOf(false) }
+    var visible by remember(book, selectedOwnerId) { mutableStateOf(false) }
+    val dossier = if (visible) runCatching {
+        NativeEmergencyDossier.prepare(book, explicitlyApproved = true,
+            selectedOwnerId = selectedOwnerId)
+    }.getOrNull() else null
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Family emergency sheet", style = MaterialTheme.typography.titleMedium)
+        Text(if (selectedOwnerId == null) "Whole household emergency preview"
+            else "Selected member emergency preview",
+            modifier = Modifier.testTag("m31-dossier-scope"))
         Text("PRIVACY WARNING: printing, screenshots or sharing plaintext " +
             "can expose household finances. Nominee notes are NOT registered " +
-            "nominations. Never treat them as confirmation by a registrar.")
+            "nominations. Never treat them as confirmation by a registrar.",
+            modifier = Modifier.testTag("m31-dossier-warning"))
+        Text("Preview only. No PDF, sharing, printing or financial export is available.")
         if (!visible) {
-            OutlinedButton(onClick = { approved = true }) {
+            OutlinedButton(onClick = { approved = true },
+                modifier = Modifier.testTag("m31-dossier-ack")) {
                 Text("I understand the privacy warning")
             }
             Button(enabled = approved, onClick = {
                 visible = true
                 approved = false
-            }) { Text("Reveal private family sheet") }
+            }, modifier = Modifier.testTag("m31-dossier-reveal")) {
+                Text("Reveal private family sheet")
+            }
         } else {
-            val dossier = NativeEmergencyDossier.prepare(book, explicitlyApproved = true)
-            OutlinedButton(onClick = { visible = false }) { Text("Hide immediately") }
-            Text("GrowUrDhan private family sheet • " + dossier.preparedOn)
+            OutlinedButton(onClick = {
+                visible = false
+                approved = false
+            }, modifier = Modifier.testTag("m31-dossier-hide")) {
+                Text("Hide immediately")
+            }
+            if (dossier == null) {
+                Text("Dossier unavailable: owner/custody record needs review.",
+                    modifier = Modifier.testTag("m31-dossier-rejected"))
+            } else {
+            Text("GrowUrDhan private family sheet • " + dossier.preparedOn,
+                modifier = Modifier.testTag("m31-dossier-preview"))
+            Text("${dossier.members.size} member(s), ${dossier.accounts.size} account(s), " +
+                "${dossier.holdings.size} active holding(s)",
+                modifier = Modifier.testTag("m31-dossier-counts"))
             dossier.members.forEach {
                 Text(it.name + " (" + it.relation + ")" +
                     (it.maskedPan?.let { pan -> " • PAN " + pan } ?: ""))
@@ -71,6 +98,7 @@ internal fun NativeEmergencyDossierCard(book: NativeBooksRepository.Snapshot) {
                 " values require source review. Contact the bank, registrar " +
                 "or depository directly for official nomination/transmission.")
             Text("No plaintext document has been created or saved.")
+            }
         }
     }
 }
