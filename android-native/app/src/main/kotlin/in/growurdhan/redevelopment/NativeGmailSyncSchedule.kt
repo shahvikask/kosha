@@ -20,7 +20,9 @@ internal object NativeGmailSyncSchedule {
         .setRequiredNetworkType(NetworkType.CONNECTED).build()
 
     /** Call only after authenticated explicit owner consent and mapping checks. */
-    fun enableMonthly(context: Context) {
+    fun enableMonthly(context: Context, ledger: NativeGmailSyncLedger,
+        vaultEmail: String, ownerId: String, gmailAddress: String) {
+        ledger.requireGmailAccountOwner(vaultEmail, ownerId, gmailAddress)
         val request = PeriodicWorkRequestBuilder<NativeGmailSyncWorker>(
             30, TimeUnit.DAYS).setConstraints(network).build()
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
@@ -28,7 +30,9 @@ internal object NativeGmailSyncSchedule {
     }
 
     /** No automatic scheduling on app startup; this is explicit user action. */
-    fun requestManual(context: Context) {
+    fun requestManual(context: Context, ledger: NativeGmailSyncLedger,
+        vaultEmail: String, ownerId: String, gmailAddress: String) {
+        ledger.requireGmailAccountOwner(vaultEmail, ownerId, gmailAddress)
         val request = OneTimeWorkRequestBuilder<NativeGmailSyncWorker>()
             .setConstraints(network).build()
         WorkManager.getInstance(context).enqueueUniqueWork(
