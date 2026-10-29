@@ -110,7 +110,7 @@ New-chat prompt the owner pastes (replaces §17.5/17.7):
 Seed written by Claude on 2026-10-28 from repo docs. FIRST SESSION: verify B1–B3 against GitHub Actions and fix any mismatch before relying on them.
 
 ## B1 Header
-branch GUD-Android-Redevelopment · checkpoint_sha `82ec5b76ff69f9ccb7f0269977c06b3e11debd05` · repaired M29 P24 T2 `40857791852` at `cc9e7a0c` SUCCESS 50/50 API35, original hashes/ADB reviewed · accepted requirements 0/52 (36 P + 16 E) · no formal milestones.
+branch GUD-Android-Redevelopment · checkpoint_sha `8fc1bdcb27df7a8df521ec4aee0f63bbbc301e57` · repaired M29 P24 T2 `40857791852` at `cc9e7a0c` SUCCESS 50/50 API35, original hashes/ADB reviewed · accepted requirements 0/52 (36 P + 16 E) · no formal milestones.
 State codes: ND not started · SP source partial · JV JVM green · EM emulator green · AC accepted · DF deferred (D57).
 
 ## B2 Requirement matrix (split a row when members diverge)
@@ -169,7 +169,7 @@ State codes: ND not started · SP source partial · JV JVM green · EM emulator 
 10. M28 EM: synthetic CAS; real CAS/ARM64 blocked.
 11. M30 EM: priced-feed UI; actual network/device blocked.
 12. M31 EM: dossier/settings/privacy; owner/device blocked.
-13. BUILD NOW: P35/E07 gateway source `82ec5b76` (fake Gmail account mapping/page/cursor/quarantine + 5 test cases), native T1 pending after M29 active T2; next WorkManager monthly/manual and SQLCipher integration, then P36, P37/E16, E09, E15, E17, E18. Use spec SKUs, not GUD ₹99 assumption.
+13. BUILD NOW: P35/E07 source `82ec5b76` fake gateway tests + `4ac41ec8` WorkManager monthly/manual and encrypted mapping + `8fc1bdcb` enforced mapping; T1 pending while M29 T2 `40919538632` active. Next run P35 T1, targeted API35 T2, then P36/P37/E16/E09/E15/E17/E18; spec SKU rules apply.
 14. BLOCKED-OWNER: real Gmail OAuth, Play purchases, signing keys, ARM64 phone and genuine CAS statements, penetration test, G14 sign-off.
 Process P0 completed: unified native-ci T1/T2; 54 old workflows archived.
 
