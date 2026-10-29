@@ -110,7 +110,7 @@ New-chat prompt the owner pastes (replaces §17.5/17.7):
 Seed written by Claude on 2026-10-28 from repo docs. FIRST SESSION: verify B1–B3 against GitHub Actions and fix any mismatch before relying on them.
 
 ## B1 Header
-branch GUD-Android-Redevelopment · checkpoint_sha `8fc1bdcb27df7a8df521ec4aee0f63bbbc301e57` · repaired M29 P24 T2 `40857791852` at `cc9e7a0c` SUCCESS 50/50 API35, original hashes/ADB reviewed · accepted requirements 0/52 (36 P + 16 E) · no formal milestones.
+branch GUD-Android-Redevelopment · checkpoint_sha `6a455483f09ec61326f4d26f29d6cd5a53d24ff2` · repaired M29 P24 T2 `40857791852` at `cc9e7a0c` SUCCESS 50/50 API35, original hashes/ADB reviewed · accepted requirements 0/52 (36 P + 16 E) · no formal milestones.
 State codes: ND not started · SP source partial · JV JVM green · EM emulator green · AC accepted · DF deferred (D57).
 
 ## B2 Requirement matrix (split a row when members diverge)
@@ -165,11 +165,11 @@ State codes: ND not started · SP source partial · JV JVM green · EM emulator 
 6. G14 EM: screenshots; owner/device open.
 7. M26 EM: owner/custody/goal; device/security open.
 8. M25 EM: enrollment/Terms; device/security open.
-9. M29 P24/P25: corrected source 5a947ef5 T1 40918476185 SUCCESS; targeted API35 T2 40919538632 pending.
+9. M29 P24/P25: source 5a947ef5 T1 40918476185 SUCCESS; T2 40919538632 JVM green, Android APK compilation in progress; NOT EM until terminal.
 10. M28 EM: synthetic CAS; real CAS/ARM64 blocked.
 11. M30 EM: priced-feed UI; actual network/device blocked.
 12. M31 EM: dossier/settings/privacy; owner/device blocked.
-13. BUILD NOW: P35/E07 source `82ec5b76` fake gateway tests + `4ac41ec8` WorkManager monthly/manual and encrypted mapping + `8fc1bdcb` enforced mapping; T1 pending while M29 T2 `40919538632` active. Next run P35 T1, targeted API35 T2, then P36/P37/E16/E09/E15/E17/E18; spec SKU rules apply.
+13. BUILD NOW: P35/E07 source `6a455483` fake Gmail gateway, many-to-many encrypted owner links, revocation, WorkManager explicit monthly/manual + fail-closed worker and tests; native T1/T2 pending active M29 T2. Then P36 → P37/E16 → E09/E15/E17/E18.
 14. BLOCKED-OWNER: real Gmail OAuth, Play purchases, signing keys, ARM64 phone and genuine CAS statements, penetration test, G14 sign-off.
 Process P0 completed: unified native-ci T1/T2; 54 old workflows archived.
 
