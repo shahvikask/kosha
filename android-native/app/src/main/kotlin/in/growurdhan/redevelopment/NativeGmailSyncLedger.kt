@@ -97,6 +97,7 @@ internal class NativeGmailSyncLedger(private val accounts: NativeAccountReposito
     }
 
     fun alreadySeen(email: String, owner: String, message: MessageKey): Boolean {
+        requireGmailAccountOwner(email, owner, message.gmailAddress)
         val account = accountId(message.gmailAddress)
         return accounts.withUnlockedVault(email) { db ->
             requireOptIn(db, owner)
@@ -116,6 +117,7 @@ internal class NativeGmailSyncLedger(private val accounts: NativeAccountReposito
     /** Mark only AFTER verified PDF import tied to the same family entity. */
     fun markReconciled(email: String, owner: String,
         message: MessageKey): Receipt {
+        requireGmailAccountOwner(email, owner, message.gmailAddress)
         val account = accountId(message.gmailAddress)
         val index = key(account, message)
         return accounts.withUnlockedVault(email) { db ->
@@ -156,6 +158,7 @@ internal class NativeGmailSyncLedger(private val accounts: NativeAccountReposito
         complete: Boolean, messages: List<MessageKey>) {
         require(complete && messages.isNotEmpty() &&
             historyId.matches(Regex("[0-9]{1,30}")))
+        requireGmailAccountOwner(email, owner, gmailAddress)
         val account = accountId(gmailAddress)
         require(messages.all { accountId(it.gmailAddress) == account })
         accounts.withUnlockedVault(email) { db ->
@@ -182,6 +185,7 @@ internal class NativeGmailSyncLedger(private val accounts: NativeAccountReposito
     }
 
     fun currentCursor(email: String, owner: String, gmailAddress: String): String? {
+        requireGmailAccountOwner(email, owner, gmailAddress)
         val account = accountId(gmailAddress)
         return accounts.withUnlockedVault(email) { db ->
             requireOptIn(db, owner)
