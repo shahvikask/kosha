@@ -110,7 +110,7 @@ New-chat prompt the owner pastes (replaces §17.5/17.7):
 Seed written by Claude on 2026-10-28 from repo docs. FIRST SESSION: verify B1–B3 against GitHub Actions and fix any mismatch before relying on them.
 
 ## B1 Header
-branch GUD-Android-Redevelopment · checkpoint_sha `888caf540b87cbda928bed809c2e55c54a929037` · repaired M29 P24 T2 `40857791852` at `cc9e7a0c` SUCCESS 50/50 API35, original hashes/ADB reviewed · accepted requirements 0/52 (36 P + 16 E) · no formal milestones.
+branch GUD-Android-Redevelopment · checkpoint_sha `4eeb43233a7b33e0b027f29bed4d263b4677b61f` · repaired M29 P24 T2 `40857791852` at `cc9e7a0c` SUCCESS 50/50 API35, original hashes/ADB reviewed · accepted requirements 0/52 (36 P + 16 E) · no formal milestones.
 State codes: ND not started · SP source partial · JV JVM green · EM emulator green · AC accepted · DF deferred (D57).
 
 ## B2 Requirement matrix (split a row when members diverge)
@@ -135,8 +135,8 @@ State codes: ND not started · SP source partial · JV JVM green · EM emulator 
 | P33, E01, E02, E08, E13 | M31 | SP/EM | Hindi/device-loss and 360dp/200%-font light/dark onboarding. Real-screen owner-safe Settings→Fa; acceptance pending |
 | P34 | M32 | SP | idempotency/cursor guard only; acceptance pending |
 | P35, E07 | M32 | SP/EM | API35 40936450262 66/66 PASS at 5063de3b; fake gateway/SQLCipher mapping only, OAuth blocked |
-| P36 | M31/M33 | SP/JV | T1 40961693417 PASS at 888caf54; encrypted feedback/login/restart, focused API35 40962454191 pending; Privacy UI absent |
-| P37, E16 | M33 | SP/JV | Four-SKU Play-deny controller/Settings T1 40961693417 PASS at 888caf54; no trusted Play verifier or enforcement |
+| P36 | M31/M33 | SP/EM | Feedback restart API35 40962454191 5/5 PASS at 888caf54. Explicit versioned data notice/SQLCipher consent + scroll UI source 4eeb4323; T1 40966792647 active. Owner legal approval pending |
+| P37, E16 | M33 | SP/JV | Four-SKU verified-Play-only entitlement controller/Settings notice, T1 40961693417 PASS at 888caf54; real Play provider credentials, purchase verification, gating blocked |
 | P38–P39, E09, E15, E17–E18 | M33–M34 | ND | Billing release/security, analytics, SBOM, pipeline and egress pending |
 | E14 | all | SP | modular tests partial; acceptance pending |
 
@@ -156,7 +156,7 @@ State codes: ND not started · SP source partial · JV JVM green · EM emulator 
 | 40690449183 | c3f534b4 | M27 P15 PASS |
 | 40687321312 | 19ad3288 | M27 P12–14 PASS |
 | 40682410679 | 3f1a808f | M27 P09–10 PASS |
-| 40961693417 | 888caf54 | P36/P37/E16 T1 PASS |
+| 40962454191 | 888caf54 | P36 feedback SQLCipher API35 5/5 PASS |
 | 40499402394 | 511aa0ea | M27 reconciliation PASS |
 
 ## B4 Work queue (top unblocked first)
@@ -172,7 +172,7 @@ State codes: ND not started · SP source partial · JV JVM green · EM emulator 
 10. M28 EM: synthetic CAS; real CAS/ARM64 blocked.
 11. M30 EM: priced-feed UI; actual network/device blocked.
 12. M31 EM: dossier/settings/privacy; owner/device blocked.
-13. BUILD NOW: P35/E07 API35 40936450262 PASS 66/66 at 5063de3b. P36/P37/E16 source 888caf54 T1 40961693417 PASS; focused API35 40962454191 active for feedback SQLCipher restart + real-screen checks. Then P36 Privacy/UI, P37 Play gating, E09/E15/E17/E18. Genuine OAuth/Play blocked.
+13. BUILD NOW: P35/E07 API35 40936450262 66/66 PASS at 5063de3b; P36 feedback 40962454191 API35 5/5 PASS at 888caf54 (original APK hashes/ADB reviewed). P36 versioned data-notice scroll+explicit consent SQLCipher/restart+Compose source 4eeb4323; T1 40966792647 running; then focused T2. P37/E16 trusted Play purchases remain owner-blocked; then E09/E15/E17/E18.
 14. BLOCKED-OWNER: real Gmail OAuth, Play purchases, signing keys, ARM64 phone and genuine CAS statements, penetration test, G14 sign-off.
 Process P0 completed: unified native-ci T1/T2; 54 old workflows archived.
 
