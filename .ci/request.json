@@ -1,6 +1,6 @@
 {
-  "sha": "2930f7a1f932b421a5e73fc7ecff145a33aade48",
-  "tier": "T2",
-  "tests": "in.growurdhan.redevelopment.NativePrivateDiagnosticsInstrumentedTest,in.growurdhan.redevelopment.NativeEmergencyDossierInstrumentedTest,in.growurdhan.redevelopment.NativeM26RealBooksAccessibilityInstrumentedTest",
+  "sha": "5d826aa9f5bd23ec9df161b4d2970f163e1880bc",
+  "tier": "T1",
+  "tests": "",
   "api": 35
 }
