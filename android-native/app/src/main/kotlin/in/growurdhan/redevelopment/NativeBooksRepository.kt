@@ -1171,6 +1171,42 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
         }
     }
 
+    /** Exact, read-only P24 coverage from one admitted SQLCipher snapshot. */
+    fun recordedFinancialReport(email: String, memberId: String,
+        asOf: LocalDate = LocalDate.now()
+    ): NativeRecordedFinanceReport.Summary =
+        accounts.withUnlockedVault(email) { db ->
+            if (memberId.isNotEmpty()) requirePerson(db, memberId)
+            val rows = mutableListOf<NativeRecordedFinanceReport.Row>()
+            db.rawQuery("SELECT h.holding_id,h.entity_id,i.category,h.current_price_minor," +
+                "h.last_price_updated,h.price_source,h.needs_review,h.account_id " +
+                "FROM holding h JOIN instrument i ON h.instrument_id=i.instrument_id " +
+                "JOIN entity e ON h.entity_id=e.entity_id WHERE e.is_active=1 " +
+                "AND (?='' OR h.entity_id=?) ORDER BY h.holding_id",
+                arrayOf(memberId, memberId)).use { c ->
+                while (c.moveToNext()) {
+                    val id = c.getString(0)
+                    val owner = c.getString(1)
+                    if (!c.isNull(7)) requireCustody(db, owner, c.getString(7))
+                    val raw = readRawEvents(db, id)
+                    val fold = NativePortfolioMath.fold(raw, c.getString(2))
+                    val archived = db.rawQuery(
+                        "SELECT value FROM setting WHERE key=?",
+                        arrayOf("native.holding.archived.$id")).use { flag ->
+                        flag.moveToFirst() && flag.getString(0) == "1"
+                    }
+                    rows += NativeRecordedFinanceReport.Row(
+                        id, owner, c.getString(2), archived, c.getInt(6) == 1 ||
+                            fold.errors.isNotEmpty(),
+                        fold.quantityScaled, c.getLong(3),
+                        if (c.isNull(4)) null else c.getString(4),
+                        if (c.isNull(5)) null else c.getString(5), raw
+                    )
+                }
+            }
+            NativeRecordedFinanceReport.summarize(rows, memberId, asOf)
+        }
+
     companion object {
         /** Decimal input is converted once to exact scaled integers; never via Double. */
         fun parseMinor(display: String, scale: Int): Long =

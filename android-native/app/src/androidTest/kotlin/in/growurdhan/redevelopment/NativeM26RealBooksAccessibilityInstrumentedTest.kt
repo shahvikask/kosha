@@ -97,6 +97,16 @@ class NativeM26RealBooksAccessibilityInstrumentedTest {
         compose.onNodeWithTag("books-tab-Home").assertIsSelected()
         compose.onNodeWithTag("m29-home-health").assertExists()
         compose.onNodeWithTag("m29-home-price-health").assertExists()
+        compose.waitUntil(30_000) {
+            compose.onAllNodes(hasTestTag("m29-finance-priced"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("m29-finance-priced").assertExists()
+        compose.onNodeWithTag("m29-finance-unrealized").assertExists()
+        compose.onNodeWithTag("m29-finance-realized").assertExists()
+        compose.onNodeWithTag("m29-finance-exclusions").assertExists()
+        compose.onNodeWithTag("m29-finance-category-MUTUAL_FUND").assertExists()
+        compose.onNodeWithTag("m29-finance-income-empty").assertExists()
         compose.onNodeWithTag("m29-home-categories").assertExists()
         compose.waitUntil(30_000) {
             compose.onAllNodes(hasText("Reviewed hybrid subset: 0 reviewed", substring = true))
@@ -256,6 +266,12 @@ class NativeM26RealBooksAccessibilityInstrumentedTest {
         compose.onNodeWithText("Viewing Member: Member Alpha financial records")
             .assertExists()
         compose.onNodeWithText("0 holdings • 1 active member in view").assertExists()
+        compose.waitUntil(30_000) {
+            compose.onAllNodes(hasTestTag("m29-finance-empty"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("m29-finance-category-MUTUAL_FUND").assertDoesNotExist()
+        compose.onNodeWithTag("m29-finance-income-empty").assertExists()
         compose.waitUntil(30_000) {
             compose.onAllNodes(hasText("Reviewed hybrid subset: 0 reviewed", substring = true))
                 .fetchSemanticsNodes().isNotEmpty()

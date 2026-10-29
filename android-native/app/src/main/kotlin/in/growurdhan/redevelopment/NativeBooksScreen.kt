@@ -197,6 +197,7 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                                 "• ${h.personName}")
                         }
                         key(email, ownerFilter) {
+                            NativeRecordedFinanceCard(email, books, ownerFilter, data.holdings)
                             NativeHybridExposureCard(email, books, data.holdings, ownerFilter)
                         }
                     }

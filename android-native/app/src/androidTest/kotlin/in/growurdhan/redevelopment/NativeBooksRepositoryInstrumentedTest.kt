@@ -64,6 +64,85 @@ class NativeBooksRepositoryInstrumentedTest {
         }
     }
 
+    @Test fun p24RecordedFinancialCoverageIsExactOwnerScopedAndRestartSafe() {
+        val context = sandbox()
+        val (accounts, books) = create(context)
+        val owner = books.read(input.email).people.single().id
+        val foreign = books.createPerson(input.email,
+            NativeBooksRepository.NewPerson("Other member", "Spouse"))
+        val date = LocalDate.now().toString()
+        val own = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, null, "Own liquid equity", "EQUITY", "Other",
+            100_000_000L, 30_000L, date, true,
+            openingUnitPriceMinor = 10_000L))
+        val sale = books.appendUserEvent(input.email, NativeBooksRepository.NewEvent(
+            own, "SELL", date, 50_000_000L, 20_000L, 10_000L))
+        assertTrue(sale.isNotBlank())
+        books.appendUserEvent(input.email, NativeBooksRepository.NewEvent(
+            own, "DIVIDEND", date, 0L, 0L, 12_000L))
+        books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, null, "Unknown acquisition basis", "EQUITY", "Other",
+            100_000_000L, 40_000L, date, false))
+        books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, null, "Old and stale price", "EQUITY", "Other",
+            100_000_000L, 50_000L, "2025-01-01", true))
+        books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            foreign, null, "Foreign price must stay hidden", "EQUITY", "Other",
+            100_000_000L, 990_000L, date, true))
+        val before = books.read(input.email)
+        val history = books.history(input.email, own)
+        val ownReport = books.recordedFinancialReport(input.email, owner)
+        val year = LocalDate.now().year
+        assertEquals(java.math.BigInteger.valueOf(55_000L),
+            ownReport.pricedAssetMinor)
+        assertEquals(java.math.BigInteger.valueOf(5_000L),
+            ownReport.pricedKnownBasisMinor)
+        assertEquals(java.math.BigInteger.valueOf(10_000L),
+            ownReport.knownUnrealizedMinor)
+        assertEquals(java.math.BigInteger.valueOf(5_000L),
+            ownReport.realizedKnownMinor)
+        assertEquals(java.math.BigInteger.valueOf(12_000L),
+            ownReport.incomeByCalendarYear[year])
+        assertEquals(java.math.BigInteger.valueOf(5_000L),
+            ownReport.realizedByCalendarYear[year])
+        assertEquals(java.math.BigInteger.valueOf(55_000L),
+            ownReport.pricedCategories["EQUITY"])
+        assertEquals(1, ownReport.unpricedActiveAssets)
+        assertEquals(1, ownReport.pricedUnknownBasisAssets)
+        assertEquals(2, ownReport.pricedAssetCount)
+        assertEquals(1, ownReport.countKnownBasis)
+        assertEquals(0, ownReport.realizedUnknownLots)
+        val stranger = books.recordedFinancialReport(input.email, foreign)
+        assertEquals(java.math.BigInteger.valueOf(990_000L),
+            stranger.pricedAssetMinor)
+        assertTrue(stranger.incomeByCalendarYear.isEmpty())
+        assertTrue(stranger.realizedByCalendarYear.isEmpty())
+        assertEquals(0, stranger.unpricedActiveAssets)
+        assertThrows(IllegalArgumentException::class.java) {
+            books.recordedFinancialReport(input.email, "unregistered-member")
+        }
+        assertEquals(before.holdings, books.read(input.email).holdings)
+        assertEquals(history, books.history(input.email, own))
+        accounts.onBackground()
+        assertThrows(Exception::class.java) {
+            books.recordedFinancialReport(input.email, owner)
+        }
+        val reopened = NativeAccountRepository(context, gate())
+        assertTrue(reopened.login(input.email, input.password))
+        val latest = NativeBooksRepository(reopened)
+        assertEquals(ownReport, latest.recordedFinancialReport(input.email, owner))
+        assertEquals(history, latest.history(input.email, own))
+        // A migrated/corrupt event assigned to another owner must fail closed:
+        // the report cannot include foreign cash flows or publish partial totals.
+        reopened.withUnlockedVault(input.email) { db ->
+            db.execSQL("UPDATE ledger_event SET entity_id=? " +
+                "WHERE ledger_event_id=?", arrayOf<Any>(foreign, sale))
+        }
+        assertThrows(Exception::class.java) {
+            latest.recordedFinancialReport(input.email, owner)
+        }
+    }
+
     @Test fun p24ReviewedHybridSplitIsEncryptedScopedAndDoesNotPostFinancialEvents() {
         val context = sandbox()
         val (accounts, books) = create(context)
