@@ -33,6 +33,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var annualCredits: NativeAnnualInterestCreditRepository
     private lateinit var privateDiagnostics: NativePrivateDiagnosticsRepository
     private lateinit var userSettings: NativeUserSettingsRepository
+    private lateinit var feedbackState: NativeFeedbackStateRepository
     private var themeChoice by mutableStateOf(NativeUserSettingsRepository.Appearance.SYSTEM)
     private lateinit var casPdf: NativeCasPdfEngine
     private var stagedPdf by mutableStateOf<ByteArray?>(null)
@@ -141,6 +142,7 @@ class MainActivity : ComponentActivity() {
         annualCredits = NativeAnnualInterestCreditRepository(accounts)
         privateDiagnostics = NativePrivateDiagnosticsRepository(accounts)
         userSettings = NativeUserSettingsRepository(accounts)
+        feedbackState = NativeFeedbackStateRepository(accounts)
         casPdf = NativeCasPdfEngine(applicationContext)
         enableEdgeToEdge()
         setContent {
@@ -199,6 +201,15 @@ class MainActivity : ComponentActivity() {
                             } else {
                                 unlocked = result == NativeAccountRepository.SignInResult.UNLOCKED
                                 activeEmail = if (unlocked) email.trim().lowercase(java.util.Locale.ROOT) else ""
+                                // Seed feedback cadence only after fresh device+vault login.
+                                // No prompt or consent is synthesized: Privacy evidence is absent
+                                // until a reviewed native Privacy acceptance flow is completed.
+                                if (unlocked) withContext(Dispatchers.IO) {
+                                    runCatching {
+                                        feedbackState.recordAuthenticatedOpen(
+                                            activeEmail, System.currentTimeMillis())
+                                    }
+                                }
                                 themeChoice = if (unlocked) withContext(Dispatchers.IO) {
                                     runCatching { userSettings.read(activeEmail).appearance }
                                         .getOrDefault(NativeUserSettingsRepository.Appearance.SYSTEM)
