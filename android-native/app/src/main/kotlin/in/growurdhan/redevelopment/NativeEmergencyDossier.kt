@@ -23,9 +23,24 @@ internal object NativeEmergencyDossier {
         val accounts: List<Account>, val holdings: List<Holding>,
         val unresolvedValues: Int)
 
-    private fun safeMasked(value: String?): String? =
-        value?.takeIf { it.length <= 80 && '*' in it &&
-            it.none(Char::isISOControl) }
+    // Merely containing '*' is NOT masking: ABCDE1234F* exposes a full PAN.
+    private val panMask = Regex("[A-Z]{5}\\*{4}[A-Z]")
+    private val accountMask = Regex("\\*{4,}[A-Za-z0-9]{0,4}")
+    private val rawPan = Regex("[A-Z]{5}[0-9]{4}[A-Z]")
+    private val unmaskedLongNumber = Regex("[0-9]{8,}")
+
+    private fun safeMaskedPan(value: String?): String? =
+        value?.trim()?.takeIf { panMask.matches(it) }
+
+    private fun safeMaskedAccount(value: String?): String? =
+        value?.trim()?.takeIf { it.length <= 80 && accountMask.matches(it) }
+
+    private fun safeNominee(value: String?): String? =
+        value?.trim()?.takeIf {
+            it.length in 1..80 && it.none(Char::isISOControl) &&
+                !rawPan.containsMatchIn(it.uppercase()) &&
+                !unmaskedLongNumber.containsMatchIn(it)
+        }
 
     fun prepare(book: NativeBooksRepository.Snapshot,
         explicitlyApproved: Boolean, today: LocalDate = LocalDate.now()): Sheet {
@@ -35,19 +50,22 @@ internal object NativeEmergencyDossier {
         val byId = book.people.associateBy { it.id }
         val custody = book.custody.associateBy { it.id }
         val members = book.people.filter { it.active }.map {
-            Member(it.id, it.name, it.relation, safeMasked(it.maskedPan))
+            Member(it.id, it.name, it.relation, safeMaskedPan(it.maskedPan))
         }
         val accounts = book.custody.map {
-            Account(it.custodian, it.type, safeMasked(it.maskedReference),
-                byId[it.personId]?.name ?: "Unknown recorded owner", it.nominee)
+            Account(it.custodian, it.type, safeMaskedAccount(it.maskedReference),
+                byId[it.personId]?.name ?: "Unknown recorded owner", safeNominee(it.nominee))
         }
         var unresolved = 0
         val holdings = book.holdings.map { h ->
             // An unresolved, absent or future-dated quote never becomes a
             // fabricated rupee value in an emergency document.
-            val validPrice = h.priceDate?.let { runCatching {
-                !LocalDate.parse(it.take(10)).isAfter(today)
-            }.getOrDefault(false) } == true
+            val observed = h.priceDate?.let {
+                runCatching { LocalDate.parse(it.take(10)) }.getOrNull()
+            }
+            val validPrice = observed != null && !observed.isAfter(today)
+            val stalePrice = observed != null && !observed.isAfter(today) &&
+                java.time.temporal.ChronoUnit.DAYS.between(observed, today) >= 45L
             val priced = validPrice && !h.needsReview &&
                 h.marketPriceMinor >= 0L && h.quantityScaled >= 0L &&
                 h.priceSource != null
@@ -62,6 +80,7 @@ internal object NativeEmergencyDossier {
                 h.accountId?.let { custody[it]?.custodian } ?: "Not recorded",
                 h.quantityScaled, value,
                 if (value == null) "Value unverified — confirm source and date"
+                else if (stalePrice) "Recorded value is stale — verify dated source"
                 else if (h.unknownCost) "Investment cost unknown" else null)
         }
         return Sheet(today.toString(), members, accounts, holdings, unresolved)

@@ -95,6 +95,7 @@ internal fun NativeAuthenticationScreen(
                 style = MaterialTheme.typography.bodyMedium)
             Text("This release cannot back up or restore financial data. Losing this device or uninstalling the app may permanently erase your financial records.",
                 style = MaterialTheme.typography.bodySmall)
+            NativeOnboardingLanguageNotice()
             if (oneTimeRecoveryCode.isNotEmpty() && deviceVerified) {
                 Text("SAVE THIS RECOVERY CODE — shown once, not stored in plaintext.",
                     style = MaterialTheme.typography.titleMedium)

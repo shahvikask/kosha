@@ -19,6 +19,33 @@ class NativeEmergencyDossierInstrumentedTest {
             imports = emptyList(), documents = emptyList()
         )
 
+    @Test fun decorativeAsterisksCannotExposeRawIdentifiersOrNomineePan() {
+        val original = sample(false, "2025-01-01")
+        val unsafe = original.copy(
+            people = original.people.map {
+                it.copy(maskedPan = "ABCDE1234F*")
+            },
+            custody = original.custody.map {
+                it.copy(maskedReference = "****1234567890",
+                    nominee = "Nominee PAN ABCDE1234F")
+            })
+        val dossier = NativeEmergencyDossier.prepare(unsafe, true,
+            java.time.LocalDate.parse("2025-02-01"))
+        assertNull(dossier.members.single().maskedPan)
+        assertNull(dossier.accounts.single().maskedReference)
+        assertNull(dossier.accounts.single().nominee)
+        assertFalse(dossier.toString().contains("ABCDE1234F"))
+        assertFalse(dossier.toString().contains("1234567890"))
+    }
+
+    @Test fun staleHistoricalValueCarriesWarningEvenIfNonzero() {
+        val dossier = NativeEmergencyDossier.prepare(
+            sample(false, "2025-01-01"), true,
+            java.time.LocalDate.parse("2025-06-01"))
+        assertEquals(11_000L, dossier.holdings.single().valueMinor)
+        assertTrue(dossier.holdings.single().valueWarning!!.contains("stale"))
+    }
+
     @Test fun cannotPrepareUnacknowledgedFamilySheet() {
         assertThrows(IllegalArgumentException::class.java) {
             NativeEmergencyDossier.prepare(sample(false, "2025-01-01"), false)

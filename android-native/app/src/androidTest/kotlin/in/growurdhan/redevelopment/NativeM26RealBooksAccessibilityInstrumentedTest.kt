@@ -114,6 +114,31 @@ class NativeM26RealBooksAccessibilityInstrumentedTest {
         compose.onNodeWithText("0 holdings • 1 active member in view").assertExists()
     }
 
+    private fun verifyHindiOnboardingAtTwoHundredPercent(dark: Boolean) {
+        compose.setContent {
+            GudTheme(darkTheme = dark) {
+                CompositionLocalProvider(LocalDensity provides Density(1f, 2f)) {
+                    Box(Modifier.width(360.dp).height(620.dp)) {
+                        NativeOnboardingLanguageNotice()
+                    }
+                }
+            }
+        }
+        compose.onNodeWithTag("m31-hindi-local-only").assertDoesNotExist()
+        compose.onNodeWithTag("m31-hindi-toggle").performClick()
+        compose.onNodeWithTag("m31-hindi-local-only").assertExists()
+        compose.onNodeWithTag("m31-hindi-loss-warning").assertExists()
+        compose.onNodeWithTag("m31-hindi-terms-distinct").assertExists()
+        compose.onNodeWithTag("m31-hindi-toggle").performClick()
+        compose.onNodeWithTag("m31-hindi-loss-warning").assertDoesNotExist()
+    }
+
+    @Test fun bilingualOnboardingLight360dpTwoHundredPercentIsOptional() =
+        verifyHindiOnboardingAtTwoHundredPercent(dark = false)
+
+    @Test fun bilingualOnboardingDark360dpTwoHundredPercentIsOptional() =
+        verifyHindiOnboardingAtTwoHundredPercent(dark = true)
+
     @Test fun realBooksCompactLightTwoHundredPercentOwnerLensAccessible() =
         verify(darkTheme = false)
 

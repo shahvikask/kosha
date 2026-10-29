@@ -56,6 +56,9 @@ class NativePrivateDiagnosticsInstrumentedTest {
         assertTrue(report.encryptedLocalOnly)
         assertFalse(report.networkUpload)
         val text = report.redactedText()
+        assertTrue(text.contains("network_upload=disabled"))
+        assertTrue(text.contains("raw_diagnostic_logs_retained=false"))
+        assertTrue(text.contains("support_text=owner_initiated_copy_only"))
         for (secret in listOf("ABCDE1234F", "private-owner@example.invalid",
             "Strong!Pass123", "1990-06-12", "Example School")) {
             assertFalse("Support text must never include personal records",

@@ -20,6 +20,8 @@ internal class NativePrivateDiagnosticsRepository(
             "foreign_keys=" + if (foreignKeysValid) "valid" else "review_required",
             "vault=on_device_sqlcipher",
             "network_upload=disabled",
+            "raw_diagnostic_logs_retained=false",
+            "support_text=owner_initiated_copy_only",
             "identifiers_and_financial_values=excluded"
         ).joinToString("\n")
     }
