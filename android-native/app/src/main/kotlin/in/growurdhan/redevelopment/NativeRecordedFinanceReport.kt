@@ -101,9 +101,10 @@ internal object NativeRecordedFinanceReport {
                 "Ledger fold is inconsistent with stored holding quantity"
             }
             for (sale in fold.disposals) {
-                if (sale.gainMinor == null) unknownRealized++
+                val gainMinor = sale.gainMinor
+                if (gainMinor == null) unknownRealized++
                 else {
-                    val gain = BigInteger.valueOf(sale.gainMinor)
+                    val gain = BigInteger.valueOf(gainMinor)
                     realized += gain
                     val year = LocalDate.parse(sale.sold).year
                     gains[year] = (gains[year] ?: BigInteger.ZERO) + gain
