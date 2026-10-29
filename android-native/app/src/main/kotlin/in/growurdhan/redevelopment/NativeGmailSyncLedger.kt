@@ -35,10 +35,15 @@ internal class NativeGmailSyncLedger(private val accounts: NativeAccountReposito
             }
         }
     }
-    private fun key(account: String, message: MessageKey): String {
+    private fun ownerKey(account: String, owner: String): String {
+        require(owner.matches(Regex("[A-Za-z0-9_-]{1,200}")))
+        return account + "." + owner
+    }
+
+    private fun key(account: String, owner: String, message: MessageKey): String {
         require(id.matches(message.messageId) &&
             id.matches(message.attachmentId) && digest.matches(message.sourceSha256))
-        return "native.gmail.seen." + account + "." +
+        return "native.gmail.seen." + ownerKey(account, owner) + "." +
             message.messageId + "." + message.attachmentId
     }
 
@@ -58,14 +63,9 @@ internal class NativeGmailSyncLedger(private val accounts: NativeAccountReposito
         val hashed = accountId(normalizedAddress)
         accounts.withUnlockedVault(email) { db ->
             requireOptIn(db, owner)
-            val mappingKey = "native.gmail.mapping." + hashed
-            val prior = db.rawQuery("SELECT value FROM setting WHERE key=?",
-                arrayOf(mappingKey)).use {
-                if (it.moveToFirst()) it.getString(0) else null
-            }
-            require(prior == null || prior == owner) {
-                "Gmail address is already linked to another family entity"
-            }
+            val mappingKey = "native.gmail.mapping." + ownerKey(hashed, owner)
+            // A shared household inbox may be linked to multiple owners, but
+            // each explicit link must be independently approved and encrypted.
             db.execSQL("INSERT OR REPLACE INTO setting(key,value) VALUES(?,?)",
                 arrayOf<Any>(mappingKey, owner))
         }
@@ -76,7 +76,7 @@ internal class NativeGmailSyncLedger(private val accounts: NativeAccountReposito
         accounts.withUnlockedVault(email) { db ->
             requireOptIn(db, owner)
             db.rawQuery("SELECT value FROM setting WHERE key=?",
-                arrayOf("native.gmail.mapping." + hashed)).use {
+                arrayOf("native.gmail.mapping." + ownerKey(hashed, owner))).use {
                 require(it.moveToFirst() && it.getString(0) == owner) {
                     "Gmail identity has no approved owner mapping"
                 }
@@ -88,11 +88,11 @@ internal class NativeGmailSyncLedger(private val accounts: NativeAccountReposito
         val hashed = accountId(gmailAddress)
         accounts.withUnlockedVault(email) { db ->
             requireOptIn(db, owner)
-            val mappingKey = "native.gmail.mapping." + hashed
+            val mappingKey = "native.gmail.mapping." + ownerKey(hashed, owner)
             db.execSQL("DELETE FROM setting WHERE key=? AND value=?",
                 arrayOf<Any>(mappingKey, owner))
             db.execSQL("DELETE FROM setting WHERE key=?",
-                arrayOf<Any>("native.gmail.cursor." + hashed))
+                arrayOf<Any>("native.gmail.cursor." + ownerKey(hashed, owner)))
         }
     }
 
@@ -102,7 +102,7 @@ internal class NativeGmailSyncLedger(private val accounts: NativeAccountReposito
         return accounts.withUnlockedVault(email) { db ->
             requireOptIn(db, owner)
             db.rawQuery("SELECT value FROM setting WHERE key=?",
-                arrayOf(key(account, message))).use { cur ->
+                arrayOf(key(account, owner, message))).use { cur ->
                 if (!cur.moveToFirst()) false
                 else {
                     require(cur.getString(0) == message.sourceSha256) {
@@ -119,7 +119,7 @@ internal class NativeGmailSyncLedger(private val accounts: NativeAccountReposito
         message: MessageKey): Receipt {
         requireGmailAccountOwner(email, owner, message.gmailAddress)
         val account = accountId(message.gmailAddress)
-        val index = key(account, message)
+        val index = key(account, owner, message)
         return accounts.withUnlockedVault(email) { db ->
             requireOptIn(db, owner)
             val imported = db.rawQuery(
@@ -166,11 +166,11 @@ internal class NativeGmailSyncLedger(private val accounts: NativeAccountReposito
             for (message in messages) {
                 val proof = db.rawQuery("SELECT 1 FROM setting " +
                     "WHERE key=? AND value=?",
-                    arrayOf(key(account, message), message.sourceSha256))
+                    arrayOf(key(account, owner, message), message.sourceSha256))
                     .use { it.moveToFirst() }
                 require(proof) { "Unreconciled attachment blocks Gmail history cursor" }
             }
-            val cursorKey = "native.gmail.cursor." + account
+            val cursorKey = "native.gmail.cursor." + ownerKey(account, owner)
             val previous = db.rawQuery("SELECT value FROM setting WHERE key=?",
                 arrayOf(cursorKey)).use { c ->
                 if (c.moveToFirst()) c.getString(0) else null
@@ -190,7 +190,7 @@ internal class NativeGmailSyncLedger(private val accounts: NativeAccountReposito
         return accounts.withUnlockedVault(email) { db ->
             requireOptIn(db, owner)
             db.rawQuery("SELECT value FROM setting WHERE key=?",
-                arrayOf("native.gmail.cursor." + account)).use {
+                arrayOf("native.gmail.cursor." + ownerKey(account, owner))).use {
                 if (it.moveToFirst()) it.getString(0) else null
             }
         }
