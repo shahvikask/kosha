@@ -108,6 +108,14 @@ internal class NativeFeedbackStateRepository(private val accounts: NativeAccount
             val terms = readSetting(db, "m25.terms.version")
             val termsId = readSetting(db, "m25.terms.text_id")
             val privacy = readSetting(db, privacyKey)
+            val privacyTextId = readSetting(db, "native.privacy.consent.text_id")
+            val privacyAcceptedAt = readSetting(db, "native.privacy.consent.accepted_at")
+                ?.toLongOrNull()
+            // A mere version string is not an acceptance event.
+            if (privacy != currentPrivacyVersion ||
+                privacyTextId != NativePrivacyNotice.TEXT_ID ||
+                privacyAcceptedAt == null || privacyAcceptedAt <= 0L ||
+                privacyAcceptedAt > nowMillis) return@withUnlockedVault false
             NativeFeedbackPromptPolicy.eligible(
                 NativeFeedbackPromptPolicy.State(
                     state.onboardingFinished,

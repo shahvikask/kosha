@@ -1882,10 +1882,18 @@ class NativeBooksRepositoryInstrumentedTest {
                 textId = "older-notice"))
         }
         assertFalse(feedback.eligible(input.email, 17 * day, NativePrivacyNotice.VERSION))
+        accounts.withUnlockedVault(input.email) { db ->
+            db.execSQL("INSERT OR REPLACE INTO setting(key,value) VALUES(?,?)",
+                arrayOf<Any>("native.privacy.consent.version", NativePrivacyNotice.VERSION))
+        }
+        // A spoofed version without matching text identity and acceptance time
+        // must not unlock rating prompt eligibility.
+        assertFalse(feedback.eligible(input.email, 17 * day, NativePrivacyNotice.VERSION))
         val accepted = privacy.accept(input.email, invalid.copy(
             reachedEnd = true, acceptedAtMillis = 12 * day))
         assertEquals(NativePrivacyNotice.VERSION, accepted.version)
         assertTrue(feedback.eligible(input.email, 17 * day, NativePrivacyNotice.VERSION))
+        assertFalse(feedback.eligible(input.email, 11 * day, NativePrivacyNotice.VERSION))
         assertFalse(feedback.eligible(input.email, 17 * day, "another-version"))
         assertThrows(IllegalArgumentException::class.java) {
             privacy.accept(input.email, invalid.copy(reachedEnd = true,
