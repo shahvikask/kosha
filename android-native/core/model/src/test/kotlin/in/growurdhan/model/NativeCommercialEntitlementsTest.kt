@@ -7,7 +7,8 @@ class NativeCommercialEntitlementsTest {
     private val policy = NativeCommercialEntitlements
     private val day = policy.DAY_MILLIS
     private fun verified(vararg p: NativeCommercialEntitlements.Purchase) =
-        NativeCommercialEntitlements.VerifiedPlaySnapshot(p.toList(), true, true)
+        NativeCommercialEntitlements.VerifiedPlaySnapshot(p.toList(), true, true,
+            verifiedAtMillis = 0L, validUntilMillis = 100L * day)
     private fun active(sku: String) = NativeCommercialEntitlements.Purchase(
         sku, NativeCommercialEntitlements.State.ACTIVE, true, true)
     private val noTrial = NativeCommercialEntitlements.TrialEvidence(false, 0, 0)
@@ -38,7 +39,8 @@ class NativeCommercialEntitlementsTest {
         assertFalse(upgradeAlone.canRead)
         assertFalse(upgradeAlone.canUseGmail)
         val combination = policy.evaluate(50 * day, noTrial,
-            verified(active(policy.MANUAL), active(policy.UPGRADE), active(policy.SUPPORT)))
+            verified(active(policy.MANUAL), active(policy.UPGRADE),
+                active(policy.SUPPORT).copy(expiresAtMillis = 60L * day)))
         assertTrue(combination.canUseGmail)
         assertTrue(combination.supportActive)
     }
@@ -70,5 +72,33 @@ class NativeCommercialEntitlementsTest {
             verified(active("unrecognized_product"))).canRead)
         assertFalse(policy.evaluate(40 * day, null,
             NativeCommercialEntitlements.UnconfiguredGateway.verifiedSnapshot()).canRead)
+    }
+
+    @Test fun verificationLeaseExpiresAndClockRollbackFailsClosed() {
+        val valid = verified(active(policy.GMAIL))
+        assertTrue(policy.evaluate(50 * day, noTrial, valid).canRead)
+        assertFalse(policy.evaluate(100 * day, noTrial, valid).canRead)
+        assertFalse(policy.evaluate(1L, noTrial, valid.copy(
+            verifiedAtMillis = 20 * day)).canRead)
+        assertFalse(policy.evaluate(50 * day, noTrial, valid.copy(
+            validUntilMillis = null)).canRead)
+        assertFalse(policy.evaluate(50 * day, noTrial,
+            NativeCommercialEntitlements.VerifiedPlaySnapshot(
+                listOf(active(policy.GMAIL)), true, true)).canRead)
+    }
+
+    @Test fun annualSupportExpiryAndConflictingSkuRecordsFailClosed() {
+        val now = 50 * day
+        val lifetime = active(policy.MANUAL)
+        val expiredSupport = verified(lifetime, active(policy.SUPPORT).copy(
+            expiresAtMillis = now))
+        assertTrue(policy.evaluate(now, noTrial, expiredSupport).canRead)
+        assertFalse(policy.evaluate(now, noTrial, expiredSupport).supportActive)
+        assertFalse(policy.evaluate(now, noTrial, verified(
+            active(policy.SUPPORT))).supportActive)
+        assertFalse(policy.evaluate(now, noTrial, verified(
+            active(policy.GMAIL),
+            active(policy.GMAIL).copy(
+                state = NativeCommercialEntitlements.State.REFUNDED))).canRead)
     }
 }

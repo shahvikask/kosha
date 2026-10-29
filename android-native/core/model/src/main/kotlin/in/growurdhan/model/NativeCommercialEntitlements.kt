@@ -17,9 +17,11 @@ object NativeCommercialEntitlements {
 
     enum class State { ACTIVE, PENDING, REVOKED, REFUNDED }
     data class Purchase(val sku: String, val state: State,
-        val acknowledged: Boolean, val verifiedForActivePlayAccount: Boolean)
+        val acknowledged: Boolean, val verifiedForActivePlayAccount: Boolean,
+        val expiresAtMillis: Long? = null)
     data class VerifiedPlaySnapshot(val purchases: List<Purchase>,
-        val verificationSucceeded: Boolean, val accountVerified: Boolean)
+        val verificationSucceeded: Boolean, val accountVerified: Boolean,
+        val verifiedAtMillis: Long? = null, val validUntilMillis: Long? = null)
 
     /** Only a real Play install attestation can establish this trial anchor. */
     data class TrialEvidence(val verifiedPlayInstall: Boolean,
@@ -47,12 +49,26 @@ object NativeCommercialEntitlements {
 
         // No verified Play response means no purchase entitlement, even if
         // cached/unverified local claims contain known SKU names.
-        val live = if (play.verificationSucceeded && play.accountVerified)
-            play.purchases.filter {
-                it.sku in products && it.state == State.ACTIVE &&
-                    it.acknowledged && it.verifiedForActivePlayAccount
-            }.map { it.sku }.toSet()
-        else emptySet()
+        // A claim can be authoritative only inside the verifier's short-lived
+        // account-bound lease. A cached, future-dated or expired assertion is
+        // never an entitlement, even if its purchase state still says ACTIVE.
+        val issued = play.verifiedAtMillis
+        val expires = play.validUntilMillis
+        val trustedNow = nowMillis >= 0L && issued != null && issued >= 0L &&
+            expires != null && expires > issued &&
+            nowMillis >= issued && nowMillis < expires
+        val live = if (play.verificationSucceeded && play.accountVerified && trustedNow) {
+            // Conflicting records for the same SKU must not be resolved in favor
+            // of the positive one; the verifier must reconcile them first.
+            play.purchases.groupBy { it.sku }.filter { (sku, records) ->
+                sku in products && records.size == 1 && records.single().let {
+                    it.state == State.ACTIVE && it.acknowledged &&
+                        it.verifiedForActivePlayAccount &&
+                        (sku != SUPPORT || (it.expiresAtMillis != null &&
+                            nowMillis < it.expiresAtMillis))
+                }
+            }.keys
+        } else emptySet()
         val manualPaid = MANUAL in live || GMAIL in live
         val gmailPaid = GMAIL in live || (MANUAL in live && UPGRADE in live)
         val support = manualPaid && SUPPORT in live

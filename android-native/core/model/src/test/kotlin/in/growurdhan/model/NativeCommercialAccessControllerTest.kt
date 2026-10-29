@@ -31,7 +31,9 @@ class NativeCommercialAccessControllerTest {
                         NativeCommercialEntitlements.State.ACTIVE,
                         acknowledged = true,
                         verifiedForActivePlayAccount = true)),
-                    verificationSucceeded = true, accountVerified = true)
+                    verificationSucceeded = true, accountVerified = true,
+                    verifiedAtMillis = 0L,
+                    validUntilMillis = 100L * NativeCommercialEntitlements.DAY_MILLIS)
         }
         val status = NativeCommercialAccessController(verified).current(
             31 * NativeCommercialEntitlements.DAY_MILLIS)
