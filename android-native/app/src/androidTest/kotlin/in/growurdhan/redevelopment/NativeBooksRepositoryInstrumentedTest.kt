@@ -132,15 +132,19 @@ class NativeBooksRepositoryInstrumentedTest {
         val latest = NativeBooksRepository(reopened)
         assertEquals(ownReport, latest.recordedFinancialReport(input.email, owner))
         assertEquals(history, latest.history(input.email, own))
-        // A migrated/corrupt event assigned to another owner must fail closed:
-        // the report cannot include foreign cash flows or publish partial totals.
-        reopened.withUnlockedVault(input.email) { db ->
-            db.execSQL("UPDATE ledger_event SET entity_id=? " +
-                "WHERE ledger_event_id=?", arrayOf<Any>(foreign, sale))
+        // Encrypted ledger events are immutable. A corrupt owner reassignment
+        // must be rejected at the SQLCipher boundary, not simulated by
+        // bypassing the production append-only trigger in this test.
+        assertThrows(android.database.sqlite.SQLiteConstraintException::class.java) {
+            reopened.withUnlockedVault(input.email) { db ->
+                db.execSQL("UPDATE ledger_event SET entity_id=? " +
+                    "WHERE ledger_event_id=?", arrayOf<Any>(foreign, sale))
+            }
         }
-        assertThrows(Exception::class.java) {
-            latest.recordedFinancialReport(input.email, owner)
-        }
+        assertEquals(ownReport, latest.recordedFinancialReport(input.email, owner))
+        assertEquals(history, latest.history(input.email, own))
+        assertEquals(java.math.BigInteger.valueOf(990_000L),
+            latest.recordedFinancialReport(input.email, foreign).pricedAssetMinor)
     }
 
     @Test fun p24ReviewedHybridSplitIsEncryptedScopedAndDoesNotPostFinancialEvents() {
