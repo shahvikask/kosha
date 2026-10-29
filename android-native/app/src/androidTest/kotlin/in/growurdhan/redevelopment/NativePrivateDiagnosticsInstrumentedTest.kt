@@ -97,7 +97,10 @@ class NativePrivateDiagnosticsInstrumentedTest {
         val selected = NativeUserSettingsRepository.Preferences(
             NativeUserSettingsRepository.Appearance.DARK,
             NativeUserSettingsRepository.SgbReference.RBI_REFERENCE_REQUIRED,
-            NativeUserSettingsRepository.IbjaReference.OWNER_REVIEW_REQUIRED
+            NativeUserSettingsRepository.IbjaReference.OWNER_REVIEW_REQUIRED,
+            NativeUserSettingsRepository.PortfolioSort.CATEGORY,
+            NativeUserSettingsRepository.ArchiveDefault.ACTIVE,
+            NativeUserSettingsRepository.HomePreview.COMPACT
         )
         settings.save(enrollment.email, selected)
         assertEquals(selected, settings.read(enrollment.email))
@@ -117,6 +120,29 @@ class NativePrivateDiagnosticsInstrumentedTest {
         reopened.withUnlockedVault(enrollment.email) { db ->
             db.execSQL("UPDATE setting SET value='DARK' " +
                 "WHERE key='native.privacy.appearance'")
+            db.execSQL("UPDATE setting SET value='INVALID' " +
+                "WHERE key='native.portfolio.default_sort'")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            restored.read(enrollment.email)
+        }
+        reopened.withUnlockedVault(enrollment.email) { db ->
+            db.execSQL("UPDATE setting SET value='CATEGORY' " +
+                "WHERE key='native.portfolio.default_sort'")
+            db.execSQL("UPDATE setting SET value='INVALID' " +
+                "WHERE key='native.portfolio.archive_filter'")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            restored.read(enrollment.email)
+        }
+        reopened.withUnlockedVault(enrollment.email) { db ->
+            db.execSQL("UPDATE setting SET value='ACTIVE' " +
+                "WHERE key='native.portfolio.archive_filter'")
+            db.execSQL("UPDATE setting SET value='INVALID' " +
+                "WHERE key='native.portfolio.home_rows'")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            restored.read(enrollment.email)
         }
         restored.save(enrollment.email, NativeUserSettingsRepository.Preferences())
         reopened.onBackground()

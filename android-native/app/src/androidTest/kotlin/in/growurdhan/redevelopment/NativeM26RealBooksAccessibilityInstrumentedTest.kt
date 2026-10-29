@@ -118,6 +118,36 @@ class NativeM26RealBooksAccessibilityInstrumentedTest {
                 .fetchSemanticsNodes().isNotEmpty()
         }
         compose.onNodeWithTag("m31-theme-SYSTEM").assertIsNotEnabled()
+        compose.onNodeWithTag("m31-portfolio-sort-CATEGORY").performScrollTo()
+        compose.onNodeWithTag("m31-portfolio-sort-CATEGORY").performClick()
+        compose.waitUntil(30_000) {
+            compose.onAllNodes(hasText("Default: Category sort", substring = true))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("m31-portfolio-archive-ACTIVE").performScrollTo()
+        compose.onNodeWithTag("m31-portfolio-archive-ACTIVE").performClick()
+        compose.waitUntil(30_000) {
+            compose.onAllNodes(hasText("Active archive view", substring = true))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("m31-portfolio-home-COMPACT").performScrollTo()
+        compose.onNodeWithTag("m31-portfolio-home-COMPACT").performClick()
+        compose.waitUntil(30_000) {
+            compose.onAllNodes(hasText("6 Home rows", substring = true))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("m31-portfolio-defaults").assertExists()
+        compose.onNodeWithTag("m31-family-settings").performScrollTo()
+        compose.onNodeWithTag("m31-family-settings").performClick()
+        compose.onNodeWithText("Family members").assertExists()
+        compose.onNodeWithTag("books-tab-Settings").performScrollTo()
+        compose.onNodeWithTag("books-tab-Settings").performClick()
+        compose.onNodeWithTag("m31-custody-settings").performScrollTo()
+        compose.onNodeWithTag("m31-custody-settings").performClick()
+        compose.onNodeWithText("Custody accounts").assertExists()
+        compose.onNodeWithTag("books-tab-Settings").performScrollTo()
+        compose.onNodeWithTag("books-tab-Settings").performClick()
+        compose.onNodeWithTag("m31-account-auth").assertExists()
         compose.onNodeWithTag("m31-sgb-RBI_REFERENCE_REQUIRED").assertExists()
         compose.onNodeWithTag("m31-ibja-OWNER_REVIEW_REQUIRED").assertExists()
         compose.onNodeWithTag("m31-device-loss-warning").assertExists()
@@ -177,10 +207,16 @@ class NativeM26RealBooksAccessibilityInstrumentedTest {
         compose.onNodeWithTag("m31-theme-DARK").assertIsNotEnabled()
         // A technical support clipboard action cannot appear without opt-in and preview.
         compose.onNodeWithTag("m31-support-copy").assertDoesNotExist()
+        compose.onNodeWithTag("books-tab-Home").performScrollTo()
+        compose.onNodeWithTag("books-tab-Home").performClick()
+        compose.onNodeWithText("Home preview: up to 6 owner-scoped holding(s)").assertExists()
         // The production Holdings destination must expose the manual-only official
         // close action, not merely a standalone synthetic component.
         compose.onNodeWithTag("books-tab-Holdings").performScrollTo()
         compose.onNodeWithTag("books-tab-Holdings").performClick()
+        compose.onNodeWithTag("m31-holdings-defaults").assertExists()
+        compose.onNodeWithText("Saved defaults: Category sort, Active archived filter; " +
+            "manual view choices override until next vault unlock.").assertExists()
         compose.onNodeWithTag("m30-source-NSE").assertExists()
         compose.onNodeWithTag("m30-source-BSE").assertExists()
         compose.onNodeWithTag("m30-import-close").assertIsNotEnabled()

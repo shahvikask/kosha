@@ -127,6 +127,8 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                 settings?.read(email) ?: NativeUserSettingsRepository.Preferences()
             }
             preferencesLoaded = settings != null
+            holdingSort = preferences.portfolioSort.holdingSort
+            holdingStatusFilter = preferences.archiveDefault.holdingStatus
             ibjaInput = withContext(Dispatchers.IO) { settings?.readIbja(email) }
         } catch (_: Exception) {
             preferencesError = "Encrypted settings unavailable. Lock and unlock again."
@@ -188,7 +190,9 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                                 .ifEmpty { "None" }),
                             modifier = Modifier.testTag("m29-home-categories"))
                         Text("Home displays book records. No market value is calculated from an absent quote.")
-                        selected.take(12).forEach { h ->
+                        Text("Home preview: up to ${preferences.homePreview.maxRows} owner-scoped holding(s)",
+                            modifier = Modifier.testTag("m31-home-preview-limit"))
+                        selected.take(preferences.homePreview.maxRows).forEach { h ->
                             Text("${h.name}: ${NativeBooksRepository.formatMinor(h.quantityScaled, 8)} units " +
                                 "• ${h.personName}")
                         }
@@ -297,6 +301,10 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                             holdingStatusFilter) { holdingStatusFilter = it }
                         Choice("Sort holdings", listOf("Name", "Recorded value", "Recent price",
                             "Category").map { it to it }, holdingSort) { holdingSort = it }
+                        Text("Saved defaults: ${preferences.portfolioSort.holdingSort} sort, " +
+                            "${preferences.archiveDefault.holdingStatus} archived filter; " +
+                            "manual view choices override until next vault unlock.",
+                            modifier = Modifier.testTag("m31-holdings-defaults"))
                         OutlinedTextField(search, { search = it }, label = { Text("Search holdings") },
                             modifier = Modifier.fillMaxWidth())
                         val list = NativeHoldingListFilter.apply(data.holdings, ownerFilter,
@@ -513,7 +521,10 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                                         }
                                     }
                                 },
-                                onLock = onLock
+                                onLock = onLock,
+                                onAccountAccess = onReplaceRecovery,
+                                onOpenFamily = { tab = "Family" },
+                                onOpenAccounts = { tab = "Accounts" }
                             ) { next ->
                                 if (!preferencesBusy) {
                                     preferencesBusy = true
@@ -521,6 +532,10 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                                     scope.launch {
                                         try {
                                             withContext(Dispatchers.IO) { requireNotNull(settings).save(email, next) }
+                                            if (next.portfolioSort != preferences.portfolioSort)
+                                                holdingSort = next.portfolioSort.holdingSort
+                                            if (next.archiveDefault != preferences.archiveDefault)
+                                                holdingStatusFilter = next.archiveDefault.holdingStatus
                                             preferences = next
                                             onAppearanceChanged(next.appearance)
                                         } catch (_: Exception) {

@@ -27,6 +27,9 @@ internal fun NativeUserSettingsCard(
     onRecordIbja: (String, String) -> Unit,
     onClearIbja: () -> Unit,
     onLock: () -> Unit,
+    onAccountAccess: () -> Unit,
+    onOpenFamily: () -> Unit,
+    onOpenAccounts: () -> Unit,
     onChange: (NativeUserSettingsRepository.Preferences) -> Unit
 ) {
     var ibjaDate by remember { mutableStateOf("") }
@@ -44,6 +47,44 @@ internal fun NativeUserSettingsCard(
                     if (preferences.appearance == option) " selected" else "")
             }
         }
+        Text("Portfolio preferences", style = MaterialTheme.typography.titleLarge)
+        Text("Saved defaults apply to household and member Holdings views. " +
+            "The active member lens is never saved or changed by these choices.")
+        Text("Default holdings sort")
+        for (choice in NativeUserSettingsRepository.PortfolioSort.entries) {
+            OutlinedButton(
+                onClick = { onChange(preferences.copy(portfolioSort = choice)) },
+                enabled = enabled && preferences.portfolioSort != choice,
+                modifier = Modifier.heightIn(min = 48.dp)
+                    .testTag("m31-portfolio-sort-" + choice.name)
+            ) { Text(choice.holdingSort + if (preferences.portfolioSort == choice)
+                " selected" else "") }
+        }
+        Text("Default archive filter")
+        for (choice in NativeUserSettingsRepository.ArchiveDefault.entries) {
+            OutlinedButton(
+                onClick = { onChange(preferences.copy(archiveDefault = choice)) },
+                enabled = enabled && preferences.archiveDefault != choice,
+                modifier = Modifier.heightIn(min = 48.dp)
+                    .testTag("m31-portfolio-archive-" + choice.name)
+            ) { Text(choice.holdingStatus + if (preferences.archiveDefault == choice)
+                " selected" else "") }
+        }
+        Text("Home preview length (display only; no financial values changed)")
+        for (choice in NativeUserSettingsRepository.HomePreview.entries) {
+            OutlinedButton(
+                onClick = { onChange(preferences.copy(homePreview = choice)) },
+                enabled = enabled && preferences.homePreview != choice,
+                modifier = Modifier.heightIn(min = 48.dp)
+                    .testTag("m31-portfolio-home-" + choice.name)
+            ) { Text(choice.name.lowercase().replaceFirstChar { it.uppercase() } +
+                " • up to " + choice.maxRows + " holdings" +
+                if (preferences.homePreview == choice) " selected" else "") }
+        }
+        Text("Default: " + preferences.portfolioSort.holdingSort + " sort, " +
+            preferences.archiveDefault.holdingStatus + " archive view, " +
+            preferences.homePreview.maxRows + " Home rows",
+            modifier = Modifier.testTag("m31-portfolio-defaults"))
         Text("Prices & provenance", style = MaterialTheme.typography.titleLarge)
         Text("SGB reference policy (never edits recorded prices or ledger events)")
         for (option in NativeUserSettingsRepository.SgbReference.entries) {
@@ -103,10 +144,31 @@ internal fun NativeUserSettingsCard(
             "references remain masked, with no unmasking control.")
         Text("Lock the vault to use password change or recovery in the verified " +
             "account authentication screen.")
+        OutlinedButton(enabled = enabled, onClick = onAccountAccess,
+            modifier = Modifier.heightIn(min = 48.dp).testTag("m31-account-auth")) {
+            Text("Open verified account access")
+        }
         OutlinedButton(enabled = enabled, onClick = onLock,
             modifier = Modifier.heightIn(min = 48.dp).testTag("m31-account-lock")) {
             Text("Lock vault now")
         }
+        Text("Family & ownership", style = MaterialTheme.typography.titleLarge)
+        OutlinedButton(enabled = enabled, onClick = onOpenFamily,
+            modifier = Modifier.heightIn(min = 48.dp).testTag("m31-family-settings")) {
+            Text("Review family members and ownership")
+        }
+        OutlinedButton(enabled = enabled, onClick = onOpenAccounts,
+            modifier = Modifier.heightIn(min = 48.dp).testTag("m31-custody-settings")) {
+            Text("Review custody accounts and nominees")
+        }
+        Text("Statement sync", style = MaterialTheme.typography.titleLarge)
+        Text("Gmail OAuth requires verified account authorization; no Gmail " +
+            "mailbox is connected by this settings screen.")
+        Text("Subscription & licence", style = MaterialTheme.typography.titleLarge)
+        Text("No Play Billing entitlement is claimed without verified provider proof.")
+        Text("Legal & help", style = MaterialTheme.typography.titleLarge)
+        Text("Unknown costs, prices and issuer evidence are not estimated as facts. " +
+            "Finance records stay encrypted on this device.")
         Text("Losing this device or uninstalling can permanently erase your financial data; " +
             "financial backup and cross-device restore are unavailable in this release.",
             modifier = Modifier.testTag("m31-device-loss-warning"))

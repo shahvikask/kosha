@@ -15,16 +15,32 @@ internal class NativeUserSettingsRepository(private val accounts: NativeAccountR
     }
     enum class SgbReference { RECORDED_MARKET_CLOSE, RBI_REFERENCE_REQUIRED }
     enum class IbjaReference { DISABLED, OWNER_REVIEW_REQUIRED }
+    enum class PortfolioSort(val holdingSort: String) {
+        NAME("Name"), RECORDED_VALUE("Recorded value"),
+        RECENT_PRICE("Recent price"), CATEGORY("Category")
+    }
+    enum class ArchiveDefault(val holdingStatus: String) {
+        ALL("All"), ACTIVE("Active"), ARCHIVED("Archived")
+    }
+    enum class HomePreview(val maxRows: Int) {
+        COMPACT(6), EXTENDED(12)
+    }
     data class Preferences(
         val appearance: Appearance = Appearance.SYSTEM,
         val sgbReference: SgbReference = SgbReference.RECORDED_MARKET_CLOSE,
-        val ibjaReference: IbjaReference = IbjaReference.DISABLED
+        val ibjaReference: IbjaReference = IbjaReference.DISABLED,
+        val portfolioSort: PortfolioSort = PortfolioSort.NAME,
+        val archiveDefault: ArchiveDefault = ArchiveDefault.ALL,
+        val homePreview: HomePreview = HomePreview.EXTENDED
     )
     /** Owner-entered claim, NOT a verified IBJA rate or a portfolio price. */
     data class IbjaInput(val asOf: String, val rupeesPerTenGramsMinor: Long) {
         fun displayRate(): String = NativeBooksRepository.formatMinor(rupeesPerTenGramsMinor, 4)
     }
     private val ibjaInputKey = "native.prices.ibja.owner_reference"
+    private val portfolioSortKey = "native.portfolio.default_sort"
+    private val archiveDefaultKey = "native.portfolio.archive_filter"
+    private val homePreviewKey = "native.portfolio.home_rows"
     private val appearanceKey = "native.privacy.appearance"
     private val sgbKey = "native.prices.sgb.reference"
     private val ibjaKey = "native.prices.ibja.reference"
@@ -39,7 +55,13 @@ internal class NativeUserSettingsRepository(private val accounts: NativeAccountR
         sgbReference = get(db, sgbKey)?.let(SgbReference::valueOf)
             ?: SgbReference.RECORDED_MARKET_CLOSE,
         ibjaReference = get(db, ibjaKey)?.let(IbjaReference::valueOf)
-            ?: IbjaReference.DISABLED
+            ?: IbjaReference.DISABLED,
+        portfolioSort = get(db, portfolioSortKey)?.let(PortfolioSort::valueOf)
+            ?: PortfolioSort.NAME,
+        archiveDefault = get(db, archiveDefaultKey)?.let(ArchiveDefault::valueOf)
+            ?: ArchiveDefault.ALL,
+        homePreview = get(db, homePreviewKey)?.let(HomePreview::valueOf)
+            ?: HomePreview.EXTENDED
     )
     fun read(email: String): Preferences = accounts.withUnlockedVault(email) { load(it) }
 
@@ -101,7 +123,10 @@ internal class NativeUserSettingsRepository(private val accounts: NativeAccountR
             for ((key, value) in listOf(
                 appearanceKey to preferences.appearance.name,
                 sgbKey to preferences.sgbReference.name,
-                ibjaKey to preferences.ibjaReference.name
+                ibjaKey to preferences.ibjaReference.name,
+                portfolioSortKey to preferences.portfolioSort.name,
+                archiveDefaultKey to preferences.archiveDefault.name,
+                homePreviewKey to preferences.homePreview.name
             )) db.execSQL("INSERT OR REPLACE INTO setting(key,value) VALUES(?,?)",
                 arrayOf<Any>(key, value))
         }
