@@ -110,7 +110,7 @@ New-chat prompt the owner pastes (replaces §17.5/17.7):
 Seed written by Claude on 2026-10-28 from repo docs. FIRST SESSION: verify B1–B3 against GitHub Actions and fix any mismatch before relying on them.
 
 ## B1 Header
-branch GUD-Android-Redevelopment · checkpoint_sha `6e4800102079a423ac6faa498cae0b40dbe6ccda` · repaired M29 P24 T2 `40857791852` at `cc9e7a0c` SUCCESS 50/50 API35, original hashes/ADB reviewed · accepted requirements 0/52 (36 P + 16 E) · no formal milestones.
+branch GUD-Android-Redevelopment · checkpoint_sha `82ec5b76ff69f9ccb7f0269977c06b3e11debd05` · repaired M29 P24 T2 `40857791852` at `cc9e7a0c` SUCCESS 50/50 API35, original hashes/ADB reviewed · accepted requirements 0/52 (36 P + 16 E) · no formal milestones.
 State codes: ND not started · SP source partial · JV JVM green · EM emulator green · AC accepted · DF deferred (D57).
 
 ## B2 Requirement matrix (split a row when members diverge)
@@ -165,11 +165,11 @@ State codes: ND not started · SP source partial · JV JVM green · EM emulator 
 6. G14 EM: screenshots; owner/device open.
 7. M26 EM: owner/custody/goal; device/security open.
 8. M25 EM: enrollment/Terms; device/security open.
-9. M29 P24/P25: encrypted recorded finance report at 9e88f154; T1 40917199241 FAILED (unresolved dp + cross-module smart cast); repair then T2.
+9. M29 P24/P25: corrected source 5a947ef5 T1 40918476185 SUCCESS; targeted API35 T2 40919538632 pending.
 10. M28 EM: synthetic CAS; real CAS/ARM64 blocked.
 11. M30 EM: priced-feed UI; actual network/device blocked.
 12. M31 EM: dossier/settings/privacy; owner/device blocked.
-13. BUILD NOW (fake gateways, real tests): P35/E07 Gmail multi-account mapping, WorkManager monthly/manual sync, cursors, quarantine; P36 onboarding/Terms/feedback prompt; P37/E16 30-day trial and fail-closed entitlement behind billing interface (use kosha spec SKUs, not GUD ₹99 assumption); E09 analytics; E15 SBOM/pinned dependencies/secret scan; E17 pipeline summary; E18 network egress inventory. Do before M26–M31 polish.
+13. BUILD NOW: P35/E07 gateway source `82ec5b76` (fake Gmail account mapping/page/cursor/quarantine + 5 test cases), native T1 pending after M29 active T2; next WorkManager monthly/manual and SQLCipher integration, then P36, P37/E16, E09, E15, E17, E18. Use spec SKUs, not GUD ₹99 assumption.
 14. BLOCKED-OWNER: real Gmail OAuth, Play purchases, signing keys, ARM64 phone and genuine CAS statements, penetration test, G14 sign-off.
 Process P0 completed: unified native-ci T1/T2; 54 old workflows archived.
 
@@ -181,6 +181,8 @@ Gmail OAuth project/credentials; Play Billing products/test accounts; upload/sig
 - Do not re-derive D57 scope, frozen hashes, or branding.
 - Do not rewrite passing tests; do not add per-slice workflows or docs.
 - Known past failures to avoid: hard-coded test counts in workflow YAML; pinning an expired artifact id; duplicate dispatch while a run is active; treating lightweight/docs CI as Android proof.
+
+P35/E07: SOURCE `82ec5b76`; 5 new Android tests not run. Active M29 T2 `40919538632` remains NOT VERIFIED. No parallel native CI.
 
 ## B7 Open risks
 Evidence is mostly tied to older SHAs; no local Gradle for the agent; legacy workflows archived after unified T1/T2 proof; P12–P14 focused T2 green but owner/security/G14 acceptance open; owner-only inputs block M32–M34; 0 formal acceptances after many sessions — the next sessions should convert PARTIAL → ACCEPTED slice by slice rather than adding breadth.
