@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -106,12 +107,25 @@ class NativeM26RealBooksAccessibilityInstrumentedTest {
                 bounds.height >= 48f)
         }
 
+        // The production Holdings destination must expose the manual-only official
+        // close action, not merely a standalone synthetic component.
+        compose.onNodeWithTag("books-tab-Holdings").performScrollTo()
+        compose.onNodeWithTag("books-tab-Holdings").performClick()
+        compose.onNodeWithTag("m30-source-NSE").assertExists()
+        compose.onNodeWithTag("m30-source-BSE").assertExists()
+        compose.onNodeWithTag("m30-import-close").assertIsNotEnabled()
+        compose.onNodeWithTag("books-tab-Home").performScrollTo()
+        compose.onNodeWithTag("books-tab-Home").performClick()
         compose.onNodeWithText("Whole household").performScrollTo()
         compose.onNodeWithText("Whole household").performClick()
         compose.onNodeWithText("Member Alpha").performClick()
         compose.onNodeWithText("Viewing Member: Member Alpha financial records")
             .assertExists()
         compose.onNodeWithText("0 holdings • 1 active member in view").assertExists()
+        compose.onNodeWithTag("books-tab-Holdings").performScrollTo()
+        compose.onNodeWithTag("books-tab-Holdings").performClick()
+        compose.onNodeWithTag("m30-source-url").assertDoesNotExist()
+        compose.onNodeWithTag("m30-owner-scope").assertExists()
     }
 
     private fun verifyHindiOnboardingAtTwoHundredPercent(dark: Boolean) {

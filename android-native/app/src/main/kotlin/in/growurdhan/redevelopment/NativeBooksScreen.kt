@@ -70,6 +70,7 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
     var busy by remember { mutableStateOf(false) }
     var ledgerRevision by remember { mutableStateOf(0) }
     var error by remember { mutableStateOf("") }
+    var exchangeReceipt by remember { mutableStateOf("") }
     var tab by remember { mutableStateOf("Home") }
     var ownerFilter by remember { mutableStateOf("") }
     var categoryFilter by remember { mutableStateOf("All") }
@@ -105,6 +106,7 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
         historyId = ""
         history = emptyList()
         xirrResults = emptyMap()
+        exchangeReceipt = ""
         // A member switch must revoke even the account filter selection.
         holdingAccountFilter = ""
     }
@@ -236,6 +238,35 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                     }
                     "Holdings" -> {
                         Text("Holdings", style = MaterialTheme.typography.titleLarge)
+                        if (ownerFilter.isEmpty()) {
+                            NativeExchangePriceCard(busy) { exchange, archiveUrl ->
+                                if (!busy) {
+                                    busy = true
+                                    error = ""
+                                    exchangeReceipt = ""
+                                    scope.launch {
+                                        try {
+                                            val receipt = withContext(Dispatchers.IO) {
+                                                books.refreshExchangeCloses(email, exchange, archiveUrl)
+                                            }
+                                            refresh()
+                                            exchangeReceipt = receipt.source + " dated " + receipt.date +
+                                                ": " + receipt.matched + " holdings matched, " +
+                                                receipt.updated + " updated. Owner-entered prices " +
+                                                "take precedence. These are not live quotes."
+                                        } catch (_: Exception) {
+                                            error = "Official dated-close refresh rejected or unavailable. " +
+                                                "Review stored prices before retrying; no automatic retry."
+                                        } finally { busy = false }
+                                    }
+                                }
+                            }
+                            if (exchangeReceipt.isNotEmpty())
+                                Text(exchangeReceipt, modifier = Modifier.testTag("m30-refresh-receipt"))
+                        } else {
+                            Text("Whole-household market close refresh requires Whole household lens.",
+                                modifier = Modifier.testTag("m30-owner-scope"))
+                        }
                         CategoryPicker(categoryFilter) { categoryFilter = it }
                         Choice("Account filter", listOf("" to "All custody accounts",
                             NativeHoldingListFilter.NO_ACCOUNT to "No account") +
@@ -259,6 +290,8 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                                 else "Recorded FIFO cost: ₹${NativeBooksRepository.formatMinor(h.knownCostMinor, 4)}")
                             Text("Manual/last price: ₹${NativeBooksRepository.formatMinor(h.marketPriceMinor, 4)} " +
                                 "as of ${h.priceDate ?: "unknown"} (${h.priceSource ?: "no source"})")
+                            Text(NativeExchangePriceDisclosure.text(h, LocalDate.now()),
+                                modifier = Modifier.testTag("m30-price-provenance-${h.id}"))
                             if (h.category == "REAL_ESTATE") {
                                 // Ownership metadata is NOT a legal title check
                                 // and does not rewrite family balance, owner, or ledger.
