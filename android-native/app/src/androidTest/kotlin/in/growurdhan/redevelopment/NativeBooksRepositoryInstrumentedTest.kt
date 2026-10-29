@@ -145,6 +145,20 @@ class NativeBooksRepositoryInstrumentedTest {
         assertEquals(history, latest.history(input.email, own))
         assertEquals(java.math.BigInteger.valueOf(990_000L),
             latest.recordedFinancialReport(input.email, foreign).pricedAssetMinor)
+        // Secondary report-layer defense: a synthetic corrupt/migrated row
+        // with a foreign event must also fail closed independently of SQLCipher.
+        val poisoned = NativeRecordedFinanceReport.Row(
+            holdingId = own, ownerId = owner, category = "EQUITY",
+            archived = false, needsReview = false, quantityScaled = 100_000_000L,
+            priceMinor = 10_000L, priceDate = date,
+            priceSource = "Explicit recorded test valuation",
+            events = listOf(`in`.growurdhan.model.NativePortfolioMath.Event(
+                "foreign-event", foreign, own, "DIVIDEND", date,
+                0L, 0L, 12_000L, 0L, null, true))
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            NativeRecordedFinanceReport.summarize(listOf(poisoned), owner, LocalDate.now())
+        }
     }
 
     @Test fun p24ReviewedHybridSplitIsEncryptedScopedAndDoesNotPostFinancialEvents() {
