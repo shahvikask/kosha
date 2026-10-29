@@ -47,6 +47,23 @@ class NativeBooksRepositoryInstrumentedTest {
         return accounts to NativeBooksRepository(accounts)
     }
 
+    /**
+     * Source-reconciliation negative fixture: normal production metadata edits must reject
+     * post-ledger custody transfers. Simulate a legacy/external migration drift only within
+     * this isolated encrypted test vault to exercise independent stale-preview rejection.
+     */
+    private fun simulateLegacyCustodyDrift(accounts: NativeAccountRepository,
+        books: NativeBooksRepository, holdingId: String, newCustodyId: String) {
+        assertThrows(IllegalArgumentException::class.java) {
+            books.updateHoldingMetadata(input.email, holdingId, newCustodyId,
+                null, null, null)
+        }
+        accounts.withUnlockedVault(input.email) { db ->
+            db.execSQL("UPDATE holding SET account_id=? WHERE holding_id=?",
+                arrayOf<Any>(newCustodyId, holdingId))
+        }
+    }
+
     @Test fun p24ReviewedHybridSplitIsEncryptedScopedAndDoesNotPostFinancialEvents() {
         val context = sandbox()
         val (accounts, books) = create(context)
@@ -1016,8 +1033,7 @@ class NativeBooksRepositoryInstrumentedTest {
         val importer = NativeStatementImportRepository(accounts)
         val reviewed = importer.inspectSnapshot(input.email, proposed, sourceBytes)
         assertEquals(firstAccount, reviewed.matched.single().accountId)
-        books.updateHoldingMetadata(input.email, holding, secondAccount,
-            null, null, null)
+        simulateLegacyCustodyDrift(accounts, books, holding, secondAccount)
         fun counts(): List<Long> = accounts.withUnlockedVault(input.email) { db ->
             listOf("source_document", "import_batch", "statement_position",
                 "ledger_event", "holding").map { name ->
@@ -1275,8 +1291,7 @@ class NativeBooksRepositoryInstrumentedTest {
         val reviewed = importer.inspect(input.email, bytes)
         val newCustody = books.createCustody(input.email,
             NativeBooksRepository.NewCustody(owner, "DEMAT", "Owned demat"))
-        books.updateHoldingMetadata(input.email, holdingId, newCustody,
-            null, null, null)
+        simulateLegacyCustodyDrift(accounts, books, holdingId, newCustody)
         assertThrows(IllegalArgumentException::class.java) {
             importer.approve(input.email, "snapshot.csv", bytes, reviewed, true)
         }
@@ -1306,8 +1321,7 @@ class NativeBooksRepositoryInstrumentedTest {
         assertEquals(originalCustody, reviewed.matched.single().accountId)
         val replacementCustody = books.createCustody(input.email,
             NativeBooksRepository.NewCustody(owner, "DEMAT", "Synthetic custody B"))
-        books.updateHoldingMetadata(input.email, holding, replacementCustody,
-            null, null, null)
+        simulateLegacyCustodyDrift(accounts, books, holding, replacementCustody)
         fun counts(): List<Long> = accounts.withUnlockedVault(input.email) { db ->
             listOf("source_document", "import_batch", "statement_position",
                 "ledger_event").map { table ->
