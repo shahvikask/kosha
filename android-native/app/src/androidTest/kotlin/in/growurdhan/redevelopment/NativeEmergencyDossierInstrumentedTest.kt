@@ -38,6 +38,57 @@ class NativeEmergencyDossierInstrumentedTest {
         assertFalse(dossier.toString().contains("1234567890"))
     }
 
+    @Test fun memberLensNeverIncludesForeignOrArchivedDossierRows() {
+        val first = sample(false, "2025-01-01")
+        val secondPerson = NativeBooksRepository.Person("foreign", "Person B",
+            "Parent", "INDIVIDUAL", false, true, null)
+        val other = first.copy(
+            people = first.people + secondPerson,
+            custody = first.custody + first.custody.single().copy(
+                id = "acct-b", personId = "foreign", custodian = "Foreign custodian"),
+            holdings = first.holdings + first.holdings.single().copy(
+                id = "foreign-holding", personId = "foreign", personName = "Person B",
+                accountId = "acct-b", name = "Foreign position") +
+                first.holdings.single().copy(id = "archived", archived = true)
+        )
+        val asOf = java.time.LocalDate.parse("2025-02-01")
+        val own = NativeEmergencyDossier.prepare(other, true, asOf, "p")
+        assertEquals(listOf("p"), own.members.map { it.id })
+        assertEquals(1, own.accounts.size)
+        assertEquals(listOf("Synthetic shares"), own.holdings.map { it.name })
+        assertFalse(own.toString().contains("Foreign position"))
+        assertFalse(own.toString().contains("Foreign custodian"))
+        val foreign = NativeEmergencyDossier.prepare(other, true, asOf, "foreign")
+        assertEquals(listOf("foreign"), foreign.members.map { it.id })
+        assertEquals(listOf("Foreign position"), foreign.holdings.map { it.name })
+        assertThrows(IllegalArgumentException::class.java) {
+            NativeEmergencyDossier.prepare(other, true, asOf, "missing")
+        }
+    }
+
+    @Test fun crossOwnerCustodyAndTextIdentifiersCannotLeakIntoSheet() {
+        val initial = sample(false, "2025-01-01")
+        val contaminated = initial.copy(
+            people = initial.people.map { it.copy(name = "Owner ABCDE1234F") },
+            custody = initial.custody.map {
+                it.copy(custodian = "Bank 12345678901234")
+            },
+            holdings = initial.holdings.map {
+                it.copy(name = "12345678901234 position")
+            }
+        )
+        val asOf = java.time.LocalDate.parse("2025-02-01")
+        val sheet = NativeEmergencyDossier.prepare(contaminated, true, asOf, "p")
+        assertFalse(sheet.toString().contains("ABCDE1234F"))
+        assertFalse(sheet.toString().contains("12345678901234"))
+        val foreignAccount = contaminated.copy(
+            custody = contaminated.custody.map { it.copy(personId = "other") }
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            NativeEmergencyDossier.prepare(foreignAccount, true, asOf, "p")
+        }
+    }
+
     @Test fun staleHistoricalValueCarriesWarningEvenIfNonzero() {
         val dossier = NativeEmergencyDossier.prepare(
             sample(false, "2025-01-01"), true,

@@ -35,6 +35,17 @@ internal object NativeEmergencyDossier {
     private fun safeMaskedAccount(value: String?): String? =
         value?.trim()?.takeIf { it.length <= 80 && accountMask.matches(it) }
 
+    /** Strip identifiers accidentally pasted into human-readable labels. */
+    private fun safeLabel(value: String): String {
+        val clean = value.trim()
+        if (clean.isEmpty() || clean.length > 128 ||
+            clean.any(Char::isISOControl)) return "[Unverified label]"
+        val panAnyCase = Regex("[A-Z]{5}[0-9]{4}[A-Z]", RegexOption.IGNORE_CASE)
+        return unmaskedLongNumber.replace(
+            panAnyCase.replace(clean, "[PAN REDACTED]"),
+            "[ACCOUNT REDACTED]")
+    }
+
     private fun safeNominee(value: String?): String? =
         value?.trim()?.takeIf {
             it.length in 1..80 && it.none(Char::isISOControl) &&
@@ -43,21 +54,37 @@ internal object NativeEmergencyDossier {
         }
 
     fun prepare(book: NativeBooksRepository.Snapshot,
-        explicitlyApproved: Boolean, today: LocalDate = LocalDate.now()): Sheet {
+        explicitlyApproved: Boolean, today: LocalDate = LocalDate.now(),
+        selectedOwnerId: String? = null): Sheet {
         require(explicitlyApproved) {
             "Emergency family dossier requires current authenticated owner confirmation"
         }
-        val byId = book.people.associateBy { it.id }
-        val custody = book.custody.associateBy { it.id }
-        val members = book.people.filter { it.active }.map {
-            Member(it.id, it.name, it.relation, safeMaskedPan(it.maskedPan))
+        val activePeople = book.people.filter { it.active }
+        if (selectedOwnerId != null) require(
+            activePeople.any { it.id == selectedOwnerId }
+        ) { "Unknown or inactive dossier owner" }
+        val scopedPeople = if (selectedOwnerId == null) activePeople
+            else activePeople.filter { it.id == selectedOwnerId }
+        val ids = scopedPeople.map { it.id }.toSet()
+        val byId = scopedPeople.associateBy { it.id }
+        val scopedCustody = book.custody.filter { it.personId in ids }
+        val custody = scopedCustody.associateBy { it.id }
+        val scopedHoldings = book.holdings.filter { it.personId in ids && !it.archived }
+        require(scopedHoldings.all { h ->
+            h.accountId == null ||
+                scopedCustody.any { a -> a.id == h.accountId && a.personId == h.personId }
+        }) { "Dossier custody and owner identity conflict" }
+        val members = scopedPeople.map {
+            Member(it.id, safeLabel(it.name), safeLabel(it.relation),
+                safeMaskedPan(it.maskedPan))
         }
-        val accounts = book.custody.map {
-            Account(it.custodian, it.type, safeMaskedAccount(it.maskedReference),
-                byId[it.personId]?.name ?: "Unknown recorded owner", safeNominee(it.nominee))
+        val accounts = scopedCustody.map {
+            Account(safeLabel(it.custodian), it.type, safeMaskedAccount(it.maskedReference),
+                byId[it.personId]?.let { p -> safeLabel(p.name) }
+                    ?: "Unknown recorded owner", safeNominee(it.nominee))
         }
         var unresolved = 0
-        val holdings = book.holdings.map { h ->
+        val holdings = scopedHoldings.map { h ->
             // An unresolved, absent or future-dated quote never becomes a
             // fabricated rupee value in an emergency document.
             val observed = h.priceDate?.let {
@@ -75,9 +102,11 @@ internal object NativeEmergencyDossier {
                     .divide(BigInteger.valueOf(100_000_000L)).longValueExact()
             }.getOrNull()
             if (value == null) unresolved++
-            Holding(h.name, h.category,
-                byId[h.personId]?.name ?: "Unknown recorded owner",
-                h.accountId?.let { custody[it]?.custodian } ?: "Not recorded",
+            Holding(safeLabel(h.name), h.category,
+                byId[h.personId]?.let { safeLabel(it.name) }
+                    ?: "Unknown recorded owner",
+                h.accountId?.let { custody[it]?.custodian?.let(::safeLabel) }
+                    ?: "Not recorded",
                 h.quantityScaled, value,
                 if (value == null) "Value unverified — confirm source and date"
                 else if (stalePrice) "Recorded value is stale — verify dated source"
