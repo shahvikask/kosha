@@ -32,7 +32,8 @@ internal fun NativeExchangePriceCard(busy: Boolean,
    }
   }
   OutlinedTextField(url, { url = it },
-   label = { Text("Official BhavCopy ZIP HTTPS URL") },
+   label = { Text(if (exchange == NativeExchangeEodCatalog.Exchange.NSE)
+    "NSE official BhavCopy ZIP HTTPS URL" else "BSE official BhavCopy CSV HTTPS URL") },
    modifier = Modifier.fillMaxWidth().testTag("m30-source-url"))
   OutlinedButton(onClick = { onRefresh(exchange, url.trim()) },
    enabled = !busy && url.isNotBlank(),

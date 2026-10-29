@@ -12,6 +12,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -118,6 +119,7 @@ class NativeM27HoldingFilterInstrumentedTest {
         }
         compose.onNodeWithTag("m30-import-close").assertIsNotEnabled()
         compose.onNodeWithTag("m30-source-BSE").performClick()
+        compose.onNodeWithText("BSE official BhavCopy CSV HTTPS URL").assertExists()
         compose.onNodeWithTag("m30-source-url")
             .performTextInput("https://www.bseindia.com/public/test")
         compose.onNodeWithTag("m30-import-close").performClick()
