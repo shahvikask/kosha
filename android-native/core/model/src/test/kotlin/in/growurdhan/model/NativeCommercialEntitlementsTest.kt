@@ -15,15 +15,15 @@ class NativeCommercialEntitlementsTest {
     @Test fun thirtyDayAttestedTrialIsExclusiveAtDeadlineAndRollbackFailsClosed() {
         val trial = NativeCommercialEntitlements.TrialEvidence(true, 10 * day, 15 * day)
         assertTrue(policy.evaluate(15 * day, trial,
-            policy.UnconfiguredGateway.verifiedSnapshot()).canUseGmail)
+            NativeCommercialEntitlements.UnconfiguredGateway.verifiedSnapshot()).canUseGmail)
         assertTrue(policy.evaluate(40 * day - 1, trial,
-            policy.UnconfiguredGateway.verifiedSnapshot()).canRead)
+            NativeCommercialEntitlements.UnconfiguredGateway.verifiedSnapshot()).canRead)
         assertFalse(policy.evaluate(40 * day, trial,
-            policy.UnconfiguredGateway.verifiedSnapshot()).canRead)
+            NativeCommercialEntitlements.UnconfiguredGateway.verifiedSnapshot()).canRead)
         assertFalse(policy.evaluate(14 * day, trial,
-            policy.UnconfiguredGateway.verifiedSnapshot()).canRead)
+            NativeCommercialEntitlements.UnconfiguredGateway.verifiedSnapshot()).canRead)
         assertFalse(policy.evaluate(15 * day, noTrial,
-            policy.UnconfiguredGateway.verifiedSnapshot()).canRead)
+            NativeCommercialEntitlements.UnconfiguredGateway.verifiedSnapshot()).canRead)
     }
 
     @Test fun lifetimeAndGmailUpgradeRequireVerifiedPlayAndCorrectSkuCombination() {
@@ -69,6 +69,6 @@ class NativeCommercialEntitlementsTest {
         assertFalse(policy.evaluate(40 * day, noTrial,
             verified(active("unrecognized_product"))).canRead)
         assertFalse(policy.evaluate(40 * day, null,
-            policy.UnconfiguredGateway.verifiedSnapshot()).canRead)
+            NativeCommercialEntitlements.UnconfiguredGateway.verifiedSnapshot()).canRead)
     }
 }
