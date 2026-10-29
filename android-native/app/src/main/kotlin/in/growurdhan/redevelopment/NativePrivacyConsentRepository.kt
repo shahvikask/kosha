@@ -1,4 +1,4 @@
-package \`in\`.growurdhan.redevelopment
+package `in`.growurdhan.redevelopment
 
 import net.zetetic.database.sqlcipher.SQLiteDatabase
 

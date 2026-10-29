@@ -1,4 +1,4 @@
-package \`in\`.growurdhan.redevelopment
+package `in`.growurdhan.redevelopment
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
