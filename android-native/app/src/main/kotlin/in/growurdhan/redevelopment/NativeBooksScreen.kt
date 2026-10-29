@@ -559,6 +559,7 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                             }
                         }
                         NativeGmailOptInCard(email, books, data.people)
+                        NativeBillingStatusNotice()
                         NativePrivateDiagnosticsSettings(email, diagnostics)
                     }
                     "Records" -> key(ownerFilter) {
