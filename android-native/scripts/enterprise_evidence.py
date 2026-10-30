@@ -23,7 +23,11 @@ SECRETS = [
     re.compile(r"ghp_[A-Za-z0-9]{36}"),
     re.compile(r"AIza[A-Za-z0-9_\-]{35}"),
 ]
-EGRESS_CALLS = re.compile(r"\.openConnection\s*\(|BillingClient\.newBuilder\s*\(|OkHttpClient\s*\(")
+EGRESS_CALLS = re.compile(
+    r"\.openConnection\s*\(|\.openStream\s*\(|BillingClient\.newBuilder\s*\(|"
+    r"OkHttpClient\s*\(|\bSocket\s*\(|\bDatagramSocket\s*\(|"
+    r"\.loadUrl\s*\(|\bRetrofit\.Builder\s*\(|\bHttpClient\.newHttpClient\s*\("
+)
 EGRESS_FILES = {
     "NativeAmfiNavCatalog.kt": "AMFI manual NAV GET",
     "NativeExchangeEodDownloader.kt": "NSE/BSE manual close GET",

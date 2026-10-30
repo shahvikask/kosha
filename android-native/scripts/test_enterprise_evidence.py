@@ -38,6 +38,15 @@ class EvidenceTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 audit_sources(root)
             (app / "UnexpectedUploader.kt").unlink()
+            # Alternate HTTP/socket/WebView patterns must not silently evade E18.
+            for source in ("url.openStream()", 'Socket("example.org", 443)',
+                           "DatagramSocket(4040)", "WebView.loadUrl(address)",
+                           "Retrofit.Builder()", "HttpClient.newHttpClient()",
+                           "OkHttpClient()"):
+                (app / "UnexpectedUploader.kt").write_text(source)
+                with self.assertRaises(ValueError):
+                    audit_sources(root)
+            (app / "UnexpectedUploader.kt").unlink()
             manifest.write_text('<application android:allowBackup="true"/>')
             with self.assertRaises(ValueError):
                 audit_sources(root)
