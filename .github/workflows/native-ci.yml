@@ -242,6 +242,12 @@ jobs:
         with:
           ref: ${{ needs.preflight.outputs.target }}
           persist-credentials: false
+      - name: Retrieve same-run JVM security evidence
+        if: needs.jvm.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: native-ci-jvm-${{ github.run_id }}
+          path: original-jvm-artifact
       - name: Retrieve same-run original emulator evidence
         if: needs.preflight.outputs.tier != 'T1' && needs.android.result == 'success'
         uses: actions/download-artifact@v4

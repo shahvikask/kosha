@@ -71,6 +71,17 @@ def main():
     result = create_summary(e["TARGET_SHA"], e["TIER"], e["TESTS"],
                             e["PREFLIGHT"], e["JVM"], e["ANDROID"],
                             e["GITHUB_RUN_ID"], folder)
+    evidence = Path("original-jvm-artifact/native-enterprise-evidence/quality-evidence.json")
+    if not evidence.is_file():
+        raise ValueError("Same-run JVM security evidence absent")
+    quality = json.loads(evidence.read_text(encoding="utf-8"))
+    if quality.get("tested_sha") != result["sha"]:
+        raise ValueError("Security evidence belongs to a different source")
+    advisory = quality.get("checks", {}).get("externalVulnerabilityAdvisoryScan")
+    if advisory not in {"NOT_RUN", "NO_OSV_ADVISORIES_REPORTED",
+                        "REVIEW_FINDINGS", "UNAVAILABLE_OR_INCOMPLETE", "INCOMPLETE"}:
+        raise ValueError("Unrecognized advisory verification status")
+    result["gates"]["externalAdvisoryScan"] = advisory
     Path("native-summary.json").write_text(json.dumps(result, sort_keys=True, indent=2) + "\n")
     print(json.dumps({"sha": result["sha"], "tier": result["tier"],
                       "verification": result["verification"], "releaseReady": False}))
