@@ -104,9 +104,9 @@ internal fun NativeRecordedFinanceCard(email: String, books: NativeBooksReposito
             Text("Liabilities: ${exposure.liabilityRecordCountExcluded} record(s) " +
                 "excluded from assets; loan value is never netted into this subtotal.",
                 modifier = Modifier.testTag("e09-liability-separated"))
-            Text("Goal progress N/A without a complete, explicit holding-to-goal " +
-                "valuation and target review. Contributions and expenses N/A: " +
-                "buy/sell entries are not proof of bank cash movements.",
+            Text("Goal progress requires complete linked dated valuations; " +
+                "contributions and expenses appear only if separately disclosed below. " +
+                "Buys and sells never prove bank cash movements.",
                 modifier = Modifier.testTag("e09-unverified-series"))
             for (row in NativeE09Analytics.recordedYears(view.incomeByCalendarYear,
                 view.realizedByCalendarYear)) {

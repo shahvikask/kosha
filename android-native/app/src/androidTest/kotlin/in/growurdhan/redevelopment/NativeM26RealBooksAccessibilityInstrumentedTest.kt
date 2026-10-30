@@ -73,6 +73,9 @@ class NativeM26RealBooksAccessibilityInstrumentedTest {
                 "MUTUAL_FUND", "Hybrid fund", 100_000_000L, 1_010_000L,
                 java.time.LocalDate.now().toString(), true))
 
+        books.recordManualCash(credentials.email, primary,
+            `in`.growurdhan.model.NativeE09Analytics.CashKind.CONTRIBUTION,
+            "2025-01-15", 1200000L, "Owner-entered")
         compose.setContent {
             GudTheme(darkTheme = darkTheme) {
                 CompositionLocalProvider(LocalDensity provides Density(1f, 2f)) {
@@ -108,6 +111,12 @@ class NativeM26RealBooksAccessibilityInstrumentedTest {
         compose.onNodeWithTag("m29-finance-category-MUTUAL_FUND").assertExists()
         compose.onNodeWithTag("m29-finance-income-empty").assertExists()
         compose.onNodeWithTag("e09-liability-separated").assertExists()
+        compose.waitUntil(30_000) {
+            compose.onAllNodes(hasTestTag("e09-cash-year-2025"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("e09-cash-year-2025").assertExists()
+        compose.onNodeWithTag("e09-cash-scope").assertExists()
         compose.onNodeWithTag("e09-unverified-series").assertExists()
         compose.onNodeWithTag("e09-concentration-title").assertExists()
         compose.onNodeWithTag("e09-category-MUTUAL_FUND").assertExists()

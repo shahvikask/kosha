@@ -199,6 +199,7 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                         }
                         key(email, ownerFilter) {
                             NativeRecordedFinanceCard(email, books, ownerFilter, data.holdings)
+                            NativeE09ManualCashCard(email, books, ownerFilter)
                             NativeHybridExposureCard(email, books, data.holdings, ownerFilter)
                         }
                     }

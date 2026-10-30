@@ -48,6 +48,39 @@ class NativeE09AnalyticsTest {
             NativeE09Analytics.recordedYears(mapOf(2025 to b(-1)), emptyMap())
         }
     }
+    @Test fun explicitCashGoldensStayExactAndSeparateContributionExpense() {
+        val a = NativeE09Analytics.CashEntry("a", "owner",
+            NativeE09Analytics.CashKind.CONTRIBUTION, "2025-01-01", 123456789L, "")
+        val second = a.copy(id = "b", amountMinor = 77777777L, day = "2025-12-31")
+        val c = a.copy(id = "c", kind = NativeE09Analytics.CashKind.EXPENSE,
+            day = "2025-04-15", amountMinor = 50000000L)
+        val d = c.copy(id = "d", day = "2024-01-01", amountMinor = 1L)
+        val years = NativeE09Analytics.manualCashYears(listOf(d, c, second, a), "owner")
+        assertEquals(listOf(2024, 2025), years.map { it.year })
+        assertEquals(b(0), years[0].contributionMinor)
+        assertEquals(b(1), years[0].expenseMinor)
+        assertEquals(b(201234566L), years[1].contributionMinor)
+        assertEquals(b(50000000L), years[1].expenseMinor)
+        val max = a.copy(amountMinor = Long.MAX_VALUE)
+        assertEquals(BigInteger.valueOf(Long.MAX_VALUE).multiply(b(2)),
+            NativeE09Analytics.manualCashYears(
+                listOf(max, max.copy(id = "other")), "owner").single().contributionMinor)
+        assertTrue(NativeE09Analytics.manualCashYears(emptyList(), "owner").isEmpty())
+    }
+    @Test fun explicitCashFailsClosedOnCorruptForeignDuplicateData() {
+        val row = NativeE09Analytics.CashEntry("a", "owner",
+            NativeE09Analytics.CashKind.CONTRIBUTION, "2025-02-01", 1L, "")
+        for (bad in listOf(row.copy(ownerId = "foreign"), row.copy(amountMinor = -1),
+            row.copy(day = "2025-02-30"), row.copy(note = "\\n"))) {
+            assertThrows(Exception::class.java) {
+                NativeE09Analytics.manualCashYears(listOf(bad), "owner")
+            }
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            NativeE09Analytics.manualCashYears(listOf(row, row), "owner")
+        }
+    }
+
     @Test fun unpricedGoalsNeverDisplayInventedProgress() {
         assertNull(NativeE09Analytics.verifiedGoalProgress(b(100), b(90), false))
         assertNull(NativeE09Analytics.verifiedGoalProgress(null, b(0), true))

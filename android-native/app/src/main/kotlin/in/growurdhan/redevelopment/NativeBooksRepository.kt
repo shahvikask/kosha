@@ -1208,6 +1208,63 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
         }
 
     /**
+     * Explicit manual evidence in SQLCipher settings; new UUID INSERTs only.
+     * It is not a verified bank transaction or holding-ledger event.
+     */
+    fun recordManualCash(email: String, ownerId: String,
+        kind: `in`.growurdhan.model.NativeE09Analytics.CashKind,
+        dateText: String, amountMinor: Long, note: String = ""): String =
+        accounts.withUnlockedVault(email) { db ->
+            requirePerson(db, ownerId)
+            val date = LocalDate.parse(dateText)
+            require(date.toString() == dateText && date.year in 1900..2200 &&
+                !date.isAfter(LocalDate.now()) && amountMinor > 0L)
+            val memo = note.trim()
+            require(memo.length <= 120 && memo.none { it.isISOControl() })
+            val id = newId()
+            val json = org.json.JSONObject().put("version", 1).put("id", id)
+                .put("ownerId", ownerId).put("kind", kind.name).put("day", dateText)
+                .put("amountMinor", amountMinor).put("note", memo).toString()
+            db.execSQL("INSERT INTO setting(key,value) VALUES(?,?)",
+                arrayOf<Any>("native.e09.cash.v1.$id", json))
+            id
+        }
+
+    fun recordedManualCash(email: String, memberId: String):
+        List<`in`.growurdhan.model.NativeE09Analytics.CashEntry> =
+        accounts.withUnlockedVault(email) { db ->
+            if (memberId.isNotEmpty()) requirePerson(db, memberId)
+            val prefix = "native.e09.cash.v1."
+            val entries = mutableListOf<
+                `in`.growurdhan.model.NativeE09Analytics.CashEntry>()
+            db.rawQuery("SELECT key,value FROM setting WHERE key LIKE ? ORDER BY key",
+                arrayOf("$prefix%")).use { c ->
+                while (c.moveToNext()) {
+                    val key = c.getString(0)
+                    require(key.startsWith(prefix))
+                    val json = org.json.JSONObject(c.getString(1))
+                    require(json.getInt("version") == 1 &&
+                        json.getString("id") == key.removePrefix(prefix)) {
+                        "Invalid manual cash record identity"
+                    }
+                    val owner = json.getString("ownerId")
+                    requirePerson(db, owner)
+                    val amount = json.get("amountMinor").toString().toLongOrNull()
+                        ?: throw IllegalArgumentException("Invalid cash amount")
+                    entries += `in`.growurdhan.model.NativeE09Analytics.CashEntry(
+                        json.getString("id"), owner,
+                        `in`.growurdhan.model.NativeE09Analytics.CashKind.valueOf(
+                            json.getString("kind")),
+                        json.getString("day"), amount, json.getString("note"))
+                }
+            }
+            // Validate all before filtering; do not publish partial aggregates.
+            `in`.growurdhan.model.NativeE09Analytics.manualCashYears(entries, "")
+            entries.filter { memberId.isEmpty() || it.ownerId == memberId }
+                .sortedWith(compareBy({ it.day }, { it.id }))
+        }
+
+    /**
      * E09 goal progress from one authenticated SQLCipher snapshot. An ownerless
      * household goal is visible only in Whole household mode; a member lens
      * can never leak another member's goal or its linked valuation.

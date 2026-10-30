@@ -207,6 +207,67 @@ class NativeBooksRepositoryInstrumentedTest {
         }
     }
 
+    @Test fun e09ManualCashIsOwnerScopedExactAndEncryptedRestartSafe() {
+        val ctx = sandbox()
+        val (accounts, books) = create(ctx)
+        val owner = books.read(input.email).people.single().id
+        val foreign = books.createPerson(input.email,
+            NativeBooksRepository.NewPerson("Other cash owner", "Spouse"))
+        val snapshot = books.read(input.email)
+        val contribution = `in`.growurdhan.model.NativeE09Analytics.CashKind.CONTRIBUTION
+        val expense = `in`.growurdhan.model.NativeE09Analytics.CashKind.EXPENSE
+        val first = books.recordManualCash(input.email, owner, contribution,
+            "2025-01-12", 1234567L, "Owner disclosed")
+        books.recordManualCash(input.email, owner, contribution,
+            "2025-04-15", 7654321L)
+        books.recordManualCash(input.email, owner, expense,
+            "2025-05-16", 200000L)
+        books.recordManualCash(input.email, foreign, expense,
+            "2024-05-16", 9000000L)
+        assertThrows(IllegalArgumentException::class.java) {
+            books.recordManualCash(input.email, owner, expense, "2025-01-01", 0L)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            books.recordManualCash(input.email, "missing", expense, "2025-01-01", 1L)
+        }
+        assertThrows(Exception::class.java) {
+            books.recordManualCash(input.email, owner, expense, "2025-02-30", 1L)
+        }
+        val mine = books.recordedManualCash(input.email, owner)
+        assertEquals(3, mine.size)
+        assertTrue(mine.all { it.ownerId == owner })
+        val year = `in`.growurdhan.model.NativeE09Analytics
+            .manualCashYears(mine, owner).single()
+        assertEquals(2025, year.year)
+        assertEquals(java.math.BigInteger.valueOf(8888888L), year.contributionMinor)
+        assertEquals(java.math.BigInteger.valueOf(200000L), year.expenseMinor)
+        assertEquals(4, books.recordedManualCash(input.email, "").size)
+        assertEquals(1, books.recordedManualCash(input.email, foreign).size)
+        assertEquals(snapshot.holdings, books.read(input.email).holdings)
+        accounts.onBackground()
+        assertThrows(Exception::class.java) {
+            books.recordedManualCash(input.email, owner)
+        }
+        val reopened = NativeAccountRepository(ctx, gate())
+        assertTrue(reopened.login(input.email, input.password))
+        val restored = NativeBooksRepository(reopened)
+        assertEquals(mine, restored.recordedManualCash(input.email, owner))
+        assertEquals(snapshot.holdings, restored.read(input.email).holdings)
+        reopened.withUnlockedVault(input.email) { db ->
+            val corrupt = org.json.JSONObject().put("version", 1).put("id", first)
+                .put("ownerId", owner).put("kind", "CONTRIBUTION")
+                .put("day", "2025-01-12").put("amountMinor", -1).put("note", "")
+            db.execSQL("UPDATE setting SET value=? WHERE key=?",
+                arrayOf<Any>(corrupt.toString(), "native.e09.cash.v1.$first"))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            restored.recordedManualCash(input.email, owner)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            restored.recordedManualCash(input.email, "")
+        }
+    }
+
     @Test fun p24ReviewedHybridSplitIsEncryptedScopedAndDoesNotPostFinancialEvents() {
         val context = sandbox()
         val (accounts, books) = create(context)

@@ -1,6 +1,7 @@
 package `in`.growurdhan.model
 
 import java.math.BigInteger
+import java.time.LocalDate
 
 /**
  * E09 exact, READ-ONLY concentration on already admissible priced assets.
@@ -51,6 +52,31 @@ object NativeE09Analytics {
         val basisPoints: Int? get() = NativeE09Analytics.verifiedGoalProgress(targetMinor,
             completeValuedMinor, linkedHoldingCount > 0 &&
                 excludedLinkedHoldings == 0)
+    }
+
+    /** Explicit owner-entered cash evidence, not a verified bank or investment transaction. */
+    enum class CashKind { CONTRIBUTION, EXPENSE }
+    data class CashEntry(val id: String, val ownerId: String, val kind: CashKind,
+        val day: String, val amountMinor: Long, val note: String)
+    data class CashYear(val year: Int, val contributionMinor: BigInteger,
+        val expenseMinor: BigInteger)
+    fun manualCashYears(rows: List<CashEntry>, memberId: String): List<CashYear> {
+        require(rows.map { it.id }.distinct().size == rows.size)
+        val years = sortedMapOf<Int, Pair<BigInteger, BigInteger>>()
+        for (r in rows) {
+            require(r.id.isNotBlank() && r.ownerId.isNotBlank() &&
+                (memberId.isEmpty() || memberId == r.ownerId) && r.amountMinor > 0 &&
+                r.note.length <= 120 && r.note.none { it.isISOControl() })
+            val date = LocalDate.parse(r.day)
+            require(date.toString() == r.day && date.year in 1900..2200)
+            val p = years[date.year] ?: (BigInteger.ZERO to BigInteger.ZERO)
+            val cash = BigInteger.valueOf(r.amountMinor)
+            years[date.year] = when (r.kind) {
+                CashKind.CONTRIBUTION -> (p.first + cash) to p.second
+                CashKind.EXPENSE -> p.first to (p.second + cash)
+            }
+        }
+        return years.map { (year, cash) -> CashYear(year, cash.first, cash.second) }
     }
 
     data class Year(val year: Int, val recordedIncomeMinor: BigInteger,
