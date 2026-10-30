@@ -110,7 +110,7 @@ New-chat prompt the owner pastes (replaces §17.5/17.7):
 Seed written by Claude on 2026-10-28 from repo docs. FIRST SESSION: verify B1–B3 against GitHub Actions and fix any mismatch before relying on them.
 
 ## B1 Header
-branch GUD-Android-Redevelopment · checkpoint_sha `829e4f84578e75a46c866642c4013084c18fb6d2` (E15/E18 T1 request commit) · E09 T1 41079924267 and API35 T2 41080764097 5/5 PASS on source 28a29a90 (A6 reused, no Android dep path changes); E15/E17/E18 T1 41083107361 PASS at tested source 3a366643, offline 4/4 audit checks and partial public Maven OSV with no reported advisories; accepted 0/52 · no formal milestones.
+branch GUD-Android-Redevelopment · checkpoint_sha `979f9f9c5757af784481bc7d4fbdd5238dfc2ba7` (E15/E17/E18 T1 request commit) · E09 API35 41080764097 5/5 reused at 28a29a90 (no changed Android dep paths) · E15/E17/E18 release-candidate source T1 41109760761 PASS at 6b2d8049: 6/6 enterprise + 3/3 summary + 3/3 OSV Python tests, Android Kotlin compile, partial release-Maven OSV no advisories; accepted 0/52 · no formal milestones.
 State codes: ND not started · SP source partial · JV JVM green · EM emulator green · AC accepted · DF deferred (D57).
 
 ## B2 Requirement matrix (split a row when members diverge)
@@ -139,14 +139,15 @@ State codes: ND not started · SP source partial · JV JVM green · EM emulator 
 | P37, E16 | M33 | SP/EM | Play Billing v8 read-only catalog UI and 48dp Settings checks 41004099432 API35 4/4 at 40837e84; T1 41003704910 PASS; verifier leases/JVM goldens. Genuine Play purchases/verification/trial/enforcement owner-blocked |
 | P38–P39 | M33–M34 | ND | Release signoff/pipeline work pending |
 | E09 | M34 | SP/EM | Exact 10000bp category concentration, income/realized years, dated goal progress; explicit self-reported contribution/expense calendar series (not bank-verified) with owner-scoped SQLCipher INSERT-only v9 settings, negative/restart + 360dp 200% light/dark G14. T1 41079924267 PASS, T2 41080764097 5/5 API35 at source 28a29a90, original APK SHA256/ADB inspected. Device/security/owner acceptance open |
-| E15 | M34 | SP/JV | Partial debug CycloneDX, public Maven OSV (NO_OSV_ADVISORIES_REPORTED), local secret scan and expanded fail-closed egress negatives T1 41083107361 source 3a366643 PASS. Full release SBOM, external dependency scans, MASVS threat-model/independent pen test and remediation signoff open |
-| E17 | M34 | SP/EM | Exact-source native CI summary bound to original same-run APK/JVM hash/evidence; E09 API35 41080764097 5/5 original ADB+APK, E15/E18 T1 41083107361 PASS. Summary releaseReady=false; production-signed AAB/fingerprint, full T3, DEVICE, OWNER and signing dashboard acceptance blocked |
-| E18 | M34 | SP/JV | Fixed-destination inventory, RAM-only coarse metrics and offline source guard now rejects unreviewed openStream, Socket/DatagramSocket, WebView loadUrl, Retrofit and Java HttpClient; negative suite 4/4 T1 41083107361 source 3a366643 PASS. Actual network payload/runtime monitor/device privacy audit NOT RUN; external approval open |
+| E15 | M34 | SP/JV | New CycloneDX release candidate from resolved releaseRuntimeClasspath Maven graph plus exact four pinned arm64/x86_64 Android wheel SHA256 and declared pip requirements; tamper/duplicate/missing negative tests, 41109760761 T1 PASS at 6b2d8049, partial public Maven OSV no known reports. PARTIAL_NOT_PRODUCTION_AAB: installed Python transitives, packaged AAB SBOM, full independent pen test/remediation still unverified |
+| E17 | M34 | SP/EM | Same-run exact SHA summary now rejects absent/mismatched release candidate or Maven BOM/wheel hashes and fabricated releaseReady; 41109760761 T1 PASS, original JVM/summary artifacts. E09 prior 41080764097 5/5 API35 reused path-scoped. Real signed production AAB fingerprint, complete release-scope SBOM, full T3 regression, DEVICE and OWNER remain open |
+| E18 | M34 | SP/JV | Fixed-source egress and privacy-safe metrics plus fail-closed network-entrypoint negatives; 41109760761 source T1 PASS, report explicitly networkPayloadInspection NOT_RUN. Actual consenting device network traffic/payload review and independent privacy approval unverified, cannot be inferred from source scan |
 | E14 | all | SP | modular tests partial; acceptance pending |
 
 ## B3 Latest passing runs (SHA = tested source, not request-commit HEAD; older rows archived)
 | run_id | SHA | group |
 |---|---|---|
+| 41109760761 | 6b2d8049 | E15/E17/E18 candidate release inventory T1 PASS (6+3+3 Python tests, Kotlin compile), same-run quality JSON, partial release Maven OSV; request 979f9f9c |
 | 41083107361 | 3a366643 | E15/E17/E18 T1 PASS; extended egress negatives, offline secret check, partial Maven OSV no advisories; request 829e4f84 |
 | 41080764097 | 28a29a90 | E09 manual cash + G14 5/5 API35 PASS; app/test APK SHA256, ADB, same-run summary; request aeaca643 |
 | 41079924267 | 28a29a90 | E09 exact manual cash JVM + Android/test compile T1 PASS; request 49730d6f |
@@ -189,12 +190,12 @@ State codes: ND not started · SP source partial · JV JVM green · EM emulator 
 10. M28 EM: synthetic CAS; real CAS/ARM64 blocked.
 11. M30 EM: priced-feed UI; actual network/device blocked.
 12. M31 EM: dossier/settings/privacy; owner/device blocked.
-13. E09: T1 41079924267 and API35 T2 41080764097 5/5 PASS at source 28a29a90, original APK+ADB checked; A6 reuse at 829e4f84 checked: no Android core/main/test/gradle dependency changes. E15/E17/E18: expanded fail-closed offline network source guard and negative tests T1 41083107361 at source 3a366643 PASS, partial Maven OSV no advisories. NOT ACCEPTED: full release SBOM, independent MASVS pen test/remediation, runtime network payload review, real production AAB signer, full T3, physical DEVICE, genuine Play/Gmail/Privacy/owner sign-offs. All owner gates preserved.
+13. E09 evidence retained: 41080764097 5/5 API35 at 28a29a90 reused by A6 (no Android dependency changed). E15/E17/E18 candidate release graph + pinned 4 wheel SHA256, Python direct requirement annotations, negative release BOM/signer/source egress tests; fixed output defect with explicit regression. Original first T1 41108889812 FAILED (release BOM missing), corrected source 6b2d8049 T1 41109760761 SUCCESS: JVM + 6 enterprise/3 summary/3 OSV tests + exact-source JSON, Maven OSV NO_OSV_ADVISORIES_REPORTED. Candidate NOT complete signed production SBOM, no real network payload audit or independent penetration test. Next release gate requires actual signed AAB, approved cert/keys, device/Play test fixture, external security assessor and owner visual/legal signoffs; no SECURITY/DEVICE/OWNER acceptance.
 14. BLOCKED-OWNER: Gmail OAuth, genuine Play purchase verification, final Privacy Policy, approved signing fingerprint/keys, actual ARM64 device and CAS evidence, independent AppSec/pen test, G14 owner sign-off.
 Process P0 completed: unified native-ci T1/T2; 54 old workflows archived.
 
 ## B5 Blockers needing the owner
-Gmail OAuth project/credentials; Play Billing products/test accounts; upload/signing keys; physical ARM64 phone + genuine CAS statements; production property/PPF/SSY/valuer trust roots; independent AppSec reviewer; G14 screenshot approval. (O1–O5 are already ticked via owner delegation; workflow triggering uses `.ci/request.json`.)
+Gmail OAuth project/credentials; genuine Play Console products/license-test identities + verifier service configuration; production AAB signing keys and owner-approved SHA256 certificate fingerprint via secure secrets (never chat); physical ARM64 phone + genuine owner-authorized CAS and consented network capture; independent AppSec/MASVS penetration tester and remediation evidence; owner/legal Privacy Policy and G14 visual acceptance. No external gate can be closed by a mocked test.
 
 ## B6 Do-not-redo list
 - Do not re-audit rows marked SP in B2; do not re-run green jobs for unchanged dependency paths (A6 once O3 ticked).
@@ -205,4 +206,4 @@ Gmail OAuth project/credentials; Play Billing products/test accounts; upload/sig
 P35/E07: SOURCE `82ec5b76`; 5 new Android tests not run. Active M29 T2 `40919538632` remains NOT VERIFIED. No parallel native CI.
 
 ## B7 Open risks
-Evidence path/SHA scoped: E09 T2 41080764097 tested source 28a29a90, A6 dependency paths unchanged through 829e4f84 (only .ci/request, scripts, docs); reused, not new Android proof. E15/E17/E18 latest T1 41083107361 tested source 3a366643; partial OSV no-advisory result does NOT certify full AppSec. No physical-device, runtime egress validation, full release regression, production signer or owner signoff; 0 formal acceptances. Next unblocked: define and verify full release-scope inventory/quality source gates without owner tokens; independent reviewer and owner approvals remain blocked.
+Evidence path/SHA scoped: E09 API35 reused 41080764097 at 28a29a90, Android deps unchanged to 979f9f9c; E15/E17/E18 latest T1 41109760761 tested 6b2d8049 (not request HEAD), original first attempt 41108889812 failed on release BOM output and repaired. Candidate release Maven + four exact wheel hash inventory is PARTIAL_NOT_PRODUCTION_AAB; Python transitives/Chaquopy runtime, final signed AAB SBOM, live network payload capture, independent pen test, production signer, T3/full regression, ARM64 physical DEVICE and OWNER remain NOT VERIFIED. 0 formal acceptances; do not promote SOURCE/JVM to SECURITY/OWNER.
