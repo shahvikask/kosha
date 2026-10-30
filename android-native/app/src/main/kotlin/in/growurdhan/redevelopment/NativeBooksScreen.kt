@@ -247,6 +247,9 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
                     }
                     "Goals" -> {
                         Text("Family goals", style = MaterialTheme.typography.titleLarge)
+                        key(email, ownerFilter) {
+                            NativeE09GoalProgressCard(email, books, ownerFilter, data.holdings)
+                        }
                         data.goals.filter { ownerFilter.isEmpty() || it.personId == null ||
                             it.personId == ownerFilter }.forEach { g ->
                             Text("${g.name} • ${g.targetMinor?.let {

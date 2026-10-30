@@ -161,6 +161,52 @@ class NativeBooksRepositoryInstrumentedTest {
         }
     }
 
+    @Test fun e09GoalProgressIsExactOwnerScopedAndEncryptedRestartSafe() {
+        val ctx = sandbox()
+        val (accounts, books) = create(ctx)
+        val owner = books.read(input.email).people.single().id
+        val stranger = books.createPerson(input.email,
+            NativeBooksRepository.NewPerson("Unlinked member", "Spouse"))
+        val day = LocalDate.now().toString()
+        val goal = books.createGoal(input.email, owner, "Verified short-term goal",
+            100_000L, day, "MEDIUM")
+        val foreignGoal = books.createGoal(input.email, stranger, "Foreign target",
+            500_000L, day, "LOW")
+        val priced = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, null, "Goal equity", "EQUITY", "Other",
+            100_000_000L, 30_000L, day, true))
+        books.assignGoal(input.email, priced, goal)
+        val good = books.recordedGoalProgress(input.email, owner).single()
+        assertEquals(goal, good.id)
+        assertEquals(3000, good.basisPoints)
+        assertEquals(java.math.BigInteger.valueOf(30_000L), good.completeValuedMinor)
+        assertTrue(books.recordedGoalProgress(input.email, stranger).single().run {
+            id == foreignGoal && basisPoints == null
+        })
+        assertThrows(IllegalArgumentException::class.java) {
+            books.assignGoal(input.email, priced, foreignGoal)
+        }
+        val stale = books.createHolding(input.email, NativeBooksRepository.NewHolding(
+            owner, null, "Unpriced goal position", "EQUITY", "Other",
+            100_000_000L, 0L, day, false))
+        books.assignGoal(input.email, stale, goal)
+        val incomplete = books.recordedGoalProgress(input.email, owner).single()
+        assertNull(incomplete.basisPoints)
+        assertNull(incomplete.completeValuedMinor)
+        assertEquals(1, incomplete.excludedLinkedHoldings)
+        accounts.onBackground()
+        assertThrows(Exception::class.java) {
+            books.recordedGoalProgress(input.email, owner)
+        }
+        val reopened = NativeAccountRepository(ctx, gate())
+        assertTrue(reopened.login(input.email, input.password))
+        assertEquals(incomplete, NativeBooksRepository(reopened)
+            .recordedGoalProgress(input.email, owner).single())
+        assertThrows(IllegalArgumentException::class.java) {
+            NativeBooksRepository(reopened).recordedGoalProgress(input.email, "unknown-owner")
+        }
+    }
+
     @Test fun p24ReviewedHybridSplitIsEncryptedScopedAndDoesNotPostFinancialEvents() {
         val context = sandbox()
         val (accounts, books) = create(context)

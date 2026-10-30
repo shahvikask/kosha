@@ -43,6 +43,16 @@ object NativeE09Analytics {
             excludedLiabilities)
     }
 
+    data class GoalProgress(
+        val id: String, val name: String, val targetMinor: BigInteger?,
+        val linkedHoldingCount: Int, val excludedLinkedHoldings: Int,
+        val completeValuedMinor: BigInteger?
+    ) {
+        val basisPoints: Int? get() = verifiedGoalProgress(targetMinor,
+            completeValuedMinor, linkedHoldingCount > 0 &&
+                excludedLinkedHoldings == 0)
+    }
+
     data class Year(val year: Int, val recordedIncomeMinor: BigInteger,
         val realizedKnownMinor: BigInteger)
     /** Cash contributions/expenses are not inferred from holdings transactions. */

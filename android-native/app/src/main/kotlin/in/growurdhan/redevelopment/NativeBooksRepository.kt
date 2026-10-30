@@ -1207,6 +1207,84 @@ internal class NativeBooksRepository(private val accounts: NativeAccountReposito
             NativeRecordedFinanceReport.summarize(rows, memberId, asOf)
         }
 
+    /**
+     * E09 goal progress from one authenticated SQLCipher snapshot. An ownerless
+     * household goal is visible only in Whole household mode; a member lens
+     * can never leak another member's goal or its linked valuation.
+     */
+    fun recordedGoalProgress(email: String, memberId: String,
+        asOf: LocalDate = LocalDate.now()
+    ): List<`in`.growurdhan.model.NativeE09Analytics.GoalProgress> =
+        accounts.withUnlockedVault(email) { db ->
+            if (memberId.isNotEmpty()) requirePerson(db, memberId)
+            val progress = mutableListOf<`in`.growurdhan.model.NativeE09Analytics.GoalProgress>()
+            db.rawQuery("SELECT g.goal_id,g.entity_id,g.name,g.target_minor " +
+                "FROM goal g LEFT JOIN entity e ON e.entity_id=g.entity_id " +
+                "WHERE (g.entity_id IS NULL OR e.is_active=1) " +
+                "AND (?='' OR g.entity_id=?) ORDER BY g.name,g.goal_id",
+                arrayOf(memberId, memberId)).use { goals ->
+                while (goals.moveToNext()) {
+                    val id = goals.getString(0)
+                    val owner = if (goals.isNull(1)) null else goals.getString(1)
+                    val title = goals.getString(2)
+                    val target = if (goals.isNull(3)) null else
+                        BigInteger.valueOf(goals.getLong(3))
+                    var linked = 0
+                    var excluded = 0
+                    var valued = BigInteger.ZERO
+                    var eligible = true
+                    db.rawQuery("SELECT h.holding_id,h.entity_id,i.category," +
+                        "h.current_price_minor,h.last_price_updated,h.price_source," +
+                        "h.needs_review,h.account_id FROM holding h " +
+                        "JOIN instrument i ON i.instrument_id=h.instrument_id " +
+                        "WHERE h.tag=? ORDER BY h.holding_id", arrayOf(id)).use { h ->
+                        while (h.moveToNext()) {
+                            linked++
+                            val holdingId = h.getString(0)
+                            val holdingOwner = h.getString(1)
+                            // In particular, do not silently discard an inconsistent
+                            // foreign-owner tag and report a misleading partial total.
+                            require(owner == null || holdingOwner == owner) {
+                                "Foreign member goal link"
+                            }
+                            if (memberId.isNotEmpty()) require(holdingOwner == memberId) {
+                                "Foreign holding linked to member goal"
+                            }
+                            val account = if (h.isNull(7)) null else h.getString(7)
+                            requireCustody(db, holdingOwner, account)
+                            val archived = db.rawQuery(
+                                "SELECT value FROM setting WHERE key=?",
+                                arrayOf("native.holding.archived.$holdingId")).use { v ->
+                                v.moveToFirst() && v.getString(0) == "1"
+                            }
+                            val fold = NativePortfolioMath.fold(
+                                readRawEvents(db, holdingId), h.getString(2))
+                            require(fold.errors.isEmpty()) { "Invalid linked goal ledger" }
+                            val date = if (h.isNull(4)) null else runCatching {
+                                LocalDate.parse(h.getString(4))
+                            }.getOrNull()
+                            val age = date?.let { java.time.temporal.ChronoUnit.DAYS.between(it, asOf) }
+                            val price = h.getLong(3)
+                            val valid = !archived && h.getString(2) != "LIABILITY" &&
+                                h.getInt(6) == 0 && fold.quantityScaled > 0 &&
+                                price > 0 && !h.isNull(5) && h.getString(5).isNotBlank() &&
+                                age != null && age in 0L..44L
+                            if (!valid) {
+                                eligible = false
+                                excluded++
+                            } else valued += BigInteger.valueOf(fold.quantityScaled)
+                                .multiply(BigInteger.valueOf(price))
+                                .divide(BigInteger.valueOf(100_000_000L))
+                        }
+                    }
+                    progress += `in`.growurdhan.model.NativeE09Analytics.GoalProgress(
+                        id, title, target, linked, excluded,
+                        if (eligible && linked > 0) valued else null)
+                }
+            }
+            progress
+        }
+
     companion object {
         /** Decimal input is converted once to exact scaled integers; never via Double. */
         fun parseMinor(display: String, scale: Int): Long =
