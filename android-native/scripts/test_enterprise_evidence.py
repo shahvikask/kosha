@@ -103,6 +103,26 @@ class EvidenceTests(unittest.TestCase):
             self.assertEqual("PARTIAL_NOT_PRODUCTION_AAB",
                 candidate["metadata"]["properties"][0]["value"])
             self.assertEqual("a" * 40, candidate["metadata"]["component"]["version"])
+            app = root / "android-native/app/src/main/kotlin/test"
+            app.mkdir(parents=True)
+            manifest = root / "android-native/app/src/main/AndroidManifest.xml"
+            manifest.parent.mkdir(parents=True, exist_ok=True)
+            manifest.write_text('<application android:allowBackup="false"/>')
+            for name, entry in (("NativeAmfiNavCatalog.kt", "url.openConnection()"),
+                                ("NativeExchangeEodDownloader.kt", "url.openConnection()"),
+                                ("NativePlayCatalogProbe.kt", "BillingClient.newBuilder(ctx)")):
+                (app / name).write_text(entry)
+            debug = root / "debug.txt"
+            debug.write_text("debugRuntimeClasspath\n+--- org.example:lib:1.0\n")
+            out = root / "out"
+            write_audit(root, debug, "a" * 40, out, graph, wheels)
+            for generated in ("release-candidate-sbom.json", "release-maven-sbom.json"):
+                self.assertTrue((out / generated).is_file())
+                self.assertEqual("a" * 40,
+                    json.loads((out / generated).read_text())["metadata"]
+                    ["component"]["version"])
+            self.assertFalse(json.loads((out / "quality-evidence.json").read_text())
+                             ["releaseReady"])
             (wheels / names[0].split()[-1]).write_bytes(b"tampered")
             with self.assertRaises(ValueError):
                 verified_release_wheels(wheels)

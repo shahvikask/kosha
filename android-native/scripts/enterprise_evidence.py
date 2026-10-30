@@ -259,6 +259,11 @@ def write_audit(root: Path, report: Path, sha: str, out: Path,
         "noHouseholdBackend": "Source inventory only; independent runtime review required",
     }
     (out / "debug-runtime-sbom.json").write_text(json.dumps(sbom, sort_keys=True, indent=2) + "\n")
+    if release is not None:
+        (out / "release-maven-sbom.json").write_text(
+            json.dumps(release[0], sort_keys=True, indent=2) + "\n")
+        (out / "release-candidate-sbom.json").write_text(
+            json.dumps(release[1], sort_keys=True, indent=2) + "\n")
     (out / "quality-evidence.json").write_text(json.dumps(evidence, sort_keys=True, indent=2) + "\n")
 
 
