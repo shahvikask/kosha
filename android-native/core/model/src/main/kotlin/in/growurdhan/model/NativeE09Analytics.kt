@@ -48,7 +48,7 @@ object NativeE09Analytics {
         val linkedHoldingCount: Int, val excludedLinkedHoldings: Int,
         val completeValuedMinor: BigInteger?
     ) {
-        val basisPoints: Int? get() = verifiedGoalProgress(targetMinor,
+        val basisPoints: Int? get() = NativeE09Analytics.verifiedGoalProgress(targetMinor,
             completeValuedMinor, linkedHoldingCount > 0 &&
                 excludedLinkedHoldings == 0)
     }
