@@ -144,11 +144,22 @@ jobs:
           set -euo pipefail
           chmod +x gradlew
           ./gradlew :core:model:test :core:database:test :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin --build-cache --no-daemon -x lint
+      - name: E15/E17/E18 offline dependency, secret and egress evidence
+        shell: bash
+        env:
+          TARGET_SHA: ${{ needs.preflight.outputs.target }}
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s android-native/scripts -p 'test_enterprise_evidence.py' -v
+          (cd android-native && ./gradlew :app:dependencies --configuration debugRuntimeClasspath --no-daemon --console=plain) > native-debug-deps.txt
+          python3 android-native/scripts/enterprise_evidence.py audit --root . --dependencies native-debug-deps.txt --sha "$TARGET_SHA" --out native-enterprise-evidence
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: native-ci-jvm-${{ github.run_id }}
-          path: android-native/core/*/build/test-results/test/TEST-*.xml
+          path: |
+            android-native/core/*/build/test-results/test/TEST-*.xml
+            native-enterprise-evidence/*.json
           if-no-files-found: warn
   android:
     if: needs.preflight.outputs.tier != 'T1'
