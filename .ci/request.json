@@ -1,6 +1,6 @@
 {
   "sha": "9d678f4e6c880740d4a5f4c66848177cc4534d70",
-  "tier": "T1",
-  "tests": "",
+  "tier": "T2",
+  "tests": "in.growurdhan.redevelopment.NativeBooksRepositoryInstrumentedTest#e09GoalProgressIsExactOwnerScopedAndEncryptedRestartSafe,in.growurdhan.redevelopment.NativeM26RealBooksAccessibilityInstrumentedTest",
   "api": 35
 }
