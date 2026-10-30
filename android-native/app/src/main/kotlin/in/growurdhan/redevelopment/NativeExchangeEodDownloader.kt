@@ -50,6 +50,10 @@ internal object NativeExchangeEodDownloader {
                     }
                     out.toByteArray()
                 }
+            } catch (err: java.io.IOException) {
+                `in`.growurdhan.model.NativePrivacySafeMetrics.record(
+                    `in`.growurdhan.model.NativePrivacySafeMetrics.Event.OFFLINE_FETCH_FAILURE)
+                throw err
             } finally { conn.disconnect() }
         }
         return NativeExchangeEodCatalog.parse(bytes, source)

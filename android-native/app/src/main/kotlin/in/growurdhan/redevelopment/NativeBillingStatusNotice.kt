@@ -49,6 +49,9 @@ internal fun NativeBillingStatusNotice() {
             val probe = NativePlayCatalogProbe(context)
             pending = probe
             probe.readCatalog { result ->
+                if (result.unavailable)
+                    `in`.growurdhan.model.NativePrivacySafeMetrics.record(
+                        `in`.growurdhan.model.NativePrivacySafeMetrics.Event.PLAY_CATALOG_FAILURE)
                 probing = false
                 pending = null
                 probeStatus = if (result.unavailable)
