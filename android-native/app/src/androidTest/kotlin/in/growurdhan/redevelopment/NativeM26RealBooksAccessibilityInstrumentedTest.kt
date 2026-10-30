@@ -107,6 +107,10 @@ class NativeM26RealBooksAccessibilityInstrumentedTest {
         compose.onNodeWithTag("m29-finance-exclusions").assertExists()
         compose.onNodeWithTag("m29-finance-category-MUTUAL_FUND").assertExists()
         compose.onNodeWithTag("m29-finance-income-empty").assertExists()
+        compose.onNodeWithTag("e09-liability-separated").assertExists()
+        compose.onNodeWithTag("e09-unverified-series").assertExists()
+        compose.onNodeWithTag("e09-concentration-title").assertExists()
+        compose.onNodeWithTag("e09-category-MUTUAL_FUND").assertExists()
         compose.onNodeWithTag("m29-home-categories").assertExists()
         compose.waitUntil(30_000) {
             compose.onAllNodes(hasText("Reviewed hybrid subset: 0 reviewed", substring = true))

@@ -134,6 +134,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val setupStartedMs = android.os.SystemClock.elapsedRealtime()
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         accounts = NativeAccountRepository(applicationContext, admission)
@@ -146,6 +147,9 @@ class MainActivity : ComponentActivity() {
         feedbackState = NativeFeedbackStateRepository(accounts)
         privacyConsent = NativePrivacyConsentRepository(accounts)
         casPdf = NativeCasPdfEngine(applicationContext)
+        `in`.growurdhan.model.NativePrivacySafeMetrics.record(
+            `in`.growurdhan.model.NativePrivacySafeMetrics.Event.COLD_INIT,
+            android.os.SystemClock.elapsedRealtime() - setupStartedMs)
         enableEdgeToEdge()
         setContent {
             GudTheme(darkTheme = themeChoice.useDark(isSystemInDarkTheme())) {

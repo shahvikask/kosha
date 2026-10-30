@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import java.math.BigDecimal
+import `in`.growurdhan.model.NativeE09Analytics
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -79,6 +80,40 @@ internal fun NativeRecordedFinanceCard(email: String, books: NativeBooksReposito
                     Text("$category: ${money(value)}",
                         modifier = Modifier.testTag("m29-finance-category-$category"))
                 }
+            }
+            // E09 concentration is only within the already verified priced
+            // subset for the currently selected SQLCipher owner lens.
+            val exposure = NativeE09Analytics.allocation(
+                view.pricedCategories, view.pricedAssetMinor, view.excludedLiabilities)
+            if (exposure.categories.isEmpty()) {
+                Text("Concentration N/A: no eligible dated priced asset values.",
+                    modifier = Modifier.testTag("e09-concentration-empty"))
+            } else {
+                Text("Priced-asset concentration (10,000 bps = 100% of the " +
+                    "incomplete priced subset, NOT household net worth):",
+                    modifier = Modifier.testTag("e09-concentration-title"))
+                for (part in exposure.categories) {
+                    Text("${part.name}: ${part.basisPoints} / 10,000 bps " +
+                        "(${money(part.pricedMinor)})",
+                        modifier = Modifier.testTag("e09-category-${part.name}"))
+                }
+                Text("Largest recorded priced category: ${exposure.leadingCategory} " +
+                    "(${exposure.leadingBasisPoints} bps)",
+                    modifier = Modifier.testTag("e09-largest"))
+            }
+            Text("Liabilities: ${exposure.liabilityRecordCountExcluded} record(s) " +
+                "excluded from assets; loan value is never netted into this subtotal.",
+                modifier = Modifier.testTag("e09-liability-separated"))
+            Text("Goal progress N/A without a complete, explicit holding-to-goal " +
+                "valuation and target review. Contributions and expenses N/A: " +
+                "buy/sell entries are not proof of bank cash movements.",
+                modifier = Modifier.testTag("e09-unverified-series"))
+            for (row in NativeE09Analytics.recordedYears(view.incomeByCalendarYear,
+                view.realizedByCalendarYear)) {
+                Text("Calendar ${row.year} · recorded income ${money(row.recordedIncomeMinor)} " +
+                    "· known-cost realized gain/loss ${money(row.realizedKnownMinor)} " +
+                    "(no expense or tax inference)",
+                    modifier = Modifier.testTag("e09-year-${row.year}"))
             }
             if (view.incomeByCalendarYear.isEmpty()) {
                 Text("No recorded dividends or interest (not proof of zero income).",
