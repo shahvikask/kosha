@@ -189,6 +189,20 @@ class NativeM26RealBooksAccessibilityInstrumentedTest {
         compose.onNodeWithTag("m31-sgb-RBI_REFERENCE_REQUIRED").assertExists()
         compose.onNodeWithTag("m31-ibja-OWNER_REVIEW_REQUIRED").assertExists()
         compose.onNodeWithTag("m31-device-loss-warning").assertExists()
+        // P37/E16: authenticated Settings exposes only a read-only Play catalog.
+        // A product listing never proves account entitlement or grants access.
+        compose.onNodeWithTag("p37-play-unconfigured").assertExists()
+        compose.onNodeWithText("Google Play Billing is not connected in this build.",
+            substring = true).assertExists()
+        compose.onNodeWithTag("p37-check-play-catalog").performScrollTo()
+        compose.onNodeWithTag("p37-check-play-catalog").assertExists()
+        compose.onNodeWithTag("p37-play-catalog-status").assertExists()
+        compose.onNodeWithText("Verification status: unavailable", substring = true).assertExists()
+        val probeBounds = compose.onNodeWithTag("p37-check-play-catalog")
+            .fetchSemanticsNode().boundsInRoot
+        assertTrue("Read-only Play catalog control smaller than 48dp at density=1",
+            probeBounds.height >= 48f)
+
 
         compose.onNodeWithTag("m31-support-copy").assertDoesNotExist()
         compose.onNodeWithTag("m31-account-lock").assertExists()
