@@ -110,7 +110,7 @@ New-chat prompt the owner pastes (replaces §17.5/17.7):
 Seed written by Claude on 2026-10-28 from repo docs. FIRST SESSION: verify B1–B3 against GitHub Actions and fix any mismatch before relying on them.
 
 ## B1 Header
-branch GUD-Android-Redevelopment · checkpoint_sha `0f8d4c56fdfc5541ad45dc72a8e8e13291e43edc` · repaired M29 P24 T2 `40857791852` at `cc9e7a0c` SUCCESS 50/50 API35, original hashes/ADB reviewed · accepted requirements 0/52 (36 P + 16 E) · no formal milestones.
+branch GUD-Android-Redevelopment · checkpoint_sha `40837e84e72eac0113e2a0258181fce0e1780944` · repaired M29 P24 T2 `40857791852` at `cc9e7a0c` SUCCESS 50/50 API35, original hashes/ADB reviewed · accepted requirements 0/52 (36 P + 16 E) · no formal milestones.
 State codes: ND not started · SP source partial · JV JVM green · EM emulator green · AC accepted · DF deferred (D57).
 
 ## B2 Requirement matrix (split a row when members diverge)
@@ -136,13 +136,16 @@ State codes: ND not started · SP source partial · JV JVM green · EM emulator 
 | P34 | M32 | SP | idempotency/cursor guard only; acceptance pending |
 | P35, E07 | M32 | SP/EM | API35 40936450262 66/66 PASS at 5063de3b; fake gateway/SQLCipher mapping only, OAuth blocked |
 | P36 | M31/M33 | SP/EM | Feedback API35 40962454191 5/5; Privacy SQLCipher/Compose/API35 40967478400 6/6 at 4eeb4323, original ADB/APK reviewed; final owner/legal Privacy approval pending |
-| P37, E16 | M33 | SP | Bounded verifier lease, 4 SKU real read-only Play Billing catalog at 0f8d4c56; source-pinned native T1 40974691187 running; real Play purchases/verification/enforcement blocked |
+| P37, E16 | M33 | SP/EM | Play Billing v8 read-only catalog UI and 48dp Settings checks 41004099432 API35 4/4 at 40837e84; T1 41003704910 PASS; verifier leases/JVM goldens. Genuine Play purchases/verification/trial/enforcement owner-blocked |
 | P38–P39, E09, E15, E17–E18 | M33–M34 | ND | Billing release/security, analytics, SBOM, pipeline and egress pending |
 | E14 | all | SP | modular tests partial; acceptance pending |
 
 ## B3 Latest passing runs (original details in GitHub Actions; older rows archived)
 | run_id | SHA | group |
 |---|---|---|
+| 41004099432 | 40837e84 | P37/E16 read-only Billing Settings API35 4/4 PASS |
+| 41003704910 | 40837e84 | P37/E16 source T1 PASS |
+| 40974691187 | 0f8d4c56 | P37/E16 Billing SDK source T1 PASS |
 | 40936450262 | 5063de3b | M29 + P35/E07 API35 66/66 PASS |
 | 40848824289 | e0b6a74e | M31 settings PASS |
 | 40845095146 | 78b772da | M31 privacy PASS |
@@ -174,7 +177,7 @@ State codes: ND not started · SP source partial · JV JVM green · EM emulator 
 10. M28 EM: synthetic CAS; real CAS/ARM64 blocked.
 11. M30 EM: priced-feed UI; actual network/device blocked.
 12. M31 EM: dossier/settings/privacy; owner/device blocked.
-13. BUILD NOW: P36 Privacy API35 40967478400 6/6 PASS at 4eeb4323 (original evidence). P37/E16 0f8d4c56 adds real read-only BillingClient v8 catalog, short-lived signed-verifier lease & annual subscription expiry, model negatives; native T1 40974691187 active. No trusted Play verification/checkout. Next focused API35 real-screen test after T1; then E09/E15/E17/E18.
+13. BUILD NOW: P36 Privacy API35 40967478400 6/6 PASS at 4eeb4323 (original ADB/APK). P37/E16 Billing SDK v8 read-only catalog and lease model T1 40974691187 and 41003704910 PASS; focused Settings API35 41004099432 4/4 PASS at 40837e84, original APK hashes/ADB reviewed. Real Play purchase/refund/trial validation blocked on owner config; do NOT claim P37/E16 acceptance. Next BUILD NOW E09/E15/E17/E18 source/test batch.
 14. BLOCKED-OWNER: real Gmail OAuth, Play purchases, signing keys, ARM64 phone and genuine CAS statements, penetration test, G14 sign-off.
 Process P0 completed: unified native-ci T1/T2; 54 old workflows archived.
 
