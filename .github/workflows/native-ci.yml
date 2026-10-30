@@ -151,13 +151,16 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m unittest discover -s android-native/scripts -p 'test_enterprise_evidence.py' -v
+          python3 -m unittest discover -s android-native/scripts -p 'test_ci_evidence.py' -v
+          python3 -m unittest discover -s android-native/scripts -p 'test_public_advisory_scan.py' -v
           (cd android-native && ./gradlew :app:dependencies --configuration debugRuntimeClasspath --no-daemon --console=plain) > native-debug-deps.txt
-          python3 android-native/scripts/enterprise_evidence.py audit --root . --dependencies native-debug-deps.txt --sha "$TARGET_SHA" --out native-enterprise-evidence
+          (cd android-native && ./gradlew :app:dependencies --configuration releaseRuntimeClasspath --no-daemon --console=plain) > native-release-deps.txt
+          python3 android-native/scripts/enterprise_evidence.py audit --root . --dependencies native-debug-deps.txt --release-dependencies native-release-deps.txt --wheel-dir android-native/app/python-wheels --sha "$TARGET_SHA" --out native-enterprise-evidence
       - name: E15 public Maven advisories (no financial identifiers)
         shell: bash
         run: |
           set -euo pipefail
-          python3 android-native/scripts/public_advisory_scan.py --sbom native-enterprise-evidence/debug-runtime-sbom.json --quality native-enterprise-evidence/quality-evidence.json --out native-enterprise-evidence/public-advisories.json
+          python3 android-native/scripts/public_advisory_scan.py --sbom native-enterprise-evidence/release-maven-sbom.json --quality native-enterprise-evidence/quality-evidence.json --out native-enterprise-evidence/public-advisories.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

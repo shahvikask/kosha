@@ -1,8 +1,9 @@
 import hashlib
+import json
 import tempfile
 import unittest
 from pathlib import Path
-from ci_evidence import create_summary
+from ci_evidence import create_summary, validate_release_inventory
 
 
 class NativeQualitySummaryTest(unittest.TestCase):
@@ -30,6 +31,41 @@ class NativeQualitySummaryTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 create_summary("a"*40, "T2", "Synthetic", "success",
                                "success", "failed", "123", root)
+
+    def test_release_candidate_shares_source_and_never_approves_production(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            sha = "a" * 40
+            maven = {"metadata": {"component": {"version": sha}},
+                     "components": [{"name": "maven", "version": "1"}]}
+            candidate = {
+                "metadata": {"component": {"version": sha},
+                             "properties": [{"name": "gud:coverage",
+                                            "value": "PARTIAL_NOT_PRODUCTION_AAB"}]},
+                "components": maven["components"] + [
+                    {"name": str(i), "hashes": [
+                        {"alg": "SHA-256", "content": hashlib.sha256(
+                            str(i).encode()).hexdigest()}]} for i in range(4)]
+            }
+            quality = {"tested_sha": sha, "releaseReady": False,
+                       "checks": {"resolvedReleaseCandidateGraph": "PARTIAL_SOURCE_ONLY"}}
+            (root / "release-maven-sbom.json").write_text(json.dumps(maven))
+            (root / "release-candidate-sbom.json").write_text(json.dumps(candidate))
+            self.assertEqual("PARTIAL_RELEASE_CANDIDATE",
+                validate_release_inventory(quality, root, sha))
+            with self.assertRaises(ValueError):
+                validate_release_inventory(quality, root, "b" * 40)
+            quality["releaseReady"] = True
+            with self.assertRaises(ValueError):
+                validate_release_inventory(quality, root, sha)
+            quality["releaseReady"] = False
+            candidate["metadata"]["properties"][0]["value"] = "COMPLETE"
+            (root / "release-candidate-sbom.json").write_text(json.dumps(candidate))
+            with self.assertRaises(ValueError):
+                validate_release_inventory(quality, root, sha)
+            (root / "release-candidate-sbom.json").unlink()
+            with self.assertRaises(ValueError):
+                validate_release_inventory(quality, root, sha)
 
     def test_t1_stays_out_of_android_and_owner_approval(self):
         r = create_summary("b"*40, "T1", "", "success",

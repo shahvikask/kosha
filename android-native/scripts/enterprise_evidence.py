@@ -62,6 +62,97 @@ def resolved_components(report: str) -> list[dict]:
     return [components[key] for key in sorted(components)]
 
 
+# Release inventory is a candidate only: Gradle runtime metadata and four exact
+# native wheel bytes do not prove installed pip transitive dependencies, bundled
+# Python runtime, or final production-signed AAB contents.
+RELEASE_WHEELS = {
+    ("pydantic_core", "2.41.5", "arm64_v8a"),
+    ("pydantic_core", "2.41.5", "x86_64"),
+    ("pypdfium2", "5.14.0", "arm64_v8a"),
+    ("pypdfium2", "5.14.0", "x86_64"),
+}
+WHEEL_DIGEST = re.compile(r"([0-9a-f]{64})\s+([A-Za-z0-9_.+-]+\.whl)\Z")
+WHEEL_PLATFORM = re.compile(
+    r"^(pydantic_core|pypdfium2)-(2\.41\.5|5\.14\.0)-.*android_\d+_(arm64_v8a|x86_64)\.whl$"
+)
+PIP_DECLARATION = re.compile(r'install\("([^"\n]+)"\)')
+
+
+def verified_release_wheels(folder: Path) -> list[dict]:
+    manifest = folder / "SHA256SUMS"
+    if not manifest.is_file():
+        raise ValueError("Release wheel SHA256SUMS manifest missing")
+    lines = manifest.read_text(encoding="utf-8").splitlines()
+    if len(lines) != 4:
+        raise ValueError("Exactly four pinned Android wheel digests required")
+    seen: set[tuple[str, str, str]] = set()
+    names: set[str] = set()
+    result = []
+    for line in lines:
+        match = WHEEL_DIGEST.fullmatch(line.strip())
+        if match is None:
+            raise ValueError("Malformed Android wheel checksum record")
+        digest, name = match.groups()
+        parsed = WHEEL_PLATFORM.fullmatch(name)
+        if parsed is None:
+            raise ValueError("Unapproved Android wheel artifact")
+        package, version, abi = parsed.groups()
+        if (package, version, abi) not in RELEASE_WHEELS or (
+            package, version, abi
+        ) in seen or name in names:
+            raise ValueError("Duplicate or mismatched release ABI wheel")
+        seen.add((package, version, abi))
+        names.add(name)
+        artifact = folder / name
+        if not artifact.is_file() or hashlib.sha256(artifact.read_bytes()).hexdigest() != digest:
+            raise ValueError("Android wheel bytes differ from checksum")
+        result.append({
+            "type": "library", "name": package, "version": version,
+            "hashes": [{"alg": "SHA-256", "content": digest}],
+            "properties": [{"name": "gud:android_abi", "value": abi},
+                           {"name": "gud:scope", "value": "wheel-bytes-not-installed-runtime"}],
+        })
+    if seen != RELEASE_WHEELS or set(p.name for p in folder.glob("*.whl")) != names:
+        raise ValueError("Missing or unexpected release wheel")
+    return sorted(result, key=lambda x: (x["name"], x["properties"][0]["value"]))
+
+
+def release_inventory(root: Path, release_report: Path, wheel_dir: Path,
+                      sha: str) -> tuple[dict, dict]:
+    graph = release_report.read_text(encoding="utf-8")
+    if "releaseRuntimeClasspath" not in graph or "FAILED" in graph or "UNRESOLVED" in graph:
+        raise ValueError("Unverified release runtime dependency resolution")
+    maven = resolved_components(graph)
+    wheels = verified_release_wheels(wheel_dir)
+    gradle = (root / "android-native/app/build.gradle.kts").read_text(encoding="utf-8")
+    declared = sorted(set(PIP_DECLARATION.findall(gradle)))
+    required = {"pydantic", "pydantic-core", "pypdfium2", "python-dateutil",
+                "click", "colorama", "rich"}
+    names = {re.split(r"[<>=!~]", item, 1)[0] for item in declared}
+    if names != required or len(declared) != len(required):
+        raise ValueError("Unexpected or missing declared parser Python packages")
+    maven_bom = {
+        "bomFormat": "CycloneDX", "specVersion": "1.5", "version": 1,
+        "metadata": {"component": {"type": "application",
+                       "name": "GrowUrDhan-native-release-maven", "version": sha}},
+        "components": maven,
+    }
+    candidate = {
+        "bomFormat": "CycloneDX", "specVersion": "1.5", "version": 1,
+        "metadata": {"component": {"type": "application",
+                       "name": "GrowUrDhan-native-release-candidate", "version": sha},
+                     "properties": [
+                         {"name": "gud:coverage", "value": "PARTIAL_NOT_PRODUCTION_AAB"},
+                         {"name": "gud:limitations", "value":
+                          "Unresolved installed Python transitives/Chaquopy runtime; final signed AAB not inspected"},
+                     ]},
+        "components": maven + wheels,
+        "properties": [{"name": "gud:declared_python_requirements",
+                        "value": ",".join(declared)}],
+    }
+    return maven_bom, candidate
+
+
 def production_sources(root: Path):
     native = root / "android-native"
     for path in sorted(native.rglob("*.kt")):
@@ -125,11 +216,18 @@ def verify_aab_signer(aab: Path, fingerprint: str,
     return {"signerMatch": True, "aabSha256": hashlib.sha256(aab.read_bytes()).hexdigest()}
 
 
-def write_audit(root: Path, report: Path, sha: str, out: Path) -> None:
+def write_audit(root: Path, report: Path, sha: str, out: Path,
+                release_report: Path | None = None,
+                wheel_dir: Path | None = None) -> None:
     if not HEX_SHA.fullmatch(sha):
         raise ValueError("Exact 40-character tested source SHA required")
     components = resolved_components(report.read_text(encoding="utf-8"))
     source = audit_sources(root)
+    if (release_report is None) != (wheel_dir is None):
+        raise ValueError("Release graph and wheel evidence must be supplied together")
+    release = None
+    if release_report is not None and wheel_dir is not None:
+        release = release_inventory(root, release_report, wheel_dir, sha)
     out.mkdir(parents=True, exist_ok=True)
     sbom = {
         "bomFormat": "CycloneDX", "specVersion": "1.5", "version": 1,
@@ -146,6 +244,7 @@ def write_audit(root: Path, report: Path, sha: str, out: Path) -> None:
         "checks": {
             "offlineSourceGuard": "PASS",
             "resolvedDebugDependencyGraph": "PASS",
+            "resolvedReleaseCandidateGraph": "PARTIAL_SOURCE_ONLY" if release else "NOT_RUN",
             "localSecretPatternScan": "PASS",
             "externalVulnerabilityAdvisoryScan": "NOT_RUN",
             "independentMASVSPenTest": "BLOCKED_OWNER",
@@ -170,13 +269,16 @@ def main() -> None:
     gate.add_argument("--root", type=Path, required=True)
     gate.add_argument("--dependencies", type=Path, required=True)
     gate.add_argument("--sha", required=True)
+    gate.add_argument("--release-dependencies", type=Path)
+    gate.add_argument("--wheel-dir", type=Path)
     gate.add_argument("--out", type=Path, required=True)
     signer = cmd.add_parser("verify-signer")
     signer.add_argument("--aab", type=Path, required=True)
     signer.add_argument("--expected-sha256-fingerprint", required=True)
     args = parser.parse_args()
     if args.action == "audit":
-        write_audit(args.root, args.dependencies, args.sha, args.out)
+        write_audit(args.root, args.dependencies, args.sha, args.out,
+                    args.release_dependencies, args.wheel_dir)
         print("E15/E17/E18 offline source and debug-runtime evidence PASS; release gates remain BLOCKED.")
     else:
         print(json.dumps(verify_aab_signer(args.aab,

@@ -65,6 +65,46 @@ def create_summary(source: str, tier: str, tests: str, preflight: str,
     }
 
 
+def validate_release_inventory(quality: dict, folder: Path, sha: str) -> str:
+    """The same-run candidate has exact source binding, never production approval."""
+    if quality.get("tested_sha") != sha:
+        raise ValueError("Security evidence is not from the tested source")
+    if quality.get("checks", {}).get("resolvedReleaseCandidateGraph") != "PARTIAL_SOURCE_ONLY":
+        raise ValueError("Release candidate inventory is incomplete")
+    path = folder / "release-candidate-sbom.json"
+    maven_path = folder / "release-maven-sbom.json"
+    if not path.is_file() or not maven_path.is_file():
+        raise ValueError("Same-run release candidate inventory is absent")
+    candidate = json.loads(path.read_text(encoding="utf-8"))
+    maven = json.loads(maven_path.read_text(encoding="utf-8"))
+    if candidate.get("metadata", {}).get("component", {}).get("version") != sha or (
+        maven.get("metadata", {}).get("component", {}).get("version") != sha
+    ):
+        raise ValueError("Release inventory belongs to another commit")
+    labels = candidate.get("metadata", {}).get("properties", [])
+    if not isinstance(labels, list) or not any(
+        isinstance(x, dict) and x.get("name") == "gud:coverage" and
+        x.get("value") == "PARTIAL_NOT_PRODUCTION_AAB" for x in labels
+    ):
+        raise ValueError("A release candidate must disclose incomplete scope")
+    components = candidate.get("components")
+    source_components = maven.get("components")
+    if not isinstance(components, list) or not isinstance(source_components, list) or (
+        not source_components or len(components) != len(source_components) + 4
+    ):
+        raise ValueError("Release dependency records are missing or incomplete")
+    wheels = components[len(source_components):]
+    if components[:len(source_components)] != source_components or not all(
+        isinstance(x, dict) and len(x.get("hashes", [])) == 1 and
+        x["hashes"][0].get("alg") == "SHA-256" and
+        CHECKSUM.fullmatch(x["hashes"][0].get("content", "")) for x in wheels
+    ):
+        raise ValueError("Unverified release wheel fingerprint evidence")
+    if quality.get("releaseReady") is not False:
+        raise ValueError("Unapproved release state")
+    return "PARTIAL_RELEASE_CANDIDATE"
+
+
 def main():
     e = os.environ
     folder = Path("original-emulator-artifact") if e["TIER"] != "T1" else None
@@ -82,6 +122,9 @@ def main():
                         "REVIEW_FINDINGS", "UNAVAILABLE_OR_INCOMPLETE", "INCOMPLETE"}:
         raise ValueError("Unrecognized advisory verification status")
     result["gates"]["externalAdvisoryScan"] = advisory
+    result["gates"]["dependencySbom"] = validate_release_inventory(
+        quality, evidence.parent, result["sha"])
+    result["gates"]["networkPayloadPrivacy"] = "NOT_RUN"
     Path("native-summary.json").write_text(json.dumps(result, sort_keys=True, indent=2) + "\n")
     print(json.dumps({"sha": result["sha"], "tier": result["tier"],
                       "verification": result["verification"], "releaseReady": False}))

@@ -1,9 +1,12 @@
 import tempfile
+import hashlib
+import json
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from enterprise_evidence import (
     audit_sources, resolved_components, verify_aab_signer, write_audit,
+    release_inventory, verified_release_wheels,
 )
 
 
@@ -71,6 +74,67 @@ class EvidenceTests(unittest.TestCase):
             self.assertFalse(e["releaseReady"])
             self.assertEqual("BLOCKED_OWNER", e["checks"]["productionAabSigner"])
             self.assertEqual(1, e["dependencyCount"])
+
+    def test_release_candidate_inventory_is_explicitly_partial_and_sha_pinned(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            wheels = root / "android-native/app/python-wheels"
+            wheels.mkdir(parents=True)
+            names = []
+            for package, version in (("pydantic_core", "2.41.5"),
+                                     ("pypdfium2", "5.14.0")):
+                for abi in ("arm64_v8a", "x86_64"):
+                    name = f"{package}-{version}-cp313-cp313-android_26_{abi}.whl"
+                    payload = name.encode()
+                    (wheels / name).write_bytes(payload)
+                    names.append(hashlib.sha256(payload).hexdigest() + "  " + name)
+            (wheels / "SHA256SUMS").write_text("\n".join(names) + "\n")
+            build = root / "android-native/app/build.gradle.kts"
+            build.parent.mkdir(parents=True, exist_ok=True)
+            build.write_text("\n".join('install("' + p + '")' for p in (
+                "pydantic==2.12.5", "pydantic-core==2.41.5",
+                "pypdfium2==5.14.0", "python-dateutil>=2.8.2,<3",
+                "click>=8,<10", "colorama>=0.4.6,<1", "rich>=13.5.2,<16")))
+            graph = root / "release.txt"
+            graph.write_text("releaseRuntimeClasspath\n+--- org.example:lib:1.0\n")
+            maven, candidate = release_inventory(root, graph, wheels, "a" * 40)
+            self.assertEqual(1, len(maven["components"]))
+            self.assertEqual(5, len(candidate["components"]))
+            self.assertEqual("PARTIAL_NOT_PRODUCTION_AAB",
+                candidate["metadata"]["properties"][0]["value"])
+            self.assertEqual("a" * 40, candidate["metadata"]["component"]["version"])
+            (wheels / names[0].split()[-1]).write_bytes(b"tampered")
+            with self.assertRaises(ValueError):
+                verified_release_wheels(wheels)
+            (wheels / names[0].split()[-1]).write_bytes(names[0].split()[-1].encode())
+            (wheels / "rogue.whl").write_bytes(b"rogue")
+            with self.assertRaises(ValueError):
+                verified_release_wheels(wheels)
+            (wheels / "rogue.whl").unlink()
+            (wheels / "SHA256SUMS").write_text("0" * 64 + "  ../outside.whl\n")
+            with self.assertRaises(ValueError):
+                verified_release_wheels(wheels)
+            (wheels / "SHA256SUMS").write_text("\n".join(names) + "\n")
+            graph.write_text("releaseRuntimeClasspath\n+--- org.example:lib:1.0 FAILED\n")
+            with self.assertRaises(ValueError):
+                release_inventory(root, graph, wheels, "a" * 40)
+            graph.write_text("releaseRuntimeClasspath\n+--- org.example:lib:1.0\n")
+            build.write_text('install("pydantic==2.12.5")')
+            with self.assertRaises(ValueError):
+                release_inventory(root, graph, wheels, "a" * 40)
+
+    def test_signer_missing_or_invalid_cannot_pass_with_mocked_tool(self):
+        with tempfile.TemporaryDirectory() as d:
+            fake_path = Path(d) / "missing.aab"
+            with self.assertRaises(ValueError):
+                verify_aab_signer(fake_path, ":".join(["AA"] * 32))
+            fake_path.write_bytes(b"fixture")
+            with self.assertRaises(ValueError):
+                verify_aab_signer(fake_path, "NOT-A-FINGERPRINT")
+            def unsigned(argv, **_):
+                return SimpleNamespace(returncode=1, stdout="")
+            with self.assertRaises(ValueError):
+                verify_aab_signer(fake_path, ":".join(["AA"] * 32), unsigned)
 
     def test_signer_verification_fails_on_mismatched_fingerprint(self):
         with tempfile.TemporaryDirectory() as d:
