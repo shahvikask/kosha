@@ -71,7 +71,7 @@ class NativeE09AnalyticsTest {
         val row = NativeE09Analytics.CashEntry("a", "owner",
             NativeE09Analytics.CashKind.CONTRIBUTION, "2025-02-01", 1L, "")
         for (bad in listOf(row.copy(ownerId = "foreign"), row.copy(amountMinor = -1),
-            row.copy(day = "2025-02-30"), row.copy(note = "\\n"))) {
+            row.copy(day = "2025-02-30"), row.copy(note = "invalid" + 1.toChar()))) {
             assertThrows(Exception::class.java) {
                 NativeE09Analytics.manualCashYears(listOf(bad), "owner")
             }
