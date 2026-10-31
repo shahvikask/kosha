@@ -5,6 +5,7 @@ import android.content.ContextWrapper
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import `in`.growurdhan.model.NativeCredentials
@@ -19,6 +20,13 @@ import org.junit.Test
 /** Real NativeBooksScreen composable with sandboxed owner-scoped SQLCipher. */
 class NativeM26OwnerLensNavigationInstrumentedTest {
     @get:Rule val compose = createComposeRule()
+    private fun navigateTo(destination: String) {
+        val main = NativeBooksMainDestination(destination)
+        compose.onNodeWithTag("books-tab-$main").performClick()
+        if (destination in listOf("Accounts", "Settings", "Records")) {
+            compose.onNodeWithTag("books-subtab-$destination").performClick()
+        }
+    }
     private fun sandbox(): Context {
         val base = androidx.test.platform.app.InstrumentationRegistry
             .getInstrumentation().targetContext
@@ -80,24 +88,24 @@ class NativeM26OwnerLensNavigationInstrumentedTest {
         compose.onNodeWithText("Member Alpha").performClick()
         compose.onAllNodes(hasText("Alpha Index", substring = true)).assertCountEquals(1)
         compose.onAllNodes(hasText("Owner Index", substring = true)).assertCountEquals(0)
-        compose.onNodeWithText("Holdings").performClick()
+        navigateTo("Holdings")
         compose.onAllNodes(hasText("Alpha Index", substring = true)).assertCountEquals(1)
         compose.onAllNodes(hasText("Owner Index", substring = true)).assertCountEquals(0)
-        compose.onNodeWithText("Records").performClick()
+        navigateTo("Records")
         compose.onNodeWithText("Money events and manual prices").assertExists()
-        compose.onNodeWithText("Family").performClick()
+        navigateTo("Family")
         compose.onAllNodes(hasText("Member Alpha •", substring = true)).assertCountEquals(1)
         compose.onAllNodes(hasText("Owner Family •", substring = true)).assertCountEquals(0)
-        compose.onNodeWithText("Accounts").performClick()
+        navigateTo("Accounts")
         compose.onAllNodes(hasText("Other Custodian", substring = true)).assertCountEquals(1)
         compose.onAllNodes(hasText("Owner Custodian", substring = true)).assertCountEquals(0)
-        compose.onNodeWithText("Goals").performClick()
+        navigateTo("Goals")
         compose.onAllNodes(hasText("Other Goal", substring = true)).assertCountEquals(1)
         compose.onAllNodes(hasText("Owner Goal", substring = true)).assertCountEquals(0)
         compose.onNodeWithText("Member Alpha").performClick()
         compose.onNodeWithText("Whole household").performClick()
         compose.onAllNodes(hasText("Owner Goal", substring = true)).assertCountEquals(1)
-        compose.onNodeWithText("Home").performClick()
+        navigateTo("Home")
         compose.onAllNodes(hasText("Owner Index", substring = true)).assertCountEquals(1)
         compose.onAllNodes(hasText("Alpha Index", substring = true)).assertCountEquals(1)
     }

@@ -34,6 +34,15 @@ import org.junit.Test
 class NativeM26RealBooksAccessibilityInstrumentedTest {
     @get:Rule val compose = createComposeRule()
 
+    /** Five primary tabs plus accessible child sections; retains original assertions. */
+    private fun navigateTo(destination: String) {
+        val main = NativeBooksMainDestination(destination)
+        compose.onNodeWithTag("books-tab-$main").performClick()
+        if (destination in listOf("Accounts", "Settings", "Records")) {
+            compose.onNodeWithTag("books-subtab-$destination").performClick()
+        }
+    }
+
     private fun sandbox(): Context {
         val base = androidx.test.platform.app.InstrumentationRegistry
             .getInstrumentation().targetContext
@@ -144,12 +153,10 @@ class NativeM26RealBooksAccessibilityInstrumentedTest {
         }
         compose.onNodeWithTag("m29-exposure-bucket-EQUITY").assertExists()
         compose.onNodeWithTag("m29-exposure-bucket-DEBT").assertExists()
-        for (tab in listOf("Home", "Holdings", "Family", "Accounts",
-            "Goals", "Records", "Documents", "Settings")) {
+        for (tab in nativeMainDestinations) {
             // At 200% text scale the nav begins below the viewport. A clipped
             // off-screen Compose semantics node returns a 0px bound, which is
             // NOT the button's physical touch-target size.
-            compose.onNodeWithTag("books-tab-$tab").performScrollTo()
             val nav = compose.onNodeWithTag("books-nav")
                 .fetchSemanticsNode().boundsInRoot
             val bounds = compose.onNodeWithTag("books-tab-$tab")
@@ -162,8 +169,7 @@ class NativeM26RealBooksAccessibilityInstrumentedTest {
         }
 
         // Real, authenticated Settings at 360dp / 200% in both themes.
-        compose.onNodeWithTag("books-tab-Settings").performScrollTo()
-        compose.onNodeWithTag("books-tab-Settings").performClick()
+        navigateTo("Settings")
         compose.waitUntil(30_000) {
             compose.onAllNodes(hasTestTag("m31-theme-SYSTEM"))
                 .fetchSemanticsNodes().isNotEmpty()
@@ -191,13 +197,11 @@ class NativeM26RealBooksAccessibilityInstrumentedTest {
         compose.onNodeWithTag("m31-family-settings").performScrollTo()
         compose.onNodeWithTag("m31-family-settings").performClick()
         compose.onNodeWithText("Family members").assertExists()
-        compose.onNodeWithTag("books-tab-Settings").performScrollTo()
-        compose.onNodeWithTag("books-tab-Settings").performClick()
+        navigateTo("Settings")
         compose.onNodeWithTag("m31-custody-settings").performScrollTo()
         compose.onNodeWithTag("m31-custody-settings").performClick()
         compose.onNodeWithText("Custody accounts").assertExists()
-        compose.onNodeWithTag("books-tab-Settings").performScrollTo()
-        compose.onNodeWithTag("books-tab-Settings").performClick()
+        navigateTo("Settings")
         compose.onNodeWithTag("m31-account-auth").assertExists()
         compose.onNodeWithTag("m31-sgb-RBI_REFERENCE_REQUIRED").assertExists()
         compose.onNodeWithTag("m31-ibja-OWNER_REVIEW_REQUIRED").assertExists()
@@ -272,21 +276,18 @@ class NativeM26RealBooksAccessibilityInstrumentedTest {
         compose.onNodeWithTag("m31-theme-DARK").assertIsNotEnabled()
         // A technical support clipboard action cannot appear without opt-in and preview.
         compose.onNodeWithTag("m31-support-copy").assertDoesNotExist()
-        compose.onNodeWithTag("books-tab-Home").performScrollTo()
-        compose.onNodeWithTag("books-tab-Home").performClick()
+        navigateTo("Home")
         compose.onNodeWithText("Home preview: up to 6 owner-scoped holding(s)").assertExists()
         // The production Holdings destination must expose the manual-only official
         // close action, not merely a standalone synthetic component.
-        compose.onNodeWithTag("books-tab-Holdings").performScrollTo()
-        compose.onNodeWithTag("books-tab-Holdings").performClick()
+        navigateTo("Holdings")
         compose.onNodeWithTag("m31-holdings-defaults").assertExists()
         compose.onNodeWithText("Saved defaults: Category sort, Active archived filter; " +
             "manual view choices override until next vault unlock.").assertExists()
         compose.onNodeWithTag("m30-source-NSE").assertExists()
         compose.onNodeWithTag("m30-source-BSE").assertExists()
         compose.onNodeWithTag("m30-import-close").assertIsNotEnabled()
-        compose.onNodeWithTag("books-tab-Home").performScrollTo()
-        compose.onNodeWithTag("books-tab-Home").performClick()
+        navigateTo("Home")
         compose.onNodeWithText("Whole household").performScrollTo()
         compose.onNodeWithText("Whole household").performClick()
         compose.onNodeWithText("Member Alpha").performClick()
@@ -304,12 +305,10 @@ class NativeM26RealBooksAccessibilityInstrumentedTest {
                 .fetchSemanticsNodes().isNotEmpty()
         }
         compose.onNodeWithTag("m29-exposure-bucket-EQUITY").assertDoesNotExist()
-        compose.onNodeWithTag("books-tab-Holdings").performScrollTo()
-        compose.onNodeWithTag("books-tab-Holdings").performClick()
+        navigateTo("Holdings")
         compose.onNodeWithTag("m30-source-url").assertDoesNotExist()
         compose.onNodeWithTag("m30-owner-scope").assertExists()
-        compose.onNodeWithTag("books-tab-Family").performScrollTo()
-        compose.onNodeWithTag("books-tab-Family").performClick()
+        navigateTo("Family")
         compose.onNodeWithTag("m31-dossier-scope").assertExists()
         compose.onNodeWithTag("m31-dossier-preview").assertDoesNotExist()
         compose.onNodeWithTag("m31-dossier-reveal").assertIsNotEnabled()
