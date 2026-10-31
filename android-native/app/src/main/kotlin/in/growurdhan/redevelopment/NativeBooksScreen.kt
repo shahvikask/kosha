@@ -145,6 +145,8 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
         }
     }
 
+    val routeScroll = rememberScrollState()
+    LaunchedEffect(tab) { routeScroll.scrollTo(0) }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
@@ -157,7 +159,7 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
             }
         }
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())
+        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(routeScroll)
             .padding(horizontal = 18.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             GUDBrandLockup()

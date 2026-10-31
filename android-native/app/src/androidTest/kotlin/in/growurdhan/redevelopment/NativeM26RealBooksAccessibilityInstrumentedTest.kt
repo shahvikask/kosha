@@ -39,7 +39,9 @@ class NativeM26RealBooksAccessibilityInstrumentedTest {
         val main = NativeBooksMainDestination(destination)
         compose.onNodeWithTag("books-tab-$main").performClick()
         if (destination in listOf("Accounts", "Settings", "Records")) {
+            compose.onNodeWithTag("books-subtab-$destination").performScrollTo()
             compose.onNodeWithTag("books-subtab-$destination").performClick()
+            compose.onNodeWithTag("books-subtab-$destination").assertIsSelected()
         }
     }
 

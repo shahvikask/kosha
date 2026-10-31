@@ -8,6 +8,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.assertIsSelected
 import `in`.growurdhan.model.NativeCredentials
 import `in`.growurdhan.model.NativeDeviceAdmission
 import `in`.growurdhan.model.NativeRegistrationProof
@@ -24,7 +26,9 @@ class NativeM26OwnerLensNavigationInstrumentedTest {
         val main = NativeBooksMainDestination(destination)
         compose.onNodeWithTag("books-tab-$main").performClick()
         if (destination in listOf("Accounts", "Settings", "Records")) {
+            compose.onNodeWithTag("books-subtab-$destination").performScrollTo()
             compose.onNodeWithTag("books-subtab-$destination").performClick()
+            compose.onNodeWithTag("books-subtab-$destination").assertIsSelected()
         }
     }
     private fun sandbox(): Context {

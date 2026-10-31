@@ -65,8 +65,7 @@ class NativeM26VisualEvidenceInstrumentedTest {
             }
         }
         val root = compose.onNodeWithTag("g14-visual-content").fetchSemanticsNode().boundsInRoot
-        for (tab in listOf("Home", "Holdings", "Family", "Accounts", "Goals",
-                "Records", "Documents", "Settings")) {
+        for (tab in nativeMainDestinations) {
             val b = compose.onNodeWithTag("books-tab-$tab").fetchSemanticsNode().boundsInRoot
             assertTrue("$tab overflowed 360dp visual panel", b.left >= root.left - 1f &&
                 b.right <= root.right + 1f)
@@ -137,8 +136,7 @@ class NativeM26VisualEvidenceInstrumentedTest {
         compose.onNodeWithTag("g14-holding-synthetic-000").assertExists()
         compose.onNodeWithTag("g14-holding-synthetic-119").assertDoesNotExist()
         val nav = compose.onNodeWithTag("books-nav").fetchSemanticsNode().boundsInRoot
-        for (tab in listOf("Home", "Holdings", "Family", "Accounts",
-            "Goals", "Records", "Documents", "Settings")) {
+        for (tab in nativeMainDestinations) {
             val bounds = compose.onNodeWithTag("books-tab-$tab")
                 .fetchSemanticsNode().boundsInRoot
             assertTrue("Nav button horizontally clipped: $tab",
