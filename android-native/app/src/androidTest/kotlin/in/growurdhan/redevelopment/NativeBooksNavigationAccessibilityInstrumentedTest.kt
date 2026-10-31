@@ -9,8 +9,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.test.assertDoesNotExist
-import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider

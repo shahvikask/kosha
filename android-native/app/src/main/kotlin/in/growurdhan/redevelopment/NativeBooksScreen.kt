@@ -76,7 +76,8 @@ internal fun NativeBooksScreen(email: String, books: NativeBooksRepository,
     }
     val state = remember(email, books) {
         NativeBooksUiState(email, books, imports, payouts, annualCredits,
-            diagnostics, casPdf, settings, privacyConsent, onLock,
+            diagnostics, casPdf, settings, privacyConsent,
+            { tab = "Home"; onLock() },
             onReplaceRecovery, onAppearanceChanged, scope)
     }
     state.pendingPdf = pendingPdf
